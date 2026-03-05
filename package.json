@@ -1,0 +1,35 @@
+{
+  "name": "slack-ai-agents",
+  "version": "1.0.0",
+  "type": "module",
+  "repository": "https://github.com/hyewon3938/slack-ai-agents.git",
+  "author": "hyewon3938 <hyewon3938@naver.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "node --import tsx src/app.ts",
+    "lint": "eslint src/",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@notionhq/client": "^5.11.1",
+    "@slack/bolt": "^4.6.0",
+    "dotenv": "^17.3.1",
+    "groq-sdk": "^0.37.0",
+    "node-cron": "^4.2.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.3.3",
+    "@types/node-cron": "^3.0.11",
+    "eslint": "^10.0.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^4.0.18"
+  }
+}
