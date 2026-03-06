@@ -1,7 +1,9 @@
 import { App } from '@slack/bolt';
 import { CONFIG } from './shared/config.js';
-import { registerMessageHandler } from './router.js';
+import { registerMessageHandler, registerAgent } from './router.js';
 import { connectMCP, disconnectMCP } from './shared/mcp-client.js';
+import { createLLMClient } from './shared/llm.js';
+import { createScheduleAgent } from './agents/schedule/index.js';
 
 const app = new App({
   token: CONFIG.slack.botToken,
@@ -14,6 +16,11 @@ registerMessageHandler(app);
 
 const startApp = async (): Promise<void> => {
   await connectMCP(CONFIG.notion.apiKey);
+
+  const llmClient = await createLLMClient();
+  const scheduleAgent = createScheduleAgent(llmClient, CONFIG.notion.scheduleDbId);
+  registerAgent(CONFIG.channels.schedule, scheduleAgent);
+
   await app.start();
   // eslint-disable-next-line no-console
   console.log('[App] Slack 봇이 Socket Mode로 실행 중입니다');
