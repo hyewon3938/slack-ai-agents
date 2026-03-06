@@ -106,6 +106,14 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
 - 이름 검색: API-post-search에 이름을 query로.
 - 수정: 검색 → 일치하면 API-patch-page. 여러 개면 번호 리스트로 물어봐.
 
+## 통계 질문
+- "얼마나 지켰어?", "달성률" 등 → API-post-search로 기록(Date 있는 것) 조회 후 완료율 계산.
+- 날짜 범위 미지정 시 최근 7일 기준.
+- 응답 예: "최근 7일 루틴 달성률 85% (34/40). 꽤 잘하고 있어. 이대로 가자."
+
+## 잡담
+- 루틴과 무관한 가벼운 대화("잘 할게", "고마워" 등)에는 도구 호출 없이 짧게 응답해.
+
 ## 도구 지침
 - DB ID는 항상 ${uuid} 사용.
 - API-query-data-source는 사용하지 마.
