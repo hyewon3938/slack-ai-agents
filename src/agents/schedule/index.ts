@@ -144,6 +144,18 @@ const runAgentLoop = async (
   return '요청이 너무 복잡해. 좀 더 간단하게 말해줘.';
 };
 
+const ACK_MESSAGES = [
+  '잠깐만, 확인해볼게.',
+  '잠시만, 보고 올게.',
+  '알겠어, 잠깐만.',
+  '오케이, 확인 중.',
+  '잠깐, 찾아볼게.',
+  '알겠어, 금방 할게.',
+];
+
+const getAckMessage = (): string =>
+  ACK_MESSAGES[Math.floor(Math.random() * ACK_MESSAGES.length)];
+
 export const createScheduleAgent = (
   llmClient: LLMClient,
   dbId: string,
@@ -156,6 +168,7 @@ export const createScheduleAgent = (
 
       // eslint-disable-next-line no-console
       console.log(`[Schedule Agent] 메시지 수신: ${message.text}`);
+      await sendMessage(say, getAckMessage());
       const reply = await runAgentLoop(llmClient, message.text, dbId);
       await sendMessage(say, reply);
     } catch (error: unknown) {
