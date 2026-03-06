@@ -3,6 +3,7 @@ import type { RoutineRecord } from '../../../shared/routine-notion.js';
 import {
   buildRoutineBlocks,
   buildFilteredRoutineBlocks,
+  buildMorningGreetingBlocks,
   buildNightSummaryBlocks,
   formatDateShort,
 } from '../blocks.js';
@@ -41,9 +42,9 @@ describe('buildRoutineBlocks', () => {
       .filter((b) => b.type === 'section')
       .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''));
 
-    expect(sectionTexts).toContain('*:sunrise: 아침*');
-    expect(sectionTexts).toContain('*:sunny: 점심*');
-    expect(sectionTexts).toContain('*:crescent_moon: 밤*');
+    expect(sectionTexts).toContain('*아침*');
+    expect(sectionTexts).toContain('*점심*');
+    expect(sectionTexts).toContain('*밤*');
   });
 
   it('미완료 항목에는 버튼이 포함된다', () => {
@@ -98,9 +99,9 @@ describe('buildRoutineBlocks', () => {
       .filter((b) => b.type === 'section')
       .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''));
 
-    expect(sectionTexts).toContain('*:sunrise: 아침*');
-    expect(sectionTexts).not.toContain('*:sunny: 점심*');
-    expect(sectionTexts).not.toContain('*:crescent_moon: 밤*');
+    expect(sectionTexts).toContain('*아침*');
+    expect(sectionTexts).not.toContain('*점심*');
+    expect(sectionTexts).not.toContain('*밤*');
   });
 });
 
@@ -144,6 +145,51 @@ describe('buildFilteredRoutineBlocks', () => {
     expect(sectionTexts).toContain('미완료오전');
     expect(sectionTexts).not.toContain('~완료오전~');
     expect(sectionTexts).toContain('오후루틴');
+  });
+});
+
+describe('buildMorningGreetingBlocks', () => {
+  it('어제 기록이 있으면 완료율을 포함한다', () => {
+    const records = [
+      makeRecord({ completed: true }),
+      makeRecord({ completed: true }),
+      makeRecord({ completed: false }),
+    ];
+
+    const blocks = buildMorningGreetingBlocks(records);
+    const text = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
+      .join('');
+
+    expect(text).toContain('달성 67%');
+    expect(text).toContain('좋은 아침');
+  });
+
+  it('전부 완료 시 축하 메시지를 포함한다', () => {
+    const records = [
+      makeRecord({ completed: true }),
+      makeRecord({ completed: true }),
+    ];
+
+    const blocks = buildMorningGreetingBlocks(records);
+    const text = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
+      .join('');
+
+    expect(text).toContain('달성 100%');
+    expect(text).toContain('대단해');
+  });
+
+  it('어제 기록이 없으면 기본 인사를 반환한다', () => {
+    const blocks = buildMorningGreetingBlocks([]);
+    const text = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
+      .join('');
+
+    expect(text).toContain('좋은 아침');
   });
 });
 

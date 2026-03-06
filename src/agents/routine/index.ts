@@ -12,7 +12,8 @@ const MAX_TOOL_ROUNDS = 10;
 const MAX_RETRIES = 2;
 const MAX_RATE_LIMIT_RETRIES = 3;
 
-const CHECKLIST_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
+const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
+const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨'];
 
 /** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
 const getTodayISO = (): string => {
@@ -24,9 +25,12 @@ const getTodayISO = (): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-/** "루틴" 키워드 체크리스트 요청인지 판별 */
+/** "루틴" 포함 조회 요청인지 판별 (CRUD 키워드 없으면 체크리스트) */
 const isChecklistRequest = (text: string): boolean => {
-  return CHECKLIST_KEYWORDS.has(text.trim());
+  const trimmed = text.trim();
+  if (EXACT_KEYWORDS.has(trimmed)) return true;
+  if (trimmed.includes('루틴') && !CRUD_KEYWORDS.some((k) => trimmed.includes(k))) return true;
+  return false;
 };
 
 const parseRetryDelay = (errorMsg: string, defaultMs: number): number => {

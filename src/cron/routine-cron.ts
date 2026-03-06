@@ -9,6 +9,7 @@ import {
 import { postBlockMessage } from '../shared/slack.js';
 import {
   buildFilteredRoutineBlocks,
+  buildMorningGreetingBlocks,
   buildNightSummaryBlocks,
 } from '../agents/routine/blocks.js';
 
@@ -33,6 +34,17 @@ const getTodayISO = (): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
+/** KST 기준 어제 날짜 (YYYY-MM-DD) */
+const getYesterdayISO = (): string => {
+  const now = new Date();
+  const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
+  kst.setDate(kst.getDate() - 1);
+  const yyyy = kst.getFullYear();
+  const mm = String(kst.getMonth() + 1).padStart(2, '0');
+  const dd = String(kst.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 /** 아침 9시: 오늘 기록 생성 + 아침 체크리스트 전송 */
 const morningTask = async (
   app: App,
@@ -49,26 +61,37 @@ const morningTask = async (
     (t) => !existingKeys.has(`${t.title}:${t.timeSlot}`),
   );
 
+  const createdRecords = [];
   for (const template of newTemplates) {
-    await createRoutineRecord(
+    const record = await createRoutineRecord(
       notionClient,
       config.dbId,
       template.title,
       template.timeSlot,
       today,
     );
+    createdRecords.push(record);
   }
 
-  const allRecords = await queryTodayRoutineRecords(notionClient, config.dbId, today);
+  // search 재조회 대신 기존 + 신규 레코드를 직접 합침 (eventual consistency 회피)
+  const allRecords = [...existingRecords, ...createdRecords];
   const morningRecords = allRecords.filter((r) => r.timeSlot === '아침');
 
   if (morningRecords.length > 0) {
-    const { text, blocks } = buildFilteredRoutineBlocks(allRecords, today, ['아침']);
-    await postBlockMessage(app.client, config.channelId, text, blocks);
-  }
+    // 어제 완료율 조회 → 아침 인사 블록 생성
+    const yesterday = getYesterdayISO();
+    const yesterdayRecords = await queryTodayRoutineRecords(notionClient, config.dbId, yesterday);
+    const greetingBlocks = buildMorningGreetingBlocks(yesterdayRecords);
 
-  // eslint-disable-next-line no-console
-  console.log(`[Routine Cron] 아침 알림 전송 완료 (기록 ${newTemplates.length}개 생성)`);
+    const { text, blocks } = buildFilteredRoutineBlocks(allRecords, today, ['아침']);
+    const fullBlocks = [...greetingBlocks, ...blocks];
+    await postBlockMessage(app.client, config.channelId, text, fullBlocks);
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 아침 알림 전송 완료 (기록 ${createdRecords.length}개 생성)`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 아침 루틴 없음 — 메시지 미전송`);
+  }
 };
 
 /** 점심 1시: 미완료 아침 포함 + 점심 체크리스트 전송 */
@@ -89,10 +112,12 @@ const lunchTask = async (
       records, today, ['점심'], ['아침'],
     );
     await postBlockMessage(app.client, config.channelId, text, blocks);
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 점심 알림 전송 완료`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 점심 루틴 없음 — 메시지 미전송`);
   }
-
-  // eslint-disable-next-line no-console
-  console.log(`[Routine Cron] 점심 알림 전송 완료`);
 };
 
 /** 저녁 6시: 미완료 아침/점심 포함 + 저녁 체크리스트 전송 */
@@ -115,10 +140,12 @@ const eveningTask = async (
       records, today, ['저녁'], ['아침', '점심'],
     );
     await postBlockMessage(app.client, config.channelId, text, blocks);
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 저녁 알림 전송 완료`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 저녁 루틴 없음 — 메시지 미전송`);
   }
-
-  // eslint-disable-next-line no-console
-  console.log(`[Routine Cron] 저녁 알림 전송 완료`);
 };
 
 /** 밤 11시: 전체 요약 + 마무리 메시지 */
@@ -133,10 +160,12 @@ const nightTask = async (
   if (records.length > 0) {
     const { text, blocks } = buildNightSummaryBlocks(records, today);
     await postBlockMessage(app.client, config.channelId, text, blocks);
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 밤 요약 전송 완료`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`[Routine Cron] 밤 기록 없음 — 메시지 미전송`);
   }
-
-  // eslint-disable-next-line no-console
-  console.log(`[Routine Cron] 밤 요약 전송 완료`);
 };
 
 export const initRoutineCron = (
