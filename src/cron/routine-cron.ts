@@ -4,7 +4,9 @@ import type { Client as NotionClient } from '@notionhq/client';
 import {
   queryRoutineTemplates,
   queryTodayRoutineRecords,
+  queryLastRecordDate,
   createRoutineRecord,
+  shouldCreateToday,
 } from '../shared/routine-notion.js';
 import { postBlockMessage } from '../shared/slack.js';
 import {
@@ -57,9 +59,22 @@ const morningTask = async (
   const existingRecords = await queryTodayRoutineRecords(notionClient, config.dbId, today);
   const existingKeys = new Set(existingRecords.map((r) => `${r.title}:${r.timeSlot}`));
 
-  const newTemplates = templates.filter(
+  const candidates = templates.filter(
     (t) => !existingKeys.has(`${t.title}:${t.timeSlot}`),
   );
+
+  // 빈도 체크: 매일이 아닌 템플릿은 마지막 기록 날짜 기준으로 판별
+  const newTemplates = [];
+  for (const t of candidates) {
+    if (t.frequency === '매일') {
+      newTemplates.push(t);
+    } else {
+      const lastDate = await queryLastRecordDate(notionClient, config.dbId, t.title, t.timeSlot);
+      if (shouldCreateToday(t.frequency, lastDate, today)) {
+        newTemplates.push(t);
+      }
+    }
+  }
 
   const createdRecords = [];
   for (const template of newTemplates) {
@@ -69,6 +84,7 @@ const morningTask = async (
       template.title,
       template.timeSlot,
       today,
+      template.frequency,
     );
     createdRecords.push(record);
   }

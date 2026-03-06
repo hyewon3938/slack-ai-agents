@@ -1,5 +1,6 @@
 import type { KnownBlock } from '@slack/types';
 import type { RoutineRecord } from '../../shared/routine-notion.js';
+import { frequencyBadge } from '../../shared/routine-notion.js';
 
 const ACTION_ID = 'routine_complete';
 
@@ -40,15 +41,18 @@ export const buildRoutineBlocks = (
     });
 
     for (const record of slotRecords) {
+      const badge = frequencyBadge(record.frequency);
+      const suffix = badge ? ` ${badge}` : '';
+
       if (record.completed) {
         blocks.push({
           type: 'section',
-          text: { type: 'mrkdwn', text: `~${record.title}~ :white_check_mark:` },
+          text: { type: 'mrkdwn', text: `~${record.title}~${suffix} :white_check_mark:` },
         });
       } else {
         blocks.push({
           type: 'section',
-          text: { type: 'mrkdwn', text: record.title },
+          text: { type: 'mrkdwn', text: `${record.title}${suffix}` },
           accessory: {
             type: 'button',
             text: { type: 'plain_text', text: '완료 ✓', emoji: true },
