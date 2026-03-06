@@ -26,6 +26,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
 
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
 const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨'];
+const ANALYTICS_KEYWORDS = ['얼마나', '통계', '달성', '지켰', '기록', '분석', '몇', '퍼센트', '잘하고'];
 
 /** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
 const getTodayISO = (): string => {
@@ -37,11 +38,15 @@ const getTodayISO = (): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-/** "루틴" 포함 조회 요청인지 판별 (CRUD 키워드 없으면 체크리스트) */
+/** "루틴" 포함 조회 요청인지 판별 (CRUD/분석 키워드 없으면 체크리스트) */
 const isChecklistRequest = (text: string): boolean => {
   const trimmed = text.trim();
   if (EXACT_KEYWORDS.has(trimmed)) return true;
-  if (trimmed.includes('루틴') && !CRUD_KEYWORDS.some((k) => trimmed.includes(k))) return true;
+  if (
+    trimmed.includes('루틴') &&
+    !CRUD_KEYWORDS.some((k) => trimmed.includes(k)) &&
+    !ANALYTICS_KEYWORDS.some((k) => trimmed.includes(k))
+  ) return true;
   return false;
 };
 
