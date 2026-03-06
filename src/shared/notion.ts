@@ -3,6 +3,33 @@ import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoint
 
 export type { Client as NotionClient } from '@notionhq/client';
 
+/**
+ * Notion databases.query REST API 직접 호출.
+ * SDK v5에서 databases.query가 제거되어 client.request()로 대체.
+ */
+export interface DatabaseQueryResponse {
+  results: Array<{ object: string } & Record<string, unknown>>;
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export const queryDatabase = async (
+  client: NotionClient,
+  databaseId: string,
+  body: Record<string, unknown> = {},
+): Promise<DatabaseQueryResponse> => {
+  const response = await (client.request as (args: {
+    path: string;
+    method: string;
+    body?: Record<string, unknown>;
+  }) => Promise<unknown>)({
+    path: `databases/${databaseId}/query`,
+    method: 'post',
+    body,
+  });
+  return response as DatabaseQueryResponse;
+};
+
 export interface ScheduleItem {
   id: string;
   title: string;
@@ -12,8 +39,13 @@ export interface ScheduleItem {
   hasStarIcon: boolean;
 }
 
+/**
+ * SDK v5는 Notion-Version 2025-09-03을 기본 사용하는데,
+ * 이 버전에서 databases.query 엔드포인트가 제거됨.
+ * 2022-06-28 버전을 명시하여 databases.query를 계속 사용.
+ */
 export const createNotionClient = (apiKey: string): NotionClient => {
-  return new NotionClient({ auth: apiKey });
+  return new NotionClient({ auth: apiKey, notionVersion: '2022-06-28' });
 };
 
 const STAR_ICON_URL = 'https://www.notion.so/icons/star_red.svg';
@@ -89,7 +121,7 @@ const subtractDays = (dateStr: string, days: number): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-/** Notion에서 오늘 일정을 조회 — dataSources.query 서버 필터 */
+/** Notion에서 오늘 일정을 조회 — databases.query 서버 필터 */
 export const queryTodaySchedules = async (
   client: NotionClient,
   dbId: string,
@@ -104,8 +136,7 @@ export const queryTodaySchedules = async (
   const windowStart = subtractDays(today, 90);
 
   do {
-    const response = await client.dataSources.query({
-      data_source_id: uuid,
+    const response = await queryDatabase(client, uuid, {
       filter: {
         and: [
           { property: 'Date', date: { on_or_after: windowStart } },
@@ -115,7 +146,8 @@ export const queryTodaySchedules = async (
       ...(startCursor ? { start_cursor: startCursor } : {}),
     });
 
-    const pages = response.results.filter(isPageObject);
+    const pages = (response.results as Array<{ object: string } & Record<string, unknown>>)
+      .filter(isPageObject);
     allPages.push(...pages);
     startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
   } while (startCursor);

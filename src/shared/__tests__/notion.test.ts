@@ -36,7 +36,7 @@ const makePage = (
     is_locked: false,
     url: 'https://notion.so/test',
     public_url: null,
-    parent: { type: 'data_source_id', data_source_id: 'ds-1', database_id: DB_ID },
+    parent: { type: 'database_id', database_id: DB_ID },
     icon,
     cover: null,
     created_by: { object: 'user', id: 'user-1' },
@@ -89,16 +89,14 @@ const makePage = (
   } as unknown as PageObjectResponse;
 };
 
-/** databases.query mock */
+/** client.request mock (databases/{id}/query) */
 const mockClient = (pages: PageObjectResponse[]): NotionClient => {
   return {
-    dataSources: {
-      query: vi.fn().mockResolvedValue({
-        results: pages,
-        has_more: false,
-        next_cursor: null,
-      }),
-    },
+    request: vi.fn().mockResolvedValue({
+      results: pages,
+      has_more: false,
+      next_cursor: null,
+    }),
   } as unknown as NotionClient;
 };
 
@@ -179,15 +177,18 @@ describe('queryTodaySchedules', () => {
     const client = mockClient([]);
     await queryTodaySchedules(client, DB_ID, today);
 
-    expect(client.dataSources.query).toHaveBeenCalledWith(
+    expect(client.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        data_source_id: DB_ID,
-        filter: {
-          and: [
-            { property: 'Date', date: { on_or_after: expect.any(String) } },
-            { property: 'Date', date: { on_or_before: today } },
-          ],
-        },
+        path: `databases/${DB_ID}/query`,
+        method: 'post',
+        body: expect.objectContaining({
+          filter: {
+            and: [
+              { property: 'Date', date: { on_or_after: expect.any(String) } },
+              { property: 'Date', date: { on_or_before: today } },
+            ],
+          },
+        }),
       }),
     );
   });
