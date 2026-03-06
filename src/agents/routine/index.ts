@@ -25,8 +25,17 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
 };
 
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
-const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨'];
+const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨', '없애', '지워', '초기화', '시작'];
 const ANALYTICS_KEYWORDS = ['얼마나', '통계', '달성', '지켰', '기록', '분석', '몇', '퍼센트', '잘하고'];
+const ACTION_KEYWORDS = [...CRUD_KEYWORDS, ...ANALYTICS_KEYWORDS, '루틴', '보여', '알려', '조회', '목록'];
+
+const CHAT_TIMEOUT_MS = 15_000;
+
+/** 잡담 전용 짧은 시스템 프롬프트 (DB 스키마/API 예시 불필요) */
+const CHAT_SYSTEM_PROMPT = `너는 '잔소리꾼'이라는 이름의 루틴 관리 봇이야. 반말로 대화해.
+성격: 걱정 많고 잔소리 좀 하지만 진심으로 챙겨주는 친구 느낌. 동등한 입장에서 편하게.
+어미: ~자, ~겠어, ~봐, ~써, ~해, ~어. 훈장님처럼 ~거라, ~하거라 금지.
+이모지/존댓말 금지. 한두 문장으로 짧게 응답해.`;
 
 /** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
 const getTodayISO = (): string => {
@@ -48,6 +57,12 @@ const isChecklistRequest = (text: string): boolean => {
     !ANALYTICS_KEYWORDS.some((k) => trimmed.includes(k))
   ) return true;
   return false;
+};
+
+/** 짧은 잡담인지 판별 (도구 불필요) */
+const isCasualChat = (text: string): boolean => {
+  if (text.length > 50) return false;
+  return !ACTION_KEYWORDS.some((k) => text.includes(k));
 };
 
 const parseRetryDelay = (errorMsg: string, defaultMs: number): number => {
@@ -220,6 +235,27 @@ export const createRoutineAgent = (
 
         const { text: msgText, blocks } = buildRoutineBlocks(records, today);
         await say({ text: msgText, blocks });
+        return;
+      }
+
+      // 잡담 빠른 경로: 도구 없이 짧은 프롬프트로 LLM 직접 응답 (ack 생략)
+      if (isCasualChat(text)) {
+        // eslint-disable-next-line no-console
+        console.log(`[Routine Agent] 잡담 감지`);
+        try {
+          const chatMessages: LLMMessage[] = [
+            { role: 'system', content: CHAT_SYSTEM_PROMPT },
+            { role: 'user', content: text },
+          ];
+          const response = await withTimeout(
+            llmClient.chat(chatMessages),
+            CHAT_TIMEOUT_MS,
+            '잡담 LLM',
+          );
+          await sendMessage(say, response.text ?? '알겠어.');
+        } catch {
+          await sendMessage(say, '알겠어.');
+        }
         return;
       }
 
