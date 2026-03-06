@@ -38,7 +38,9 @@ export const connectMCP = async (notionApiKey: string): Promise<void> => {
     command: 'npx',
     args: ['-y', '@notionhq/notion-mcp-server'],
     env: {
-      ...process.env as Record<string, string>,
+      ...Object.fromEntries(
+        Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined),
+      ),
       OPENAPI_MCP_HEADERS: JSON.stringify({
         Authorization: `Bearer ${notionApiKey}`,
         'Notion-Version': '2022-06-28',
