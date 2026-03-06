@@ -107,7 +107,7 @@ export const frequencyBadge = (frequency: Frequency): string => {
   }
 };
 
-/** DB 내 특정 템플릿의 가장 최근 기록 날짜 조회 */
+/** DB 내 특정 템플릿의 가장 최근 기록 날짜 조회 — sort + limit 1 */
 export const queryLastRecordDate = async (
   client: NotionClient,
   dbId: string,
@@ -115,53 +115,31 @@ export const queryLastRecordDate = async (
   timeSlot: string,
 ): Promise<string | undefined> => {
   const uuid = toUUID(dbId);
-  const allPages: PageObjectResponse[] = [];
-  let startCursor: string | undefined;
 
-  do {
-    const response = await client.search({
-      query: title,
-      filter: { property: 'object', value: 'page' },
-      page_size: 100,
-      ...(startCursor ? { start_cursor: startCursor } : {}),
-    });
+  const response = await client.dataSources.query({
+    data_source_id: uuid,
+    filter: {
+      and: [
+        { property: 'Name', title: { equals: title } },
+        { property: '시간대', select: { equals: timeSlot } },
+        { property: 'Date', date: { is_not_empty: true } },
+      ],
+    },
+    sorts: [{ property: 'Date', direction: 'descending' }],
+    page_size: 1,
+  });
 
-    const pages = response.results.filter(
-      (result): result is PageObjectResponse => {
-        if (!isPageObject(result)) return false;
-        if (result.archived || result.in_trash) return false;
-        const databaseId =
-          'database_id' in result.parent ? result.parent.database_id : undefined;
-        return databaseId === uuid;
-      },
-    );
-    allPages.push(...pages);
-    startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
-  } while (startCursor);
+  const page = response.results.find(isPageObject);
+  if (!page) return undefined;
 
-  const dates = allPages
-    .filter((page) => {
-      const dateProp = page.properties['Date'];
-      if (dateProp?.type !== 'date' || !dateProp.date) return false;
-      if (parseTitle(page) !== title) return false;
-      if (parseTimeSlot(page) !== timeSlot) return false;
-      return true;
-    })
-    .map((page) => {
-      const dateProp = page.properties['Date'];
-      if (dateProp?.type === 'date' && dateProp.date) {
-        return dateProp.date.start.slice(0, 10);
-      }
-      return '';
-    })
-    .filter(Boolean)
-    .sort()
-    .reverse();
-
-  return dates[0];
+  const dateProp = page.properties['Date'];
+  if (dateProp?.type === 'date' && dateProp.date) {
+    return dateProp.date.start.slice(0, 10);
+  }
+  return undefined;
 };
 
-/** 활성 템플릿 조회 (날짜 없음, 활성=true) — search + 클라이언트 필터 */
+/** 활성 템플릿 조회 (날짜 없음, 활성=true) — dataSources.query 서버 필터 */
 export const queryRoutineTemplates = async (
   client: NotionClient,
   dbId: string,
@@ -171,42 +149,31 @@ export const queryRoutineTemplates = async (
   let startCursor: string | undefined;
 
   do {
-    const response = await client.search({
-      query: '',
-      filter: { property: 'object', value: 'page' },
-      page_size: 100,
+    const response = await client.dataSources.query({
+      data_source_id: uuid,
+      filter: {
+        and: [
+          { property: 'Date', date: { is_empty: true } },
+          { property: '활성', checkbox: { equals: true } },
+        ],
+      },
       ...(startCursor ? { start_cursor: startCursor } : {}),
     });
 
-    const pages = response.results.filter(
-      (result): result is PageObjectResponse => {
-        if (!isPageObject(result)) return false;
-        if (result.archived || result.in_trash) return false;
-        const databaseId =
-          'database_id' in result.parent ? result.parent.database_id : undefined;
-        return databaseId === uuid;
-      },
-    );
+    const pages = response.results.filter(isPageObject);
     allPages.push(...pages);
     startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
   } while (startCursor);
 
-  return allPages
-    .filter((page) => {
-      const dateProp = page.properties['Date'];
-      const hasNoDate = dateProp?.type === 'date' && dateProp.date === null;
-      const isActive = parseCheckbox(page, '활성');
-      return hasNoDate && isActive;
-    })
-    .map((page) => ({
-      id: page.id,
-      title: parseTitle(page),
-      timeSlot: parseTimeSlot(page),
-      frequency: parseFrequency(page),
-    }));
+  return allPages.map((page) => ({
+    id: page.id,
+    title: parseTitle(page),
+    timeSlot: parseTimeSlot(page),
+    frequency: parseFrequency(page),
+  }));
 };
 
-/** 오늘 루틴 기록 조회 — search + 클라이언트 필터 */
+/** 오늘 루틴 기록 조회 — dataSources.query 서버 필터 */
 export const queryTodayRoutineRecords = async (
   client: NotionClient,
   dbId: string,
@@ -217,40 +184,28 @@ export const queryTodayRoutineRecords = async (
   let startCursor: string | undefined;
 
   do {
-    const response = await client.search({
-      query: '',
-      filter: { property: 'object', value: 'page' },
-      page_size: 100,
+    const response = await client.dataSources.query({
+      data_source_id: uuid,
+      filter: {
+        property: 'Date',
+        date: { equals: today },
+      },
       ...(startCursor ? { start_cursor: startCursor } : {}),
     });
 
-    const pages = response.results.filter(
-      (result): result is PageObjectResponse => {
-        if (!isPageObject(result)) return false;
-        if (result.archived || result.in_trash) return false;
-        const databaseId =
-          'database_id' in result.parent ? result.parent.database_id : undefined;
-        return databaseId === uuid;
-      },
-    );
+    const pages = response.results.filter(isPageObject);
     allPages.push(...pages);
     startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
   } while (startCursor);
 
-  return allPages
-    .filter((page) => {
-      const dateProp = page.properties['Date'];
-      if (dateProp?.type !== 'date' || !dateProp.date) return false;
-      return dateProp.date.start.slice(0, 10) === today;
-    })
-    .map((page) => ({
-      id: page.id,
-      title: parseTitle(page),
-      date: today,
-      completed: parseCheckbox(page, '완료'),
-      timeSlot: parseTimeSlot(page),
-      frequency: parseFrequency(page),
-    }));
+  return allPages.map((page) => ({
+    id: page.id,
+    title: parseTitle(page),
+    date: today,
+    completed: parseCheckbox(page, '완료'),
+    timeSlot: parseTimeSlot(page),
+    frequency: parseFrequency(page),
+  }));
 };
 
 /** 루틴 기록 생성 (템플릿 → 오늘자 기록) — 생성된 레코드 반환 */
