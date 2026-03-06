@@ -79,7 +79,17 @@ const isScheduleForDate = (
   return start === targetDate;
 };
 
-/** Notion에서 오늘 일정을 조회 (페이지네이션 포함) */
+/** 날짜를 N일 전으로 이동 (YYYY-MM-DD) */
+const subtractDays = (dateStr: string, days: number): string => {
+  const date = new Date(dateStr + 'T00:00:00+09:00');
+  date.setDate(date.getDate() - days);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+/** Notion에서 오늘 일정을 조회 — dataSources.query 서버 필터 */
 export const queryTodaySchedules = async (
   client: NotionClient,
   dbId: string,
@@ -89,24 +99,23 @@ export const queryTodaySchedules = async (
   const allPages: PageObjectResponse[] = [];
   let startCursor: string | undefined;
 
+  // 기간 일정(start~end)을 잡기 위해 90일 윈도우로 서버 필터,
+  // 이후 클라이언트에서 정확한 날짜 매칭
+  const windowStart = subtractDays(today, 90);
+
   do {
-    const response = await client.search({
-      query: '',
-      filter: { property: 'object', value: 'page' },
-      page_size: 100,
+    const response = await client.dataSources.query({
+      data_source_id: uuid,
+      filter: {
+        and: [
+          { property: 'Date', date: { on_or_after: windowStart } },
+          { property: 'Date', date: { on_or_before: today } },
+        ],
+      },
       ...(startCursor ? { start_cursor: startCursor } : {}),
     });
 
-    const pages = response.results.filter(
-      (result): result is PageObjectResponse => {
-        if (!isPageObject(result)) return false;
-        if (result.archived || result.in_trash) return false;
-        const databaseId =
-          'database_id' in result.parent ? result.parent.database_id : undefined;
-        return databaseId === uuid;
-      },
-    );
-
+    const pages = response.results.filter(isPageObject);
     allPages.push(...pages);
     startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
   } while (startCursor);

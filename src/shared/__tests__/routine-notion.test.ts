@@ -4,6 +4,7 @@ import type { Client as NotionClient } from '@notionhq/client';
 import {
   queryRoutineTemplates,
   queryTodayRoutineRecords,
+  queryLastRecordDate,
   shouldCreateToday,
   frequencyBadge,
 } from '../routine-notion.js';
@@ -101,14 +102,16 @@ const makeRoutinePage = (
   } as unknown as PageObjectResponse;
 };
 
-/** search mock — 클라이언트 필터링이므로 전체 반환 */
+/** databases.query mock — 서버 필터링 전제, 결과만 반환 */
 const mockClient = (pages: PageObjectResponse[]): NotionClient => {
   return {
-    search: vi.fn().mockResolvedValue({
-      results: pages,
-      has_more: false,
-      next_cursor: null,
-    }),
+    dataSources: {
+      query: vi.fn().mockResolvedValue({
+        results: pages,
+        has_more: false,
+        next_cursor: null,
+      }),
+    },
   } as unknown as NotionClient;
 };
 
@@ -154,38 +157,19 @@ describe('queryRoutineTemplates', () => {
     expect(templates[0].frequency).toBe('매일');
   });
 
-  it('비활성 템플릿은 필터링한다', async () => {
-    const pages = [
-      makeRoutinePage({ title: '활성', active: true }),
-      makeRoutinePage({ title: '비활성', active: false }),
-    ];
-    const client = mockClient(pages);
-    const templates = await queryRoutineTemplates(client, DB_ID);
-
-    expect(templates).toHaveLength(1);
-    expect(templates[0].title).toBe('활성');
-  });
-
-  it('날짜가 있는 페이지(기록)는 필터링한다', async () => {
-    const pages = [
-      makeRoutinePage({ title: '템플릿', dateStart: null, active: true }),
-      makeRoutinePage({ title: '기록', dateStart: '2026-03-06', active: true }),
-    ];
-    const client = mockClient(pages);
-    const templates = await queryRoutineTemplates(client, DB_ID);
-
-    expect(templates).toHaveLength(1);
-    expect(templates[0].title).toBe('템플릿');
-  });
-
-  it('search에 올바른 파라미터를 전달한다', async () => {
+  it('databases.query에 올바른 필터를 전달한다', async () => {
     const client = mockClient([]);
     await queryRoutineTemplates(client, DB_ID);
 
-    expect(client.search).toHaveBeenCalledWith(
+    expect(client.dataSources.query).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: '',
-        filter: { property: 'object', value: 'page' },
+        data_source_id: DB_ID,
+        filter: {
+          and: [
+            { property: 'Date', date: { is_empty: true } },
+            { property: '활성', checkbox: { equals: true } },
+          ],
+        },
       }),
     );
   });
@@ -203,18 +187,6 @@ describe('queryTodayRoutineRecords', () => {
 
     expect(records).toHaveLength(1);
     expect(records[0].title).toBe('오늘 기록');
-  });
-
-  it('다른 날짜의 기록은 필터링한다', async () => {
-    const pages = [
-      makeRoutinePage({ title: '오늘', dateStart: '2026-03-06' }),
-      makeRoutinePage({ title: '어제', dateStart: '2026-03-05' }),
-    ];
-    const client = mockClient(pages);
-    const records = await queryTodayRoutineRecords(client, DB_ID, today);
-
-    expect(records).toHaveLength(1);
-    expect(records[0].title).toBe('오늘');
   });
 
   it('완료 상태를 올바르게 파싱한다', async () => {
@@ -242,16 +214,60 @@ describe('queryTodayRoutineRecords', () => {
     expect(records[0].frequency).toBe('격일');
   });
 
-  it('날짜 없는 페이지(템플릿)는 필터링한다', async () => {
-    const pages = [
-      makeRoutinePage({ title: '기록', dateStart: '2026-03-06' }),
-      makeRoutinePage({ title: '템플릿', dateStart: null }),
-    ];
-    const client = mockClient(pages);
-    const records = await queryTodayRoutineRecords(client, DB_ID, today);
+  it('databases.query에 올바른 날짜 필터를 전달한다', async () => {
+    const client = mockClient([]);
+    await queryTodayRoutineRecords(client, DB_ID, today);
 
-    expect(records).toHaveLength(1);
-    expect(records[0].title).toBe('기록');
+    expect(client.dataSources.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data_source_id: DB_ID,
+        filter: {
+          property: 'Date',
+          date: { equals: today },
+        },
+      }),
+    );
+  });
+});
+
+describe('queryLastRecordDate', () => {
+  it('가장 최근 기록 날짜를 반환한다', async () => {
+    const page = makeRoutinePage({
+      title: '스트레칭',
+      dateStart: '2026-03-04',
+      timeSlot: '아침',
+    });
+    const client = mockClient([page]);
+    const result = await queryLastRecordDate(client, DB_ID, '스트레칭', '아침');
+
+    expect(result).toBe('2026-03-04');
+  });
+
+  it('기록이 없으면 undefined를 반환한다', async () => {
+    const client = mockClient([]);
+    const result = await queryLastRecordDate(client, DB_ID, '스트레칭', '아침');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('databases.query에 올바른 필터와 정렬을 전달한다', async () => {
+    const client = mockClient([]);
+    await queryLastRecordDate(client, DB_ID, '스트레칭', '아침');
+
+    expect(client.dataSources.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data_source_id: DB_ID,
+        filter: {
+          and: [
+            { property: 'Name', title: { equals: '스트레칭' } },
+            { property: '시간대', select: { equals: '아침' } },
+            { property: 'Date', date: { is_not_empty: true } },
+          ],
+        },
+        sorts: [{ property: 'Date', direction: 'descending' }],
+        page_size: 1,
+      }),
+    );
   });
 });
 

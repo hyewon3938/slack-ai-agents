@@ -14,7 +14,6 @@ const makePage = (
     category?: string[];
     icon?: PageObjectResponse['icon'];
     archived?: boolean;
-    parentDbId?: string;
   } = {},
 ): PageObjectResponse => {
   const {
@@ -25,7 +24,6 @@ const makePage = (
     category = [],
     icon = null,
     archived = false,
-    parentDbId = DB_ID,
   } = overrides;
 
   return {
@@ -38,7 +36,7 @@ const makePage = (
     is_locked: false,
     url: 'https://notion.so/test',
     public_url: null,
-    parent: { type: 'data_source_id', data_source_id: 'ds-1', database_id: parentDbId },
+    parent: { type: 'data_source_id', data_source_id: 'ds-1', database_id: DB_ID },
     icon,
     cover: null,
     created_by: { object: 'user', id: 'user-1' },
@@ -91,9 +89,16 @@ const makePage = (
   } as unknown as PageObjectResponse;
 };
 
+/** databases.query mock */
 const mockClient = (pages: PageObjectResponse[]): NotionClient => {
   return {
-    search: vi.fn().mockResolvedValue({ results: pages, has_more: false, next_cursor: null }),
+    dataSources: {
+      query: vi.fn().mockResolvedValue({
+        results: pages,
+        has_more: false,
+        next_cursor: null,
+      }),
+    },
   } as unknown as NotionClient;
 };
 
@@ -103,7 +108,7 @@ describe('queryTodaySchedules', () => {
   it('오늘 날짜 일정만 반환한다', async () => {
     const pages = [
       makePage({ title: '오늘 일정', dateStart: '2026-03-07' }),
-      makePage({ title: '내일 일정', dateStart: '2026-03-08' }),
+      // 서버 필터 통과 후 클라이언트에서 기간 체크 — 과거 단일 일정은 제외
       makePage({ title: '어제 일정', dateStart: '2026-03-06' }),
     ];
     const client = mockClient(pages);
@@ -128,19 +133,13 @@ describe('queryTodaySchedules', () => {
     expect(items[0].title).toBe('기간 일정');
   });
 
-  it('다른 DB의 페이지는 제외한다', async () => {
+  it('기간 일정이 이미 종료되었으면 제외한다', async () => {
     const pages = [
-      makePage({ title: '다른 DB', parentDbId: 'other-db-id' }),
-    ];
-    const client = mockClient(pages);
-    const items = await queryTodaySchedules(client, DB_ID, today);
-
-    expect(items).toHaveLength(0);
-  });
-
-  it('archived 페이지는 제외한다', async () => {
-    const pages = [
-      makePage({ title: '삭제됨', archived: true, dateStart: '2026-03-07' }),
+      makePage({
+        title: '끝난 일정',
+        dateStart: '2026-03-01',
+        dateEnd: '2026-03-05',
+      }),
     ];
     const client = mockClient(pages);
     const items = await queryTodaySchedules(client, DB_ID, today);
@@ -176,13 +175,20 @@ describe('queryTodaySchedules', () => {
     });
   });
 
-  it('날짜 없는 일정(백로그)은 제외한다', async () => {
-    const pages = [
-      makePage({ title: '백로그', dateStart: null }),
-    ];
-    const client = mockClient(pages);
-    const items = await queryTodaySchedules(client, DB_ID, today);
+  it('databases.query에 올바른 필터를 전달한다', async () => {
+    const client = mockClient([]);
+    await queryTodaySchedules(client, DB_ID, today);
 
-    expect(items).toHaveLength(0);
+    expect(client.dataSources.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data_source_id: DB_ID,
+        filter: {
+          and: [
+            { property: 'Date', date: { on_or_after: expect.any(String) } },
+            { property: 'Date', date: { on_or_before: today } },
+          ],
+        },
+      }),
+    );
   });
 });
