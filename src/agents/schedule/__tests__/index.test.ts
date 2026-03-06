@@ -171,7 +171,7 @@ describe('createScheduleAgent', () => {
 
     const llmClient = createMockLLMClient(responses);
     const agent = createScheduleAgent(llmClient, 'db-123');
-    await agent(createMockMessage('복잡한 요청'), mockSay);
+    await agent(createMockMessage('복잡한 일정 요청'), mockSay);
 
     expect(llmClient.chat).toHaveBeenCalledTimes(10);
     expect(mockSay).toHaveBeenCalledWith(
@@ -185,9 +185,24 @@ describe('createScheduleAgent', () => {
     ]);
 
     const agent = createScheduleAgent(llmClient, 'db-123');
-    await agent(createMockMessage('테스트'), mockSay);
+    await agent(createMockMessage('오늘 일정 테스트'), mockSay);
 
     expect(mockSay).toHaveBeenCalledWith('처리했어.');
+  });
+
+  it('짧은 잡담은 도구 호출 없이 LLM 직접 응답한다', async () => {
+    const llmClient = createMockLLMClient([
+      { text: '수고했어.', toolCalls: [], finishReason: 'stop' },
+    ]);
+
+    const agent = createScheduleAgent(llmClient, 'db-123');
+    await agent(createMockMessage('고마워'), mockSay);
+
+    expect(llmClient.chat).toHaveBeenCalledTimes(1);
+    // 잡담 경로에서는 tools 인자 없이 호출
+    const callArgs = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(callArgs).toHaveLength(1); // messages만, tools 없음
+    expect(mockSay).toHaveBeenCalledWith('수고했어.');
   });
 
   it('LLM 호출 자체가 실패하면 에러 메시지를 Slack에 전송한다', async () => {
