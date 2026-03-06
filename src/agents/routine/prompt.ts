@@ -83,35 +83,23 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
 - 시간대는 사용자가 지정한 값 사용 (아침/점심/저녁/밤).
 
 ## 오늘 기록 추가 (API-post-page) — "오늘부터 시작" 시 템플릿 생성 직후 호출
+- 템플릿과 동일한 이름/시간대/반복 사용. 활성은 반드시 false.
 {
   "parent": { "database_id": "${uuid}" },
   "properties": {
     "Name": { "title": [{ "text": { "content": "루틴 이름" } }] },
     "Date": { "date": { "start": "${today.split(' ')[0]}" } },
-    "시간대": { "select": { "name": "밤" } },
-    "반복": { "select": { "name": "격일" } },
-    "활성": { "checkbox": true },
+    "시간대": { "select": { "name": "(사용자 지정 시간대)" } },
+    "반복": { "select": { "name": "(사용자 지정 반복)" } },
+    "활성": { "checkbox": false },
     "완료": { "checkbox": false }
   }
 }
 
-## 루틴 비활성화 (API-patch-page)
-{
-  "page_id": "대상_페이지_id",
-  "properties": { "활성": { "checkbox": false } }
-}
-
-## 루틴 시간대 변경 (API-patch-page)
-{
-  "page_id": "대상_페이지_id",
-  "properties": { "시간대": { "select": { "name": "점심" } } }
-}
-
-## 루틴 반복 변경 (API-patch-page)
-{
-  "page_id": "대상_페이지_id",
-  "properties": { "반복": { "select": { "name": "격일" } } }
-}
+## 루틴 수정 (API-patch-page)
+- 비활성화: { "properties": { "활성": { "checkbox": false } } }
+- 시간대 변경: { "properties": { "시간대": { "select": { "name": "점심" } } } }
+- 반복 변경: { "properties": { "반복": { "select": { "name": "격일" } } } }
 
 ## 조회
 - 전체 조회: API-post-search 빈 쿼리(""), page_size: 100 → parent.database_id가 ${uuid}인 것만 필터링.
