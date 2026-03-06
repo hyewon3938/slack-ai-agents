@@ -93,7 +93,7 @@ const makePage = (
 
 const mockClient = (pages: PageObjectResponse[]): NotionClient => {
   return {
-    search: vi.fn().mockResolvedValue({ results: pages }),
+    search: vi.fn().mockResolvedValue({ results: pages, has_more: false, next_cursor: null }),
   } as unknown as NotionClient;
 };
 
