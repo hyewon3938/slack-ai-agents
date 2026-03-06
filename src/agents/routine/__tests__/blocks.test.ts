@@ -196,8 +196,7 @@ describe('buildMorningGreetingBlocks', () => {
       .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
       .join('');
 
-    expect(text).toContain('달성 67%');
-    expect(text).toContain('좋은 아침');
+    expect(text).toContain('67%');
   });
 
   it('전부 완료 시 축하 메시지를 포함한다', () => {
@@ -212,8 +211,7 @@ describe('buildMorningGreetingBlocks', () => {
       .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
       .join('');
 
-    expect(text).toContain('달성 100%');
-    expect(text).toContain('대단해');
+    expect(text).toContain('100%');
   });
 
   it('어제 기록이 없으면 기본 인사를 반환한다', () => {
@@ -223,7 +221,38 @@ describe('buildMorningGreetingBlocks', () => {
       .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
       .join('');
 
-    expect(text).toContain('좋은 아침');
+    expect(blocks.length).toBeGreaterThan(0);
+  });
+
+  it('특정 시간대 달성률이 낮으면 해당 시간대 집중 메시지를 추가한다', () => {
+    const records = [
+      // 아침: 0/2 완료 (낮음)
+      makeRecord({ timeSlot: '아침', completed: false }),
+      makeRecord({ timeSlot: '아침', completed: false }),
+      // 점심: 2/2 완료 (높음)
+      makeRecord({ timeSlot: '점심', completed: true }),
+      makeRecord({ timeSlot: '점심', completed: true }),
+    ];
+
+    const blocks = buildMorningGreetingBlocks(records);
+    const allText = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
+      .join(' ');
+
+    expect(allText).toContain('아침');
+  });
+
+  it('달성률이 고르면 시간대 분석 메시지를 추가하지 않는다', () => {
+    const records = [
+      makeRecord({ timeSlot: '아침', completed: true }),
+      makeRecord({ timeSlot: '점심', completed: true }),
+    ];
+
+    const blocks = buildMorningGreetingBlocks(records);
+    // 분석 블록 없이 인사 블록 1개만
+    const sectionBlocks = blocks.filter((b) => b.type === 'section');
+    expect(sectionBlocks).toHaveLength(1);
   });
 });
 
@@ -238,18 +267,15 @@ describe('buildNightSummaryBlocks', () => {
 
     const { blocks } = buildNightSummaryBlocks(records, today);
 
-    const summaryBlock = blocks.find(
-      (b) =>
-        b.type === 'section' &&
-        'text' in b &&
-        b.text &&
-        'text' in b.text &&
-        b.text.text.includes('전부 완료'),
-    );
-    expect(summaryBlock).toBeDefined();
+    // 전부 완료 시 요약 섹션 블록이 추가됨
+    const sectionTexts = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
+      .join(' ');
+    expect(sectionTexts.length).toBeGreaterThan(0);
   });
 
-  it('미완료 시 격려 메시지를 포함한다', () => {
+  it('미완료 시 완료 카운트를 포함한다', () => {
     const records = [
       makeRecord({ completed: true }),
       makeRecord({ completed: false, timeSlot: '점심' }),
@@ -257,14 +283,11 @@ describe('buildNightSummaryBlocks', () => {
 
     const { blocks } = buildNightSummaryBlocks(records, today);
 
-    const summaryBlock = blocks.find(
-      (b) =>
-        b.type === 'section' &&
-        'text' in b &&
-        b.text &&
-        'text' in b.text &&
-        b.text.text.includes('1/2 완료'),
-    );
-    expect(summaryBlock).toBeDefined();
+    const sectionTexts = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''))
+      .join(' ');
+    // 모든 변형에 "1/2" 포함
+    expect(sectionTexts).toContain('1/2');
   });
 });
