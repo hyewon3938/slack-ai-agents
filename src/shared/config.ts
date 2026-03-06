@@ -21,9 +21,10 @@ export const CONFIG = {
     appToken: requireEnv('SLACK_APP_TOKEN'),
   },
   llm: {
-    provider: optionalEnv('LLM_PROVIDER', 'groq') as 'groq' | 'anthropic',
+    provider: optionalEnv('LLM_PROVIDER', 'gemini') as 'groq' | 'anthropic' | 'gemini',
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
+    geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
   },
   notion: {
     apiKey: requireEnv('NOTION_API_KEY'),
