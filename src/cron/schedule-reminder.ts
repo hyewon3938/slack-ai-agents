@@ -24,7 +24,10 @@ const formatTime = (dateStr: string): string | null => {
   if (dateStr.length <= 10) return null;
   const timePart = dateStr.slice(11, 16);
   if (!timePart) return null;
-  const [h, m] = timePart.split(':');
+  const parts = timePart.split(':');
+  const h = parts[0];
+  const m = parts[1];
+  if (!h || m === undefined) return null;
   return `${Number(h)}:${m}`;
 };
 
