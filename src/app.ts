@@ -4,6 +4,8 @@ import { registerMessageHandler, registerAgent } from './router.js';
 import { connectMCP, disconnectMCP } from './shared/mcp-client.js';
 import { createLLMClient } from './shared/llm.js';
 import { createScheduleAgent } from './agents/schedule/index.js';
+import { createNotionClient } from './shared/notion.js';
+import { initCronJobs } from './cron/index.js';
 
 const app = new App({
   token: CONFIG.slack.botToken,
@@ -20,6 +22,13 @@ const startApp = async (): Promise<void> => {
   const llmClient = await createLLMClient();
   const scheduleAgent = createScheduleAgent(llmClient, CONFIG.notion.scheduleDbId);
   registerAgent(CONFIG.channels.schedule, scheduleAgent);
+
+  const notionClient = createNotionClient(CONFIG.notion.apiKey);
+  initCronJobs(app, notionClient, {
+    dbId: CONFIG.notion.scheduleDbId,
+    channelId: CONFIG.channels.schedule,
+    schedules: CONFIG.cron,
+  });
 
   await app.start();
   // eslint-disable-next-line no-console
