@@ -1,6 +1,6 @@
 import type { Client as NotionClient } from '@notionhq/client';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints.js';
-import { toUUID } from './notion.js';
+import { toUUID, queryDatabase } from './notion.js';
 
 export const FREQUENCY_OPTIONS = ['매일', '격일', '3일마다', '주1회'] as const;
 export type Frequency = (typeof FREQUENCY_OPTIONS)[number];
@@ -116,8 +116,7 @@ export const queryLastRecordDate = async (
 ): Promise<string | undefined> => {
   const uuid = toUUID(dbId);
 
-  const response = await client.dataSources.query({
-    data_source_id: uuid,
+  const response = await queryDatabase(client, uuid, {
     filter: {
       and: [
         { property: 'Name', title: { equals: title } },
@@ -139,7 +138,7 @@ export const queryLastRecordDate = async (
   return undefined;
 };
 
-/** 활성 템플릿 조회 (날짜 없음, 활성=true) — dataSources.query 서버 필터 */
+/** 활성 템플릿 조회 (날짜 없음, 활성=true) — databases.query 서버 필터 */
 export const queryRoutineTemplates = async (
   client: NotionClient,
   dbId: string,
@@ -149,8 +148,7 @@ export const queryRoutineTemplates = async (
   let startCursor: string | undefined;
 
   do {
-    const response = await client.dataSources.query({
-      data_source_id: uuid,
+    const response = await queryDatabase(client, uuid, {
       filter: {
         and: [
           { property: 'Date', date: { is_empty: true } },
@@ -173,7 +171,7 @@ export const queryRoutineTemplates = async (
   }));
 };
 
-/** 오늘 루틴 기록 조회 — dataSources.query 서버 필터 */
+/** 오늘 루틴 기록 조회 — databases.query 서버 필터 */
 export const queryTodayRoutineRecords = async (
   client: NotionClient,
   dbId: string,
@@ -184,8 +182,7 @@ export const queryTodayRoutineRecords = async (
   let startCursor: string | undefined;
 
   do {
-    const response = await client.dataSources.query({
-      data_source_id: uuid,
+    const response = await queryDatabase(client, uuid, {
       filter: {
         property: 'Date',
         date: { equals: today },

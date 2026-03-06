@@ -93,7 +93,7 @@ const makeRoutinePage = (
     is_locked: false,
     url: 'https://notion.so/test',
     public_url: null,
-    parent: { type: 'data_source_id', data_source_id: 'ds-1', database_id: DB_ID },
+    parent: { type: 'database_id', database_id: DB_ID },
     icon: null,
     cover: null,
     created_by: { object: 'user', id: 'user-1' },
@@ -102,16 +102,14 @@ const makeRoutinePage = (
   } as unknown as PageObjectResponse;
 };
 
-/** databases.query mock — 서버 필터링 전제, 결과만 반환 */
+/** client.request mock (databases/{id}/query) */
 const mockClient = (pages: PageObjectResponse[]): NotionClient => {
   return {
-    dataSources: {
-      query: vi.fn().mockResolvedValue({
-        results: pages,
-        has_more: false,
-        next_cursor: null,
-      }),
-    },
+    request: vi.fn().mockResolvedValue({
+      results: pages,
+      has_more: false,
+      next_cursor: null,
+    }),
   } as unknown as NotionClient;
 };
 
@@ -161,15 +159,18 @@ describe('queryRoutineTemplates', () => {
     const client = mockClient([]);
     await queryRoutineTemplates(client, DB_ID);
 
-    expect(client.dataSources.query).toHaveBeenCalledWith(
+    expect(client.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        data_source_id: DB_ID,
-        filter: {
-          and: [
-            { property: 'Date', date: { is_empty: true } },
-            { property: '활성', checkbox: { equals: true } },
-          ],
-        },
+        path: `databases/${DB_ID}/query`,
+        method: 'post',
+        body: expect.objectContaining({
+          filter: {
+            and: [
+              { property: 'Date', date: { is_empty: true } },
+              { property: '활성', checkbox: { equals: true } },
+            ],
+          },
+        }),
       }),
     );
   });
@@ -218,13 +219,16 @@ describe('queryTodayRoutineRecords', () => {
     const client = mockClient([]);
     await queryTodayRoutineRecords(client, DB_ID, today);
 
-    expect(client.dataSources.query).toHaveBeenCalledWith(
+    expect(client.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        data_source_id: DB_ID,
-        filter: {
-          property: 'Date',
-          date: { equals: today },
-        },
+        path: `databases/${DB_ID}/query`,
+        method: 'post',
+        body: expect.objectContaining({
+          filter: {
+            property: 'Date',
+            date: { equals: today },
+          },
+        }),
       }),
     );
   });
@@ -254,18 +258,21 @@ describe('queryLastRecordDate', () => {
     const client = mockClient([]);
     await queryLastRecordDate(client, DB_ID, '스트레칭', '아침');
 
-    expect(client.dataSources.query).toHaveBeenCalledWith(
+    expect(client.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        data_source_id: DB_ID,
-        filter: {
-          and: [
-            { property: 'Name', title: { equals: '스트레칭' } },
-            { property: '시간대', select: { equals: '아침' } },
-            { property: 'Date', date: { is_not_empty: true } },
-          ],
-        },
-        sorts: [{ property: 'Date', direction: 'descending' }],
-        page_size: 1,
+        path: `databases/${DB_ID}/query`,
+        method: 'post',
+        body: expect.objectContaining({
+          filter: {
+            and: [
+              { property: 'Name', title: { equals: '스트레칭' } },
+              { property: '시간대', select: { equals: '아침' } },
+              { property: 'Date', date: { is_not_empty: true } },
+            ],
+          },
+          sorts: [{ property: 'Date', direction: 'descending' }],
+          page_size: 1,
+        }),
       }),
     );
   });
