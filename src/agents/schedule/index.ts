@@ -1,6 +1,6 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient, LLMMessage, LLMToolCall } from '../../shared/llm.js';
-import { isCasualChat, respondCasualChat } from '../../shared/casual-chat.js';
+import { classifyMessage, respondCasualChat } from '../../shared/casual-chat.js';
 import { callMCPTool } from '../../shared/mcp-client.js';
 import { sendMessage } from '../../shared/slack.js';
 import { buildSystemPrompt, getTodayString } from './prompt.js';
@@ -13,7 +13,8 @@ const LLM_TIMEOUT_MS = 60_000;
 const TOOL_TIMEOUT_MS = 30_000;
 
 const AGENT_ROLE = '너는 내 일정 관리를 도와주는 친구야.';
-const CASUAL_CHAT_MAX_LENGTH = 60;
+const AGENT_CONTEXT = '일정/할일 관리 에이전트. 사용자가 일정 추가/삭제/조회/수정을 요청하면 action.';
+const CASUAL_CHAT_MAX_LENGTH = 80;
 const ACTION_KEYWORDS = [
   '추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨',
   '없애', '지워', '완료', '취소',
@@ -25,6 +26,8 @@ const ACTION_KEYWORDS = [
 const CASUAL_OVERRIDES = [
   '화이팅', '파이팅', '해볼게', '할게', '잘할게', '고마워', '수고',
   '잘 자', '알겠어', '그럴게', '응 알겠', 'ㅋㅋ', 'ㅎㅎ',
+  '응원', '해봐야지', '해야지', '할 수 있겠지', '힘내', '힘들',
+  '잘하고 있', '괜찮', '어떡해', '어떻게 하지',
 ];
 
 /** Promise에 타임아웃을 적용하는 유틸리티 */
@@ -205,11 +208,16 @@ export const createScheduleAgent = (
 
       const text = message.text.trim();
 
-      // 잡담 빠른 경로: 도구 없이 짧은 프롬프트로 LLM 직접 응답 (ack 생략)
-      if (isCasualChat(text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH, CASUAL_OVERRIDES)) {
+      // 잡담 감지 (하이브리드: 키워드 → LLM 분류+응답)
+      const result = await classifyMessage(
+        llmClient, text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH,
+        AGENT_CONTEXT, AGENT_ROLE, CASUAL_OVERRIDES,
+      );
+      if (result.intent === 'casual') {
         // eslint-disable-next-line no-console
         console.log(`[Schedule Agent] 잡담 감지`);
-        const reply = await respondCasualChat(llmClient, text, AGENT_ROLE);
+        // LLM 분류 경로: casualReply 포함, 키워드 빠른 경로: 별도 LLM 호출
+        const reply = result.casualReply ?? await respondCasualChat(llmClient, text, AGENT_ROLE);
         await sendMessage(say, reply);
         return;
       }

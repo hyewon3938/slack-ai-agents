@@ -1,8 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
-import { isCasualChat, respondCasualChat } from '../casual-chat.js';
+import { isCasualChat, classifyIntent, classifyMessage, respondCasualChat } from '../casual-chat.js';
 import type { LLMClient } from '../llm.js';
 
 const ACTION_KEYWORDS = ['추가', '삭제', '일정', '보여', '알려', '오늘', '내일'];
+const AGENT_CONTEXT = '일정 관리 에이전트. 일정 추가/삭제/조회 요청이면 action.';
+const AGENT_ROLE = '너는 잔소리꾼이야.';
+
+const createMockLLM = (text: string | null): LLMClient => ({
+  chat: vi.fn().mockResolvedValue({
+    text,
+    toolCalls: [],
+    finishReason: 'stop',
+  }),
+});
 
 describe('isCasualChat', () => {
   it('짧고 키워드 없는 메시지는 잡담이다', () => {
@@ -33,27 +43,110 @@ describe('isCasualChat', () => {
 
   it('casualOverrides 표현이 있으면 키워드 무관하게 잡담이다', () => {
     const overrides = ['화이팅', '해볼게', '고마워'];
-    // '내일'은 ACTION_KEYWORDS에 있지만, '화이팅'이 overrides에 있으므로 잡담
     expect(isCasualChat('내일부터 화이팅 해볼게', ACTION_KEYWORDS, 60, overrides)).toBe(true);
-    // '오늘'은 ACTION_KEYWORDS에 있지만, '고마워'가 overrides에 있으므로 잡담
     expect(isCasualChat('오늘 고마워', ACTION_KEYWORDS, 60, overrides)).toBe(true);
   });
 
   it('casualOverrides 없이 키워드 있으면 잡담이 아니다', () => {
-    // overrides 없으면 기존 동작 유지
     expect(isCasualChat('내일부터 화이팅 해볼게', ACTION_KEYWORDS, 60)).toBe(false);
+  });
+});
+
+describe('classifyIntent (분류 + 응답)', () => {
+  it('LLM이 casual 응답을 반환하면 intent=casual + casualReply 포함', async () => {
+    const llm = createMockLLM('그래, 힘내봐.');
+    const result = await classifyIntent(llm, '루틴 잘 지켜봐야지..', AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('casual');
+    expect(result.casualReply).toBe('그래, 힘내봐.');
+  });
+
+  it('LLM이 정확히 "action"을 반환하면 intent=action', async () => {
+    const llm = createMockLLM('action');
+    const result = await classifyIntent(llm, '내일 일정 추가해줘', AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('action');
+    expect(result.casualReply).toBeUndefined();
+  });
+
+  it('LLM 응답이 null이면 안전하게 action', async () => {
+    const llm = createMockLLM(null);
+    const result = await classifyIntent(llm, '테스트', AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('action');
+  });
+
+  it('LLM 호출 실패 시 안전하게 action', async () => {
+    const llm: LLMClient = {
+      chat: vi.fn().mockRejectedValue(new Error('API 오류')),
+    };
+    const result = await classifyIntent(llm, '테스트', AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('action');
+  });
+
+  it('시스템 프롬프트에 agentContext와 role이 포함된다', async () => {
+    const llm = createMockLLM('그래.');
+    await classifyIntent(llm, '테스트', AGENT_CONTEXT, AGENT_ROLE);
+
+    const messages = (llm.chat as ReturnType<typeof vi.fn>).mock.calls[0][0] as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(messages[0].content).toContain(AGENT_CONTEXT);
+    expect(messages[0].content).toContain(AGENT_ROLE);
+  });
+});
+
+describe('classifyMessage (하이브리드)', () => {
+  it('긴 메시지 → 즉시 action (LLM 호출 없음)', async () => {
+    const llm = createMockLLM('그래.');
+    const result = await classifyMessage(llm, '아주 긴 메시지', ACTION_KEYWORDS, 5, AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('action');
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('casualOverrides 매칭 → 즉시 casual, casualReply 없음 (LLM 호출 없음)', async () => {
+    const llm = createMockLLM('action');
+    const overrides = ['화이팅', '고마워'];
+    const result = await classifyMessage(llm, '오늘 고마워', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE, overrides);
+    expect(result.intent).toBe('casual');
+    expect(result.casualReply).toBeUndefined();
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('액션 키워드 없음 → 즉시 casual, casualReply 없음 (LLM 호출 없음)', async () => {
+    const llm = createMockLLM('action');
+    const result = await classifyMessage(llm, 'ㅋㅋ', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('casual');
+    expect(result.casualReply).toBeUndefined();
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('액션 키워드 있고 잡담인 경우 → LLM 분류 + casualReply 포함', async () => {
+    const llm = createMockLLM('그래, 해봐.');
+    const result = await classifyMessage(llm, '일정 잘 지켜봐야지..', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('casual');
+    expect(result.casualReply).toBe('그래, 해봐.');
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('액션 키워드 있고 실제 액션인 경우 → LLM이 action 반환', async () => {
+    const llm = createMockLLM('action');
+    const result = await classifyMessage(llm, '내일 일정 보여줘', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('action');
+    expect(result.casualReply).toBeUndefined();
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('LLM 분류 실패 시 안전하게 action', async () => {
+    const llm: LLMClient = {
+      chat: vi.fn().mockRejectedValue(new Error('timeout')),
+    };
+    const result = await classifyMessage(llm, '내일 해보자', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE);
+    expect(result.intent).toBe('action');
   });
 });
 
 describe('respondCasualChat', () => {
   it('LLM 응답을 반환한다', async () => {
-    const llmClient: LLMClient = {
-      chat: vi.fn().mockResolvedValue({
-        text: '수고했어.',
-        toolCalls: [],
-        finishReason: 'stop',
-      }),
-    };
+    const llmClient = createMockLLM('수고했어.');
 
     const result = await respondCasualChat(llmClient, '고마워', '너는 잔소리꾼이야.');
     expect(result).toBe('수고했어.');
@@ -65,35 +158,37 @@ describe('respondCasualChat', () => {
   });
 
   it('LLM 응답 text가 null이면 폴백 메시지를 반환한다', async () => {
-    const llmClient: LLMClient = {
-      chat: vi.fn().mockResolvedValue({
-        text: null,
-        toolCalls: [],
-        finishReason: 'stop',
-      }),
-    };
+    const llmClient = createMockLLM(null);
 
     const result = await respondCasualChat(llmClient, '고마워', '너는 잔소리꾼이야.');
     expect(result).toBe('알겠어.');
   });
 
-  it('LLM 호출 실패 시 폴백 메시지를 반환한다', async () => {
+  it('LLM 호출 실패 시 1회 재시도 후 폴백 메시지를 반환한다', async () => {
     const llmClient: LLMClient = {
       chat: vi.fn().mockRejectedValue(new Error('API 오류')),
     };
 
     const result = await respondCasualChat(llmClient, '고마워', '너는 잔소리꾼이야.');
     expect(result).toBe('알겠어.');
+    // 1회 시도 + 1회 재시도 = 2회 호출
+    expect(llmClient.chat).toHaveBeenCalledTimes(2);
+  });
+
+  it('첫 시도 실패 후 재시도에서 성공하면 응답을 반환한다', async () => {
+    const llmClient: LLMClient = {
+      chat: vi.fn()
+        .mockRejectedValueOnce(new Error('일시적 오류'))
+        .mockResolvedValueOnce({ text: '힘내, 잘 자.', toolCalls: [], finishReason: 'stop' }),
+    };
+
+    const result = await respondCasualChat(llmClient, '잘 자', '너는 잔소리꾼이야.');
+    expect(result).toBe('힘내, 잘 자.');
+    expect(llmClient.chat).toHaveBeenCalledTimes(2);
   });
 
   it('시스템 프롬프트에 role이 포함된다', async () => {
-    const llmClient: LLMClient = {
-      chat: vi.fn().mockResolvedValue({
-        text: '잘 자.',
-        toolCalls: [],
-        finishReason: 'stop',
-      }),
-    };
+    const llmClient = createMockLLM('잘 자.');
 
     await respondCasualChat(llmClient, '잘 자', '너는 루틴 관리 봇이야.');
 
