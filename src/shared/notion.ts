@@ -98,8 +98,9 @@ export const queryTodaySchedules = async (
       if (!isPageObject(result)) return false;
       if (result.archived || result.in_trash) return false;
       // Notion SDK v5: parent.type이 data_source_id여도 database_id 필드는 존재
-      const parent = result.parent as { database_id?: string };
-      return parent.database_id === uuid;
+      const databaseId =
+        'database_id' in result.parent ? result.parent.database_id : undefined;
+      return databaseId === uuid;
     })
     .map(parsePageToScheduleItem)
     .filter((item) => isScheduleForDate(item, today));
