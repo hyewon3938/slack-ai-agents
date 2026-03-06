@@ -1,4 +1,13 @@
 import type { SayFn } from '@slack/bolt';
+import type { WebClient } from '@slack/web-api';
+
+export const postToChannel = async (
+  client: WebClient,
+  channel: string,
+  text: string,
+): Promise<void> => {
+  await client.chat.postMessage({ channel, text });
+};
 
 export const sendMessage = async (
   say: SayFn,

@@ -35,7 +35,8 @@ export const CONFIG = {
   },
   cron: {
     morning: optionalEnv('CRON_MORNING', '0 9 * * *'),
-    lunch: optionalEnv('CRON_LUNCH', '0 12 * * *'),
+    lunch: optionalEnv('CRON_LUNCH', '0 13 * * *'),
     evening: optionalEnv('CRON_EVENING', '0 18 * * *'),
+    night: optionalEnv('CRON_NIGHT', '0 23 * * *'),
   },
 } as const;
