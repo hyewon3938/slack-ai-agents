@@ -44,6 +44,7 @@ const startApp = async (): Promise<void> => {
   initRoutineCron(app, notionClient, {
     dbId: CONFIG.notion.routineDbId,
     channelId: CONFIG.channels.routine,
+    llmClient,
     schedules: CONFIG.routineCron,
   });
 

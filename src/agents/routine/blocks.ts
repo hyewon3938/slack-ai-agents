@@ -210,24 +210,31 @@ export const buildMorningGreetingBlocks = (
   return blocks;
 };
 
-/** 밤 요약 메시지 빌드 */
+/** 밤 요약 메시지 빌드 (summaryText가 없으면 하드코딩 폴백) */
 export const buildNightSummaryBlocks = (
   records: RoutineRecord[],
   today: string,
+  summaryText?: string,
 ): { text: string; blocks: KnownBlock[] } => {
   const result = buildRoutineBlocks(records, today);
   const total = records.length;
   const completed = records.filter((r) => r.completed).length;
 
-  const summaryText =
-    total === completed
+  const finalText =
+    summaryText ??
+    (total === completed
       ? pick(NIGHT_COMPLETE)
-      : pick(NIGHT_INCOMPLETE)(completed, total);
+      : pick(NIGHT_INCOMPLETE)(completed, total));
 
   result.blocks.push({
     type: 'section',
-    text: { type: 'mrkdwn', text: `\n${summaryText}` },
+    text: { type: 'mrkdwn', text: `\n${finalText}` },
   });
 
   return result;
 };
+
+/** 단순 텍스트 → Block 변환 (LLM 생성 인사용) */
+export const buildTextBlocks = (text: string): KnownBlock[] => [
+  { type: 'section', text: { type: 'mrkdwn', text } },
+];

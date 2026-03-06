@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import type { App } from '@slack/bolt';
 import type { Client as NotionClient } from '@notionhq/client';
+import type { LLMClient } from '../shared/llm.js';
 import {
   queryRoutineTemplates,
   queryTodayRoutineRecords,
@@ -13,11 +14,17 @@ import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
   buildNightSummaryBlocks,
+  buildTextBlocks,
 } from '../agents/routine/blocks.js';
+import {
+  generateMorningGreeting,
+  generateNightSummary,
+} from '../agents/routine/greeting.js';
 
 interface RoutineCronConfig {
   dbId: string;
   channelId: string;
+  llmClient?: LLMClient;
   schedules: {
     morning: string;
     lunch: string;
@@ -94,10 +101,18 @@ const morningTask = async (
   const morningRecords = allRecords.filter((r) => r.timeSlot === '아침');
 
   if (morningRecords.length > 0) {
-    // 어제 완료율 조회 → 아침 인사 블록 생성
+    // 어제 완료율 조회 → 인사 블록 생성
     const yesterday = getYesterdayISO();
     const yesterdayRecords = await queryTodayRoutineRecords(notionClient, config.dbId, yesterday);
-    const greetingBlocks = buildMorningGreetingBlocks(yesterdayRecords);
+
+    // LLM 인사 생성 (실패 시 하드코딩 폴백)
+    let greetingBlocks;
+    if (config.llmClient) {
+      const greetingText = await generateMorningGreeting(config.llmClient, yesterdayRecords);
+      greetingBlocks = buildTextBlocks(greetingText);
+    } else {
+      greetingBlocks = buildMorningGreetingBlocks(yesterdayRecords);
+    }
 
     const { text, blocks } = buildFilteredRoutineBlocks(allRecords, today, ['아침']);
     const fullBlocks = [...greetingBlocks, ...blocks];
@@ -174,7 +189,13 @@ const nightTask = async (
   const records = await queryTodayRoutineRecords(notionClient, config.dbId, today);
 
   if (records.length > 0) {
-    const { text, blocks } = buildNightSummaryBlocks(records, today);
+    // LLM 밤 요약 생성 (실패 시 하드코딩 폴백)
+    let summaryText: string | undefined;
+    if (config.llmClient) {
+      summaryText = await generateNightSummary(config.llmClient, records);
+    }
+
+    const { text, blocks } = buildNightSummaryBlocks(records, today, summaryText);
     await postBlockMessage(app.client, config.channelId, text, blocks);
     // eslint-disable-next-line no-console
     console.log(`[Routine Cron] 밤 요약 전송 완료`);
