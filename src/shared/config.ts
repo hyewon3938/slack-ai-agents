@@ -21,9 +21,10 @@ export const CONFIG = {
     appToken: requireEnv('SLACK_APP_TOKEN'),
   },
   llm: {
-    provider: optionalEnv('LLM_PROVIDER', 'groq') as 'groq' | 'anthropic',
+    provider: optionalEnv('LLM_PROVIDER', 'gemini') as 'groq' | 'anthropic' | 'gemini',
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
+    geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
   },
   notion: {
     apiKey: requireEnv('NOTION_API_KEY'),
@@ -34,7 +35,8 @@ export const CONFIG = {
   },
   cron: {
     morning: optionalEnv('CRON_MORNING', '0 9 * * *'),
-    lunch: optionalEnv('CRON_LUNCH', '0 12 * * *'),
+    lunch: optionalEnv('CRON_LUNCH', '0 13 * * *'),
     evening: optionalEnv('CRON_EVENING', '0 18 * * *'),
+    night: optionalEnv('CRON_NIGHT', '0 23 * * *'),
   },
 } as const;
