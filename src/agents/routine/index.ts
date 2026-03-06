@@ -11,6 +11,18 @@ import { getRoutineTools } from './tools.js';
 const MAX_TOOL_ROUNDS = 10;
 const MAX_RETRIES = 2;
 const MAX_RATE_LIMIT_RETRIES = 3;
+const LLM_TIMEOUT_MS = 60_000;
+const TOOL_TIMEOUT_MS = 30_000;
+
+/** Promise에 타임아웃을 적용하는 유틸리티 */
+const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout (${ms / 1000}s)`)), ms),
+    ),
+  ]);
+};
 
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
 const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨'];
@@ -49,7 +61,11 @@ const executeToolCalls = async (
       // eslint-disable-next-line no-console
       console.log(`[Routine Agent] 도구 호출: ${tc.name}`);
       try {
-        const result = await callMCPTool(tc.name, tc.arguments);
+        const result = await withTimeout(
+          callMCPTool(tc.name, tc.arguments),
+          TOOL_TIMEOUT_MS,
+          `도구 ${tc.name}`,
+        );
         // eslint-disable-next-line no-console
         console.log(`[Routine Agent] 도구 결과: ${tc.name}`, result.slice(0, 200));
         return { role: 'tool', content: result, toolCallId: tc.id };
@@ -91,13 +107,17 @@ const runAgentLoop = async (
 
     let response;
     try {
-      response = await llmClient.chat(messages, tools);
+      response = await withTimeout(
+        llmClient.chat(messages, tools),
+        LLM_TIMEOUT_MS,
+        'LLM 호출',
+      );
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Routine Agent] LLM 호출 오류 (round ${round + 1}):`, errorMsg.slice(0, 500));
 
       const isRateLimit = /\b(429|RESOURCE_EXHAUSTED|quota)\b/i.test(errorMsg);
-      const isTransient = /\b(500|503|429|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|overloaded|high demand|fetch failed)\b/i.test(errorMsg);
+      const isTransient = /\b(500|503|429|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|overloaded|high demand|fetch failed|timeout)\b/i.test(errorMsg);
       const maxRetries = isRateLimit ? MAX_RATE_LIMIT_RETRIES : MAX_RETRIES;
 
       if (isTransient && retryCount < maxRetries) {
