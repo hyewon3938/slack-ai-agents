@@ -175,7 +175,7 @@ describe('createScheduleAgent', () => {
 
     expect(llmClient.chat).toHaveBeenCalledTimes(10);
     expect(mockSay).toHaveBeenCalledWith(
-      '요청 처리가 너무 복잡합니다. 더 간단하게 요청해 주세요.',
+      '요청이 너무 복잡해. 좀 더 간단하게 말해줘.',
     );
   });
 
@@ -187,7 +187,7 @@ describe('createScheduleAgent', () => {
     const agent = createScheduleAgent(llmClient, 'db-123');
     await agent(createMockMessage('테스트'), mockSay);
 
-    expect(mockSay).toHaveBeenCalledWith('요청을 처리했습니다.');
+    expect(mockSay).toHaveBeenCalledWith('처리했어.');
   });
 
   it('LLM 호출 자체가 실패하면 에러 메시지를 Slack에 전송한다', async () => {

@@ -53,7 +53,7 @@ const runAgentLoop = async (
 ): Promise<string> => {
   const today = getTodayString();
   const systemPrompt = buildSystemPrompt(dbId, today);
-  const tools = getScheduleTools();
+  const tools = await getScheduleTools();
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -107,7 +107,7 @@ const runAgentLoop = async (
     console.log(`[Schedule Agent] finishReason: ${response.finishReason}, toolCalls: ${response.toolCalls.length}`);
 
     if (response.finishReason === 'stop') {
-      return response.text ?? '요청을 처리했습니다.';
+      return response.text ?? '처리했어.';
     }
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
@@ -138,10 +138,10 @@ const runAgentLoop = async (
     // length 등 예상치 못한 종료
     // eslint-disable-next-line no-console
     console.log(`[Schedule Agent] 예상치 못한 종료 — finishReason: ${response.finishReason}, text: ${response.text?.slice(0, 200) ?? 'null'}`);
-    return response.text ?? '요청을 처리하는 중 문제가 발생했습니다.';
+    return response.text ?? '처리 중 문제가 생겼어. 다시 말해줘.';
   }
 
-  return '요청 처리가 너무 복잡합니다. 더 간단하게 요청해 주세요.';
+  return '요청이 너무 복잡해. 좀 더 간단하게 말해줘.';
 };
 
 export const createScheduleAgent = (
@@ -172,7 +172,7 @@ export const createScheduleAgent = (
       } catch {
         console.error(`[Schedule Agent] 에러 객체:`, error);
       }
-      await sendMessage(say, '요청을 처리하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+      await sendMessage(say, '일시적인 오류가 발생했어. 다시 한번 말해줘.');
     }
   };
 };

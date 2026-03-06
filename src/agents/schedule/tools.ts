@@ -10,6 +10,7 @@ const SCHEDULE_TOOL_NAMES = new Set([
   'API-get-block-children',   // 페이지 내부 블록(내용) 조회
 ]);
 
-export const getScheduleTools = (): LLMToolDefinition[] => {
-  return getMCPTools().filter((tool) => SCHEDULE_TOOL_NAMES.has(tool.name));
+export const getScheduleTools = async (): Promise<LLMToolDefinition[]> => {
+  const tools = await getMCPTools();
+  return tools.filter((tool) => SCHEDULE_TOOL_NAMES.has(tool.name));
 };

@@ -80,11 +80,9 @@ export const connectMCP = async (notionApiKey: string): Promise<void> => {
   );
 };
 
-export const getMCPTools = (): LLMToolDefinition[] => {
-  if (!state) {
-    throw new Error('[MCP] 연결되지 않음. connectMCP()를 먼저 호출하세요.');
-  }
-  return state.tools;
+export const getMCPTools = async (): Promise<LLMToolDefinition[]> => {
+  const conn = await getConnectedState();
+  return conn.tools;
 };
 
 /** 현재 state를 반환하거나 재연결 후 반환. 실패 시 throw */
