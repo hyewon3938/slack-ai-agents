@@ -40,14 +40,22 @@ export const CONFIG = {
   notion: {
     apiKey: requireEnv('NOTION_API_KEY'),
     scheduleDbId: requireEnv('NOTION_SCHEDULE_DB_ID'),
+    routineDbId: requireEnv('NOTION_ROUTINE_DB_ID'),
   },
   channels: {
     schedule: requireEnv('SCHEDULE_CHANNEL_ID'),
+    routine: requireEnv('ROUTINE_CHANNEL_ID'),
   },
   cron: {
     morning: optionalEnv('CRON_MORNING', '0 9 * * *'),
     lunch: optionalEnv('CRON_LUNCH', '0 13 * * *'),
     evening: optionalEnv('CRON_EVENING', '0 18 * * *'),
     night: optionalEnv('CRON_NIGHT', '0 23 * * *'),
+  },
+  routineCron: {
+    morning: optionalEnv('CRON_ROUTINE_MORNING', '0 9 * * *'),
+    lunch: optionalEnv('CRON_ROUTINE_LUNCH', '0 13 * * *'),
+    evening: optionalEnv('CRON_ROUTINE_EVENING', '0 18 * * *'),
+    night: optionalEnv('CRON_ROUTINE_NIGHT', '0 22 * * *'),
   },
 } as const;

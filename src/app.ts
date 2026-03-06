@@ -4,8 +4,11 @@ import { registerMessageHandler, registerAgent } from './router.js';
 import { connectMCP, disconnectMCP } from './shared/mcp-client.js';
 import { createLLMClient } from './shared/llm.js';
 import { createScheduleAgent } from './agents/schedule/index.js';
+import { createRoutineAgent } from './agents/routine/index.js';
+import { registerRoutineActions } from './agents/routine/actions.js';
 import { createNotionClient } from './shared/notion.js';
 import { initCronJobs } from './cron/index.js';
+import { initRoutineCron } from './cron/routine-cron.js';
 
 const app = new App({
   token: CONFIG.slack.botToken,
@@ -20,14 +23,28 @@ const startApp = async (): Promise<void> => {
   await connectMCP(CONFIG.notion.apiKey);
 
   const llmClient = await createLLMClient();
+  const notionClient = createNotionClient(CONFIG.notion.apiKey);
+
+  // Schedule Agent
   const scheduleAgent = createScheduleAgent(llmClient, CONFIG.notion.scheduleDbId);
   registerAgent(CONFIG.channels.schedule, scheduleAgent);
 
-  const notionClient = createNotionClient(CONFIG.notion.apiKey);
+  // Routine Agent
+  const routineAgent = createRoutineAgent(llmClient, CONFIG.notion.routineDbId, notionClient);
+  registerAgent(CONFIG.channels.routine, routineAgent);
+  registerRoutineActions(app, notionClient, CONFIG.notion.routineDbId);
+
+  // Cron Jobs
   initCronJobs(app, notionClient, {
     dbId: CONFIG.notion.scheduleDbId,
     channelId: CONFIG.channels.schedule,
     schedules: CONFIG.cron,
+  });
+
+  initRoutineCron(app, notionClient, {
+    dbId: CONFIG.notion.routineDbId,
+    channelId: CONFIG.channels.routine,
+    schedules: CONFIG.routineCron,
   });
 
   await app.start();
