@@ -16,6 +16,7 @@ const makeRecord = (
   date: '2026-03-06',
   completed: false,
   timeSlot: '아침',
+  frequency: '매일',
   ...overrides,
 });
 
@@ -102,6 +103,39 @@ describe('buildRoutineBlocks', () => {
     expect(sectionTexts).toContain('*아침*');
     expect(sectionTexts).not.toContain('*점심*');
     expect(sectionTexts).not.toContain('*밤*');
+  });
+
+  it('매일이 아닌 루틴에 빈도 배지를 표시한다', () => {
+    const records = [
+      makeRecord({ title: '격일루틴', frequency: '격일' }),
+      makeRecord({ title: '매일루틴', frequency: '매일' }),
+    ];
+
+    const { blocks } = buildRoutineBlocks(records, today);
+
+    const sectionTexts = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''));
+
+    expect(sectionTexts).toContainEqual(expect.stringContaining('격일루틴'));
+    expect(sectionTexts).toContainEqual(expect.stringContaining('2일 마다'));
+    // 매일 루틴에는 배지 없음
+    const dailyText = sectionTexts.find((t) => t.includes('매일루틴'));
+    expect(dailyText).not.toContain('마다');
+  });
+
+  it('주1회 루틴에 (1주 마다) 배지를 표시한다', () => {
+    const records = [
+      makeRecord({ title: '주간루틴', frequency: '주1회' }),
+    ];
+
+    const { blocks } = buildRoutineBlocks(records, today);
+
+    const sectionTexts = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b && b.text && 'text' in b.text ? b.text.text : ''));
+
+    expect(sectionTexts).toContainEqual(expect.stringContaining('1주 마다'));
   });
 });
 

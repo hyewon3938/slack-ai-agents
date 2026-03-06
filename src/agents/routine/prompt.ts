@@ -33,6 +33,7 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
 - Date (date): 템플릿은 null, 일별 기록은 해당 날짜
 - 완료 (checkbox): 완료 여부
 - 시간대 (select): 아침 / 점심 / 저녁 / 밤
+- 반복 (select): 매일 / 격일 / 3일마다 / 주1회
 - 활성 (checkbox): 템플릿 활성 여부
 
 ## 핵심 규칙
@@ -40,6 +41,7 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
 - 루틴 추가 요청 → 템플릿 생성: Date=null, 활성=true, 완료=false
 - 루틴 삭제 요청 → 실제 삭제 금지. 활성=false로 변경 (비활성화).
 - 시간대 미지정 시 → 반드시 물어봐 (아침/점심/저녁/밤 중 선택).
+- 반복 미지정 시 → '매일'로 기본 설정.
 - 루틴 목록 조회 → 활성=true이고 Date가 null인 템플릿만 시간대별로 정리.
 
 ## 응답 포맷
@@ -64,6 +66,7 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
   "properties": {
     "Name": { "title": [{ "text": { "content": "루틴 이름" } }] },
     "시간대": { "select": { "name": "아침" } },
+    "반복": { "select": { "name": "매일" } },
     "활성": { "checkbox": true },
     "완료": { "checkbox": false }
   }
@@ -81,6 +84,12 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
 {
   "page_id": "대상_페이지_id",
   "properties": { "시간대": { "select": { "name": "점심" } } }
+}
+
+## 루틴 반복 변경 (API-patch-page)
+{
+  "page_id": "대상_페이지_id",
+  "properties": { "반복": { "select": { "name": "격일" } } }
 }
 
 ## 조회

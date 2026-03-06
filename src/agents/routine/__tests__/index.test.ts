@@ -15,9 +15,13 @@ vi.mock('../../../shared/mcp-client.js', () => ({
   callMCPTool: vi.fn(),
 }));
 
-vi.mock('../../../shared/routine-notion.js', () => ({
-  queryTodayRoutineRecords: vi.fn(),
-}));
+vi.mock('../../../shared/routine-notion.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/routine-notion.js')>();
+  return {
+    ...actual,
+    queryTodayRoutineRecords: vi.fn(),
+  };
+});
 
 const { queryTodayRoutineRecords } = await import(
   '../../../shared/routine-notion.js'
@@ -62,8 +66,8 @@ describe('createRoutineAgent', () => {
   describe('키워드 빠른 경로', () => {
     it('"루틴" 입력 시 LLM 없이 체크리스트를 반환한다', async () => {
       mockedQueryRecords.mockResolvedValueOnce([
-        { id: 'p1', title: '루틴A', date: '2026-03-06', completed: false, timeSlot: '아침' },
-        { id: 'p2', title: '루틴B', date: '2026-03-06', completed: true, timeSlot: '아침' },
+        { id: 'p1', title: '루틴A', date: '2026-03-06', completed: false, timeSlot: '아침', frequency: '매일' },
+        { id: 'p2', title: '루틴B', date: '2026-03-06', completed: true, timeSlot: '아침', frequency: '매일' },
       ]);
 
       const llmClient = createMockLLMClient([]);
@@ -90,7 +94,7 @@ describe('createRoutineAgent', () => {
 
     it('전부 완료 시 완료 메시지를 반환한다', async () => {
       mockedQueryRecords.mockResolvedValueOnce([
-        { id: 'p1', title: '루틴A', date: '2026-03-06', completed: true, timeSlot: '아침' },
+        { id: 'p1', title: '루틴A', date: '2026-03-06', completed: true, timeSlot: '아침', frequency: '매일' },
       ]);
 
       const llmClient = createMockLLMClient([]);
