@@ -79,34 +79,44 @@ const isScheduleForDate = (
   return start === targetDate;
 };
 
-/** Notion에서 오늘 일정을 조회 */
+/** Notion에서 오늘 일정을 조회 (페이지네이션 포함) */
 export const queryTodaySchedules = async (
   client: NotionClient,
   dbId: string,
   today: string,
 ): Promise<ScheduleItem[]> => {
-  const response = await client.search({
-    query: '',
-    filter: { property: 'object', value: 'page' },
-    page_size: 100,
-  });
-
   const uuid = toUUID(dbId);
+  const allPages: PageObjectResponse[] = [];
+  let startCursor: string | undefined;
 
-  return response.results
-    .filter((result): result is PageObjectResponse => {
-      if (!isPageObject(result)) return false;
-      if (result.archived || result.in_trash) return false;
-      // Notion SDK v5: parent.type이 data_source_id여도 database_id 필드는 존재
-      const databaseId =
-        'database_id' in result.parent ? result.parent.database_id : undefined;
-      return databaseId === uuid;
-    })
+  do {
+    const response = await client.search({
+      query: '',
+      filter: { property: 'object', value: 'page' },
+      page_size: 100,
+      ...(startCursor ? { start_cursor: startCursor } : {}),
+    });
+
+    const pages = response.results.filter(
+      (result): result is PageObjectResponse => {
+        if (!isPageObject(result)) return false;
+        if (result.archived || result.in_trash) return false;
+        const databaseId =
+          'database_id' in result.parent ? result.parent.database_id : undefined;
+        return databaseId === uuid;
+      },
+    );
+
+    allPages.push(...pages);
+    startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+  } while (startCursor);
+
+  return allPages
     .map(parsePageToScheduleItem)
     .filter((item) => isScheduleForDate(item, today));
 };
 
-const toUUID = (id: string): string => {
+export const toUUID = (id: string): string => {
   const hex = id.replace(/-/g, '');
   if (hex.length !== 32) return id;
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
