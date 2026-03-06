@@ -1,6 +1,7 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient, LLMMessage, LLMToolCall } from '../../shared/llm.js';
 import type { Client as NotionClient } from '@notionhq/client';
+import { isCasualChat, respondCasualChat } from '../../shared/casual-chat.js';
 import { callMCPTool } from '../../shared/mcp-client.js';
 import { sendMessage } from '../../shared/slack.js';
 import { queryTodayRoutineRecords } from '../../shared/routine-notion.js';
@@ -24,18 +25,20 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 };
 
+const AGENT_ROLE = "너는 '잔소리꾼'이라는 이름의 루틴 관리 친구야.";
+const CASUAL_CHAT_MAX_LENGTH = 50;
+
+/** 이 표현이 포함되면 키워드 무관하게 잡담으로 처리 */
+const CASUAL_OVERRIDES = [
+  '화이팅', '파이팅', '해볼게', '할게', '잘할게', '고마워', '수고',
+  '잘 자', '알겠어', '그럴게', '응 알겠', 'ㅋㅋ', 'ㅎㅎ',
+];
+
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
 const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨', '없애', '지워', '초기화', '시작'];
 const ANALYTICS_KEYWORDS = ['얼마나', '통계', '달성', '지켰', '기록', '분석', '몇', '퍼센트', '잘하고'];
+const DATE_KEYWORDS = ['내일', '모레', '어제', '그제', '이번주', '다음주', '저번주', '지난주'];
 const ACTION_KEYWORDS = [...CRUD_KEYWORDS, ...ANALYTICS_KEYWORDS, '루틴', '보여', '알려', '조회', '목록'];
-
-const CHAT_TIMEOUT_MS = 15_000;
-
-/** 잡담 전용 짧은 시스템 프롬프트 (DB 스키마/API 예시 불필요) */
-const CHAT_SYSTEM_PROMPT = `너는 '잔소리꾼'이라는 이름의 루틴 관리 봇이야. 반말로 대화해.
-성격: 걱정 많고 잔소리 좀 하지만 진심으로 챙겨주는 친구 느낌. 동등한 입장에서 편하게.
-어미: ~자, ~겠어, ~봐, ~써, ~해, ~어. 훈장님처럼 ~거라, ~하거라 금지.
-이모지/존댓말 금지. 한두 문장으로 짧게 응답해.`;
 
 /** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
 const getTodayISO = (): string => {
@@ -47,23 +50,19 @@ const getTodayISO = (): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-/** "루틴" 포함 조회 요청인지 판별 (CRUD/분석 키워드 없으면 체크리스트) */
+/** "루틴" 포함 조회 요청인지 판별 (CRUD/분석/날짜 키워드 없으면 오늘 체크리스트) */
 const isChecklistRequest = (text: string): boolean => {
   const trimmed = text.trim();
   if (EXACT_KEYWORDS.has(trimmed)) return true;
   if (
     trimmed.includes('루틴') &&
     !CRUD_KEYWORDS.some((k) => trimmed.includes(k)) &&
-    !ANALYTICS_KEYWORDS.some((k) => trimmed.includes(k))
+    !ANALYTICS_KEYWORDS.some((k) => trimmed.includes(k)) &&
+    !DATE_KEYWORDS.some((k) => trimmed.includes(k))
   ) return true;
   return false;
 };
 
-/** 짧은 잡담인지 판별 (도구 불필요) */
-const isCasualChat = (text: string): boolean => {
-  if (text.length > 50) return false;
-  return !ACTION_KEYWORDS.some((k) => text.includes(k));
-};
 
 const parseRetryDelay = (errorMsg: string, defaultMs: number): number => {
   const match = /retry in (\d+(?:\.\d+)?)\s*s/i.exec(errorMsg);
@@ -239,23 +238,11 @@ export const createRoutineAgent = (
       }
 
       // 잡담 빠른 경로: 도구 없이 짧은 프롬프트로 LLM 직접 응답 (ack 생략)
-      if (isCasualChat(text)) {
+      if (isCasualChat(text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH, CASUAL_OVERRIDES)) {
         // eslint-disable-next-line no-console
         console.log(`[Routine Agent] 잡담 감지`);
-        try {
-          const chatMessages: LLMMessage[] = [
-            { role: 'system', content: CHAT_SYSTEM_PROMPT },
-            { role: 'user', content: text },
-          ];
-          const response = await withTimeout(
-            llmClient.chat(chatMessages),
-            CHAT_TIMEOUT_MS,
-            '잡담 LLM',
-          );
-          await sendMessage(say, response.text ?? '알겠어.');
-        } catch {
-          await sendMessage(say, '알겠어.');
-        }
+        const reply = await respondCasualChat(llmClient, text, AGENT_ROLE);
+        await sendMessage(say, reply);
         return;
       }
 

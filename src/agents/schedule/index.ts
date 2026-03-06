@@ -1,5 +1,6 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient, LLMMessage, LLMToolCall } from '../../shared/llm.js';
+import { isCasualChat, respondCasualChat } from '../../shared/casual-chat.js';
 import { callMCPTool } from '../../shared/mcp-client.js';
 import { sendMessage } from '../../shared/slack.js';
 import { buildSystemPrompt, getTodayString } from './prompt.js';
@@ -10,6 +11,21 @@ const MAX_RETRIES = 2;
 const MAX_RATE_LIMIT_RETRIES = 3;
 const LLM_TIMEOUT_MS = 60_000;
 const TOOL_TIMEOUT_MS = 30_000;
+
+const AGENT_ROLE = '너는 내 일정 관리를 도와주는 친구야.';
+const CASUAL_CHAT_MAX_LENGTH = 60;
+const ACTION_KEYWORDS = [
+  '추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨',
+  '없애', '지워', '완료', '취소',
+  '일정', '할일', '보여', '알려', '조회', '목록', '백로그',
+  '오늘', '내일', '모레', '이번주', '다음주', '언제',
+];
+
+/** 이 표현이 포함되면 키워드 무관하게 잡담으로 처리 */
+const CASUAL_OVERRIDES = [
+  '화이팅', '파이팅', '해볼게', '할게', '잘할게', '고마워', '수고',
+  '잘 자', '알겠어', '그럴게', '응 알겠', 'ㅋㅋ', 'ㅎㅎ',
+];
 
 /** Promise에 타임아웃을 적용하는 유틸리티 */
 const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
@@ -187,10 +203,22 @@ export const createScheduleAgent = (
         return;
       }
 
+      const text = message.text.trim();
+
+      // 잡담 빠른 경로: 도구 없이 짧은 프롬프트로 LLM 직접 응답 (ack 생략)
+      if (isCasualChat(text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH, CASUAL_OVERRIDES)) {
+        // eslint-disable-next-line no-console
+        console.log(`[Schedule Agent] 잡담 감지`);
+        const reply = await respondCasualChat(llmClient, text, AGENT_ROLE);
+        await sendMessage(say, reply);
+        return;
+      }
+
+      // LLM 에이전트 경로: 자연어 일정 CRUD
       // eslint-disable-next-line no-console
-      console.log(`[Schedule Agent] 메시지 수신: ${message.text}`);
+      console.log(`[Schedule Agent] 메시지 수신: ${text}`);
       await sendMessage(say, getAckMessage());
-      const reply = await runAgentLoop(llmClient, message.text, dbId);
+      const reply = await runAgentLoop(llmClient, text, dbId);
       await sendMessage(say, reply);
     } catch (error: unknown) {
       // Gemini SDK 등은 에러 상세를 다른 속성에 담을 수 있으므로 전체 출력
