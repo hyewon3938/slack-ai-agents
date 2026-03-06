@@ -74,7 +74,8 @@ const runAgentLoop = async (
 
       console.error(`[Schedule Agent] LLM 호출 오류 (round ${round + 1}):`, errorMsg.slice(0, 500));
       try {
-        const detail = JSON.stringify(error, Object.getOwnPropertyNames(error as object), 2);
+        const props = error !== null && typeof error === 'object' ? Object.getOwnPropertyNames(error) : [];
+        const detail = JSON.stringify(error, props, 2);
         console.error(`[Schedule Agent] LLM 에러 상세:`, detail?.slice(0, 1000));
       } catch {
         // 직렬화 불가 시 무시
@@ -180,7 +181,8 @@ export const createScheduleAgent = (
       }
       // 에러 전체 구조 출력 (SDK 특유의 에러 필드 확인용)
       try {
-        const errorDetail = JSON.stringify(error, Object.getOwnPropertyNames(error as object), 2);
+        const props = error !== null && typeof error === 'object' ? Object.getOwnPropertyNames(error) : [];
+        const errorDetail = JSON.stringify(error, props, 2);
         console.error(`[Schedule Agent] 에러 상세:`, errorDetail?.slice(0, 1000));
       } catch {
         console.error(`[Schedule Agent] 에러 객체:`, error);

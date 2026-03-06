@@ -1,21 +1,21 @@
+import { toUUID } from '../../shared/notion.js';
+
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
+/** KST(UTC+9) 기준 현재 시각 */
+const getKSTDate = (): Date => {
+  const now = new Date();
+  return new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
+};
+
 export const getTodayString = (): string => {
-  const now = new Date(
-    new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }),
-  );
+  const now = getKSTDate();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
   const day = DAY_NAMES[now.getDay()];
 
   return `${yyyy}-${mm}-${dd} (${day})`;
-};
-
-export const toUUID = (id: string): string => {
-  const hex = id.replace(/-/g, '');
-  if (hex.length !== 32) return id;
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 export const buildSystemPrompt = (dbId: string, today: string): string => {
