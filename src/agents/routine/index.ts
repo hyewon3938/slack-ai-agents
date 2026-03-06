@@ -1,7 +1,7 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient, LLMMessage, LLMToolCall } from '../../shared/llm.js';
 import type { Client as NotionClient } from '@notionhq/client';
-import { isCasualChat, respondCasualChat } from '../../shared/casual-chat.js';
+import { classifyMessage, respondCasualChat } from '../../shared/casual-chat.js';
 import { callMCPTool } from '../../shared/mcp-client.js';
 import { sendMessage } from '../../shared/slack.js';
 import { queryTodayRoutineRecords } from '../../shared/routine-notion.js';
@@ -26,12 +26,15 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
 };
 
 const AGENT_ROLE = "너는 '잔소리꾼'이라는 이름의 루틴 관리 친구야.";
-const CASUAL_CHAT_MAX_LENGTH = 50;
+const AGENT_CONTEXT = '루틴 관리 에이전트. 사용자가 루틴 추가/삭제/조회/완료/통계를 요청하면 action.';
+const CASUAL_CHAT_MAX_LENGTH = 80;
 
 /** 이 표현이 포함되면 키워드 무관하게 잡담으로 처리 */
 const CASUAL_OVERRIDES = [
   '화이팅', '파이팅', '해볼게', '할게', '잘할게', '고마워', '수고',
   '잘 자', '알겠어', '그럴게', '응 알겠', 'ㅋㅋ', 'ㅎㅎ',
+  '응원', '해봐야지', '해야지', '할 수 있겠지', '힘내', '힘들',
+  '잘하고 있', '괜찮', '어떡해', '어떻게 하지',
 ];
 
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
@@ -216,7 +219,41 @@ export const createRoutineAgent = (
 
       const text = message.text.trim();
 
-      // 키워드 빠른 경로: "루틴" → LLM 없이 체크리스트 반환
+      // 1. 정확 매칭 빠른 경로: "루틴", "체크" → LLM 없이 즉시 체크리스트
+      if (EXACT_KEYWORDS.has(text)) {
+        const today = getTodayISO();
+        const records = await queryTodayRoutineRecords(notionClient, dbId, today);
+
+        if (records.length === 0) {
+          await sendMessage(say, '오늘 루틴 기록이 없어. 아침 알림에서 자동으로 생성돼.');
+          return;
+        }
+
+        const incomplete = records.filter((r) => !r.completed);
+        if (incomplete.length === 0) {
+          await sendMessage(say, '오늘 루틴 전부 완료했어!');
+          return;
+        }
+
+        const { text: msgText, blocks } = buildRoutineBlocks(records, today);
+        await say({ text: msgText, blocks });
+        return;
+      }
+
+      // 2. 잡담 감지 (하이브리드: 키워드 → LLM 분류+응답)
+      const result = await classifyMessage(
+        llmClient, text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH,
+        AGENT_CONTEXT, AGENT_ROLE, CASUAL_OVERRIDES,
+      );
+      if (result.intent === 'casual') {
+        // eslint-disable-next-line no-console
+        console.log(`[Routine Agent] 잡담 감지`);
+        const reply = result.casualReply ?? await respondCasualChat(llmClient, text, AGENT_ROLE);
+        await sendMessage(say, reply);
+        return;
+      }
+
+      // 3. "루틴" 포함 조회 → 체크리스트 반환
       if (isChecklistRequest(text)) {
         const today = getTodayISO();
         const records = await queryTodayRoutineRecords(notionClient, dbId, today);
@@ -237,16 +274,7 @@ export const createRoutineAgent = (
         return;
       }
 
-      // 잡담 빠른 경로: 도구 없이 짧은 프롬프트로 LLM 직접 응답 (ack 생략)
-      if (isCasualChat(text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH, CASUAL_OVERRIDES)) {
-        // eslint-disable-next-line no-console
-        console.log(`[Routine Agent] 잡담 감지`);
-        const reply = await respondCasualChat(llmClient, text, AGENT_ROLE);
-        await sendMessage(say, reply);
-        return;
-      }
-
-      // LLM 에이전트 경로: 자연어 루틴 CRUD
+      // 3. LLM 에이전트 경로: 자연어 루틴 CRUD
       // eslint-disable-next-line no-console
       console.log(`[Routine Agent] 메시지 수신`);
       await sendMessage(say, getAckMessage());

@@ -1,7 +1,19 @@
 import type { LLMClient, LLMMessage } from './llm.js';
 
-const CHAT_TIMEOUT_MS = 15_000;
+const CHAT_TIMEOUT_MS = 20_000;
+const CLASSIFY_TIMEOUT_MS = 10_000;
+const CHAT_MAX_RETRIES = 1;
+const CHAT_RETRY_DELAY_MS = 1_500;
 const FALLBACK_REPLY = '알겠어.';
+
+export type IntentType = 'casual' | 'action';
+
+/** 의도 분류 결과. LLM 분류에서 casual이면 응답도 포함. */
+export interface ClassifyResult {
+  intent: IntentType;
+  /** LLM 분류에서 casual로 판별된 경우 응답 포함 (키워드 빠른 경로는 미포함) */
+  casualReply?: string;
+}
 
 /** Promise에 타임아웃을 적용하는 유틸리티 */
 const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
@@ -19,15 +31,15 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
  */
 const buildChatPrompt = (role: string): string =>
   `${role} 반말로 대화해.
-성격: 겉으로는 쿨하고 무심한 척하지만 은근히 잘 챙기는 츤데레.
-- 걱정을 직접 말하지 않고 실용적인 말로 돌려서 전해. 예: "일찍 자. 내일 할 거 있으니까."
-- 칭찬도 쿨하게. 예: "뭐, 당연한 거지." / "그 정도는 해야지."
-- 진짜 고생했으면 "...수고했어." 처럼 살짝 본심이 나와.
+성격: 친한 친구. 기본적으로 따뜻하지만 가끔 툭툭 던지듯 말하는 스타일.
+- 응원할 때는 진심으로. 예: "할 수 있어, 해봐." / "잘 될 거야."
+- 걱정할 때도 솔직하게. 예: "무리하지 마. 쉴 때 쉬어야 해."
+- 칭찬은 쿨한 척하다 본심이 살짝. 예: "뭐... 잘했어." / "역시 하니까 되지."
 어미: ~자, ~겠어, ~봐, ~써, ~해, ~어. 훈장님처럼 ~거라 금지.
 이모지/존댓말 금지. 한두 문장으로 짧게 응답해.`;
 
 /**
- * 짧은 잡담인지 판별 (도구 불필요).
+ * 짧은 잡담인지 판별 (동기, 키워드 기반).
  * casualOverrides에 포함된 표현이 있으면 키워드 무관하게 잡담으로 처리.
  */
 export const isCasualChat = (
@@ -42,26 +54,122 @@ export const isCasualChat = (
 };
 
 /**
- * 잡담에 대한 LLM 응답 생성.
- * 짧은 프롬프트로 빠르게 응답하고, 실패 시 폴백 메시지 반환.
+ * LLM으로 의도 분류 + casual이면 응답도 생성 (1회 호출).
+ *
+ * action이면 → { intent: 'action' }
+ * casual이면 → { intent: 'casual', casualReply: '...' }
+ * 실패 시 → { intent: 'action' } (안전하게 에이전트 루프)
+ */
+export const classifyIntent = async (
+  llmClient: LLMClient,
+  text: string,
+  agentContext: string,
+  role: string,
+): Promise<ClassifyResult> => {
+  try {
+    const messages: LLMMessage[] = [
+      {
+        role: 'system',
+        content: `사용자 메시지의 의도를 분류해.
+${agentContext}
+
+action = 봇에게 구체적인 데이터 작업을 시킴 (추가/삭제/조회/수정)
+casual = 혼잣말, 감정, 인사, 감사, 다짐, 응원 요청, 안부, 잡담 (데이터 작업이 아닌 모든 대화)
+
+action이면 "action"만 답해.
+casual이면 아래 캐릭터로 짧게 응답해 (분류어 없이 응답만):
+${buildChatPrompt(role)}`,
+      },
+      { role: 'user', content: text },
+    ];
+    const response = await withTimeout(
+      llmClient.chat(messages),
+      CLASSIFY_TIMEOUT_MS,
+      '의도 분류',
+    );
+    const result = response.text?.trim() ?? '';
+
+    // 빈 응답 또는 "action" → action
+    if (!result || result.toLowerCase() === 'action') {
+      return { intent: 'action' };
+    }
+
+    // action이 아닌 모든 응답을 casual + 응답으로 취급
+    return { intent: 'casual', casualReply: result };
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    // eslint-disable-next-line no-console
+    console.error('[Casual Chat] 의도 분류 오류:', errorMsg);
+    // 분류 실패 시 안전하게 action (에이전트 루프 진행)
+    return { intent: 'action' };
+  }
+};
+
+/**
+ * 하이브리드 의도 분류: 키워드 → LLM 2단계.
+ *
+ * 1단계 (0ms): casualOverrides 매칭 → 즉시 casual (응답 미포함)
+ * 2단계 (0ms): 액션 키워드 없음 → 즉시 casual (응답 미포함)
+ * 3단계 (~0.5s): 액션 키워드 있지만 애매 → LLM 분류 + 응답 (1회 호출)
+ *
+ * maxLength 초과 → 즉시 action (긴 메시지는 잡담 아님)
+ */
+export const classifyMessage = async (
+  llmClient: LLMClient,
+  text: string,
+  actionKeywords: string[],
+  maxLength: number,
+  agentContext: string,
+  role: string,
+  casualOverrides?: string[],
+): Promise<ClassifyResult> => {
+  // 긴 메시지 → action
+  if (text.length > maxLength) return { intent: 'action' };
+
+  // casualOverrides 매칭 → 즉시 casual (응답은 별도 생성 필요)
+  if (casualOverrides?.some((p) => text.includes(p))) return { intent: 'casual' };
+
+  // 액션 키워드 없음 → 즉시 casual (응답은 별도 생성 필요)
+  if (!actionKeywords.some((k) => text.includes(k))) return { intent: 'casual' };
+
+  // 액션 키워드 있지만 애매한 경우 → LLM 분류 + casual 응답 (1회)
+  return classifyIntent(llmClient, text, agentContext, role);
+};
+
+/**
+ * 잡담에 대한 LLM 응답 생성 (1회 재시도 포함).
+ * 키워드 빠른 경로에서 casual 판별 후 응답이 필요할 때 사용.
+ * LLM 분류 경로에서는 classifyIntent가 응답도 포함하므로 불필요.
  */
 export const respondCasualChat = async (
   llmClient: LLMClient,
   text: string,
   role: string,
 ): Promise<string> => {
-  try {
-    const messages: LLMMessage[] = [
-      { role: 'system', content: buildChatPrompt(role) },
-      { role: 'user', content: text },
-    ];
-    const response = await withTimeout(
-      llmClient.chat(messages),
-      CHAT_TIMEOUT_MS,
-      '잡담 LLM',
-    );
-    return response.text ?? FALLBACK_REPLY;
-  } catch {
-    return FALLBACK_REPLY;
+  const messages: LLMMessage[] = [
+    { role: 'system', content: buildChatPrompt(role) },
+    { role: 'user', content: text },
+  ];
+
+  for (let attempt = 0; attempt <= CHAT_MAX_RETRIES; attempt++) {
+    try {
+      const response = await withTimeout(
+        llmClient.chat(messages),
+        CHAT_TIMEOUT_MS,
+        '잡담 LLM',
+      );
+      return response.text ?? FALLBACK_REPLY;
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.error(`[Casual Chat] 잡담 응답 오류 (시도 ${attempt + 1}/${CHAT_MAX_RETRIES + 1}):`, errorMsg);
+
+      if (attempt < CHAT_MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, CHAT_RETRY_DELAY_MS));
+        continue;
+      }
+    }
   }
+
+  return FALLBACK_REPLY;
 };
