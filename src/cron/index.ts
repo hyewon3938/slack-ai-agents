@@ -5,10 +5,14 @@ import { queryTodaySchedules } from '../shared/notion.js';
 import { postToChannel } from '../shared/slack.js';
 import { buildReminderMessage, formatDateShort } from './schedule-reminder.js';
 
+/** KST(UTC+9) 기준 현재 시각 */
+const getKSTDate = (): Date => {
+  const now = new Date();
+  return new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
+};
+
 const getTodayISO = (): string => {
-  const now = new Date(
-    new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }),
-  );
+  const now = getKSTDate();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');

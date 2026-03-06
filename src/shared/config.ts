@@ -14,6 +14,17 @@ function optionalEnv(key: string, defaultValue: string): string {
   return process.env[key] ?? defaultValue;
 }
 
+const LLM_PROVIDERS = ['groq', 'anthropic', 'gemini'] as const;
+type LLMProvider = (typeof LLM_PROVIDERS)[number];
+
+function requireLLMProvider(key: string, defaultValue: LLMProvider): LLMProvider {
+  const value = process.env[key] ?? defaultValue;
+  if (!(LLM_PROVIDERS as readonly string[]).includes(value)) {
+    throw new Error(`Invalid ${key}: "${value}". Must be one of: ${LLM_PROVIDERS.join(', ')}`);
+  }
+  return value as LLMProvider;
+}
+
 export const CONFIG = {
   slack: {
     botToken: requireEnv('SLACK_BOT_TOKEN'),
@@ -21,7 +32,7 @@ export const CONFIG = {
     appToken: requireEnv('SLACK_APP_TOKEN'),
   },
   llm: {
-    provider: optionalEnv('LLM_PROVIDER', 'gemini') as 'groq' | 'anthropic' | 'gemini',
+    provider: requireLLMProvider('LLM_PROVIDER', 'gemini'),
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
     geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
