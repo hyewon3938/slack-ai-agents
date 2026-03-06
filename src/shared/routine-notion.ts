@@ -46,7 +46,7 @@ const parseCheckbox = (page: PageObjectResponse, name: string): boolean => {
   return false;
 };
 
-/** 활성 템플릿 조회 (날짜 없음, 활성=true) — DB 필터 사용 */
+/** 활성 템플릿 조회 (날짜 없음, 활성=true) — search + 클라이언트 필터 */
 export const queryRoutineTemplates = async (
   client: NotionClient,
   dbId: string,
@@ -56,31 +56,41 @@ export const queryRoutineTemplates = async (
   let startCursor: string | undefined;
 
   do {
-    const response = await client.databases.query({
-      database_id: uuid,
-      filter: {
-        and: [
-          { property: 'Date', date: { is_empty: true } },
-          { property: '활성', checkbox: { equals: true } },
-        ],
-      },
+    const response = await client.search({
+      query: '',
+      filter: { property: 'object', value: 'page' },
       page_size: 100,
       ...(startCursor ? { start_cursor: startCursor } : {}),
     });
 
-    const pages = response.results.filter(isPageObject);
+    const pages = response.results.filter(
+      (result): result is PageObjectResponse => {
+        if (!isPageObject(result)) return false;
+        if (result.archived || result.in_trash) return false;
+        const databaseId =
+          'database_id' in result.parent ? result.parent.database_id : undefined;
+        return databaseId === uuid;
+      },
+    );
     allPages.push(...pages);
     startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
   } while (startCursor);
 
-  return allPages.map((page) => ({
-    id: page.id,
-    title: parseTitle(page),
-    timeSlot: parseTimeSlot(page),
-  }));
+  return allPages
+    .filter((page) => {
+      const dateProp = page.properties['Date'];
+      const hasNoDate = dateProp?.type === 'date' && dateProp.date === null;
+      const isActive = parseCheckbox(page, '활성');
+      return hasNoDate && isActive;
+    })
+    .map((page) => ({
+      id: page.id,
+      title: parseTitle(page),
+      timeSlot: parseTimeSlot(page),
+    }));
 };
 
-/** 오늘 루틴 기록 조회 — DB 날짜 필터 사용 */
+/** 오늘 루틴 기록 조회 — search + 클라이언트 필터 */
 export const queryTodayRoutineRecords = async (
   client: NotionClient,
   dbId: string,
@@ -91,40 +101,51 @@ export const queryTodayRoutineRecords = async (
   let startCursor: string | undefined;
 
   do {
-    const response = await client.databases.query({
-      database_id: uuid,
-      filter: {
-        property: 'Date',
-        date: { equals: today },
-      },
+    const response = await client.search({
+      query: '',
+      filter: { property: 'object', value: 'page' },
       page_size: 100,
       ...(startCursor ? { start_cursor: startCursor } : {}),
     });
 
-    const pages = response.results.filter(isPageObject);
+    const pages = response.results.filter(
+      (result): result is PageObjectResponse => {
+        if (!isPageObject(result)) return false;
+        if (result.archived || result.in_trash) return false;
+        const databaseId =
+          'database_id' in result.parent ? result.parent.database_id : undefined;
+        return databaseId === uuid;
+      },
+    );
     allPages.push(...pages);
     startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
   } while (startCursor);
 
-  return allPages.map((page) => ({
-    id: page.id,
-    title: parseTitle(page),
-    date: today,
-    completed: parseCheckbox(page, '완료'),
-    timeSlot: parseTimeSlot(page),
-  }));
+  return allPages
+    .filter((page) => {
+      const dateProp = page.properties['Date'];
+      if (dateProp?.type !== 'date' || !dateProp.date) return false;
+      return dateProp.date.start.slice(0, 10) === today;
+    })
+    .map((page) => ({
+      id: page.id,
+      title: parseTitle(page),
+      date: today,
+      completed: parseCheckbox(page, '완료'),
+      timeSlot: parseTimeSlot(page),
+    }));
 };
 
-/** 루틴 기록 생성 (템플릿 → 오늘자 기록) */
+/** 루틴 기록 생성 (템플릿 → 오늘자 기록) — 생성된 레코드 반환 */
 export const createRoutineRecord = async (
   client: NotionClient,
   dbId: string,
   title: string,
   timeSlot: string,
   date: string,
-): Promise<void> => {
+): Promise<RoutineRecord> => {
   const uuid = toUUID(dbId);
-  await client.pages.create({
+  const page = await client.pages.create({
     parent: { database_id: uuid },
     properties: {
       Name: { title: [{ text: { content: title } }] },
@@ -134,6 +155,7 @@ export const createRoutineRecord = async (
       '활성': { checkbox: false },
     },
   });
+  return { id: page.id, title, date, completed: false, timeSlot };
 };
 
 /** 루틴 완료 처리 */

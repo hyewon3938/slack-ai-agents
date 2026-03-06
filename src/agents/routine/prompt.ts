@@ -39,7 +39,7 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
 - 루틴 데이터를 절대 지어내지 마. 반드시 도구를 호출해서 실제 데이터를 가져와.
 - 루틴 추가 요청 → 템플릿 생성: Date=null, 활성=true, 완료=false
 - 루틴 삭제 요청 → 실제 삭제 금지. 활성=false로 변경 (비활성화).
-- 시간대 미지정 시 → 반드시 물어봐 (오전/오후/저녁 중 선택).
+- 시간대 미지정 시 → 반드시 물어봐 (아침/점심/저녁/밤 중 선택).
 - 루틴 목록 조회 → 활성=true이고 Date가 null인 템플릿만 시간대별로 정리.
 
 ## 응답 포맷
@@ -69,7 +69,7 @@ export const buildRoutinePrompt = (dbId: string, today: string): string => {
   }
 }
 - Date 속성은 넣지 마 (템플릿은 날짜 없음).
-- 시간대는 사용자가 지정한 값 사용 (오전/오후/저녁).
+- 시간대는 사용자가 지정한 값 사용 (아침/점심/저녁/밤).
 
 ## 루틴 비활성화 (API-patch-page)
 {

@@ -4,12 +4,6 @@ import type { RoutineRecord } from '../../shared/routine-notion.js';
 const ACTION_ID = 'routine_complete';
 
 const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
-const TIME_SLOT_EMOJI: Record<string, string> = {
-  '아침': ':sunrise:',
-  '점심': ':sunny:',
-  '저녁': ':city_sunset:',
-  '밤': ':crescent_moon:',
-};
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -39,11 +33,10 @@ export const buildRoutineBlocks = (
     const slotRecords = records.filter((r) => r.timeSlot === slot);
     if (slotRecords.length === 0) continue;
 
-    const emoji = TIME_SLOT_EMOJI[slot] ?? '';
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*${emoji} ${slot}*` },
+      text: { type: 'mrkdwn', text: `*${slot}*` },
     });
 
     for (const record of slotRecords) {
@@ -94,6 +87,40 @@ export const buildFilteredRoutineBlocks = (
   });
 
   return buildRoutineBlocks(filtered, today);
+};
+
+/** 아침 인사 블록 빌드 (어제 완료율 포함) */
+export const buildMorningGreetingBlocks = (
+  yesterdayRecords: RoutineRecord[],
+): KnownBlock[] => {
+  const blocks: KnownBlock[] = [];
+
+  if (yesterdayRecords.length > 0) {
+    const total = yesterdayRecords.length;
+    const completed = yesterdayRecords.filter((r) => r.completed).length;
+    const pct = Math.round((completed / total) * 100);
+
+    let greeting: string;
+    if (pct === 100) {
+      greeting = `좋은 아침! 어제 루틴 달성 ${pct}%! 전부 완료했어, 대단해. 오늘도 이 기세로 가보자.`;
+    } else if (pct >= 70) {
+      greeting = `좋은 아침! 어제 루틴 달성 ${pct}%! 잘하고 있어, 오늘도 화이팅.`;
+    } else {
+      greeting = `좋은 아침! 어제 루틴 달성 ${pct}%. 괜찮아, 오늘 새롭게 시작하자!`;
+    }
+
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: greeting },
+    });
+  } else {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: '좋은 아침! 오늘도 루틴 시작하자.' },
+    });
+  }
+
+  return blocks;
 };
 
 /** 밤 요약 메시지 빌드 */
