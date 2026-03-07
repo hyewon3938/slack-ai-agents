@@ -255,7 +255,7 @@ const buildGreetingPrompt = (
 };
 
 /** 시간대별 폴백 메시지 */
-const getFallbackGreeting = (
+export const getFallbackGreeting = (
   timeOfDay: TimeOfDay,
   items: ScheduleItem[],
   today: string,

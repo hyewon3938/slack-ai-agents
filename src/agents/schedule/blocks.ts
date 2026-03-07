@@ -57,25 +57,37 @@ export const buildScheduleBlocks = (
   const blocks: KnownBlock[] = [];
   const formatted = formatDateShort(targetDate);
 
+  // 헤더 — section mrkdwn 볼드 (header 블록보다 컴팩트)
   blocks.push({
-    type: 'header',
-    text: { type: 'plain_text', text: headerText ?? `${formatted} 일정` },
+    type: 'section',
+    text: { type: 'mrkdwn', text: `*${headerText ?? `${formatted} 일정`}*` },
   });
 
   const sorted = sortItems(items);
+
+  // overflow 없는 항목(약속)은 한 블록에 모아서 표시
+  // overflow 있는 항목은 개별 section (accessory 필요)
+  const noOverflowLines: string[] = [];
+
+  const flushNoOverflow = (): void => {
+    if (noOverflowLines.length === 0) return;
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: noOverflowLines.join('\n') },
+    });
+    noOverflowLines.length = 0;
+  };
 
   for (const item of sorted) {
     const isAppointment = item.category.includes('약속');
     const itemText = formatItem(item);
 
     if (isAppointment || !item.status) {
-      // 약속: overflow 없이 텍스트만
-      blocks.push({
-        type: 'section',
-        text: { type: 'mrkdwn', text: itemText },
-      });
+      // 약속: overflow 불필요 → 버퍼에 모음
+      noOverflowLines.push(itemText);
     } else {
-      // 할일/진행중/완료: overflow 메뉴 추가
+      // overflow 필요한 항목 앞에 버퍼 비우기
+      flushNoOverflow();
       blocks.push({
         type: 'section',
         text: { type: 'mrkdwn', text: itemText },
@@ -88,19 +100,20 @@ export const buildScheduleBlocks = (
     }
   }
 
-  // 하단 통계
-  const total = items.length;
-  const done = items.filter((i) => i.status === 'done').length;
-  const appointments = items.filter((i) => i.category.includes('약속')).length;
+  // 남은 약속 항목 비우기
+  flushNoOverflow();
 
-  blocks.push({ type: 'divider' });
+  // 하단 통계 — 약속 제외, 할일만 카운트
+  const tasks = items.filter((i) => !i.category.includes('약속'));
+  const done = tasks.filter((i) => i.status === 'done').length;
+
   blocks.push({
     type: 'context',
     elements: [
-      { type: 'mrkdwn', text: `전체 ${total}개 · 완료 ${done}개 · 약속 ${appointments}개` },
+      { type: 'mrkdwn', text: `${done}/${tasks.length} 완료` },
     ],
   });
 
-  const fallbackText = `${formatted} 일정 (${total}개)`;
+  const fallbackText = `${formatted} 일정 (${items.length}개)`;
   return { text: fallbackText, blocks };
 };
