@@ -198,21 +198,24 @@ describe('createRoutineAgent', () => {
     });
   });
 
-  describe('잡담 감지', () => {
-    it('다짐/결의 표현은 잡담으로 분류한다', async () => {
+  describe('잡담 (에이전트 루프 경유)', () => {
+    it('잡담 메시지는 에이전트 루프에서 도구 없이 응답한다', async () => {
       const llmClient = createMockLLMClient([
-        // casualOverride('거야') + actionKeyword('루틴') 둘 다 매칭 → LLM 분류
-        { text: '그래, 오늘 루틴 다 해치우자!', toolCalls: [], finishReason: 'stop' },
+        // LLM이 도구 없이 잡담 응답 → finish_reason: stop, 환각 가드 미해당
+        // 주의: "했|넣|추가|완료|..." 등 액션 동사 포함 시 환각 가드 발동
+        { text: '응, 힘내.', toolCalls: [], finishReason: 'stop' },
       ]);
 
       const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
-      await agent(createMockMessage('오늘 루틴 다 해치울 거야'), mockSay);
+      await agent(createMockMessage('고마워'), mockSay);
 
-      // LLM 분류 1회 (classifyIntent) — 에이전트 루프가 아님
+      // 에이전트 루프 1라운드 (tools 포함 호출)
       expect(llmClient.chat).toHaveBeenCalledTimes(1);
       const callArgs = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(callArgs).toHaveLength(1); // messages만, tools 없음
-      expect(mockSay).toHaveBeenCalledWith('그래, 오늘 루틴 다 해치우자!');
+      expect(callArgs).toHaveLength(2); // messages + tools
+      // ack + 응답 = 2번 say 호출
+      expect(mockSay).toHaveBeenCalledTimes(2);
+      expect(mockSay).toHaveBeenCalledWith('응, 힘내.');
     });
   });
 
@@ -228,7 +231,7 @@ describe('createRoutineAgent', () => {
       const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
       await agent(createMockMessage('스트레칭 오전에 추가해줘'), mockSay);
 
-      // actionKeyword만 → 즉시 action (classify 없음) + agent(2: 환각 가드 재시도 포함)
+      // 에이전트 루프 2라운드 (환각 가드 재시도 포함)
       expect(llmClient.chat).toHaveBeenCalledTimes(2);
       expect(mockSay).toHaveBeenCalledWith('오전 루틴에 추가했어.');
     });
