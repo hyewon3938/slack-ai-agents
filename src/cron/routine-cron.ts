@@ -20,11 +20,16 @@ import {
   generateMorningGreeting,
   generateNightSummary,
 } from '../agents/routine/greeting.js';
+import {
+  querySleepRecord,
+  formatSleepDuration,
+} from '../shared/sleep-notion.js';
 
 interface RoutineCronConfig {
   dbId: string;
   channelId: string;
   llmClient?: LLMClient;
+  sleepDbId?: string;
   schedules: {
     morning: string;
     lunch: string;
@@ -144,7 +149,32 @@ const morningTask = async (
     return;
   }
 
-  // 4. 메시지 전송
+  // 4. 수면 기록 메시지 (루틴보다 먼저 전송)
+  if (config.sleepDbId) {
+    try {
+      const yesterday = getYesterdayISO();
+      const sleepRecord = await querySleepRecord(notionClient, config.sleepDbId, yesterday);
+
+      if (sleepRecord) {
+        const duration = formatSleepDuration(sleepRecord.durationMinutes);
+        await postToChannel(
+          app.client, config.channelId,
+          `어제 수면: ${sleepRecord.bedtime}~${sleepRecord.wakeTime} (${duration})`,
+        );
+      } else {
+        await postToChannel(
+          app.client, config.channelId,
+          `어제 잠은 잘 잤어? 수면 기록 남기자~ (예: "12시에 자서 7시에 일어났어")`,
+        );
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.warn(`[Routine Cron] 수면 기록 조회 실패: ${msg}`);
+    }
+  }
+
+  // 5. 루틴 체크리스트 메시지 전송
   const allRecords = [...existingRecords, ...createdRecords];
   const morningRecords = allRecords.filter((r) => r.timeSlot === '아침');
 
@@ -246,6 +276,23 @@ const nightTask = async (
     }
 
     const { text, blocks } = buildNightSummaryBlocks(records, today, summaryText);
+
+    // 수면 기록 요약 추가
+    if (config.sleepDbId) {
+      try {
+        const todaySleep = await querySleepRecord(notionClient, config.sleepDbId, today);
+        if (todaySleep) {
+          const duration = formatSleepDuration(todaySleep.durationMinutes);
+          blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: `오늘 수면: ${todaySleep.bedtime}~${todaySleep.wakeTime} (${duration})` },
+          });
+        }
+      } catch {
+        // 수면 조회 실패는 무시
+      }
+    }
+
     await postBlockMessage(app.client, config.channelId, text, blocks);
     // eslint-disable-next-line no-console
     console.log(`[Routine Cron] 밤 요약 전송 완료`);

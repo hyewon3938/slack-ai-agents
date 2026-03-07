@@ -41,6 +41,7 @@ export const CONFIG = {
     apiKey: requireEnv('NOTION_API_KEY'),
     scheduleDbId: requireEnv('NOTION_SCHEDULE_DB_ID'),
     routineDbId: requireEnv('NOTION_ROUTINE_DB_ID'),
+    sleepDbId: optionalEnv('NOTION_SLEEP_DB_ID', ''),
   },
   channels: {
     schedule: requireEnv('SCHEDULE_CHANNEL_ID'),

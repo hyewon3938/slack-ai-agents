@@ -11,6 +11,17 @@ import {
   shouldCreateToday,
   frequencyBadge,
 } from '../../shared/routine-notion.js';
+import {
+  parseSleepTimes,
+  calculateSleepMinutes,
+  formatSleepDuration,
+  formatTimeHHMM,
+  calculateSleepStats,
+  querySleepRecord,
+  querySleepRecords,
+  createSleepRecord,
+  updateSleepRecord,
+} from '../../shared/sleep-notion.js';
 import { buildRoutineBlocks, buildFilteredRoutineBlocks } from './blocks.js';
 import { buildRoutinePrompt, getTodayString } from './prompt.js';
 import { getRoutineTools } from './tools.js';
@@ -139,6 +150,119 @@ const sendAchievementRate = async (
   await sendMessage(say, result.trim());
 };
 
+// ─── 수면 감지 ──────────────────────────────────────────────────────
+
+const SLEEP_BED_KEYWORDS = ['잤', '자서', '자고', '잠들', '취침', '잠 들'];
+const SLEEP_WAKE_KEYWORDS = ['일어나', '일어났', '기상', '깼', '깸', '눈떴', '일어남'];
+const SLEEP_QUERY_KEYWORDS = ['수면', '잠', '잤'];
+const SLEEP_QUERY_MODIFIERS = ['얼마나', '몇', '시간', '평균', '기록', '통계', '보여', '알려'];
+const SLEEP_PERIOD_KEYWORDS = ['이번주', '이번 주', '이번달', '이번 달', '한달', '한 달', '일주일'];
+
+/** 수면 기록 패턴 감지: 취침+기상 키워드 동시 존재 */
+export const detectSleepRecord = (text: string): boolean => {
+  const hasBed = SLEEP_BED_KEYWORDS.some((k) => text.includes(k));
+  const hasWake = SLEEP_WAKE_KEYWORDS.some((k) => text.includes(k));
+  return hasBed && hasWake;
+};
+
+/** 수면 조회 패턴 감지: "수면" 또는 "잤" + 질문 키워드 */
+export const detectSleepQuery = (text: string): boolean => {
+  // "수면" 단독 포함
+  if (text.includes('수면')) return true;
+  // "잤" + 질문/조회 키워드
+  const hasSleepRef = SLEEP_QUERY_KEYWORDS.some((k) => text.includes(k));
+  const hasQueryIntent = SLEEP_QUERY_MODIFIERS.some((k) => text.includes(k));
+  return hasSleepRef && hasQueryIntent;
+};
+
+/** 수면 기록 처리 (upsert) */
+const handleSleepRecord = async (
+  text: string,
+  notionClient: NotionClient,
+  sleepDbId: string,
+  say: Parameters<AgentHandler>[1],
+): Promise<boolean> => {
+  const parsed = parseSleepTimes(text);
+  if (!parsed) return false; // 파싱 실패 → LLM 폴백
+
+  const { bedtime, wakeTime } = parsed;
+  const minutes = calculateSleepMinutes(bedtime, wakeTime);
+  const duration = formatSleepDuration(minutes);
+
+  // 날짜 결정: 기본 = 어제 ("밤의 날짜")
+  const today = getTodayISO();
+  const date = addDays(today, -1);
+
+  // upsert: 기존 기록 확인
+  const existing = await querySleepRecord(notionClient, sleepDbId, date);
+
+  if (existing) {
+    await updateSleepRecord(notionClient, existing.id, bedtime, wakeTime, minutes);
+    await sendMessage(say, `수면 기록 수정했어. ${bedtime}~${wakeTime}, ${duration}으로 바뀌었어.`);
+  } else {
+    await createSleepRecord(notionClient, sleepDbId, date, bedtime, wakeTime, minutes);
+    await sendMessage(say, `수면 기록했어. ${bedtime}~${wakeTime}, ${duration} 잤네.`);
+  }
+
+  return true;
+};
+
+/** 수면 조회 처리 */
+const handleSleepQuery = async (
+  text: string,
+  notionClient: NotionClient,
+  sleepDbId: string,
+  say: Parameters<AgentHandler>[1],
+): Promise<void> => {
+  const today = getTodayISO();
+  const yesterday = addDays(today, -1);
+
+  // 범위 감지
+  const isPeriod = SLEEP_PERIOD_KEYWORDS.some((k) => text.includes(k));
+  const isMonth = text.includes('달') || text.includes('월');
+
+  if (!isPeriod && !isMonth) {
+    // 단일 조회 (기본: 어제)
+    const record = await querySleepRecord(notionClient, sleepDbId, yesterday);
+    if (record) {
+      const duration = formatSleepDuration(record.durationMinutes);
+      await sendMessage(say, `어제 ${record.bedtime}~${record.wakeTime}, ${duration} 잤어.`);
+    } else {
+      await sendMessage(say, '어제 수면 기록이 없어. 기록 남기자~');
+    }
+    return;
+  }
+
+  // 범위 조회
+  const days = isMonth ? 30 : 7;
+  const startDate = addDays(today, -days);
+  const records = await querySleepRecords(notionClient, sleepDbId, startDate, yesterday);
+
+  if (records.length === 0) {
+    const label = isMonth ? '이번 달' : '이번주';
+    await sendMessage(say, `${label} 수면 기록이 없어.`);
+    return;
+  }
+
+  const stats = calculateSleepStats(records);
+  if (!stats) return;
+
+  const label = isMonth ? '이번 달' : '이번주';
+  const avgDuration = formatSleepDuration(stats.avgDurationMinutes);
+  const avgBed = formatTimeHHMM(stats.avgBedtimeMinutes);
+  const avgWake = formatTimeHHMM(stats.avgWakeTimeMinutes);
+
+  let result = `${label} 수면 기록이야. (${stats.count}일)\n`;
+  result += `평균 수면: ${avgDuration} | 평균 취침: ${avgBed} | 평균 기상: ${avgWake}\n`;
+
+  for (const r of records) {
+    const duration = formatSleepDuration(r.durationMinutes);
+    result += `\n${formatDateLabel(r.date)} ${r.bedtime}~${r.wakeTime} (${duration})`;
+  }
+
+  await sendMessage(say, result.trim());
+};
+
 /** "내일 루틴" 미리보기 패턴 감지 */
 export const detectTomorrowRoutine = (text: string): boolean => {
   if (!text.includes('내일')) return false;
@@ -241,6 +365,7 @@ export const createRoutineAgent = (
   llmClient: LLMClient,
   dbId: string,
   notionClient: NotionClient,
+  sleepDbId?: string,
 ): AgentHandler => {
   const history = new ChatHistory();
 
@@ -287,13 +412,34 @@ export const createRoutineAgent = (
         return;
       }
 
-      // 5. LLM 에이전트 경로: 잡담 / 액션 / 혼합 모두 LLM이 자율 판단
+      // 5. 수면 기록 빠른 경로: "N시에 자서 N시에 일어났어" → SDK 직접 (upsert)
+      if (sleepDbId && detectSleepRecord(text)) {
+        // eslint-disable-next-line no-console
+        console.log(`[Routine Agent] 수면 기록`);
+        const handled = await handleSleepRecord(text, notionClient, sleepDbId, say);
+        if (handled) {
+          history.add(channelId, text, '[수면 기록 저장]');
+          return;
+        }
+        // 파싱 실패 시 LLM 폴백
+      }
+
+      // 6. 수면 조회 빠른 경로: "이번주 수면시간", "어제 몇 시간 잤어?"
+      if (sleepDbId && detectSleepQuery(text)) {
+        // eslint-disable-next-line no-console
+        console.log(`[Routine Agent] 수면 조회`);
+        await handleSleepQuery(text, notionClient, sleepDbId, say);
+        history.add(channelId, text, '[수면 기록 조회]');
+        return;
+      }
+
+      // 7. LLM 에이전트 경로: 잡담 / 액션 / 혼합 모두 LLM이 자율 판단
       // eslint-disable-next-line no-console
       console.log(`[Routine Agent] 메시지 수신`);
 
       const loopResult = await runAgentLoopWithAck(
         llmClient, text,
-        { label: 'Routine Agent', buildSystemPrompt: () => buildRoutinePrompt(dbId, getTodayString()) + ctx, getTools: getRoutineTools },
+        { label: 'Routine Agent', buildSystemPrompt: () => buildRoutinePrompt(dbId, getTodayString(), sleepDbId) + ctx, getTools: getRoutineTools },
         () => sendMessage(say, getAckMessage()),
       );
       await sendMessage(say, loopResult.text);
