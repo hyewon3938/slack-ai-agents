@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { KnownEventFromType, SayFn } from '@slack/bolt';
 import type { LLMClient, LLMResponse } from '../../../shared/llm.js';
 import type { NotionClient, ScheduleItem } from '../../../shared/notion.js';
-import { createScheduleAgent, detectSimpleQuery } from '../index.js';
+import { createScheduleAgent, detectSimpleQuery, detectBacklogQuery } from '../index.js';
 
 vi.mock('../../../shared/mcp-client.js', () => ({
   getMCPTools: vi.fn(() => [
@@ -20,14 +20,16 @@ vi.mock('../../../shared/notion.js', async (importOriginal) => {
   return {
     ...original,
     queryTodaySchedules: vi.fn(async () => []),
+    queryBacklogItems: vi.fn(async () => []),
   };
 });
 
 const { callMCPTool } = await import('../../../shared/mcp-client.js');
 const mockedCallMCPTool = vi.mocked(callMCPTool);
 
-const { queryTodaySchedules } = await import('../../../shared/notion.js');
+const { queryTodaySchedules, queryBacklogItems } = await import('../../../shared/notion.js');
 const mockedQuerySchedules = vi.mocked(queryTodaySchedules);
+const mockedQueryBacklog = vi.mocked(queryBacklogItems);
 
 const createMockMessage = (text: string): KnownEventFromType<'message'> =>
   ({
@@ -79,7 +81,6 @@ describe('detectSimpleQuery', () => {
 
   it('복잡한 조회는 null을 반환한다', () => {
     expect(detectSimpleQuery('이번주 일정')).toBeNull();
-    expect(detectSimpleQuery('백로그 보여줘')).toBeNull();
     expect(detectSimpleQuery('언제 약속이야')).toBeNull();
   });
 
@@ -90,6 +91,27 @@ describe('detectSimpleQuery', () => {
   it('조회 의도가 약하면 null을 반환한다', () => {
     expect(detectSimpleQuery('일정 검색해줘')).toBeNull();
     expect(detectSimpleQuery('좋은 아침')).toBeNull();
+  });
+});
+
+describe('detectBacklogQuery', () => {
+  it('백로그 조회 패턴을 감지한다', () => {
+    expect(detectBacklogQuery('백로그')).toBe(true);
+    expect(detectBacklogQuery('백로그 보여줘')).toBe(true);
+    expect(detectBacklogQuery('백로그 목록')).toBe(true);
+  });
+
+  it('쓰기 키워드가 있으면 false를 반환한다', () => {
+    expect(detectBacklogQuery('백로그 추가해줘')).toBe(false);
+    expect(detectBacklogQuery('백로그 삭제해줘')).toBe(false);
+  });
+
+  it('백로그가 없으면 false를 반환한다', () => {
+    expect(detectBacklogQuery('오늘 일정')).toBe(false);
+  });
+
+  it('긴 메시지는 false를 반환한다', () => {
+    expect(detectBacklogQuery('백로그에서 내일로 옮겨줘 그거 중요한 거야')).toBe(false);
   });
 });
 
@@ -138,6 +160,43 @@ describe('createScheduleAgent', () => {
     expect(reply).toContain('일정');
     // "없어" or "없는" 포함
     expect(reply).toMatch(/없/);
+  });
+
+  // --- 백로그 빠른 경로 ---
+
+  it('백로그 조회 시 SDK 직접 호출로 빠르게 응답한다', async () => {
+    const mockItems: ScheduleItem[] = [
+      { id: 'p1', title: '나중에 할 일', date: null, status: 'todo', category: [], hasStarIcon: false },
+      { id: 'p2', title: '중요 백로그', date: null, status: 'todo', category: ['개발'], hasStarIcon: true },
+    ];
+    mockedQueryBacklog.mockResolvedValueOnce(mockItems);
+
+    const llmClient = createMockLLMClient([]);
+
+    const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
+    await agent(createMockMessage('백로그 보여줘'), mockSay);
+
+    expect(mockedQueryBacklog).toHaveBeenCalledTimes(1);
+    expect(llmClient.chat).not.toHaveBeenCalled();
+    const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(reply).toContain('나중에 할 일');
+    expect(reply).toContain('중요 백로그');
+    expect(reply).toContain('[개발]');
+    expect(reply).toContain('★');
+    expect(reply).toContain('날짜 지정하고 싶은 거 있으면 말해줘');
+  });
+
+  it('백로그가 비어있으면 없다는 메시지를 반환한다', async () => {
+    mockedQueryBacklog.mockResolvedValueOnce([]);
+
+    const llmClient = createMockLLMClient([]);
+
+    const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
+    await agent(createMockMessage('백로그'), mockSay);
+
+    expect(mockedQueryBacklog).toHaveBeenCalledTimes(1);
+    const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(reply).toContain('없');
   });
 
   // --- 에이전트 루프 ---
@@ -224,7 +283,7 @@ describe('createScheduleAgent', () => {
     ]);
 
     const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
-    await agent(createMockMessage('백로그 보여줘'), mockSay);
+    await agent(createMockMessage('이번주 일정 보여줘'), mockSay);
 
     // actionKeyword만 → 즉시 action + agent round 1(call[0]) + agent round 2(call[1])
     const agentSecondCallMessages = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[1][0] as Array<{
@@ -312,7 +371,7 @@ describe('createScheduleAgent', () => {
     };
 
     const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
-    await agent(createMockMessage('백로그 보여줘'), mockSay);
+    await agent(createMockMessage('이번주 일정 보여줘'), mockSay);
 
     expect(mockSay).toHaveBeenCalledWith(
       '일시적인 오류가 발생했어. 다시 한번 말해줘.',

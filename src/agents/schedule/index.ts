@@ -6,7 +6,7 @@ import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
 import type { AgentLoopResult } from '../../shared/agent-loop.js';
 import { sendMessage } from '../../shared/slack.js';
 import { getAgentRole, getAgentContext } from '../../shared/personality.js';
-import { queryTodaySchedules } from '../../shared/notion.js';
+import { queryTodaySchedules, queryBacklogItems } from '../../shared/notion.js';
 import { buildReminderMessage, formatDateShort, formatScheduleList } from '../../cron/schedule-reminder.js';
 import { buildSystemPrompt, getTodayString } from './prompt.js';
 import { getScheduleTools } from './tools.js';
@@ -79,7 +79,7 @@ const WRITE_KEYWORDS = [
 ];
 
 /** 복잡한 조회 → 에이전트 루프 */
-const COMPLEX_QUERY_KEYWORDS = ['이번주', '다음주', '백로그', '언제', '지난주', '저번주'];
+const COMPLEX_QUERY_KEYWORDS = ['이번주', '다음주', '언제', '지난주', '저번주'];
 
 /** 조회 빠른 경로 최대 길이 (간단 조회는 보통 ~15자 이내) */
 const QUERY_MAX_LENGTH = 20;
@@ -160,6 +160,41 @@ const buildQueryResponse = (
   return `${label} ${formatted} 일정이야.\n\n${list}`;
 };
 
+// --- 백로그 빠른 경로 ---
+
+/** 백로그 조회 최대 길이 */
+const BACKLOG_MAX_LENGTH = 20;
+
+/** 백로그 조회 패턴 감지 (쓰기 키워드 없고 "백로그" 포함) */
+export const detectBacklogQuery = (text: string): boolean => {
+  if (text.length > BACKLOG_MAX_LENGTH) return false;
+  if (!text.includes('백로그')) return false;
+  if (WRITE_KEYWORDS.some((k) => text.includes(k))) return false;
+  return true;
+};
+
+/** 백로그 목록 응답 생성 */
+const buildBacklogResponse = (
+  items: import('../../shared/notion.js').ScheduleItem[],
+): string => {
+  if (items.length === 0) {
+    return '백로그에 쌓인 거 없어. 깔끔하네.';
+  }
+
+  const list = items
+    .map((item) => {
+      let line = item.title;
+      if (item.category.length > 0) {
+        line += ` [${item.category.join(', ')}]`;
+      }
+      if (item.hasStarIcon) line += ' ★';
+      return line;
+    })
+    .join('\n');
+
+  return `백로그 ${items.length}개야.\n\n${list}\n\n날짜 지정하고 싶은 거 있으면 말해줘.`;
+};
+
 // --- 에이전트 ---
 
 export const createScheduleAgent = (
@@ -201,7 +236,17 @@ export const createScheduleAgent = (
         return;
       }
 
-      // 3. LLM 에이전트 경로: 자연어 일정 CRUD + 복잡 조회
+      // 3. 백로그 빠른 경로: "백로그", "백로그 보여줘" → SDK 직접 호출
+      if (detectBacklogQuery(text)) {
+        // eslint-disable-next-line no-console
+        console.log(`[Schedule Agent] 백로그 빠른 경로`);
+        const items = await queryBacklogItems(notionClient, dbId);
+        const reply = buildBacklogResponse(items);
+        await sendMessage(say, reply);
+        return;
+      }
+
+      // 4. LLM 에이전트 경로: 자연어 일정 CRUD + 복잡 조회
       // eslint-disable-next-line no-console
       console.log(`[Schedule Agent] 메시지 수신: ${text}`);
       await sendMessage(say, getAckMessage());

@@ -157,6 +157,33 @@ export const queryTodaySchedules = async (
     .filter((item) => isScheduleForDate(item, today));
 };
 
+/** 백로그 (Date가 null인 일정) 조회 */
+export const queryBacklogItems = async (
+  client: NotionClient,
+  dbId: string,
+): Promise<ScheduleItem[]> => {
+  const uuid = toUUID(dbId);
+  const allPages: PageObjectResponse[] = [];
+  let startCursor: string | undefined;
+
+  do {
+    const response = await queryDatabase(client, uuid, {
+      filter: {
+        property: 'Date',
+        date: { is_empty: true },
+      },
+      ...(startCursor ? { start_cursor: startCursor } : {}),
+    });
+
+    const pages = (response.results as Array<{ object: string } & Record<string, unknown>>)
+      .filter(isPageObject);
+    allPages.push(...pages);
+    startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+  } while (startCursor);
+
+  return allPages.map(parsePageToScheduleItem);
+};
+
 export const toUUID = (id: string): string => {
   const hex = id.replace(/-/g, '');
   if (hex.length !== 32) return id;
