@@ -6,6 +6,7 @@ import { createLLMClient } from './shared/llm.js';
 import { createScheduleAgent } from './agents/schedule/index.js';
 import { createRoutineAgent } from './agents/routine/index.js';
 import { registerRoutineActions } from './agents/routine/actions.js';
+import { registerScheduleActions } from './agents/schedule/actions.js';
 import { createNotionClient } from './shared/notion.js';
 import { initCronJobs } from './cron/index.js';
 import { initRoutineCron } from './cron/routine-cron.js';
@@ -28,6 +29,7 @@ const startApp = async (): Promise<void> => {
   // Schedule Agent
   const scheduleAgent = createScheduleAgent(llmClient, CONFIG.notion.scheduleDbId, notionClient);
   registerAgent(CONFIG.channels.schedule, scheduleAgent);
+  registerScheduleActions(app, notionClient, CONFIG.notion.scheduleDbId);
 
   // Routine Agent
   const routineAgent = createRoutineAgent(llmClient, CONFIG.notion.routineDbId, notionClient);

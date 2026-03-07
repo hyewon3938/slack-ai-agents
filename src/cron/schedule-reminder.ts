@@ -41,7 +41,7 @@ const formatDateRange = (item: ScheduleItem): string | null => {
   return `${start}~${end}`;
 };
 
-const formatItem = (item: ScheduleItem): string => {
+export const formatItem = (item: ScheduleItem): string => {
   const isAppointment = item.category.includes('약속');
   const star = item.hasStarIcon ? ' ★' : '';
   const range = formatDateRange(item);
@@ -58,7 +58,7 @@ const formatItem = (item: ScheduleItem): string => {
   return `${item.title}${rangePart}${star}`;
 };
 
-const sortItems = (items: ScheduleItem[]): ScheduleItem[] => {
+export const sortItems = (items: ScheduleItem[]): ScheduleItem[] => {
   const statusOrder: Record<string, number> = {
     done: 0,
     'in-progress': 1,
@@ -255,7 +255,7 @@ const buildGreetingPrompt = (
 };
 
 /** 시간대별 폴백 메시지 */
-const getFallbackGreeting = (
+export const getFallbackGreeting = (
   timeOfDay: TimeOfDay,
   items: ScheduleItem[],
   today: string,

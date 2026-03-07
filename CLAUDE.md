@@ -115,9 +115,16 @@ src/
 - 커밋: Conventional Commits (feat:, fix:, refactor:, test:, chore:)
 - 상세 컨벤션 → docs/conventions.md 참조
 
+## 향후 확장 계획
+
+- 식단 관리 에이전트 (식사 기록 + 영양 분석)
+- 지출 관리 에이전트 (가계부 자동화)
+
+에이전트 추가 시 `agents/{name}/` 디렉토리 + 라우터 등록만으로 확장 가능.
+
 ## 개발 진행 관리
 
-- GitHub Issues에 Phase별 개발 계획 정리 (#1~#10)
+- GitHub Issues에 Phase별 개발 계획 정리
 - 브랜치: feature/xxx, fix/xxx → main PR
 - PR 단위: Issue 1개 = PR 1개
 
