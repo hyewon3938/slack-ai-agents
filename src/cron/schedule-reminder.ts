@@ -1,4 +1,6 @@
+import type { LLMClient } from '../shared/llm.js';
 import type { ScheduleItem } from '../shared/notion.js';
+import { generateGreeting } from '../shared/cron-greeting.js';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -189,4 +191,120 @@ export const buildReminderMessage = (
   }
 
   return `${pickRandom(NIGHT_INCOMPLETE_MESSAGES)}\n\n${list}`;
+};
+
+// --- LLM 인사 생성 ---
+
+export type TimeOfDay = 'morning' | 'lunch' | 'evening' | 'night';
+
+/** 일정 통계 요약 */
+const buildScheduleStats = (
+  items: ScheduleItem[],
+  today: string,
+  todayFormatted: string,
+): string => {
+  const total = items.length;
+  const appointments = items.filter((i) => i.category.includes('약속'));
+  const done = items.filter((i) => i.status === 'done').length;
+  const remaining = items.filter(isRemaining).length;
+  const incomplete = items.filter((i) => isIncompleteForNight(i, today)).length;
+
+  const parts = [`오늘 ${todayFormatted} 일정 ${total}개`];
+  if (appointments.length > 0) parts.push(`약속 ${appointments.length}개`);
+  parts.push(`완료 ${done}개, 미완료 ${remaining}개`);
+  if (incomplete !== remaining) parts.push(`밤 기준 미완료 ${incomplete}개`);
+
+  return parts.join(', ');
+};
+
+/** 시간대별 LLM 인사 프롬프트 생성 */
+const buildGreetingPrompt = (
+  timeOfDay: TimeOfDay,
+  items: ScheduleItem[],
+  today: string,
+  todayFormatted: string,
+): string => {
+  if (items.length === 0) {
+    if (timeOfDay === 'night') {
+      return `오늘 ${todayFormatted} 일정 없이 지나갔어. 편하게 마무리하라는 톤으로 한 문장만.`;
+    }
+    return `오늘 ${todayFormatted} 일정 없어. 여유로운 하루라는 톤으로 한 문장만.`;
+  }
+
+  const stats = buildScheduleStats(items, today, todayFormatted);
+
+  switch (timeOfDay) {
+    case 'morning':
+      return `${stats}. 오늘 하루 일정을 알려주는 톤으로 한 문장만.`;
+    case 'lunch':
+    case 'evening': {
+      const remaining = items.filter(isRemaining).length;
+      if (remaining === 0) {
+        return `${stats}. 다 끝냈다고 칭찬하는 톤으로 한 문장만.`;
+      }
+      return `${stats}. 아직 남은 거 있으니까 마저 하라고 챙기는 톤으로 한 문장만.`;
+    }
+    case 'night': {
+      const incomplete = items.filter((i) => isIncompleteForNight(i, today)).length;
+      if (incomplete === 0) {
+        return `${stats}. 오늘 다 끝냈다고 수고했다, 푹 쉬라는 톤으로 한 문장만.`;
+      }
+      return `${stats}. 남은 일정이 있어서 정리하거나 내일로 미루라고 챙기는 톤으로 한 문장만.`;
+    }
+  }
+};
+
+/** 시간대별 폴백 메시지 */
+const getFallbackGreeting = (
+  timeOfDay: TimeOfDay,
+  items: ScheduleItem[],
+  today: string,
+  todayFormatted: string,
+): string => {
+  if (items.length === 0) {
+    if (timeOfDay === 'night') {
+      return pickRandom(NO_SCHEDULE_NIGHT_MESSAGES);
+    }
+    return pickRandom(NO_SCHEDULE_MESSAGES).replace('{date}', todayFormatted);
+  }
+
+  switch (timeOfDay) {
+    case 'morning':
+      return pickRandom(GREETING_MESSAGES).replace('{date}', todayFormatted);
+    case 'lunch':
+    case 'evening':
+      return pickRandom(REMAINING_COMMENTS);
+    case 'night': {
+      const incomplete = items.filter((i) => isIncompleteForNight(i, today)).length;
+      return incomplete === 0
+        ? pickRandom(NIGHT_COMPLETE_MESSAGES)
+        : pickRandom(NIGHT_INCOMPLETE_MESSAGES);
+    }
+  }
+};
+
+/**
+ * LLM 기반 스케줄 인사 메시지 생성.
+ * LLM 실패 시 하드코딩 폴백 반환.
+ */
+export const generateScheduleGreeting = async (
+  llmClient: LLMClient,
+  timeOfDay: TimeOfDay,
+  items: ScheduleItem[],
+  today: string,
+  todayFormatted: string,
+): Promise<string> => {
+  const prompt = buildGreetingPrompt(timeOfDay, items, today, todayFormatted);
+  const fallback = getFallbackGreeting(timeOfDay, items, today, todayFormatted);
+  return generateGreeting(llmClient, prompt, fallback);
+};
+
+/** LLM 없을 때 인사 + 목록 결합 (기존 방식 유지) */
+export const buildReminderWithGreeting = (
+  greeting: string,
+  items: ScheduleItem[],
+): string => {
+  if (items.length === 0) return greeting;
+  const list = formatScheduleList(items);
+  return `${greeting}\n\n${list}`;
 };

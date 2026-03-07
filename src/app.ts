@@ -38,6 +38,7 @@ const startApp = async (): Promise<void> => {
   initCronJobs(app, notionClient, {
     dbId: CONFIG.notion.scheduleDbId,
     channelId: CONFIG.channels.schedule,
+    llmClient,
     schedules: CONFIG.cron,
   });
 
