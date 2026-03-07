@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { KnownEventFromType, SayFn } from '@slack/bolt';
 import type { LLMClient, LLMResponse } from '../../../shared/llm.js';
 import type { Client as NotionClient } from '@notionhq/client';
-import { createRoutineAgent } from '../index.js';
+import { createRoutineAgent, detectTomorrowRoutine } from '../index.js';
 
 vi.mock('../../../shared/mcp-client.js', () => ({
   getMCPTools: vi.fn(() => [
@@ -20,13 +20,17 @@ vi.mock('../../../shared/routine-notion.js', async (importOriginal) => {
   return {
     ...actual,
     queryTodayRoutineRecords: vi.fn(),
+    queryRoutineTemplates: vi.fn(async () => []),
+    queryLastRecordDate: vi.fn(async () => undefined),
   };
 });
 
-const { queryTodayRoutineRecords } = await import(
+const { queryTodayRoutineRecords, queryRoutineTemplates, queryLastRecordDate } = await import(
   '../../../shared/routine-notion.js'
 );
 const mockedQueryRecords = vi.mocked(queryTodayRoutineRecords);
+const mockedQueryTemplates = vi.mocked(queryRoutineTemplates);
+const mockedQueryLastDate = vi.mocked(queryLastRecordDate);
 
 const createMockMessage = (text: string): KnownEventFromType<'message'> =>
   ({
@@ -54,6 +58,24 @@ const createMockLLMClient = (
 };
 
 const mockNotionClient = {} as NotionClient;
+
+describe('detectTomorrowRoutine', () => {
+  it('내일 루틴 패턴을 감지한다', () => {
+    expect(detectTomorrowRoutine('내일 루틴')).toBe(true);
+    expect(detectTomorrowRoutine('내일 루틴 보여줘')).toBe(true);
+    expect(detectTomorrowRoutine('내일 루틴 뭐야')).toBe(true);
+  });
+
+  it('CRUD 키워드가 있으면 false를 반환한다', () => {
+    expect(detectTomorrowRoutine('내일 루틴 추가해줘')).toBe(false);
+    expect(detectTomorrowRoutine('내일 루틴 삭제해줘')).toBe(false);
+  });
+
+  it('내일 또는 루틴이 없으면 false를 반환한다', () => {
+    expect(detectTomorrowRoutine('루틴 보여줘')).toBe(false);
+    expect(detectTomorrowRoutine('내일 일정')).toBe(false);
+  });
+});
 
 describe('createRoutineAgent', () => {
   let mockSay: SayFn;
@@ -102,6 +124,42 @@ describe('createRoutineAgent', () => {
       await agent(createMockMessage('루틴'), mockSay);
 
       expect(mockSay).toHaveBeenCalledWith('오늘 루틴 전부 완료했어!');
+    });
+  });
+
+  describe('내일 루틴 미리보기', () => {
+    it('내일 루틴 조회 시 빈도 기반으로 템플릿을 필터링한다', async () => {
+      mockedQueryTemplates.mockResolvedValueOnce([
+        { id: 't1', title: '스트레칭', timeSlot: '아침', frequency: '매일' },
+        { id: 't2', title: '독서', timeSlot: '밤', frequency: '매일' },
+        { id: 't3', title: '헬스장', timeSlot: '저녁', frequency: '격일' },
+      ]);
+      // 헬스장(격일): 마지막 기록이 오늘 → 내일은 gap=1 → 실행 안 함
+      mockedQueryLastDate.mockResolvedValueOnce(new Date().toISOString().slice(0, 10));
+
+      const llmClient = createMockLLMClient([]);
+      const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
+      await agent(createMockMessage('내일 루틴 보여줘'), mockSay);
+
+      expect(llmClient.chat).not.toHaveBeenCalled();
+      const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(reply).toContain('내일');
+      expect(reply).toContain('스트레칭');
+      expect(reply).toContain('독서');
+      // 격일인데 오늘 했으면 내일은 안 나와야 함
+      expect(reply).not.toContain('헬스장');
+    });
+
+    it('내일 루틴이 없으면 없다는 메시지를 반환한다', async () => {
+      mockedQueryTemplates.mockResolvedValueOnce([]);
+
+      const llmClient = createMockLLMClient([]);
+      const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
+      await agent(createMockMessage('내일 루틴'), mockSay);
+
+      const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(reply).toContain('내일');
+      expect(reply).toContain('없어');
     });
   });
 

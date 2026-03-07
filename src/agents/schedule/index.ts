@@ -46,6 +46,7 @@ export const extractMutationDate = (text: string, todayISO: string): string | nu
   if (text.includes('백로그')) return null;
   if (text.includes('모레')) return addDays(todayISO, 2);
   if (text.includes('내일')) return addDays(todayISO, 1);
+  if (text.includes('어제')) return addDays(todayISO, -1);
   // "오늘" 명시 또는 날짜 키워드 없음 → 오늘 (대부분의 변경은 오늘 대상)
   if (text.includes('오늘')) return todayISO;
   // 복잡한 날짜 (이번주, 다음주, N월 N일 등) → 건너뜀
@@ -172,7 +173,7 @@ const COMPLEX_QUERY_KEYWORDS = ['이번주', '다음주', '언제', '지난주',
 /** 조회 빠른 경로 최대 길이 (간단 조회는 보통 ~15자 이내) */
 const QUERY_MAX_LENGTH = 20;
 
-type QueryTarget = 'today' | 'tomorrow' | 'dayAfter';
+type QueryTarget = 'yesterday' | 'today' | 'tomorrow' | 'dayAfter';
 
 /** 간단 조회 패턴 감지 → 대상 날짜 반환 (null이면 에이전트 루프) */
 export const detectSimpleQuery = (text: string): QueryTarget | null => {
@@ -183,7 +184,7 @@ export const detectSimpleQuery = (text: string): QueryTarget | null => {
   // 조회 의도 확인: (날짜 + 일정/조회 의도) 또는 (일정 + 조회 의도) 조합
   const hasScheduleWord = ['일정', '할일'].some((k) => text.includes(k));
   const hasQueryWord = ['보여', '알려', '조회', '목록', '있어', '있나', '뭐야', '뭘까', '뭐', '뭘'].some((k) => text.includes(k));
-  const hasDateWord = ['오늘', '내일', '모레'].some((k) => text.includes(k));
+  const hasDateWord = ['어제', '오늘', '내일', '모레'].some((k) => text.includes(k));
 
   const isQuery =
     (hasDateWord && (hasScheduleWord || hasQueryWord)) ||
@@ -193,6 +194,7 @@ export const detectSimpleQuery = (text: string): QueryTarget | null => {
 
   if (text.includes('모레')) return 'dayAfter';
   if (text.includes('내일')) return 'tomorrow';
+  if (text.includes('어제')) return 'yesterday';
   return 'today';
 };
 
@@ -219,6 +221,7 @@ const addDays = (dateStr: string, days: number): string => {
 /** 조회 대상에 따른 날짜 계산 */
 const getTargetDate = (target: QueryTarget, today: string): string => {
   switch (target) {
+    case 'yesterday': return addDays(today, -1);
     case 'today': return today;
     case 'tomorrow': return addDays(today, 1);
     case 'dayAfter': return addDays(today, 2);
@@ -238,7 +241,12 @@ const buildQueryResponse = (
     return buildReminderMessage(items, targetDate, formatted, false);
   }
 
-  const label = target === 'tomorrow' ? '내일' : '모레';
+  const dateLabels: Record<Exclude<QueryTarget, 'today'>, string> = {
+    yesterday: '어제',
+    tomorrow: '내일',
+    dayAfter: '모레',
+  };
+  const label = dateLabels[target];
 
   if (items.length === 0) {
     return `${label} ${formatted}은 일정 없어.`;

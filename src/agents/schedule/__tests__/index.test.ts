@@ -67,6 +67,12 @@ describe('detectSimpleQuery', () => {
     expect(detectSimpleQuery('일정 알려줘')).toBe('today');
   });
 
+  it('어제 일정 조회 패턴을 감지한다', () => {
+    expect(detectSimpleQuery('어제 일정')).toBe('yesterday');
+    expect(detectSimpleQuery('어제 뭐 있었어')).toBe('yesterday');
+    expect(detectSimpleQuery('어제 일정 보여줘')).toBe('yesterday');
+  });
+
   it('내일/모레 패턴을 감지한다', () => {
     expect(detectSimpleQuery('내일 일정')).toBe('tomorrow');
     expect(detectSimpleQuery('내일 뭐 있어')).toBe('tomorrow');
@@ -118,7 +124,8 @@ describe('detectBacklogQuery', () => {
 describe('extractMutationDate', () => {
   const TODAY = '2026-03-07';
 
-  it('오늘/내일/모레 키워드를 인식한다', () => {
+  it('어제/오늘/내일/모레 키워드를 인식한다', () => {
+    expect(extractMutationDate('어제 미팅 완료', TODAY)).toBe('2026-03-06');
     expect(extractMutationDate('오늘 미팅 추가', TODAY)).toBe('2026-03-07');
     expect(extractMutationDate('내일 보고서 추가', TODAY)).toBe('2026-03-08');
     expect(extractMutationDate('모레 약속 추가', TODAY)).toBe('2026-03-09');
