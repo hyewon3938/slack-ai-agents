@@ -86,6 +86,12 @@ describe('detectChecklistTarget', () => {
     expect(detectChecklistTarget('오늘 루틴에서 환기시키기 꺼줘')).toBeNull();
     expect(detectChecklistTarget('저녁 루틴 끄고 싶어')).toBeNull();
   });
+
+  it('인사/잡담 표현이 포함되면 null을 반환한다', () => {
+    expect(detectChecklistTarget('안녕 루틴 잔소리꾼')).toBeNull();
+    expect(detectChecklistTarget('루틴 고마워')).toBeNull();
+    expect(detectChecklistTarget('루틴 화이팅')).toBeNull();
+  });
 });
 
 describe('detectTomorrowRoutine', () => {
