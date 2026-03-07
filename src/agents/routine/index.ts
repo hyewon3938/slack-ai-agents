@@ -81,6 +81,64 @@ export const detectChecklistTarget = (text: string): ChecklistTarget | null => {
   return null;
 };
 
+/** 달성률/통계 조회 패턴 감지 (오늘 기준, 날짜 키워드 있으면 LLM으로) */
+export const detectAnalyticsQuery = (text: string): boolean => {
+  if (CRUD_KEYWORDS.some((k) => text.includes(k))) return false;
+  if (DATE_KEYWORDS.some((k) => text.includes(k))) return false;
+  return ANALYTICS_KEYWORDS.some((k) => text.includes(k));
+};
+
+/** 오늘 루틴 달성률을 계산하여 전송 */
+const sendAchievementRate = async (
+  notionClient: NotionClient,
+  dbId: string,
+  say: Parameters<AgentHandler>[1],
+): Promise<void> => {
+  const today = getTodayISO();
+  const records = await queryTodayRoutineRecords(notionClient, dbId, today);
+
+  if (records.length === 0) {
+    await sendMessage(say, '오늘 루틴 기록이 없어. 아침 알림에서 자동으로 생성돼.');
+    return;
+  }
+
+  const total = records.length;
+  const completed = records.filter((r) => r.completed).length;
+  const rate = Math.round((completed / total) * 100);
+
+  // 시간대별 통계
+  const slotStats = new Map<string, { total: number; done: number }>();
+  for (const r of records) {
+    const stat = slotStats.get(r.timeSlot) ?? { total: 0, done: 0 };
+    stat.total++;
+    if (r.completed) stat.done++;
+    slotStats.set(r.timeSlot, stat);
+  }
+
+  let result = '오늘 루틴 진행 상황이야.\n';
+  for (const slot of TIME_SLOTS) {
+    const stat = slotStats.get(slot);
+    if (stat) {
+      const slotRate = Math.round((stat.done / stat.total) * 100);
+      result += `\n*${slot}* ${stat.done}/${stat.total} (${slotRate}%)`;
+    }
+  }
+
+  result += `\n\n전체 ${completed}/${total} (${rate}%)`;
+
+  if (rate === 100) {
+    result += '\n오늘 전부 다 했네, 대단해.';
+  } else if (rate >= 70) {
+    result += '\n잘하고 있어, 조금만 더 하자.';
+  } else if (rate >= 40) {
+    result += '\n반 정도 했네, 좀 더 힘내.';
+  } else {
+    result += '\n아직 많이 남았어, 얼른 시작하자.';
+  }
+
+  await sendMessage(say, result.trim());
+};
+
 /** "내일 루틴" 미리보기 패턴 감지 */
 export const detectTomorrowRoutine = (text: string): boolean => {
   if (!text.includes('내일')) return false;
@@ -220,7 +278,16 @@ export const createRoutineAgent = (
         return;
       }
 
-      // 4. LLM 에이전트 경로: 잡담 / 액션 / 혼합 모두 LLM이 자율 판단
+      // 4. 달성률/통계 빠른 경로: "잘하고 있어?", "달성률", "얼마나 했어" → SDK 직접 계산
+      if (detectAnalyticsQuery(text)) {
+        // eslint-disable-next-line no-console
+        console.log(`[Routine Agent] 달성률 조회`);
+        await sendAchievementRate(notionClient, dbId, say);
+        history.add(channelId, text, '[오늘 루틴 달성률 표시]');
+        return;
+      }
+
+      // 5. LLM 에이전트 경로: 잡담 / 액션 / 혼합 모두 LLM이 자율 판단
       // eslint-disable-next-line no-console
       console.log(`[Routine Agent] 메시지 수신`);
 

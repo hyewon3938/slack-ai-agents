@@ -30,8 +30,8 @@ const baseConfig: AgentLoopConfig = {
 };
 
 describe('ACK_DELAY_MS', () => {
-  it('기본값은 800ms이다', () => {
-    expect(ACK_DELAY_MS).toBe(800);
+  it('기본값은 1500ms이다', () => {
+    expect(ACK_DELAY_MS).toBe(1_500);
   });
 });
 

@@ -46,7 +46,7 @@ export const getAckMessage = (): string =>
 // ---- 지연 ack ----
 
 /** ack 전송 지연 시간 (ms). 이 시간 내에 LLM 응답이 오면 ack 생략 */
-export const ACK_DELAY_MS = 800;
+export const ACK_DELAY_MS = 1_500;
 
 /**
  * 에이전트 루프를 실행하되, delayMs 이내에 완료되면 ack를 생략한다.
