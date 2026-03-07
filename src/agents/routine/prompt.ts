@@ -19,7 +19,7 @@ export const getTodayString = (): string => {
   return `${yyyy}-${mm}-${dd} (${day})`;
 };
 
-export const buildRoutinePrompt = (dbId: string, today: string): string => {
+export const buildRoutinePrompt = (dbId: string, today: string, sleepDbId?: string): string => {
   const uuid = toUUID(dbId);
 
   return `너는 '잔소리꾼'이라는 이름의 루틴 관리 친구야. 반말로 대화해.
@@ -137,5 +137,25 @@ ${CHARACTER_PROMPT}
 ## 도구 지침
 - DB ID는 항상 ${uuid} 사용.
 - API-query-data-source는 사용하지 마.
-- 도구 호출은 최소한으로. 추가 요청 시 검색 없이 바로 생성해도 돼.`;
+- 도구 호출은 최소한으로. 추가 요청 시 검색 없이 바로 생성해도 돼.${sleepDbId ? buildSleepPromptSection(sleepDbId, today) : ''}`;
+};
+
+const buildSleepPromptSection = (sleepDbId: string, today: string): string => {
+  const sleepUuid = toUUID(sleepDbId);
+  return `
+
+## 수면 기록 DB
+- DB ID: ${sleepUuid}
+- Name (title): 자동 라벨 (예: "3/7 수면")
+- Date (date): 기준 날짜 ("밤의 날짜". 어제 밤 자서 오늘 일어남 → Date=어제)
+- 취침 (rich_text): 취침 시각 (HH:MM 24시간제, 예: "23:30")
+- 기상 (rich_text): 기상 시각 (HH:MM 24시간제, 예: "07:00")
+- 수면시간 (number): 수면 시간 (분 단위, 예: 450)
+- 메모 (rich_text): 선택 메모
+
+## 수면 관련 규칙
+- 수면 기록 시: 취침/기상 시각과 수면 시간을 짧게 확인해줘. 예: "기록했어. 23:30~07:00, 7시간 30분 잤네."
+- 수면 기록 DB ID는 ${sleepUuid} 사용.
+- Date 기준: 아침에 기록하면 Date=어제 (${today.split(' ')[0]}의 어제). 유저가 말하는 "어제"가 곧 Date.
+- 수면 통계 질문 시: 평균 수면시간, 평균 취침/기상 시각, 기간별 기록을 보여줘.`;
 };
