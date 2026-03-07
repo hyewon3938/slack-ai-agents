@@ -45,6 +45,14 @@ export const getAckMessage = (): string =>
 
 // ---- 에이전트 루프 ----
 
+/** 에이전트 루프 결과 */
+export interface AgentLoopResult {
+  /** 최종 응답 텍스트 */
+  text: string;
+  /** 루프 중 호출된 MCP 도구 이름 목록 (중복 포함) */
+  toolNames: string[];
+}
+
 /** 에이전트 루프 설정 */
 export interface AgentLoopConfig {
   /** 로그 라벨 (예: 'Schedule Agent') */
@@ -97,7 +105,7 @@ export const runAgentLoop = async (
   llmClient: LLMClient,
   userText: string,
   config: AgentLoopConfig,
-): Promise<string> => {
+): Promise<AgentLoopResult> => {
   const { label, buildSystemPrompt, getTools } = config;
 
   const systemPrompt = buildSystemPrompt();
@@ -108,6 +116,7 @@ export const runAgentLoop = async (
     { role: 'user', content: userText },
   ];
 
+  const calledToolNames: string[] = [];
   let retryCount = 0;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -149,21 +158,22 @@ export const runAgentLoop = async (
       }
 
       if (isRateLimit) {
-        return 'API 호출 한도를 초과했어. 잠시 후에 다시 말해줘.';
+        return { text: 'API 호출 한도를 초과했어. 잠시 후에 다시 말해줘.', toolNames: calledToolNames };
       }
 
-      return '일시적인 오류가 발생했어. 다시 한번 말해줘.';
+      return { text: '일시적인 오류가 발생했어. 다시 한번 말해줘.', toolNames: calledToolNames };
     }
 
     // eslint-disable-next-line no-console
     console.log(`[${label}] finishReason: ${response.finishReason}, toolCalls: ${response.toolCalls.length}`);
 
     if (response.finishReason === 'stop') {
-      return response.text ?? '처리했어.';
+      return { text: response.text ?? '처리했어.', toolNames: calledToolNames };
     }
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
       retryCount = 0;
+      calledToolNames.push(...response.toolCalls.map((tc) => tc.name));
       messages.push({
         role: 'assistant',
         content: response.text ?? '',
@@ -184,14 +194,14 @@ export const runAgentLoop = async (
     }
 
     if (response.finishReason === 'error') {
-      return '도구 호출에 문제가 생겼어. 다시 한번 말해줘.';
+      return { text: '도구 호출에 문제가 생겼어. 다시 한번 말해줘.', toolNames: calledToolNames };
     }
 
     // length 등 예상치 못한 종료
     // eslint-disable-next-line no-console
     console.log(`[${label}] 예상치 못한 종료 — finishReason: ${response.finishReason}, text: ${response.text?.slice(0, 200) ?? 'null'}`);
-    return response.text ?? '처리 중 문제가 생겼어. 다시 말해줘.';
+    return { text: response.text ?? '처리 중 문제가 생겼어. 다시 말해줘.', toolNames: calledToolNames };
   }
 
-  return '요청이 너무 복잡해. 좀 더 간단하게 말해줘.';
+  return { text: '요청이 너무 복잡해. 좀 더 간단하게 말해줘.', toolNames: calledToolNames };
 };

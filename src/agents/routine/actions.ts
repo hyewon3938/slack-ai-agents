@@ -5,7 +5,7 @@ import {
   queryTodayRoutineRecords,
 } from '../../shared/routine-notion.js';
 import { updateMessage } from '../../shared/slack.js';
-import { buildRoutineBlocks } from './blocks.js';
+import { buildRoutineBlocks, buildFilteredRoutineBlocks, parseButtonValue } from './blocks.js';
 
 const ACTION_ID = 'routine_complete';
 
@@ -31,15 +31,21 @@ export const registerRoutineActions = (
     const action = 'actions' in body ? body.actions[0] : undefined;
     if (!action || !('value' in action)) return;
 
-    const pageId = action.value;
-    if (!pageId) return;
+    const rawValue = action.value;
+    if (!rawValue) return;
+
+    const { pageId, filter } = parseButtonValue(rawValue);
 
     try {
       await completeRoutineRecord(notionClient, pageId);
 
       const today = getTodayISO();
       const records = await queryTodayRoutineRecords(notionClient, dbId, today);
-      const { text, blocks } = buildRoutineBlocks(records, today);
+
+      // 필터 컨텍스트가 있으면 같은 시간대 필터로 재빌드 (크론 알림 유지)
+      const { text, blocks } = filter
+        ? buildFilteredRoutineBlocks(records, today, filter.targetSlots, filter.incompleteFrom)
+        : buildRoutineBlocks(records, today);
 
       const channelId =
         'channel' in body && body.channel ? body.channel.id : undefined;

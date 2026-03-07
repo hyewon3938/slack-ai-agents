@@ -123,10 +123,13 @@ export const classifyMessage = async (
   // casualOverrides만 매칭 + actionKeyword 없음 → 즉시 casual
   if (hasCasualOverride && !hasActionKeyword) return { intent: 'casual' };
 
-  // 액션 키워드 없음 → 즉시 casual (응답은 별도 생성 필요)
+  // actionKeyword만 매칭 + casualOverride 없음 → 즉시 action (에이전트 루프가 더 정확)
+  if (hasActionKeyword && !hasCasualOverride) return { intent: 'action' };
+
+  // 둘 다 없음 → 즉시 casual (짧은 메시지 + 키워드 미매칭 = 잡담)
   if (!hasActionKeyword) return { intent: 'casual' };
 
-  // 액션 키워드 있음 (casualOverrides 동시 매칭 포함) → LLM 분류 + casual 응답 (1회)
+  // 둘 다 매칭 → LLM 분류 (진짜 애매한 경우만)
   return classifyIntent(llmClient, text, agentContext, role);
 };
 
