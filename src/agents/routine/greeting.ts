@@ -1,14 +1,11 @@
 import type { LLMClient, LLMMessage } from '../../shared/llm.js';
 import type { RoutineRecord } from '../../shared/routine-notion.js';
+import { GREETING_SYSTEM_PROMPT } from '../../shared/personality.js';
+import { withTimeout } from '../../shared/agent-loop.js';
 
 const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
 
-const GREETING_SYSTEM = `너는 '잔소리꾼' 루틴 봇이야. 반말 써.
-성격: 걱정 많고 잔소리 좀 하지만 진심으로 챙겨주는 친구.
-어미: ~자, ~써, ~해, ~어. 훈장님처럼 ~거라 금지.
-이모지/존댓말 금지. 한두 문장으로 짧게.`;
-
-const LLM_TIMEOUT_MS = 15_000;
+const GREETING_LLM_TIMEOUT_MS = 15_000;
 
 interface SlotStat {
   slot: string;
@@ -44,16 +41,15 @@ const callLLM = async (
   prompt: string,
 ): Promise<string | null> => {
   const messages: LLMMessage[] = [
-    { role: 'system', content: GREETING_SYSTEM },
+    { role: 'system', content: GREETING_SYSTEM_PROMPT },
     { role: 'user', content: prompt },
   ];
 
-  const response = await Promise.race([
+  const response = await withTimeout(
     llmClient.chat(messages),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('greeting LLM timeout')), LLM_TIMEOUT_MS),
-    ),
-  ]);
+    GREETING_LLM_TIMEOUT_MS,
+    '인사 LLM',
+  );
 
   return response.text;
 };

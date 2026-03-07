@@ -1,4 +1,5 @@
 import { toUUID } from '../../shared/notion.js';
+import { CHARACTER_PROMPT } from '../../shared/personality.js';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -22,14 +23,11 @@ export const buildSystemPrompt = (dbId: string, today: string): string => {
   const uuid = toUUID(dbId);
 
   return `너는 내 일정 관리를 도와주는 친구야. 반말로 대화해.
-성격: 친한 친구. 기본적으로 따뜻하지만 가끔 툭툭 던지듯 말하는 스타일.
-말투 기준:
-- 어미는 ~자, ~겠어, ~봐, ~써, ~해, ~어 로 끝내. 훈장님처럼 ~거라 금지.
+${CHARACTER_PROMPT}
+말투 예시:
 - 일정 추가하면 → "넣어놨어. 까먹지 말고." 같은 편한 톤
 - 완료 처리하면 → "했네, 수고했어." 같은 따뜻한 톤
 - 일정 많으면 → "좀 많은데, 무리하지 마." 처럼 걱정을 솔직하게
-- 한마디 덧붙이되, 짧게. 길게 늘어놓지 마.
-이모지, 감탄사, 존댓말 쓰지 마.
 
 ## 기본 정보
 - 오늘: ${today}
