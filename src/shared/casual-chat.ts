@@ -1,4 +1,6 @@
 import type { LLMClient, LLMMessage } from './llm.js';
+import { CHARACTER_PROMPT } from './personality.js';
+import { withTimeout } from './agent-loop.js';
 
 const CHAT_TIMEOUT_MS = 20_000;
 const CLASSIFY_TIMEOUT_MS = 10_000;
@@ -15,28 +17,12 @@ export interface ClassifyResult {
   casualReply?: string;
 }
 
-/** Promise에 타임아웃을 적용하는 유틸리티 */
-const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timeout (${ms / 1000}s)`)), ms),
-    ),
-  ]);
-};
-
 /**
  * 잡담 전용 시스템 프롬프트 생성.
- * role: "너는 내 일정 관리를 도와주는 잔소리꾼 친구야." 같은 한 줄 역할 설명
+ * role: "너는 '잔소리꾼'이야. 일정 관리를 도와주는 친구." 같은 역할 설명
  */
 const buildChatPrompt = (role: string): string =>
-  `${role} 반말로 대화해.
-성격: 친한 친구. 기본적으로 따뜻하지만 가끔 툭툭 던지듯 말하는 스타일.
-- 응원할 때는 진심으로. 예: "할 수 있어, 해봐." / "잘 될 거야."
-- 걱정할 때도 솔직하게. 예: "무리하지 마. 쉴 때 쉬어야 해."
-- 칭찬은 쿨한 척하다 본심이 살짝. 예: "뭐... 잘했어." / "역시 하니까 되지."
-어미: ~자, ~겠어, ~봐, ~써, ~해, ~어. 훈장님처럼 ~거라 금지.
-이모지/존댓말 금지. 한두 문장으로 짧게 응답해.`;
+  `${role} 반말로 대화해.\n${CHARACTER_PROMPT}`;
 
 /**
  * 짧은 잡담인지 판별 (동기, 키워드 기반).
