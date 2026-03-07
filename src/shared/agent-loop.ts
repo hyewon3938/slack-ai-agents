@@ -43,6 +43,38 @@ export const parseRetryDelay = (errorMsg: string, defaultMs: number): number => 
 export const getAckMessage = (): string =>
   ACK_MESSAGES[Math.floor(Math.random() * ACK_MESSAGES.length)];
 
+// ---- 지연 ack ----
+
+/** ack 전송 지연 시간 (ms). 이 시간 내에 LLM 응답이 오면 ack 생략 */
+export const ACK_DELAY_MS = 800;
+
+/**
+ * 에이전트 루프를 실행하되, delayMs 이내에 완료되면 ack를 생략한다.
+ * 잡담 등 빠른 응답에서 불필요한 "잠깐만" 메시지를 없앤다.
+ */
+export const runAgentLoopWithAck = async (
+  llmClient: LLMClient,
+  userText: string,
+  config: AgentLoopConfig,
+  sendAck: () => Promise<unknown>,
+  delayMs = ACK_DELAY_MS,
+): Promise<AgentLoopResult> => {
+  const loopPromise = runAgentLoop(llmClient, userText, config);
+
+  let ackPromise: Promise<unknown> | undefined;
+  const timer = setTimeout(() => {
+    ackPromise = sendAck();
+  }, delayMs);
+
+  const result = await loopPromise;
+  clearTimeout(timer);
+
+  // ack가 전송 중이면 완료 대기 (메시지 순서 보장)
+  if (ackPromise) await ackPromise;
+
+  return result;
+};
+
 // ---- 에이전트 루프 ----
 
 /** 에이전트 루프 결과 */

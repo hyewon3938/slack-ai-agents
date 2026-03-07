@@ -213,8 +213,8 @@ describe('createRoutineAgent', () => {
       expect(llmClient.chat).toHaveBeenCalledTimes(1);
       const callArgs = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs).toHaveLength(2); // messages + tools
-      // ack + 응답 = 2번 say 호출
-      expect(mockSay).toHaveBeenCalledTimes(2);
+      // 지연 ack: mock 즉시 반환 → 800ms 이내 → ack 생략, 응답만 1번
+      expect(mockSay).toHaveBeenCalledTimes(1);
       expect(mockSay).toHaveBeenCalledWith('응, 힘내.');
     });
   });

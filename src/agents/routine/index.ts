@@ -2,7 +2,7 @@ import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
 import type { Client as NotionClient } from '@notionhq/client';
 import type { RoutineTemplate } from '../../shared/routine-notion.js';
-import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
+import { runAgentLoopWithAck, getAckMessage } from '../../shared/agent-loop.js';
 import { sendMessage } from '../../shared/slack.js';
 import {
   queryTodayRoutineRecords,
@@ -223,13 +223,12 @@ export const createRoutineAgent = (
       // 4. LLM 에이전트 경로: 잡담 / 액션 / 혼합 모두 LLM이 자율 판단
       // eslint-disable-next-line no-console
       console.log(`[Routine Agent] 메시지 수신`);
-      await sendMessage(say, getAckMessage());
 
-      const loopResult = await runAgentLoop(llmClient, text, {
-        label: 'Routine Agent',
-        buildSystemPrompt: () => buildRoutinePrompt(dbId, getTodayString()) + ctx,
-        getTools: getRoutineTools,
-      });
+      const loopResult = await runAgentLoopWithAck(
+        llmClient, text,
+        { label: 'Routine Agent', buildSystemPrompt: () => buildRoutinePrompt(dbId, getTodayString()) + ctx, getTools: getRoutineTools },
+        () => sendMessage(say, getAckMessage()),
+      );
       await sendMessage(say, loopResult.text);
       history.add(channelId, text, loopResult.text);
     } catch (error: unknown) {
