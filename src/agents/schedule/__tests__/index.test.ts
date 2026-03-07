@@ -289,6 +289,35 @@ describe('createScheduleAgent', () => {
     mockSay = vi.fn() as unknown as SayFn;
   });
 
+  // --- "체크" 단축어 (Block Kit + overflow) ---
+
+  it('"체크" 입력 시 Block Kit으로 오늘 일정을 반환한다', async () => {
+    const mockItems: ScheduleItem[] = [
+      { id: 'p1', title: '미팅', date: { start: '2026-03-07', end: null }, status: 'todo', category: [], hasStarIcon: false },
+    ];
+    mockedQuerySchedules.mockResolvedValueOnce(mockItems);
+
+    const llmClient = createMockLLMClient([]);
+    const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
+    await agent(createMockMessage('체크'), mockSay);
+
+    expect(llmClient.chat).not.toHaveBeenCalled();
+    expect(mockSay).toHaveBeenCalledWith(
+      expect.objectContaining({ blocks: expect.any(Array) }),
+    );
+  });
+
+  it('"체크" 입력 시 일정이 없으면 텍스트 메시지를 반환한다', async () => {
+    mockedQuerySchedules.mockResolvedValueOnce([]);
+
+    const llmClient = createMockLLMClient([]);
+    const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
+    await agent(createMockMessage('체크'), mockSay);
+
+    const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(reply).toContain('없어');
+  });
+
   // --- 조회 빠른 경로 ---
 
   it('오늘 일정 조회 시 SDK 직접 호출로 빠르게 응답한다', async () => {
