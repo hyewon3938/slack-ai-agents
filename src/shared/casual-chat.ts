@@ -26,7 +26,8 @@ const buildChatPrompt = (role: string): string =>
 
 /**
  * 짧은 잡담인지 판별 (동기, 키워드 기반).
- * casualOverrides에 포함된 표현이 있으면 키워드 무관하게 잡담으로 처리.
+ * casualOverrides와 actionKeywords 둘 다 매칭되면 → false (LLM 판별 필요).
+ * casualOverrides만 매칭 → true (잡담).
  */
 export const isCasualChat = (
   text: string,
@@ -35,8 +36,12 @@ export const isCasualChat = (
   casualOverrides?: string[],
 ): boolean => {
   if (text.length > maxLength) return false;
-  if (casualOverrides?.some((p) => text.includes(p))) return true;
-  return !actionKeywords.some((k) => text.includes(k));
+  const hasActionKeyword = actionKeywords.some((k) => text.includes(k));
+  const hasCasualOverride = casualOverrides?.some((p) => text.includes(p)) ?? false;
+  // casualOverride만 있고 actionKeyword 없음 → 잡담
+  if (hasCasualOverride && !hasActionKeyword) return true;
+  // actionKeyword 없음 → 잡담
+  return !hasActionKeyword;
 };
 
 /**
@@ -94,9 +99,9 @@ ${buildChatPrompt(role)}`,
 /**
  * 하이브리드 의도 분류: 키워드 → LLM 2단계.
  *
- * 1단계 (0ms): casualOverrides 매칭 → 즉시 casual (응답 미포함)
+ * 1단계 (0ms): casualOverrides만 매칭 (actionKeyword 없음) → 즉시 casual
  * 2단계 (0ms): 액션 키워드 없음 → 즉시 casual (응답 미포함)
- * 3단계 (~0.5s): 액션 키워드 있지만 애매 → LLM 분류 + 응답 (1회 호출)
+ * 3단계 (~0.5s): 액션 키워드 있음 (casualOverrides 동시 매칭 포함) → LLM 분류 + 응답
  *
  * maxLength 초과 → 즉시 action (긴 메시지는 잡담 아님)
  */
@@ -112,13 +117,16 @@ export const classifyMessage = async (
   // 긴 메시지 → action
   if (text.length > maxLength) return { intent: 'action' };
 
-  // casualOverrides 매칭 → 즉시 casual (응답은 별도 생성 필요)
-  if (casualOverrides?.some((p) => text.includes(p))) return { intent: 'casual' };
+  const hasActionKeyword = actionKeywords.some((k) => text.includes(k));
+  const hasCasualOverride = casualOverrides?.some((p) => text.includes(p)) ?? false;
+
+  // casualOverrides만 매칭 + actionKeyword 없음 → 즉시 casual
+  if (hasCasualOverride && !hasActionKeyword) return { intent: 'casual' };
 
   // 액션 키워드 없음 → 즉시 casual (응답은 별도 생성 필요)
-  if (!actionKeywords.some((k) => text.includes(k))) return { intent: 'casual' };
+  if (!hasActionKeyword) return { intent: 'casual' };
 
-  // 액션 키워드 있지만 애매한 경우 → LLM 분류 + casual 응답 (1회)
+  // 액션 키워드 있음 (casualOverrides 동시 매칭 포함) → LLM 분류 + casual 응답 (1회)
   return classifyIntent(llmClient, text, agentContext, role);
 };
 
