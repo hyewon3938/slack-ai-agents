@@ -198,6 +198,24 @@ describe('createRoutineAgent', () => {
     });
   });
 
+  describe('잡담 감지', () => {
+    it('다짐/결의 표현은 잡담으로 분류한다', async () => {
+      const llmClient = createMockLLMClient([
+        // casualOverride('거야') + actionKeyword('루틴') 둘 다 매칭 → LLM 분류
+        { text: '그래, 오늘 루틴 다 해치우자!', toolCalls: [], finishReason: 'stop' },
+      ]);
+
+      const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
+      await agent(createMockMessage('오늘 루틴 다 해치울 거야'), mockSay);
+
+      // LLM 분류 1회 (classifyIntent) — 에이전트 루프가 아님
+      expect(llmClient.chat).toHaveBeenCalledTimes(1);
+      const callArgs = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(callArgs).toHaveLength(1); // messages만, tools 없음
+      expect(mockSay).toHaveBeenCalledWith('그래, 오늘 루틴 다 해치우자!');
+    });
+  });
+
   describe('LLM 에이전트 경로', () => {
     it('자연어 요청은 LLM 에이전트 루프를 실행한다', async () => {
       const llmClient = createMockLLMClient([

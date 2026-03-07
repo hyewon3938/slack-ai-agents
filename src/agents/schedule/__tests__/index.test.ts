@@ -544,6 +544,23 @@ describe('createScheduleAgent', () => {
     expect(mockSay).toHaveBeenCalledWith('수고했어.');
   });
 
+  it('다짐/결의 표현은 잡담으로 분류한다', async () => {
+    const llmClient = createMockLLMClient([
+      // casualOverride('거야') + actionKeyword('완료','오늘') 둘 다 매칭 → LLM 분류
+      { text: '좋아, 화이팅!', toolCalls: [], finishReason: 'stop' },
+    ]);
+
+    const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
+    await agent(createMockMessage('오늘 전부 완료하고 잘거야!'), mockSay);
+
+    // LLM 분류 1회 (classifyIntent) — 에이전트 루프가 아님
+    expect(llmClient.chat).toHaveBeenCalledTimes(1);
+    const callArgs = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[0];
+    // classifyIntent는 messages만 전달 (tools 없음)
+    expect(callArgs).toHaveLength(1);
+    expect(mockSay).toHaveBeenCalledWith('좋아, 화이팅!');
+  });
+
   it('액션 키워드 있는 잡담은 LLM 1회로 분류+응답한다', async () => {
     const llmClient = createMockLLMClient([
       { text: '그래, 해봐.', toolCalls: [], finishReason: 'stop' },
