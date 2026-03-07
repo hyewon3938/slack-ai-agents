@@ -184,6 +184,23 @@ export const queryBacklogItems = async (
   return allPages.map(parsePageToScheduleItem);
 };
 
+/** Notion 페이지 속성 업데이트 (SDK v5 request 직접 호출) */
+export const updatePageProperties = async (
+  client: NotionClient,
+  pageId: string,
+  properties: Record<string, unknown>,
+): Promise<void> => {
+  await (client.request as (args: {
+    path: string;
+    method: string;
+    body?: Record<string, unknown>;
+  }) => Promise<unknown>)({
+    path: `pages/${pageId}`,
+    method: 'patch',
+    body: { properties },
+  });
+};
+
 export const toUUID = (id: string): string => {
   const hex = id.replace(/-/g, '');
   if (hex.length !== 32) return id;

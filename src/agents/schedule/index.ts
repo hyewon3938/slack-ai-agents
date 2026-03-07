@@ -4,12 +4,13 @@ import type { NotionClient } from '../../shared/notion.js';
 import { classifyMessage, respondCasualChat } from '../../shared/casual-chat.js';
 import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
 import type { AgentLoopResult } from '../../shared/agent-loop.js';
-import { sendMessage } from '../../shared/slack.js';
+import { sendMessage, sendBlockMessage } from '../../shared/slack.js';
 import { getAgentRole, getAgentContext } from '../../shared/personality.js';
 import { queryTodaySchedules, queryBacklogItems } from '../../shared/notion.js';
 import { buildReminderMessage, formatDateShort, formatScheduleList } from '../../cron/schedule-reminder.js';
 import { buildSystemPrompt, getTodayString } from './prompt.js';
 import { getScheduleTools } from './tools.js';
+import { buildScheduleBlocks } from './blocks.js';
 
 const CASUAL_CHAT_MAX_LENGTH = 80;
 const ACTION_KEYWORDS = [
@@ -51,23 +52,6 @@ export const extractMutationDate = (text: string, todayISO: string): string | nu
   if (hasComplexDate) return null;
   // 날짜 키워드 없음 → 기본 오늘
   return todayISO;
-};
-
-/** 변경 후 해당 날짜 일정 목록을 생성 (없으면 null) */
-const buildPostMutationList = async (
-  notionClient: NotionClient,
-  dbId: string,
-  targetDate: string,
-): Promise<string | null> => {
-  try {
-    const items = await queryTodaySchedules(notionClient, dbId, targetDate);
-    if (items.length === 0) return null;
-    const formatted = formatDateShort(targetDate);
-    return `\n\n${formatted} 일정이야.\n\n${formatScheduleList(items)}`;
-  } catch (error: unknown) {
-    console.error('[Schedule Agent] post-mutation 조회 오류:', error instanceof Error ? error.message : error);
-    return null;
-  }
 };
 
 // --- 조회 빠른 경로 ---
@@ -231,8 +215,13 @@ export const createScheduleAgent = (
         const today = getTodayISO();
         const targetDate = getTargetDate(queryTarget, today);
         const items = await queryTodaySchedules(notionClient, dbId, targetDate);
-        const reply = buildQueryResponse(queryTarget, targetDate, items);
-        await sendMessage(say, reply);
+        if (items.length === 0) {
+          const reply = buildQueryResponse(queryTarget, targetDate, items);
+          await sendMessage(say, reply);
+        } else {
+          const { text: fallback, blocks } = buildScheduleBlocks(items, targetDate);
+          await sendBlockMessage(say, fallback, blocks);
+        }
         return;
       }
 
@@ -257,17 +246,24 @@ export const createScheduleAgent = (
         getTools: getScheduleTools,
       });
 
-      // 변경 작업이면 해당 날짜 일정 목록을 코드 레벨로 추가 (LLM 라운드 절약)
-      let reply = loopResult.text;
+      // 변경 작업이면 해당 날짜 일정 목록을 Block Kit으로 별도 전송
+      const reply = loopResult.text;
       if (hasMutation(loopResult)) {
         const today = getTodayISO();
         const targetDate = extractMutationDate(text, today);
         if (targetDate) {
           // eslint-disable-next-line no-console
           console.log(`[Schedule Agent] post-mutation 조회: ${targetDate}`);
-          const postList = await buildPostMutationList(notionClient, dbId, targetDate);
-          if (postList) {
-            reply += postList;
+          try {
+            const items = await queryTodaySchedules(notionClient, dbId, targetDate);
+            if (items.length > 0) {
+              await sendMessage(say, reply);
+              const { text: fallback, blocks } = buildScheduleBlocks(items, targetDate);
+              await sendBlockMessage(say, fallback, blocks);
+              return;
+            }
+          } catch (error: unknown) {
+            console.error('[Schedule Agent] post-mutation 조회 오류:', error instanceof Error ? error.message : error);
           }
         }
       }
