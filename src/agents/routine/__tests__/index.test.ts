@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { KnownEventFromType, SayFn } from '@slack/bolt';
 import type { LLMClient, LLMResponse } from '../../../shared/llm.js';
 import type { Client as NotionClient } from '@notionhq/client';
-import { createRoutineAgent, detectTomorrowRoutine } from '../index.js';
+import { createRoutineAgent, detectTomorrowRoutine, detectChecklistTarget } from '../index.js';
 
 vi.mock('../../../shared/mcp-client.js', () => ({
   getMCPTools: vi.fn(() => [
@@ -58,6 +58,35 @@ const createMockLLMClient = (
 };
 
 const mockNotionClient = {} as NotionClient;
+
+describe('detectChecklistTarget', () => {
+  it('정확 매칭은 all을 반환한다', () => {
+    expect(detectChecklistTarget('루틴')).toBe('all');
+    expect(detectChecklistTarget('체크')).toBe('all');
+  });
+
+  it('시간대 포함 시 해당 시간대를 반환한다', () => {
+    expect(detectChecklistTarget('아침 루틴')).toBe('아침');
+    expect(detectChecklistTarget('저녁 루틴 보여줘')).toBe('저녁');
+  });
+
+  it('CRUD 키워드가 있으면 null을 반환한다', () => {
+    expect(detectChecklistTarget('루틴 추가해줘')).toBeNull();
+    expect(detectChecklistTarget('루틴 삭제해줘')).toBeNull();
+    expect(detectChecklistTarget('루틴 꺼줘')).toBeNull();
+    expect(detectChecklistTarget('루틴 켜줘')).toBeNull();
+  });
+
+  it('날짜 키워드가 있으면 null을 반환한다', () => {
+    expect(detectChecklistTarget('내일 루틴')).toBeNull();
+    expect(detectChecklistTarget('어제 루틴')).toBeNull();
+  });
+
+  it('쓰기 요청은 체크리스트로 가면 안 된다', () => {
+    expect(detectChecklistTarget('오늘 루틴에서 환기시키기 꺼줘')).toBeNull();
+    expect(detectChecklistTarget('저녁 루틴 끄고 싶어')).toBeNull();
+  });
+});
 
 describe('detectTomorrowRoutine', () => {
   it('내일 루틴 패턴을 감지한다', () => {

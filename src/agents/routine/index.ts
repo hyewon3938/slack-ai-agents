@@ -28,7 +28,7 @@ const CASUAL_OVERRIDES = [
 ];
 
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
-const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨', '없애', '지워', '초기화', '시작'];
+const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨', '없애', '지워', '초기화', '시작', '꺼', '켜', '끄'];
 const ANALYTICS_KEYWORDS = ['얼마나', '통계', '달성', '지켰', '기록', '분석', '몇', '퍼센트', '잘하고'];
 const DATE_KEYWORDS = ['내일', '모레', '어제', '그제', '이번주', '다음주', '저번주', '지난주'];
 const ACTION_KEYWORDS = [...CRUD_KEYWORDS, ...ANALYTICS_KEYWORDS, '루틴', '보여', '알려', '조회', '목록'];
