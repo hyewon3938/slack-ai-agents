@@ -51,6 +51,8 @@ export interface AgentLoopResult {
   text: string;
   /** 루프 중 호출된 MCP 도구 이름 목록 (중복 포함) */
   toolNames: string[];
+  /** 루프 중 호출된 MCP 도구의 arguments 목록 (toolNames와 순서 대응) */
+  toolArgs: Record<string, unknown>[];
 }
 
 /** 에이전트 루프 설정 */
@@ -117,7 +119,9 @@ export const runAgentLoop = async (
   ];
 
   const calledToolNames: string[] = [];
+  const calledToolArgs: Record<string, unknown>[] = [];
   let retryCount = 0;
+  let hallucinationRetried = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     // eslint-disable-next-line no-console
@@ -158,23 +162,27 @@ export const runAgentLoop = async (
       }
 
       if (isRateLimit) {
-        return { text: 'API 호출 한도를 초과했어. 잠시 후에 다시 말해줘.', toolNames: calledToolNames };
+        return { text: 'API 호출 한도를 초과했어. 잠시 후에 다시 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
       }
 
-      return { text: '일시적인 오류가 발생했어. 다시 한번 말해줘.', toolNames: calledToolNames };
+      return { text: '일시적인 오류가 발생했어. 다시 한번 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
     }
 
     // eslint-disable-next-line no-console
     console.log(`[${label}] finishReason: ${response.finishReason}, toolCalls: ${response.toolCalls.length}`);
 
     if (response.finishReason === 'stop') {
-      // 도구 미사용 환각 방지: 첫 라운드에서 도구 없이 작업 완료 응답 시 재시도
-      if (round === 0 && calledToolNames.length === 0 && tools.length > 0) {
+      // 도구 미사용 환각 방지: 도구를 한 번도 호출하지 않고 작업 완료 응답 시 1회 재시도
+      if (!hallucinationRetried && calledToolNames.length === 0 && tools.length > 0) {
         const responseText = response.text ?? '';
-        const claimsAction = /했|넣|추가|완료|수정|삭제|처리|변경|옮겼|바꿨|껐|켰/.test(responseText);
+        // 액션 동사가 있거나, 텍스트가 비어있으면 환각/실패로 판단
+        const claimsAction = responseText
+          ? /했|넣|추가|완료|수정|삭제|처리|변경|옮겼|바꿨|껐|켰/.test(responseText)
+          : true;
         if (claimsAction) {
+          hallucinationRetried = true;
           console.warn(`[${label}] 도구 미사용 환각 감지 — 재시도`);
-          messages.push({ role: 'assistant', content: responseText });
+          messages.push({ role: 'assistant', content: responseText || '(도구 호출 없이 응답)' });
           messages.push({
             role: 'user',
             content: '방금 도구를 호출하지 않고 작업을 완료했다고 했어. 실제로 반영하려면 반드시 도구를 호출해야 해. 다시 처리해줘.',
@@ -182,12 +190,13 @@ export const runAgentLoop = async (
           continue;
         }
       }
-      return { text: response.text ?? '처리했어.', toolNames: calledToolNames };
+      return { text: response.text ?? '처리했어.', toolNames: calledToolNames, toolArgs: calledToolArgs };
     }
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
       retryCount = 0;
       calledToolNames.push(...response.toolCalls.map((tc) => tc.name));
+      calledToolArgs.push(...response.toolCalls.map((tc) => tc.arguments));
       messages.push({
         role: 'assistant',
         content: response.text ?? '',
@@ -208,14 +217,14 @@ export const runAgentLoop = async (
     }
 
     if (response.finishReason === 'error') {
-      return { text: '도구 호출에 문제가 생겼어. 다시 한번 말해줘.', toolNames: calledToolNames };
+      return { text: '도구 호출에 문제가 생겼어. 다시 한번 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
     }
 
     // length 등 예상치 못한 종료
     // eslint-disable-next-line no-console
     console.log(`[${label}] 예상치 못한 종료 — finishReason: ${response.finishReason}, text: ${response.text?.slice(0, 200) ?? 'null'}`);
-    return { text: response.text ?? '처리 중 문제가 생겼어. 다시 말해줘.', toolNames: calledToolNames };
+    return { text: response.text ?? '처리 중 문제가 생겼어. 다시 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
   }
 
-  return { text: '요청이 너무 복잡해. 좀 더 간단하게 말해줘.', toolNames: calledToolNames };
+  return { text: '요청이 너무 복잡해. 좀 더 간단하게 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
 };
