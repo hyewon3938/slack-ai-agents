@@ -47,7 +47,8 @@ const isChecklistRequest = (text: string): boolean => {
     trimmed.includes('루틴') &&
     !CRUD_KEYWORDS.some((k) => trimmed.includes(k)) &&
     !ANALYTICS_KEYWORDS.some((k) => trimmed.includes(k)) &&
-    !DATE_KEYWORDS.some((k) => trimmed.includes(k))
+    !DATE_KEYWORDS.some((k) => trimmed.includes(k)) &&
+    !CASUAL_OVERRIDES.some((p) => trimmed.includes(p))
   ) return true;
   return false;
 };
