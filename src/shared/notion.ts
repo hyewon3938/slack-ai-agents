@@ -3,6 +3,33 @@ import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoint
 
 export type { Client as NotionClient } from '@notionhq/client';
 
+/**
+ * Notion databases.query REST API 직접 호출.
+ * SDK v5에서 databases.query가 제거되어 client.request()로 대체.
+ */
+export interface DatabaseQueryResponse {
+  results: Array<{ object: string } & Record<string, unknown>>;
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export const queryDatabase = async (
+  client: NotionClient,
+  databaseId: string,
+  body: Record<string, unknown> = {},
+): Promise<DatabaseQueryResponse> => {
+  const response = await (client.request as (args: {
+    path: string;
+    method: string;
+    body?: Record<string, unknown>;
+  }) => Promise<unknown>)({
+    path: `databases/${databaseId}/query`,
+    method: 'post',
+    body,
+  });
+  return response as DatabaseQueryResponse;
+};
+
 export interface ScheduleItem {
   id: string;
   title: string;
@@ -12,8 +39,13 @@ export interface ScheduleItem {
   hasStarIcon: boolean;
 }
 
+/**
+ * SDK v5는 Notion-Version 2025-09-03을 기본 사용하는데,
+ * 이 버전에서 databases.query 엔드포인트가 제거됨.
+ * 2022-06-28 버전을 명시하여 databases.query를 계속 사용.
+ */
 export const createNotionClient = (apiKey: string): NotionClient => {
-  return new NotionClient({ auth: apiKey });
+  return new NotionClient({ auth: apiKey, notionVersion: '2022-06-28' });
 };
 
 const STAR_ICON_URL = 'https://www.notion.so/icons/star_red.svg';
@@ -79,7 +111,17 @@ const isScheduleForDate = (
   return start === targetDate;
 };
 
-/** Notion에서 오늘 일정을 조회 (페이지네이션 포함) */
+/** 날짜를 N일 전으로 이동 (YYYY-MM-DD) */
+const subtractDays = (dateStr: string, days: number): string => {
+  const date = new Date(dateStr + 'T00:00:00+09:00');
+  date.setDate(date.getDate() - days);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+/** Notion에서 오늘 일정을 조회 — databases.query 서버 필터 */
 export const queryTodaySchedules = async (
   client: NotionClient,
   dbId: string,
@@ -89,24 +131,23 @@ export const queryTodaySchedules = async (
   const allPages: PageObjectResponse[] = [];
   let startCursor: string | undefined;
 
+  // 기간 일정(start~end)을 잡기 위해 90일 윈도우로 서버 필터,
+  // 이후 클라이언트에서 정확한 날짜 매칭
+  const windowStart = subtractDays(today, 90);
+
   do {
-    const response = await client.search({
-      query: '',
-      filter: { property: 'object', value: 'page' },
-      page_size: 100,
+    const response = await queryDatabase(client, uuid, {
+      filter: {
+        and: [
+          { property: 'Date', date: { on_or_after: windowStart } },
+          { property: 'Date', date: { on_or_before: today } },
+        ],
+      },
       ...(startCursor ? { start_cursor: startCursor } : {}),
     });
 
-    const pages = response.results.filter(
-      (result): result is PageObjectResponse => {
-        if (!isPageObject(result)) return false;
-        if (result.archived || result.in_trash) return false;
-        const databaseId =
-          'database_id' in result.parent ? result.parent.database_id : undefined;
-        return databaseId === uuid;
-      },
-    );
-
+    const pages = (response.results as Array<{ object: string } & Record<string, unknown>>)
+      .filter(isPageObject);
     allPages.push(...pages);
     startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
   } while (startCursor);
@@ -114,6 +155,33 @@ export const queryTodaySchedules = async (
   return allPages
     .map(parsePageToScheduleItem)
     .filter((item) => isScheduleForDate(item, today));
+};
+
+/** 백로그 (Date가 null인 일정) 조회 */
+export const queryBacklogItems = async (
+  client: NotionClient,
+  dbId: string,
+): Promise<ScheduleItem[]> => {
+  const uuid = toUUID(dbId);
+  const allPages: PageObjectResponse[] = [];
+  let startCursor: string | undefined;
+
+  do {
+    const response = await queryDatabase(client, uuid, {
+      filter: {
+        property: 'Date',
+        date: { is_empty: true },
+      },
+      ...(startCursor ? { start_cursor: startCursor } : {}),
+    });
+
+    const pages = (response.results as Array<{ object: string } & Record<string, unknown>>)
+      .filter(isPageObject);
+    allPages.push(...pages);
+    startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+  } while (startCursor);
+
+  return allPages.map(parsePageToScheduleItem);
 };
 
 export const toUUID = (id: string): string => {

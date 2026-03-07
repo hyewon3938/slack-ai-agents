@@ -1,9 +1,16 @@
 import cron from 'node-cron';
 import type { App } from '@slack/bolt';
+import type { LLMClient } from '../shared/llm.js';
 import type { NotionClient } from '../shared/notion.js';
 import { queryTodaySchedules } from '../shared/notion.js';
 import { postToChannel } from '../shared/slack.js';
-import { buildReminderMessage, formatDateShort } from './schedule-reminder.js';
+import {
+  formatDateShort,
+  buildReminderMessage,
+  generateScheduleGreeting,
+  buildReminderWithGreeting,
+} from './schedule-reminder.js';
+import type { TimeOfDay } from './schedule-reminder.js';
 
 /** KST(UTC+9) 기준 현재 시각 */
 const getKSTDate = (): Date => {
@@ -22,6 +29,7 @@ const getTodayISO = (): string => {
 interface CronConfig {
   dbId: string;
   channelId: string;
+  llmClient?: LLMClient;
   schedules: {
     morning: string;
     lunch: string;
@@ -34,18 +42,31 @@ const createReminderTask = (
   app: App,
   notionClient: NotionClient,
   config: CronConfig,
-  isNight: boolean,
+  timeOfDay: TimeOfDay,
 ): (() => Promise<void>) => {
   return async () => {
     try {
       const today = getTodayISO();
       const formatted = formatDateShort(today);
       const items = await queryTodaySchedules(notionClient, config.dbId, today);
-      const message = buildReminderMessage(items, today, formatted, isNight);
+
+      let message: string;
+
+      if (config.llmClient) {
+        // LLM 인사 생성 (실패 시 내부 폴백)
+        const greeting = await generateScheduleGreeting(
+          config.llmClient, timeOfDay, items, today, formatted,
+        );
+        message = buildReminderWithGreeting(greeting, items);
+      } else {
+        // LLM 없으면 기존 하드코딩 방식
+        const isNight = timeOfDay === 'night';
+        message = buildReminderMessage(items, today, formatted, isNight);
+      }
 
       await postToChannel(app.client, config.channelId, message);
       // eslint-disable-next-line no-console
-      console.log(`[Cron] 알림 전송 완료 (${isNight ? 'night' : 'reminder'}, ${formatted})`);
+      console.log(`[Cron] 알림 전송 완료 (${timeOfDay}, ${formatted})`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[Cron] 알림 전송 실패:`, msg);
@@ -61,13 +82,10 @@ export const initCronJobs = (
   const timezone = 'Asia/Seoul';
   const { schedules } = config;
 
-  const reminder = createReminderTask(app, notionClient, config, false);
-  const nightReminder = createReminderTask(app, notionClient, config, true);
-
-  cron.schedule(schedules.morning, reminder, { timezone });
-  cron.schedule(schedules.lunch, reminder, { timezone });
-  cron.schedule(schedules.evening, reminder, { timezone });
-  cron.schedule(schedules.night, nightReminder, { timezone });
+  cron.schedule(schedules.morning, createReminderTask(app, notionClient, config, 'morning'), { timezone });
+  cron.schedule(schedules.lunch, createReminderTask(app, notionClient, config, 'lunch'), { timezone });
+  cron.schedule(schedules.evening, createReminderTask(app, notionClient, config, 'evening'), { timezone });
+  cron.schedule(schedules.night, createReminderTask(app, notionClient, config, 'night'), { timezone });
 
   // eslint-disable-next-line no-console
   console.log(
