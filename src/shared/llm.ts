@@ -121,7 +121,7 @@ export class GeminiLLMClient implements LLMClient {
   private client: GoogleGenAI;
   private model: string;
 
-  constructor(apiKey: string, model = 'gemini-3-flash-preview') {
+  constructor(apiKey: string, model = 'gemini-2.5-flash') {
     this.client = new GoogleGenAI({ apiKey });
     this.model = model;
   }
