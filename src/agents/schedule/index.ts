@@ -53,6 +53,52 @@ export const extractMutationDate = (text: string, todayISO: string): string | nu
   return todayISO;
 };
 
+/** 도구 호출 arguments에서 Date 속성(YYYY-MM-DD) 추출 (깊이 탐색) */
+const extractDateFromArgs = (obj: unknown): string | null => {
+  if (obj === null || obj === undefined || typeof obj !== 'object') return null;
+  const record = obj as Record<string, unknown>;
+
+  // { date: { start: "YYYY-MM-DD..." } } 패턴 매칭
+  if ('date' in record && record['date'] && typeof record['date'] === 'object') {
+    const dateObj = record['date'] as Record<string, unknown>;
+    if (typeof dateObj['start'] === 'string') {
+      return dateObj['start'].slice(0, 10);
+    }
+  }
+
+  // 하위 객체 재귀 탐색
+  for (const value of Object.values(record)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const found = extractDateFromArgs(value);
+      if (found) return found;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = extractDateFromArgs(item);
+        if (found) return found;
+      }
+    }
+  }
+
+  return null;
+};
+
+/** 변경 도구(API-post-page, API-patch-page)의 arguments에서 대상 날짜 추출 */
+export const extractDateFromToolArgs = (
+  toolNames: string[],
+  toolArgs: Record<string, unknown>[],
+): string | null => {
+  for (let i = 0; i < toolNames.length; i++) {
+    const name = toolNames[i];
+    if (!name || !MUTATION_TOOLS.has(name)) continue;
+    const args = toolArgs[i];
+    if (!args) continue;
+    const date = extractDateFromArgs(args);
+    if (date) return date;
+  }
+  return null;
+};
+
 /** 변경 후 해당 날짜 일정 목록을 생성 (없으면 null) */
 const buildPostMutationList = async (
   notionClient: NotionClient,
@@ -261,7 +307,11 @@ export const createScheduleAgent = (
       let reply = loopResult.text;
       if (hasMutation(loopResult)) {
         const today = getTodayISO();
-        const targetDate = extractMutationDate(text, today);
+        // 1순위: 도구 호출 arguments에서 실제 날짜 추출
+        // 2순위: 사용자 텍스트에서 날짜 추출 (오늘/내일/모레)
+        const targetDate =
+          extractDateFromToolArgs(loopResult.toolNames, loopResult.toolArgs)
+          ?? extractMutationDate(text, today);
         if (targetDate) {
           // eslint-disable-next-line no-console
           console.log(`[Schedule Agent] post-mutation 조회: ${targetDate}`);
