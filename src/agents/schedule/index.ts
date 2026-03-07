@@ -1,9 +1,12 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
+import type { NotionClient } from '../../shared/notion.js';
 import { classifyMessage, respondCasualChat } from '../../shared/casual-chat.js';
 import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
 import { sendMessage } from '../../shared/slack.js';
 import { getAgentRole, getAgentContext } from '../../shared/personality.js';
+import { queryTodaySchedules } from '../../shared/notion.js';
+import { buildReminderMessage, formatDateShort, formatScheduleList } from '../../cron/schedule-reminder.js';
 import { buildSystemPrompt, getTodayString } from './prompt.js';
 import { getScheduleTools } from './tools.js';
 
@@ -26,9 +29,102 @@ const CASUAL_OVERRIDES = [
 const AGENT_ROLE = getAgentRole('일정');
 const AGENT_CONTEXT = getAgentContext('일정');
 
+// --- 조회 빠른 경로 ---
+
+/** 쓰기 키워드 — 하나라도 있으면 조회 빠른 경로 불가 */
+const WRITE_KEYWORDS = [
+  '추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨',
+  '없애', '지워', '완료', '취소',
+];
+
+/** 복잡한 조회 → 에이전트 루프 */
+const COMPLEX_QUERY_KEYWORDS = ['이번주', '다음주', '백로그', '언제', '지난주', '저번주'];
+
+/** 조회 빠른 경로 최대 길이 (간단 조회는 보통 ~15자 이내) */
+const QUERY_MAX_LENGTH = 20;
+
+type QueryTarget = 'today' | 'tomorrow' | 'dayAfter';
+
+/** 간단 조회 패턴 감지 → 대상 날짜 반환 (null이면 에이전트 루프) */
+export const detectSimpleQuery = (text: string): QueryTarget | null => {
+  if (text.length > QUERY_MAX_LENGTH) return null;
+  if (WRITE_KEYWORDS.some((k) => text.includes(k))) return null;
+  if (COMPLEX_QUERY_KEYWORDS.some((k) => text.includes(k))) return null;
+
+  // 조회 의도 확인: (날짜 + 일정/조회 의도) 또는 (일정 + 조회 의도) 조합
+  const hasScheduleWord = ['일정', '할일'].some((k) => text.includes(k));
+  const hasQueryWord = ['보여', '알려', '조회', '목록', '있어', '있나', '뭐야', '뭘까', '뭐', '뭘'].some((k) => text.includes(k));
+  const hasDateWord = ['오늘', '내일', '모레'].some((k) => text.includes(k));
+
+  const isQuery =
+    (hasDateWord && (hasScheduleWord || hasQueryWord)) ||
+    (hasScheduleWord && hasQueryWord);
+
+  if (!isQuery) return null;
+
+  if (text.includes('모레')) return 'dayAfter';
+  if (text.includes('내일')) return 'tomorrow';
+  return 'today';
+};
+
+/** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
+const getTodayISO = (): string => {
+  const now = new Date();
+  const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
+  const yyyy = kst.getFullYear();
+  const mm = String(kst.getMonth() + 1).padStart(2, '0');
+  const dd = String(kst.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+/** 날짜를 N일 이동 (YYYY-MM-DD) */
+const addDays = (dateStr: string, days: number): string => {
+  const d = new Date(dateStr + 'T00:00:00+09:00');
+  d.setDate(d.getDate() + days);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+/** 조회 대상에 따른 날짜 계산 */
+const getTargetDate = (target: QueryTarget, today: string): string => {
+  switch (target) {
+    case 'today': return today;
+    case 'tomorrow': return addDays(today, 1);
+    case 'dayAfter': return addDays(today, 2);
+  }
+};
+
+/** 빠른 조회 응답 생성 */
+const buildQueryResponse = (
+  target: QueryTarget,
+  targetDate: string,
+  items: import('../../shared/notion.js').ScheduleItem[],
+): string => {
+  const formatted = formatDateShort(targetDate);
+
+  // 오늘은 기존 크론 메시지 포맷 재사용
+  if (target === 'today') {
+    return buildReminderMessage(items, targetDate, formatted, false);
+  }
+
+  const label = target === 'tomorrow' ? '내일' : '모레';
+
+  if (items.length === 0) {
+    return `${label} ${formatted}은 일정 없어.`;
+  }
+
+  const list = formatScheduleList(items);
+  return `${label} ${formatted} 일정이야.\n\n${list}`;
+};
+
+// --- 에이전트 ---
+
 export const createScheduleAgent = (
   llmClient: LLMClient,
   dbId: string,
+  notionClient: NotionClient,
 ): AgentHandler => {
   return async (message, say): Promise<void> => {
     try {
@@ -38,7 +134,7 @@ export const createScheduleAgent = (
 
       const text = message.text.trim();
 
-      // 잡담 감지 (하이브리드: 키워드 → LLM 분류+응답)
+      // 1. 잡담 감지 (하이브리드: 키워드 → LLM 분류+응답)
       const result = await classifyMessage(
         llmClient, text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH,
         AGENT_CONTEXT, AGENT_ROLE, CASUAL_OVERRIDES,
@@ -51,7 +147,20 @@ export const createScheduleAgent = (
         return;
       }
 
-      // LLM 에이전트 경로: 자연어 일정 CRUD
+      // 2. 조회 빠른 경로: "오늘 일정", "내일 뭐 있어" → SDK 직접 호출 (1-3초)
+      const queryTarget = detectSimpleQuery(text);
+      if (queryTarget) {
+        // eslint-disable-next-line no-console
+        console.log(`[Schedule Agent] 조회 빠른 경로: ${queryTarget}`);
+        const today = getTodayISO();
+        const targetDate = getTargetDate(queryTarget, today);
+        const items = await queryTodaySchedules(notionClient, dbId, targetDate);
+        const reply = buildQueryResponse(queryTarget, targetDate, items);
+        await sendMessage(say, reply);
+        return;
+      }
+
+      // 3. LLM 에이전트 경로: 자연어 일정 CRUD + 복잡 조회
       // eslint-disable-next-line no-console
       console.log(`[Schedule Agent] 메시지 수신: ${text}`);
       await sendMessage(say, getAckMessage());

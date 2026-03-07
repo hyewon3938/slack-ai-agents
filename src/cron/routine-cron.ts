@@ -9,7 +9,7 @@ import {
   createRoutineRecord,
   shouldCreateToday,
 } from '../shared/routine-notion.js';
-import { postBlockMessage } from '../shared/slack.js';
+import { postBlockMessage, postToChannel } from '../shared/slack.js';
 import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
@@ -33,6 +33,24 @@ interface RoutineCronConfig {
   };
 }
 
+const RETRY_DELAY_MS = 1_000;
+
+/** 1회 재시도 래퍼 (Notion API 호출용) */
+const withRetry = async <T>(
+  fn: () => Promise<T>,
+  label: string,
+): Promise<T> => {
+  try {
+    return await fn();
+  } catch (firstError: unknown) {
+    const msg = firstError instanceof Error ? firstError.message : String(firstError);
+    // eslint-disable-next-line no-console
+    console.warn(`[Routine Cron] ${label} 1차 실패, 재시도: ${msg}`);
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    return await fn();
+  }
+};
+
 /** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
 const getTodayISO = (): string => {
   const now = new Date();
@@ -54,7 +72,7 @@ const getYesterdayISO = (): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-/** 아침 9시: 오늘 기록 생성 + 아침 체크리스트 전송 */
+/** 아침 9시: 오늘 기록 생성 + 아침 체크리스트 전송 (재시도 + all-or-nothing) */
 const morningTask = async (
   app: App,
   notionClient: NotionClient,
@@ -62,48 +80,80 @@ const morningTask = async (
 ): Promise<void> => {
   const today = getTodayISO();
 
-  const templates = await queryRoutineTemplates(notionClient, config.dbId);
-  const existingRecords = await queryTodayRoutineRecords(notionClient, config.dbId, today);
+  // 1. 조회 (재시도 포함)
+  const templates = await withRetry(
+    () => queryRoutineTemplates(notionClient, config.dbId),
+    '템플릿 조회',
+  );
+  const existingRecords = await withRetry(
+    () => queryTodayRoutineRecords(notionClient, config.dbId, today),
+    '기존 기록 조회',
+  );
   const existingKeys = new Set(existingRecords.map((r) => `${r.title}:${r.timeSlot}`));
 
   const candidates = templates.filter(
     (t) => !existingKeys.has(`${t.title}:${t.timeSlot}`),
   );
 
-  // 빈도 체크: 매일이 아닌 템플릿은 마지막 기록 날짜 기준으로 판별
+  // 2. 빈도 체크 (재시도 포함)
   const newTemplates = [];
   for (const t of candidates) {
     if (t.frequency === '매일') {
       newTemplates.push(t);
     } else {
-      const lastDate = await queryLastRecordDate(notionClient, config.dbId, t.title, t.timeSlot);
+      const lastDate = await withRetry(
+        () => queryLastRecordDate(notionClient, config.dbId, t.title, t.timeSlot),
+        `빈도 조회: ${t.title}`,
+      );
       if (shouldCreateToday(t.frequency, lastDate, today)) {
         newTemplates.push(t);
       }
     }
   }
 
+  // 3. 기록 생성 (all-or-nothing: 하나라도 실패하면 에러 알림)
   const createdRecords = [];
+  let creationFailed = false;
   for (const template of newTemplates) {
-    const record = await createRoutineRecord(
-      notionClient,
-      config.dbId,
-      template.title,
-      template.timeSlot,
-      today,
-      template.frequency,
-    );
-    createdRecords.push(record);
+    try {
+      const record = await withRetry(
+        () => createRoutineRecord(
+          notionClient,
+          config.dbId,
+          template.title,
+          template.timeSlot,
+          today,
+          template.frequency,
+        ),
+        `기록 생성: ${template.title}`,
+      );
+      createdRecords.push(record);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Routine Cron] 기록 생성 최종 실패 (${template.title}): ${msg}`);
+      creationFailed = true;
+      break;
+    }
   }
 
-  // search 재조회 대신 기존 + 신규 레코드를 직접 합침 (eventual consistency 회피)
+  if (creationFailed) {
+    await postToChannel(
+      app.client, config.channelId,
+      '루틴 기록 생성 중 오류가 발생했어. 잠시 후 다시 확인해줘.',
+    );
+    return;
+  }
+
+  // 4. 메시지 전송
   const allRecords = [...existingRecords, ...createdRecords];
   const morningRecords = allRecords.filter((r) => r.timeSlot === '아침');
 
   if (morningRecords.length > 0) {
-    // 어제 완료율 조회 → 인사 블록 생성
     const yesterday = getYesterdayISO();
-    const yesterdayRecords = await queryTodayRoutineRecords(notionClient, config.dbId, yesterday);
+    const yesterdayRecords = await withRetry(
+      () => queryTodayRoutineRecords(notionClient, config.dbId, yesterday),
+      '어제 기록 조회',
+    );
 
     // LLM 인사 생성 (실패 시 하드코딩 폴백)
     let greetingBlocks;
@@ -223,6 +273,15 @@ export const initRoutineCron = (
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error(`[Routine Cron] ${label} 실패:`, msg);
+        // 사용자에게 에러 알림
+        try {
+          await postToChannel(
+            app.client, config.channelId,
+            `${label} 알림 처리 중 오류가 발생했어. 잠시 후 다시 확인해줘.`,
+          );
+        } catch {
+          console.error(`[Routine Cron] ${label} 에러 알림 전송도 실패`);
+        }
       }
     };
   };

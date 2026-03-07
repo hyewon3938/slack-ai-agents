@@ -26,7 +26,7 @@ const startApp = async (): Promise<void> => {
   const notionClient = createNotionClient(CONFIG.notion.apiKey);
 
   // Schedule Agent
-  const scheduleAgent = createScheduleAgent(llmClient, CONFIG.notion.scheduleDbId);
+  const scheduleAgent = createScheduleAgent(llmClient, CONFIG.notion.scheduleDbId, notionClient);
   registerAgent(CONFIG.channels.schedule, scheduleAgent);
 
   // Routine Agent

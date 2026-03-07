@@ -80,7 +80,7 @@ const sortItems = (items: ScheduleItem[]): ScheduleItem[] => {
   });
 };
 
-const formatScheduleList = (items: ScheduleItem[]): string => {
+export const formatScheduleList = (items: ScheduleItem[]): string => {
   const sorted = sortItems(items);
   return sorted.map(formatItem).join('\n');
 };
