@@ -160,3 +160,70 @@ LLM을 호출하는 건 진짜 애매한 경우(~5%)뿐이다. 나머지 95%는 
 - 잡담 응답 시간: **2~3초 → 0ms**
 - LLM 호출 횟수 (단순 조회): **3회 → 0회**
 - LLM 호출 횟수 (변경 후 목록): **4회 → 2회**
+
+---
+
+## Phase 2: 지연 ack + 도구 필터 캐싱
+
+### 배경
+
+의도 분류 로직을 제거하고 모든 비-빠른경로 메시지를 LLM 에이전트 루프로 통합한 후, 잡담("고마워")에도 항상 ack("잠깐만, 확인해볼게.")가 먼저 전송되는 문제가 생겼다.
+
+```
+기존 흐름:
+  사용자: "고마워"
+    → [즉시] ack: "잠깐만, 확인해볼게."  ← 불필요하게 어색
+    → [~1초] LLM 응답: "응, 힘내."
+```
+
+잡담은 도구 호출 없이 1초 이내에 끝나는데, 매번 "잠깐만"이 먼저 나오면 이상하다.
+
+### 해결: `runAgentLoopWithAck` — 지연 ack
+
+ack 전송을 800ms 지연시킨다. LLM이 그 안에 응답하면 ack 생략.
+
+```
+개선 흐름 (빠른 응답):
+  사용자: "고마워"
+    → LLM 처리 시작 + 800ms 타이머 시작
+    → [~1초] LLM 응답 완료 → 타이머 취소
+    → 응답만 전송: "응, 힘내."
+
+개선 흐름 (느린 응답):
+  사용자: "미팅 추가해줘"
+    → LLM 처리 시작 + 800ms 타이머 시작
+    → [800ms] 타이머 발동 → ack: "잠깐만, 확인해볼게."
+    → [4~6초] LLM 응답 완료
+    → 응답 전송: "내일 미팅 추가했어."
+```
+
+**구현:** `src/shared/agent-loop.ts`의 `runAgentLoopWithAck`. 기존 `runAgentLoop`을 감싸는 래퍼 함수.
+
+```typescript
+const loopPromise = runAgentLoop(llmClient, userText, config);
+const timer = setTimeout(() => { ackPromise = sendAck(); }, delayMs);
+const result = await loopPromise;
+clearTimeout(timer);
+if (ackPromise) await ackPromise; // 순서 보장
+```
+
+### 도구 필터 캐싱
+
+에이전트별 MCP 도구 필터링이 매 메시지마다 반복되던 것을 참조 동등성 캐싱으로 최적화.
+
+```
+기존: 매 메시지마다 getMCPTools() → filter() (배열 재생성)
+개선: source === cachedSource이면 캐시 반환 (O(1))
+      MCP 재연결 시 source 참조 변경 → 자동 무효화
+```
+
+**적용 파일:** `src/agents/schedule/tools.ts`, `src/agents/routine/tools.ts`
+
+### 변경 결과
+
+| 시나리오 | Phase 1 | Phase 2 | 체감 |
+|---------|---------|---------|------|
+| 잡담 ("고마워") | ack + 응답 (2개 메시지) | 응답만 (1개 메시지) | ack 어색함 제거 |
+| 빠른 LLM 응답 (<800ms) | ack + 응답 | 응답만 | 깔끔 |
+| 느린 LLM 응답 (>800ms) | ack + 응답 | ack + 응답 (동일) | 변화 없음 |
+| 도구 필터링 | 매번 filter() 실행 | 캐시 히트 시 O(1) | 미세 개선 |
