@@ -32,7 +32,10 @@ const startApp = async (): Promise<void> => {
   registerScheduleActions(app, notionClient, CONFIG.notion.scheduleDbId);
 
   // Routine Agent
-  const routineAgent = createRoutineAgent(llmClient, CONFIG.notion.routineDbId, notionClient);
+  const routineAgent = createRoutineAgent(
+    llmClient, CONFIG.notion.routineDbId, notionClient,
+    CONFIG.notion.sleepDbId || undefined,
+  );
   registerAgent(CONFIG.channels.routine, routineAgent);
   registerRoutineActions(app, notionClient, CONFIG.notion.routineDbId);
 
@@ -48,6 +51,7 @@ const startApp = async (): Promise<void> => {
     dbId: CONFIG.notion.routineDbId,
     channelId: CONFIG.channels.routine,
     llmClient,
+    sleepDbId: CONFIG.notion.sleepDbId || undefined,
     schedules: CONFIG.routineCron,
   });
 
