@@ -32,18 +32,31 @@ const STATUS_OPTIONS: { status: string; label: string }[] = [
   { status: 'todo', label: '할일' },
 ];
 
-/** 현재 상태가 아닌 나머지 상태를 overflow 옵션으로 제공 */
+/** 미루기 특수 액션 값 */
+export const POSTPONE_ACTION = 'postpone';
+
+/** 현재 상태가 아닌 나머지 상태 + 미루기를 overflow 옵션으로 제공 */
 const buildOverflowOptions = (
   item: ScheduleItem,
   targetDate: string,
 ): Array<{ text: { type: 'plain_text'; text: string }; value: string }> => {
   const currentStatus = item.status ?? 'todo';
-  return STATUS_OPTIONS
+  const options = STATUS_OPTIONS
     .filter((opt) => opt.status !== currentStatus)
     .map((opt) => ({
       text: { type: 'plain_text' as const, text: opt.label },
       value: encodeOverflowValue(item.id, opt.status, targetDate),
     }));
+
+  // 완료가 아닌 항목에만 "내일로 미루기" 추가
+  if (currentStatus !== 'done') {
+    options.push({
+      text: { type: 'plain_text' as const, text: '내일로 미루기' },
+      value: encodeOverflowValue(item.id, POSTPONE_ACTION, targetDate),
+    });
+  }
+
+  return options;
 };
 
 // --- 블록 빌드 ---
