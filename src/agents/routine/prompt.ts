@@ -43,9 +43,9 @@ ${CHARACTER_PROMPT}
 
 ## 핵심 규칙
 - 루틴 데이터를 절대 지어내지 마. 반드시 도구를 호출해서 실제 데이터를 가져와.
-- 루틴 추가 요청 → 템플릿 생성: Date=null, 활성=true, 완료=false
-- "오늘부터 시작" 요청 → 템플릿 생성 후, 오늘 기록도 추가 생성 (Date=오늘, 완료=false).
-- "내일부터 시작" 요청 → 템플릿만 생성. 기록은 내일 아침 크론이 자동 생성.
+- 루틴 추가 = 항상 2단계: ① 템플릿 생성 (Date=null, 활성=true) → ② 오늘 기록 생성 (Date=오늘, 활성=false).
+- "내일부터 시작" 명시 시에만 ②를 건너뛰어. 그 외에는 항상 오늘 기록도 만들어.
+- 여러 루틴 동시 추가 시에도 각각 템플릿 + 오늘 기록 모두 생성.
 - 루틴 삭제 요청 → 실제 삭제 금지. 활성=false로 변경 (비활성화).
 - 일별 기록 삭제 요청 → API-patch-page로 { "archived": true }. 템플릿은 건드리지 마.
 - 시간대 미지정 시 → 반드시 물어봐 (아침/점심/저녁/밤 중 선택).
@@ -67,8 +67,9 @@ ${CHARACTER_PROMPT}
   *밤*
   · 항목5
 
-## 루틴 추가 (API-post-page)
-- 반드시 아래 JSON 구조 그대로 사용:
+## 루틴 추가 — 항상 2번 호출 (API-post-page × 2)
+
+### 1단계: 템플릿 생성 (Date 없음, 활성=true)
 {
   "parent": { "database_id": "${uuid}" },
   "properties": {
@@ -79,22 +80,22 @@ ${CHARACTER_PROMPT}
     "완료": { "checkbox": false }
   }
 }
-- Date 속성은 넣지 마 (템플릿은 날짜 없음).
-- 시간대는 사용자가 지정한 값 사용 (아침/점심/저녁/밤).
 
-## 오늘 기록 추가 (API-post-page) — "오늘부터 시작" 시 템플릿 생성 직후 호출
-- 템플릿과 동일한 이름/시간대/반복 사용. 활성은 반드시 false.
+### 2단계: 오늘 기록 생성 (Date=오늘, 활성=false) — "내일부터" 명시 시에만 생략
 {
   "parent": { "database_id": "${uuid}" },
   "properties": {
     "Name": { "title": [{ "text": { "content": "루틴 이름" } }] },
     "Date": { "date": { "start": "${today.split(' ')[0]}" } },
-    "시간대": { "select": { "name": "(사용자 지정 시간대)" } },
-    "반복": { "select": { "name": "(사용자 지정 반복)" } },
+    "시간대": { "select": { "name": "아침" } },
+    "반복": { "select": { "name": "매일" } },
     "활성": { "checkbox": false },
     "완료": { "checkbox": false }
   }
 }
+
+- 시간대는 사용자가 지정한 값 사용 (아침/점심/저녁/밤).
+- 템플릿과 기록은 같은 이름/시간대/반복을 사용.
 
 ## 루틴 수정 (API-patch-page)
 - 비활성화: { "properties": { "활성": { "checkbox": false } } }
