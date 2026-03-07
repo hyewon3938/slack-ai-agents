@@ -3,14 +3,14 @@ import type { App } from '@slack/bolt';
 import type { LLMClient } from '../shared/llm.js';
 import type { NotionClient } from '../shared/notion.js';
 import { queryTodaySchedules } from '../shared/notion.js';
-import { postToChannel } from '../shared/slack.js';
+import { postToChannel, postBlockMessage } from '../shared/slack.js';
 import {
   formatDateShort,
-  buildReminderMessage,
   generateScheduleGreeting,
-  buildReminderWithGreeting,
+  getFallbackGreeting,
 } from './schedule-reminder.js';
 import type { TimeOfDay } from './schedule-reminder.js';
+import { buildScheduleBlocks } from '../agents/schedule/blocks.js';
 
 /** KST(UTC+9) 기준 현재 시각 */
 const getKSTDate = (): Date => {
@@ -50,21 +50,19 @@ const createReminderTask = (
       const formatted = formatDateShort(today);
       const items = await queryTodaySchedules(notionClient, config.dbId, today);
 
-      let message: string;
+      // 인사 생성 (LLM 또는 하드코딩 폴백)
+      const greeting = config.llmClient
+        ? await generateScheduleGreeting(config.llmClient, timeOfDay, items, today, formatted)
+        : getFallbackGreeting(timeOfDay, items, today, formatted);
 
-      if (config.llmClient) {
-        // LLM 인사 생성 (실패 시 내부 폴백)
-        const greeting = await generateScheduleGreeting(
-          config.llmClient, timeOfDay, items, today, formatted,
-        );
-        message = buildReminderWithGreeting(greeting, items);
+      if (items.length === 0) {
+        // 일정 없으면 plain text 인사만
+        await postToChannel(app.client, config.channelId, greeting);
       } else {
-        // LLM 없으면 기존 하드코딩 방식
-        const isNight = timeOfDay === 'night';
-        message = buildReminderMessage(items, today, formatted, isNight);
+        // 일정 있으면 Block Kit + overflow 메뉴
+        const { text, blocks } = buildScheduleBlocks(items, today, greeting);
+        await postBlockMessage(app.client, config.channelId, text, blocks);
       }
-
-      await postToChannel(app.client, config.channelId, message);
       // eslint-disable-next-line no-console
       console.log(`[Cron] 알림 전송 완료 (${timeOfDay}, ${formatted})`);
     } catch (error: unknown) {
