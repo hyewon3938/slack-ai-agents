@@ -4,7 +4,7 @@ import type { NotionClient } from '../../shared/notion.js';
 import { runAgentLoopWithAck, getAckMessage } from '../../shared/agent-loop.js';
 import type { AgentLoopResult } from '../../shared/agent-loop.js';
 import { sendMessage, sendBlockMessage } from '../../shared/slack.js';
-import { queryTodaySchedules, queryBacklogItems } from '../../shared/notion.js';
+import { queryTodaySchedules, queryBacklogItems, getCategoryOrder } from '../../shared/notion.js';
 import { buildReminderMessage, formatDateShort, formatScheduleList } from '../../cron/schedule-reminder.js';
 import { buildSystemPrompt, getTodayString } from './prompt.js';
 import { getScheduleTools } from './tools.js';
@@ -127,12 +127,13 @@ const buildPostMutationList = async (
   notionClient: NotionClient,
   dbId: string,
   targetDate: string,
+  categoryOrder: string[],
 ): Promise<string | null> => {
   try {
     const items = await queryTodaySchedules(notionClient, dbId, targetDate);
     if (items.length === 0) return null;
     const formatted = formatDateShort(targetDate);
-    return `\n\n${formatted} 일정이야.\n\n${formatScheduleList(items)}`;
+    return `\n\n${formatted} 일정이야.\n\n${formatScheduleList(items, categoryOrder)}`;
   } catch (error: unknown) {
     console.error('[Schedule Agent] post-mutation 조회 오류:', error instanceof Error ? error.message : error);
     return null;
@@ -213,12 +214,13 @@ const buildQueryResponse = (
   target: QueryTarget,
   targetDate: string,
   items: import('../../shared/notion.js').ScheduleItem[],
+  categoryOrder: string[],
 ): string => {
   const formatted = formatDateShort(targetDate);
 
   // 오늘은 기존 크론 메시지 포맷 재사용
   if (target === 'today') {
-    return buildReminderMessage(items, targetDate, formatted, false);
+    return buildReminderMessage(items, targetDate, formatted, false, categoryOrder);
   }
 
   const dateLabels: Record<Exclude<QueryTarget, 'today'>, string> = {
@@ -232,7 +234,7 @@ const buildQueryResponse = (
     return `${label} ${formatted}은 일정 없어.`;
   }
 
-  const list = formatScheduleList(items);
+  const list = formatScheduleList(items, categoryOrder);
   return `${label} ${formatted} 일정이야.\n\n${list}`;
 };
 
@@ -309,6 +311,7 @@ export const createScheduleAgent = (
       const text = message.text.trim();
       const channelId = 'channel' in message ? (message.channel as string) : 'default';
       const ctx = history.toContext(channelId);
+      const catOrder = await getCategoryOrder(notionClient, dbId);
 
       // 0. "체크" 단축어 → 오늘 일정 Block Kit (overflow 메뉴 포함)
       if (text === '체크') {
@@ -319,7 +322,7 @@ export const createScheduleAgent = (
           history.add(channelId, text, '오늘 일정 없어.');
           return;
         }
-        const { text: msgText, blocks } = buildScheduleBlocks(items, today);
+        const { text: msgText, blocks } = buildScheduleBlocks(items, today, catOrder);
         await sendBlockMessage(say, msgText, blocks);
         history.add(channelId, text, msgText);
         return;
@@ -333,7 +336,7 @@ export const createScheduleAgent = (
         const today = getTodayISO();
         const targetDate = getTargetDate(queryTarget, today);
         const items = await queryTodaySchedules(notionClient, dbId, targetDate);
-        const reply = buildQueryResponse(queryTarget, targetDate, items);
+        const reply = buildQueryResponse(queryTarget, targetDate, items, catOrder);
         await sendMessage(say, reply);
         history.add(channelId, text, reply);
         return;
@@ -356,7 +359,7 @@ export const createScheduleAgent = (
 
       const loopResult = await runAgentLoopWithAck(
         llmClient, text,
-        { label: 'Schedule Agent', buildSystemPrompt: () => buildSystemPrompt(dbId, getTodayString()) + ctx, getTools: getScheduleTools },
+        { label: 'Schedule Agent', buildSystemPrompt: () => buildSystemPrompt(dbId, getTodayString(), catOrder) + ctx, getTools: getScheduleTools },
         () => sendMessage(say, getAckMessage()),
       );
 
@@ -385,7 +388,7 @@ export const createScheduleAgent = (
           if (targetDate) {
             // eslint-disable-next-line no-console
             console.log(`[Schedule Agent] post-mutation 조회: ${targetDate}`);
-            const postList = await buildPostMutationList(notionClient, dbId, targetDate);
+            const postList = await buildPostMutationList(notionClient, dbId, targetDate, catOrder);
             if (postList) {
               reply += postList;
             }

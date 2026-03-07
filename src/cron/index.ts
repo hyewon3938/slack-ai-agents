@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import type { App } from '@slack/bolt';
 import type { LLMClient } from '../shared/llm.js';
 import type { NotionClient } from '../shared/notion.js';
-import { queryTodaySchedules } from '../shared/notion.js';
+import { queryTodaySchedules, getCategoryOrder } from '../shared/notion.js';
 import { postToChannel, postBlockMessage } from '../shared/slack.js';
 import {
   formatDateShort,
@@ -48,6 +48,7 @@ const createReminderTask = (
     try {
       const today = getTodayISO();
       const formatted = formatDateShort(today);
+      const catOrder = await getCategoryOrder(notionClient, config.dbId);
       const items = await queryTodaySchedules(notionClient, config.dbId, today);
 
       // 인사 생성 (LLM 또는 하드코딩 폴백)
@@ -60,7 +61,7 @@ const createReminderTask = (
         await postToChannel(app.client, config.channelId, greeting);
       } else {
         // 일정 있으면 Block Kit + overflow 메뉴
-        const { text, blocks } = buildScheduleBlocks(items, today, greeting);
+        const { text, blocks } = buildScheduleBlocks(items, today, catOrder, greeting);
         await postBlockMessage(app.client, config.channelId, text, blocks);
       }
       // eslint-disable-next-line no-console

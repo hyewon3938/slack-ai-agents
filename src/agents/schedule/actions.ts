@@ -1,6 +1,6 @@
 import type { App } from '@slack/bolt';
 import type { Client as NotionClient } from '@notionhq/client';
-import { updatePageProperties, queryTodaySchedules } from '../../shared/notion.js';
+import { updatePageProperties, queryTodaySchedules, getCategoryOrder } from '../../shared/notion.js';
 import { updateMessage } from '../../shared/slack.js';
 import { ACTION_ID, POSTPONE_ACTION, parseOverflowValue, buildScheduleBlocks } from './blocks.js';
 
@@ -49,8 +49,9 @@ export const registerScheduleActions = (
       }
 
       // 해당 날짜 일정 재조회 → 블록 재빌드 + 인플레이스 업데이트
+      const catOrder = await getCategoryOrder(notionClient, dbId);
       const items = await queryTodaySchedules(notionClient, dbId, targetDate);
-      const { text, blocks } = buildScheduleBlocks(items, targetDate);
+      const { text, blocks } = buildScheduleBlocks(items, targetDate, catOrder);
 
       const channelId =
         'channel' in body && body.channel ? body.channel.id : undefined;

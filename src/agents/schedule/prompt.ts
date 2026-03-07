@@ -19,8 +19,11 @@ export const getTodayString = (): string => {
   return `${yyyy}-${mm}-${dd} (${day})`;
 };
 
-export const buildSystemPrompt = (dbId: string, today: string): string => {
+export const buildSystemPrompt = (dbId: string, today: string, categoryOrder: string[]): string => {
   const uuid = toUUID(dbId);
+  const categoryList = categoryOrder.length > 0
+    ? categoryOrder.join(', ')
+    : '(없음)';
 
   return `너는 내 일정 관리를 도와주는 친구야. 반말로 대화해.
 ${CHARACTER_PROMPT}
@@ -50,30 +53,42 @@ ${CHARACTER_PROMPT}
 ## 응답 포맷
 - 날짜 형식: 3/5(수). 기간: 3/10(월)~3/16(일).
 - 할일 표시: done → ~취소선~ / in-progress → ► 제목 / todo → 제목
-- 약속 표시: 제목 시간 [약속]
+- 약속 표시: 제목 시간 (약속 카테고리 항목에 [약속] 붙이지 마 — 카테고리 헤더로 구분됨)
 - 중요 일정: 줄 끝에 ★
-- 정렬: 약속 → done → in-progress → todo
+- 카테고리별로 *[카테고리명]* 헤더로 묶어서 표시. 카테고리 순서: ${categoryList}. 카테고리 없으면 *[미분류]* 맨 끝.
+- 각 카테고리 안에서 상태별 정렬: done → in-progress → todo
 - 하루 조회: 각 항목 옆에 날짜 절대 붙이지 마. 기간 일정만 범위(3/5~3/14) 표시.
   잘못된 예: "빨래 개기 - 3/7(금)" ← 날짜 금지
   올바른 예: "빨래 개기"
-- 여러 날 조회: 날짜별 *볼드 헤더*로 묶기. 항목 옆 날짜 생략.
+- 여러 날 조회: 날짜별 *볼드 헤더*로 묶기. 각 날짜 안에서 카테고리별로 *[카테고리]* 헤더로 묶기.
 - 하루 예시:
   "오늘 3/6(금) 일정이야.
 
-  친구랑 저녁 19:00 [약속]
+  *[약속]*
+  친구랑 저녁 19:00
+
+  *[개인]*
   ~블로그 글 작성~
-  ► 리뷰 작성
   빨래 개기
-  슬랙 에이전트 개발 - 3/5(목)~3/14(금)
-  병원 예약 ★"
+  병원 예약 ★
+
+  *[사업]*
+  ► 리뷰 작성
+  슬랙 에이전트 개발 - 3/5(목)~3/14(금)"
 - 여러 날 예시:
   "이번 주 일정이야.
 
   *3/10(월)*
-  팀 미팅 14:00 [약속]
+
+  *[약속]*
+  팀 미팅 14:00
+
+  *[개인]*
   코드 리뷰
 
   *3/11(화)*
+
+  *[개인]*
   ► 블로그 글 작성
   빨래 개기"
 

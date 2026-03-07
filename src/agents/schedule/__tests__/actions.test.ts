@@ -7,6 +7,7 @@ import { registerScheduleActions } from '../actions.js';
 vi.mock('../../../shared/notion.js', () => ({
   updatePageProperties: vi.fn(),
   queryTodaySchedules: vi.fn(async () => []),
+  getCategoryOrder: vi.fn(async () => ['약속']),
 }));
 
 vi.mock('../../../shared/slack.js', () => ({
