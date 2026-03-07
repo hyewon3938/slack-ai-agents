@@ -6,7 +6,7 @@ import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
 import { sendMessage } from '../../shared/slack.js';
 import { getAgentRole, getAgentContext } from '../../shared/personality.js';
 import { queryTodayRoutineRecords } from '../../shared/routine-notion.js';
-import { buildRoutineBlocks } from './blocks.js';
+import { buildRoutineBlocks, buildFilteredRoutineBlocks } from './blocks.js';
 import { buildRoutinePrompt, getTodayString } from './prompt.js';
 import { getRoutineTools } from './tools.js';
 
@@ -16,8 +16,8 @@ const CASUAL_CHAT_MAX_LENGTH = 80;
 const CASUAL_OVERRIDES = [
   '화이팅', '파이팅', '해볼게', '할게', '잘할게', '고마워', '수고',
   '잘 자', '알겠어', '그럴게', '응 알겠', 'ㅋㅋ', 'ㅎㅎ',
-  '응원', '해봐야지', '해야지', '할 수 있겠지', '힘내', '힘들',
-  '잘하고 있', '괜찮', '어떡해', '어떻게 하지',
+  '응원', '해봐야지', '해야지', '할 수 있겠지', '힘내', '힘들', '힘드', '힘든',
+  '잘하고 있', '괜찮', '어떡해', '어떻게 하지', '피곤', '귀찮', '지쳤', '싫어',
 ];
 
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
@@ -39,18 +39,26 @@ const getTodayISO = (): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-/** "루틴" 포함 조회 요청인지 판별 (CRUD/분석/날짜 키워드 없으면 오늘 체크리스트) */
-const isChecklistRequest = (text: string): boolean => {
+const TIME_SLOTS = ['아침', '점심', '저녁', '밤'] as const;
+type ChecklistTarget = 'all' | typeof TIME_SLOTS[number];
+
+/** "루틴" 포함 조회 요청 감지 + 시간대 판별 (null이면 체크리스트 아님) */
+export const detectChecklistTarget = (text: string): ChecklistTarget | null => {
   const trimmed = text.trim();
-  if (EXACT_KEYWORDS.has(trimmed)) return true;
+  if (EXACT_KEYWORDS.has(trimmed)) return 'all';
   if (
     trimmed.includes('루틴') &&
     !CRUD_KEYWORDS.some((k) => trimmed.includes(k)) &&
     !ANALYTICS_KEYWORDS.some((k) => trimmed.includes(k)) &&
     !DATE_KEYWORDS.some((k) => trimmed.includes(k)) &&
     !CASUAL_OVERRIDES.some((p) => trimmed.includes(p))
-  ) return true;
-  return false;
+  ) {
+    for (const slot of TIME_SLOTS) {
+      if (trimmed.includes(slot)) return slot;
+    }
+    return 'all';
+  }
+  return null;
 };
 
 /** 오늘 루틴 체크리스트를 조회하여 전송 */
@@ -58,6 +66,7 @@ const sendChecklist = async (
   notionClient: NotionClient,
   dbId: string,
   say: Parameters<AgentHandler>[1],
+  target: ChecklistTarget = 'all',
 ): Promise<void> => {
   const today = getTodayISO();
   const records = await queryTodayRoutineRecords(notionClient, dbId, today);
@@ -67,6 +76,19 @@ const sendChecklist = async (
     return;
   }
 
+  // 시간대 필터링
+  if (target !== 'all') {
+    const slotRecords = records.filter((r) => r.timeSlot === target);
+    if (slotRecords.length === 0) {
+      await sendMessage(say, `${target} 루틴은 없어.`);
+      return;
+    }
+    const { text: msgText, blocks } = buildFilteredRoutineBlocks(records, today, [target]);
+    await say({ text: msgText, blocks });
+    return;
+  }
+
+  // 전체
   const incomplete = records.filter((r) => !r.completed);
   if (incomplete.length === 0) {
     await sendMessage(say, '오늘 루틴 전부 완료했어!');
@@ -109,9 +131,10 @@ export const createRoutineAgent = (
         return;
       }
 
-      // 3. "루틴" 포함 조회 → 체크리스트 반환
-      if (isChecklistRequest(text)) {
-        await sendChecklist(notionClient, dbId, say);
+      // 3. "루틴" 포함 조회 → 체크리스트 반환 (시간대 필터 지원)
+      const checklistTarget = detectChecklistTarget(text);
+      if (checklistTarget) {
+        await sendChecklist(notionClient, dbId, say, checklistTarget);
         return;
       }
 
@@ -120,12 +143,12 @@ export const createRoutineAgent = (
       console.log(`[Routine Agent] 메시지 수신`);
       await sendMessage(say, getAckMessage());
 
-      const reply = await runAgentLoop(llmClient, text, {
+      const loopResult = await runAgentLoop(llmClient, text, {
         label: 'Routine Agent',
         buildSystemPrompt: () => buildRoutinePrompt(dbId, getTodayString()),
         getTools: getRoutineTools,
       });
-      await sendMessage(say, reply);
+      await sendMessage(say, loopResult.text);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Routine Agent] 처리 오류: ${errorMsg.slice(0, 500)}`);

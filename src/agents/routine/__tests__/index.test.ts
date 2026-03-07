@@ -108,15 +108,14 @@ describe('createRoutineAgent', () => {
   describe('LLM 에이전트 경로', () => {
     it('자연어 요청은 LLM 에이전트 루프를 실행한다', async () => {
       const llmClient = createMockLLMClient([
-        { text: 'action', toolCalls: [], finishReason: 'stop' }, // classify
         { text: '오전 루틴에 추가했어.', toolCalls: [], finishReason: 'stop' },
       ]);
 
       const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
       await agent(createMockMessage('스트레칭 오전에 추가해줘'), mockSay);
 
-      // classify(1) + agent(1)
-      expect(llmClient.chat).toHaveBeenCalledTimes(2);
+      // actionKeyword만 → 즉시 action (classify 없음) + agent(1)
+      expect(llmClient.chat).toHaveBeenCalledTimes(1);
       expect(mockSay).toHaveBeenCalledWith('오전 루틴에 추가했어.');
     });
 

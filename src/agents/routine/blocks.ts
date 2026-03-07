@@ -8,6 +8,30 @@ const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
+// --- 필터 컨텍스트 인코딩/파싱 ---
+
+/** 시간대 필터 정보 (버튼 value에 인코딩) */
+export interface SlotFilter {
+  targetSlots: string[];
+  incompleteFrom: string[];
+}
+
+/** 필터 컨텍스트를 버튼 value 접미사로 인코딩 */
+const encodeFilter = (filter?: SlotFilter): string => {
+  if (!filter || filter.targetSlots.length === 0) return '';
+  return `|${filter.targetSlots.join(',')}|${filter.incompleteFrom.join(',')}`;
+};
+
+/** 버튼 value에서 pageId + 필터 컨텍스트 파싱 */
+export const parseButtonValue = (value: string): { pageId: string; filter: SlotFilter | null } => {
+  const parts = value.split('|');
+  const pageId = parts[0]!;
+  if (parts.length < 2 || !parts[1]) return { pageId, filter: null };
+  const targetSlots = parts[1].split(',').filter(Boolean);
+  const incompleteFrom = parts[2]?.split(',').filter(Boolean) ?? [];
+  return { pageId, filter: { targetSlots, incompleteFrom } };
+};
+
 /** "YYYY-MM-DD" → "3/7(토)" */
 export const formatDateShort = (dateStr: string): string => {
   const d = new Date(dateStr + 'T00:00:00+09:00');
@@ -21,6 +45,7 @@ export const formatDateShort = (dateStr: string): string => {
 export const buildRoutineBlocks = (
   records: RoutineRecord[],
   today: string,
+  slotFilter?: SlotFilter,
 ): { text: string; blocks: KnownBlock[] } => {
   const blocks: KnownBlock[] = [];
   const todayFormatted = formatDateShort(today);
@@ -57,7 +82,7 @@ export const buildRoutineBlocks = (
             type: 'button',
             text: { type: 'plain_text', text: '완료 ✓', emoji: true },
             action_id: ACTION_ID,
-            value: record.id,
+            value: `${record.id}${encodeFilter(slotFilter)}`,
           },
         });
       }
@@ -90,7 +115,12 @@ export const buildFilteredRoutineBlocks = (
     return false;
   });
 
-  return buildRoutineBlocks(filtered, today);
+  const slotFilter: SlotFilter = {
+    targetSlots: [...targetSlots],
+    incompleteFrom: includeIncompleteFrom ? [...includeIncompleteFrom] : [],
+  };
+
+  return buildRoutineBlocks(filtered, today, slotFilter);
 };
 
 // ---------- 메시지 변형 ----------

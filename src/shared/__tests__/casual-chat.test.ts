@@ -137,20 +137,20 @@ describe('classifyMessage (하이브리드)', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('액션 키워드 있고 잡담인 경우 → LLM 분류 + casualReply 포함', async () => {
+  it('액션 키워드만 매칭 (casualOverride 없음) → 즉시 action (LLM 호출 없음)', async () => {
     const llm = createMockLLM('그래, 해봐.');
     const result = await classifyMessage(llm, '일정 잘 지켜봐야지..', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE);
-    expect(result.intent).toBe('casual');
-    expect(result.casualReply).toBe('그래, 해봐.');
-    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(result.intent).toBe('action');
+    expect(result.casualReply).toBeUndefined();
+    expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('액션 키워드 있고 실제 액션인 경우 → LLM이 action 반환', async () => {
+  it('액션 키워드만 여러 개 매칭 → 즉시 action (LLM 호출 없음)', async () => {
     const llm = createMockLLM('action');
     const result = await classifyMessage(llm, '내일 일정 보여줘', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE);
     expect(result.intent).toBe('action');
     expect(result.casualReply).toBeUndefined();
-    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(llm.chat).not.toHaveBeenCalled();
   });
 
   it('LLM 분류 실패 시 안전하게 action', async () => {

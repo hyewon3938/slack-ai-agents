@@ -29,9 +29,6 @@ const mockedCallMCPTool = vi.mocked(callMCPTool);
 const { queryTodaySchedules } = await import('../../../shared/notion.js');
 const mockedQuerySchedules = vi.mocked(queryTodaySchedules);
 
-/** 의도 분류용 'action' 응답 */
-const CLASSIFY_ACTION: LLMResponse = { text: 'action', toolCalls: [], finishReason: 'stop' };
-
 const createMockMessage = (text: string): KnownEventFromType<'message'> =>
   ({
     type: 'message',
@@ -113,17 +110,15 @@ describe('createScheduleAgent', () => {
     ];
     mockedQuerySchedules.mockResolvedValueOnce(mockItems);
 
-    const llmClient = createMockLLMClient([
-      CLASSIFY_ACTION, // classifyMessage에서 LLM 분류 (action 키워드 있으므로)
-    ]);
+    const llmClient = createMockLLMClient([]);
 
     const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
     await agent(createMockMessage('오늘 일정 보여줘'), mockSay);
 
     // queryTodaySchedules가 호출되었는지 확인
     expect(mockedQuerySchedules).toHaveBeenCalledTimes(1);
-    // LLM은 분류 1회만 (에이전트 루프 안 탐)
-    expect(llmClient.chat).toHaveBeenCalledTimes(1);
+    // actionKeyword만 → 즉시 action + detectSimpleQuery → SDK 직접 (LLM 호출 없음)
+    expect(llmClient.chat).not.toHaveBeenCalled();
     // 응답에 일정 항목이 포함
     const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(reply).toContain('미팅');
@@ -133,7 +128,7 @@ describe('createScheduleAgent', () => {
   it('일정이 없으면 없다는 메시지를 반환한다', async () => {
     mockedQuerySchedules.mockResolvedValueOnce([]);
 
-    const llmClient = createMockLLMClient([CLASSIFY_ACTION]);
+    const llmClient = createMockLLMClient([]);
 
     const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
     await agent(createMockMessage('오늘 일정'), mockSay);
@@ -151,7 +146,6 @@ describe('createScheduleAgent', () => {
     mockedCallMCPTool.mockResolvedValueOnce('{"results": []}');
 
     const llmClient = createMockLLMClient([
-      CLASSIFY_ACTION,
       {
         text: null,
         toolCalls: [
@@ -171,8 +165,8 @@ describe('createScheduleAgent', () => {
 
     expect(mockedCallMCPTool).toHaveBeenCalledWith('notion_search', { query: '일정' });
     expect(mockSay).toHaveBeenCalledWith('일정을 찾지 못했습니다.');
-    // classify(1) + agent(2)
-    expect(llmClient.chat).toHaveBeenCalledTimes(3);
+    // actionKeyword만 → 즉시 action (classify 없음) + agent(2)
+    expect(llmClient.chat).toHaveBeenCalledTimes(2);
   });
 
   it('tool call 여러 회 연속 실행을 처리한다', async () => {
@@ -181,7 +175,6 @@ describe('createScheduleAgent', () => {
       .mockResolvedValueOnce('{"ok": true}');
 
     const llmClient = createMockLLMClient([
-      CLASSIFY_ACTION,
       {
         text: null,
         toolCalls: [
@@ -207,8 +200,8 @@ describe('createScheduleAgent', () => {
     await agent(createMockMessage('미팅 일정 수정해줘'), mockSay);
 
     expect(mockedCallMCPTool).toHaveBeenCalledTimes(2);
-    // classify(1) + agent(3)
-    expect(llmClient.chat).toHaveBeenCalledTimes(4);
+    // actionKeyword만 → 즉시 action + agent(3)
+    expect(llmClient.chat).toHaveBeenCalledTimes(3);
     expect(mockSay).toHaveBeenCalledWith('미팅 일정을 수정했습니다.');
   });
 
@@ -216,7 +209,6 @@ describe('createScheduleAgent', () => {
     mockedCallMCPTool.mockRejectedValueOnce(new Error('Notion API 오류'));
 
     const llmClient = createMockLLMClient([
-      CLASSIFY_ACTION,
       {
         text: null,
         toolCalls: [
@@ -234,8 +226,8 @@ describe('createScheduleAgent', () => {
     const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
     await agent(createMockMessage('백로그 보여줘'), mockSay);
 
-    // classify(call[0]) + agent round 1(call[1]) + agent round 2(call[2])
-    const agentSecondCallMessages = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[2][0] as Array<{
+    // actionKeyword만 → 즉시 action + agent round 1(call[0]) + agent round 2(call[1])
+    const agentSecondCallMessages = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[1][0] as Array<{
       role: string;
       content: string;
     }>;
@@ -250,24 +242,21 @@ describe('createScheduleAgent', () => {
   it('MAX_TOOL_ROUNDS 초과 시 안전 종료 메시지를 반환한다', async () => {
     mockedCallMCPTool.mockResolvedValue('{"results": []}');
 
-    // classify(1) + agent loop(10회)
-    const responses: LLMResponse[] = [
-      CLASSIFY_ACTION,
-      ...Array.from({ length: 11 }, () => ({
-        text: null,
-        toolCalls: [
-          { id: 'call_loop', name: 'notion_search', arguments: {} },
-        ],
-        finishReason: 'tool_calls' as const,
-      })),
-    ];
+    // actionKeyword만 → 즉시 action + agent loop(10회)
+    const responses: LLMResponse[] = Array.from({ length: 11 }, () => ({
+      text: null,
+      toolCalls: [
+        { id: 'call_loop', name: 'notion_search', arguments: {} },
+      ],
+      finishReason: 'tool_calls' as const,
+    }));
 
     const llmClient = createMockLLMClient(responses);
     const agent = createScheduleAgent(llmClient, 'db-123', mockNotionClient);
     await agent(createMockMessage('복잡한 일정 요청'), mockSay);
 
-    // classify(1) + agent(10)
-    expect(llmClient.chat).toHaveBeenCalledTimes(11);
+    // agent(10)만 — classify 호출 없음
+    expect(llmClient.chat).toHaveBeenCalledTimes(10);
     expect(mockSay).toHaveBeenCalledWith(
       '요청이 너무 복잡해. 좀 더 간단하게 말해줘.',
     );
@@ -275,7 +264,6 @@ describe('createScheduleAgent', () => {
 
   it('LLM 응답 text가 null이면 기본 메시지를 반환한다', async () => {
     const llmClient = createMockLLMClient([
-      CLASSIFY_ACTION,
       { text: null, toolCalls: [], finishReason: 'stop' },
     ]);
 

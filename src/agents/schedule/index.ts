@@ -3,6 +3,7 @@ import type { LLMClient } from '../../shared/llm.js';
 import type { NotionClient } from '../../shared/notion.js';
 import { classifyMessage, respondCasualChat } from '../../shared/casual-chat.js';
 import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
+import type { AgentLoopResult } from '../../shared/agent-loop.js';
 import { sendMessage } from '../../shared/slack.js';
 import { getAgentRole, getAgentContext } from '../../shared/personality.js';
 import { queryTodaySchedules } from '../../shared/notion.js';
@@ -23,12 +24,51 @@ const ACTION_KEYWORDS = [
 const CASUAL_OVERRIDES = [
   '화이팅', '파이팅', '해볼게', '할게', '잘할게', '고마워', '수고',
   '잘 자', '알겠어', '그럴게', '응 알겠', 'ㅋㅋ', 'ㅎㅎ',
-  '응원', '해봐야지', '해야지', '할 수 있겠지', '힘내', '힘들',
-  '잘하고 있', '괜찮', '어떡해', '어떻게 하지',
+  '응원', '해봐야지', '해야지', '할 수 있겠지', '힘내', '힘들', '힘드', '힘든',
+  '잘하고 있', '괜찮', '어떡해', '어떻게 하지', '피곤', '귀찮', '지쳤', '싫어',
 ];
 
 const AGENT_ROLE = getAgentRole('일정');
 const AGENT_CONTEXT = getAgentContext('일정');
+
+// --- 변경 후 일정 표시 ---
+
+/** 데이터 변경을 수행하는 MCP 도구 이름 */
+const MUTATION_TOOLS = new Set(['API-post-page', 'API-patch-page', 'API-patch-block-children']);
+
+/** 에이전트 루프에서 변경 작업이 수행되었는지 확인 */
+const hasMutation = (result: AgentLoopResult): boolean =>
+  result.toolNames.some((name) => MUTATION_TOOLS.has(name));
+
+/** 사용자 텍스트에서 대상 날짜 추출 (오늘/내일/모레 → YYYY-MM-DD, 판별 불가 시 null) */
+export const extractMutationDate = (text: string, todayISO: string): string | null => {
+  if (text.includes('모레')) return addDays(todayISO, 2);
+  if (text.includes('내일')) return addDays(todayISO, 1);
+  // "오늘" 명시 또는 날짜 키워드 없음 → 오늘 (대부분의 변경은 오늘 대상)
+  if (text.includes('오늘')) return todayISO;
+  // 복잡한 날짜 (이번주, 다음주, N월 N일 등) → 건너뜀
+  const hasComplexDate = ['이번주', '다음주', '저번주', '지난주', '월요', '화요', '수요', '목요', '금요', '토요', '일요', '월 ', '일에'].some((k) => text.includes(k));
+  if (hasComplexDate) return null;
+  // 날짜 키워드 없음 → 기본 오늘
+  return todayISO;
+};
+
+/** 변경 후 해당 날짜 일정 목록을 생성 (없으면 null) */
+const buildPostMutationList = async (
+  notionClient: NotionClient,
+  dbId: string,
+  targetDate: string,
+): Promise<string | null> => {
+  try {
+    const items = await queryTodaySchedules(notionClient, dbId, targetDate);
+    if (items.length === 0) return null;
+    const formatted = formatDateShort(targetDate);
+    return `\n\n${formatted} 일정이야.\n\n${formatScheduleList(items)}`;
+  } catch (error: unknown) {
+    console.error('[Schedule Agent] post-mutation 조회 오류:', error instanceof Error ? error.message : error);
+    return null;
+  }
+};
 
 // --- 조회 빠른 경로 ---
 
@@ -166,11 +206,26 @@ export const createScheduleAgent = (
       console.log(`[Schedule Agent] 메시지 수신: ${text}`);
       await sendMessage(say, getAckMessage());
 
-      const reply = await runAgentLoop(llmClient, text, {
+      const loopResult = await runAgentLoop(llmClient, text, {
         label: 'Schedule Agent',
         buildSystemPrompt: () => buildSystemPrompt(dbId, getTodayString()),
         getTools: getScheduleTools,
       });
+
+      // 변경 작업이면 해당 날짜 일정 목록을 코드 레벨로 추가 (LLM 라운드 절약)
+      let reply = loopResult.text;
+      if (hasMutation(loopResult)) {
+        const today = getTodayISO();
+        const targetDate = extractMutationDate(text, today);
+        if (targetDate) {
+          // eslint-disable-next-line no-console
+          console.log(`[Schedule Agent] post-mutation 조회: ${targetDate}`);
+          const postList = await buildPostMutationList(notionClient, dbId, targetDate);
+          if (postList) {
+            reply += postList;
+          }
+        }
+      }
       await sendMessage(say, reply);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
