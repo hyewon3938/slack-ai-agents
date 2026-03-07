@@ -11,6 +11,7 @@ import { buildReminderMessage, formatDateShort, formatScheduleList } from '../..
 import { buildSystemPrompt, getTodayString } from './prompt.js';
 import { getScheduleTools } from './tools.js';
 import { buildScheduleBlocks } from './blocks.js';
+import { ChatHistory } from '../../shared/chat-history.js';
 
 const CASUAL_CHAT_MAX_LENGTH = 80;
 const ACTION_KEYWORDS = [
@@ -319,6 +320,8 @@ export const createScheduleAgent = (
   dbId: string,
   notionClient: NotionClient,
 ): AgentHandler => {
+  const history = new ChatHistory();
+
   return async (message, say): Promise<void> => {
     try {
       if (!('text' in message) || !message.text) {
@@ -326,6 +329,8 @@ export const createScheduleAgent = (
       }
 
       const text = message.text.trim();
+      const channelId = 'channel' in message ? (message.channel as string) : 'default';
+      const ctx = history.toContext(channelId);
 
       // 0. "체크" 단축어 → 오늘 일정 Block Kit (overflow 메뉴 포함)
       if (text === '체크') {
@@ -333,23 +338,26 @@ export const createScheduleAgent = (
         const items = await queryTodaySchedules(notionClient, dbId, today);
         if (items.length === 0) {
           await sendMessage(say, '오늘 일정 없어.');
+          history.add(channelId, text, '오늘 일정 없어.');
           return;
         }
         const { text: msgText, blocks } = buildScheduleBlocks(items, today);
         await sendBlockMessage(say, msgText, blocks);
+        history.add(channelId, text, msgText);
         return;
       }
 
       // 1. 잡담 감지 (하이브리드: 키워드 → LLM 분류+응답)
       const result = await classifyMessage(
         llmClient, text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH,
-        AGENT_CONTEXT, AGENT_ROLE, CASUAL_OVERRIDES,
+        AGENT_CONTEXT, AGENT_ROLE, CASUAL_OVERRIDES, ctx,
       );
       if (result.intent === 'casual') {
         // eslint-disable-next-line no-console
         console.log(`[Schedule Agent] 잡담 감지`);
-        const reply = result.casualReply ?? await respondCasualChat(llmClient, text, AGENT_ROLE);
+        const reply = result.casualReply ?? await respondCasualChat(llmClient, text, AGENT_ROLE, ctx);
         await sendMessage(say, reply);
+        history.add(channelId, text, reply);
         return;
       }
 
@@ -363,6 +371,7 @@ export const createScheduleAgent = (
         const items = await queryTodaySchedules(notionClient, dbId, targetDate);
         const reply = buildQueryResponse(queryTarget, targetDate, items);
         await sendMessage(say, reply);
+        history.add(channelId, text, reply);
         return;
       }
 
@@ -373,6 +382,7 @@ export const createScheduleAgent = (
         const items = await queryBacklogItems(notionClient, dbId);
         const reply = buildBacklogResponse(items);
         await sendMessage(say, reply);
+        history.add(channelId, text, reply);
         return;
       }
 
@@ -383,7 +393,7 @@ export const createScheduleAgent = (
 
       const loopResult = await runAgentLoop(llmClient, text, {
         label: 'Schedule Agent',
-        buildSystemPrompt: () => buildSystemPrompt(dbId, getTodayString()),
+        buildSystemPrompt: () => buildSystemPrompt(dbId, getTodayString()) + ctx,
         getTools: getScheduleTools,
       });
 
@@ -420,6 +430,7 @@ export const createScheduleAgent = (
         }
       }
       await sendMessage(say, reply);
+      history.add(channelId, text, reply);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Schedule Agent] 처리 오류: ${errorMsg.slice(0, 500)}`);

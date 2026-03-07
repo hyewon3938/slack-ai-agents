@@ -16,6 +16,7 @@ import {
 import { buildRoutineBlocks, buildFilteredRoutineBlocks } from './blocks.js';
 import { buildRoutinePrompt, getTodayString } from './prompt.js';
 import { getRoutineTools } from './tools.js';
+import { ChatHistory } from '../../shared/chat-history.js';
 
 const CASUAL_CHAT_MAX_LENGTH = 80;
 
@@ -192,6 +193,8 @@ export const createRoutineAgent = (
   dbId: string,
   notionClient: NotionClient,
 ): AgentHandler => {
+  const history = new ChatHistory();
+
   return async (message, say): Promise<void> => {
     try {
       if (!('text' in message) || !message.text) {
@@ -199,23 +202,27 @@ export const createRoutineAgent = (
       }
 
       const text = message.text.trim();
+      const channelId = 'channel' in message ? (message.channel as string) : 'default';
+      const ctx = history.toContext(channelId);
 
       // 1. 정확 매칭 빠른 경로: "루틴", "체크" → LLM 없이 즉시 체크리스트
       if (EXACT_KEYWORDS.has(text)) {
         await sendChecklist(notionClient, dbId, say);
+        history.add(channelId, text, '[오늘 루틴 체크리스트 표시]');
         return;
       }
 
       // 2. 잡담 감지 (하이브리드: 키워드 → LLM 분류+응답)
       const result = await classifyMessage(
         llmClient, text, ACTION_KEYWORDS, CASUAL_CHAT_MAX_LENGTH,
-        AGENT_CONTEXT, AGENT_ROLE, CASUAL_OVERRIDES,
+        AGENT_CONTEXT, AGENT_ROLE, CASUAL_OVERRIDES, ctx,
       );
       if (result.intent === 'casual') {
         // eslint-disable-next-line no-console
         console.log(`[Routine Agent] 잡담 감지`);
-        const reply = result.casualReply ?? await respondCasualChat(llmClient, text, AGENT_ROLE);
+        const reply = result.casualReply ?? await respondCasualChat(llmClient, text, AGENT_ROLE, ctx);
         await sendMessage(say, reply);
+        history.add(channelId, text, reply);
         return;
       }
 
@@ -224,6 +231,7 @@ export const createRoutineAgent = (
         // eslint-disable-next-line no-console
         console.log(`[Routine Agent] 내일 루틴 미리보기`);
         await sendTomorrowPreview(notionClient, dbId, say);
+        history.add(channelId, text, '[내일 루틴 미리보기 표시]');
         return;
       }
 
@@ -231,6 +239,7 @@ export const createRoutineAgent = (
       const checklistTarget = detectChecklistTarget(text);
       if (checklistTarget) {
         await sendChecklist(notionClient, dbId, say, checklistTarget);
+        history.add(channelId, text, `[${checklistTarget === 'all' ? '전체' : checklistTarget} 루틴 체크리스트 표시]`);
         return;
       }
 
@@ -241,10 +250,11 @@ export const createRoutineAgent = (
 
       const loopResult = await runAgentLoop(llmClient, text, {
         label: 'Routine Agent',
-        buildSystemPrompt: () => buildRoutinePrompt(dbId, getTodayString()),
+        buildSystemPrompt: () => buildRoutinePrompt(dbId, getTodayString()) + ctx,
         getTools: getRoutineTools,
       });
       await sendMessage(say, loopResult.text);
+      history.add(channelId, text, loopResult.text);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Routine Agent] 처리 오류: ${errorMsg.slice(0, 500)}`);
