@@ -41,10 +41,18 @@ describe('isCasualChat', () => {
     expect(isCasualChat('일정 보여줘', [], 5)).toBe(false);
   });
 
-  it('casualOverrides 표현이 있으면 키워드 무관하게 잡담이다', () => {
+  it('casualOverrides만 매칭되면 잡담이다 (actionKeyword 없음)', () => {
     const overrides = ['화이팅', '해볼게', '고마워'];
-    expect(isCasualChat('내일부터 화이팅 해볼게', ACTION_KEYWORDS, 60, overrides)).toBe(true);
-    expect(isCasualChat('오늘 고마워', ACTION_KEYWORDS, 60, overrides)).toBe(true);
+    expect(isCasualChat('화이팅 해볼게', ACTION_KEYWORDS, 60, overrides)).toBe(true);
+    expect(isCasualChat('고마워 정말', ACTION_KEYWORDS, 60, overrides)).toBe(true);
+  });
+
+  it('casualOverrides + actionKeyword 동시 매칭 → LLM 판별 필요 (잡담 아님)', () => {
+    const overrides = ['화이팅', '해볼게', '고마워'];
+    // '내일'이 actionKeyword, '화이팅'이 casualOverride → 둘 다 매칭 → false (LLM 판별)
+    expect(isCasualChat('내일부터 화이팅 해볼게', ACTION_KEYWORDS, 60, overrides)).toBe(false);
+    // '오늘'이 actionKeyword, '고마워'가 casualOverride → 둘 다 매칭 → false
+    expect(isCasualChat('오늘 고마워', ACTION_KEYWORDS, 60, overrides)).toBe(false);
   });
 
   it('casualOverrides 없이 키워드 있으면 잡담이 아니다', () => {
@@ -102,13 +110,23 @@ describe('classifyMessage (하이브리드)', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('casualOverrides 매칭 → 즉시 casual, casualReply 없음 (LLM 호출 없음)', async () => {
+  it('casualOverrides만 매칭 (actionKeyword 없음) → 즉시 casual (LLM 호출 없음)', async () => {
     const llm = createMockLLM('action');
     const overrides = ['화이팅', '고마워'];
-    const result = await classifyMessage(llm, '오늘 고마워', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE, overrides);
+    const result = await classifyMessage(llm, '고마워 정말', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE, overrides);
     expect(result.intent).toBe('casual');
     expect(result.casualReply).toBeUndefined();
     expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('casualOverrides + actionKeyword 동시 매칭 → LLM 분류', async () => {
+    const llm = createMockLLM('괜찮아, 잘 하고 있어.');
+    const overrides = ['화이팅', '고마워'];
+    // '오늘'이 actionKeyword, '고마워'가 casualOverride → LLM 분류
+    const result = await classifyMessage(llm, '오늘 고마워', ACTION_KEYWORDS, 80, AGENT_CONTEXT, AGENT_ROLE, overrides);
+    expect(result.intent).toBe('casual');
+    expect(result.casualReply).toBe('괜찮아, 잘 하고 있어.');
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
   it('액션 키워드 없음 → 즉시 casual, casualReply 없음 (LLM 호출 없음)', async () => {
