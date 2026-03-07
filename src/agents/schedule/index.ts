@@ -1,7 +1,7 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
 import type { NotionClient } from '../../shared/notion.js';
-import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
+import { runAgentLoopWithAck, getAckMessage } from '../../shared/agent-loop.js';
 import type { AgentLoopResult } from '../../shared/agent-loop.js';
 import { sendMessage, sendBlockMessage } from '../../shared/slack.js';
 import { queryTodaySchedules, queryBacklogItems } from '../../shared/notion.js';
@@ -353,13 +353,12 @@ export const createScheduleAgent = (
       // 3. LLM 에이전트 경로: 잡담 / 액션 / 혼합 모두 LLM이 자율 판단
       // eslint-disable-next-line no-console
       console.log(`[Schedule Agent] 메시지 수신: ${text}`);
-      await sendMessage(say, getAckMessage());
 
-      const loopResult = await runAgentLoop(llmClient, text, {
-        label: 'Schedule Agent',
-        buildSystemPrompt: () => buildSystemPrompt(dbId, getTodayString()) + ctx,
-        getTools: getScheduleTools,
-      });
+      const loopResult = await runAgentLoopWithAck(
+        llmClient, text,
+        { label: 'Schedule Agent', buildSystemPrompt: () => buildSystemPrompt(dbId, getTodayString()) + ctx, getTools: getScheduleTools },
+        () => sendMessage(say, getAckMessage()),
+      );
 
       // 변경 작업이면 해당 날짜 일정 목록을 코드 레벨로 추가 (LLM 라운드 절약)
       let reply = loopResult.text;

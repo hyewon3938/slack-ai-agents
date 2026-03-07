@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { KnownEventFromType, SayFn } from '@slack/bolt';
 import type { LLMClient, LLMResponse } from '../../../shared/llm.js';
 import type { Client as NotionClient } from '@notionhq/client';
-import { createRoutineAgent, detectTomorrowRoutine, detectChecklistTarget } from '../index.js';
+import { createRoutineAgent, detectTomorrowRoutine, detectChecklistTarget, detectAnalyticsQuery } from '../index.js';
 
 vi.mock('../../../shared/mcp-client.js', () => ({
   getMCPTools: vi.fn(() => [
@@ -112,6 +112,32 @@ describe('detectTomorrowRoutine', () => {
   });
 });
 
+describe('detectAnalyticsQuery', () => {
+  it('달성률/통계 패턴을 감지한다', () => {
+    expect(detectAnalyticsQuery('나 오늘 루틴 잘하고 있는 것 같아?')).toBe(true);
+    expect(detectAnalyticsQuery('루틴 달성률 알려줘')).toBe(true);
+    expect(detectAnalyticsQuery('오늘 얼마나 했어')).toBe(true);
+    expect(detectAnalyticsQuery('루틴 통계')).toBe(true);
+    expect(detectAnalyticsQuery('루틴 몇 개 했어?')).toBe(true);
+    expect(detectAnalyticsQuery('얼마나 지켰어?')).toBe(true);
+  });
+
+  it('CRUD 키워드가 있으면 false를 반환한다', () => {
+    expect(detectAnalyticsQuery('달성률 기록 추가해줘')).toBe(false);
+    expect(detectAnalyticsQuery('통계 삭제해줘')).toBe(false);
+  });
+
+  it('날짜 키워드가 있으면 false를 반환한다 (LLM으로 위임)', () => {
+    expect(detectAnalyticsQuery('어제 달성률')).toBe(false);
+    expect(detectAnalyticsQuery('이번주 통계')).toBe(false);
+  });
+
+  it('분석 키워드가 없으면 false를 반환한다', () => {
+    expect(detectAnalyticsQuery('루틴 보여줘')).toBe(false);
+    expect(detectAnalyticsQuery('고마워')).toBe(false);
+  });
+});
+
 describe('createRoutineAgent', () => {
   let mockSay: SayFn;
 
@@ -198,6 +224,57 @@ describe('createRoutineAgent', () => {
     });
   });
 
+  describe('달성률 빠른 경로', () => {
+    it('달성률 질문 시 LLM 없이 시간대별 통계를 반환한다', async () => {
+      mockedQueryRecords.mockResolvedValueOnce([
+        { id: 'p1', title: '스트레칭', date: '2026-03-07', completed: true, timeSlot: '아침', frequency: '매일' },
+        { id: 'p2', title: '물 마시기', date: '2026-03-07', completed: true, timeSlot: '아침', frequency: '매일' },
+        { id: 'p3', title: '독서', date: '2026-03-07', completed: false, timeSlot: '밤', frequency: '매일' },
+      ]);
+
+      const llmClient = createMockLLMClient([]);
+      const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
+      await agent(createMockMessage('나 오늘 루틴 잘하고 있는 것 같아?'), mockSay);
+
+      expect(llmClient.chat).not.toHaveBeenCalled();
+      const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(reply).toContain('진행 상황');
+      expect(reply).toContain('아침');
+      expect(reply).toContain('2/2');
+      expect(reply).toContain('100%');
+      expect(reply).toContain('밤');
+      expect(reply).toContain('0/1');
+      expect(reply).toContain('전체 2/3');
+    });
+
+    it('전부 완료 시 칭찬 멘트를 포함한다', async () => {
+      mockedQueryRecords.mockResolvedValueOnce([
+        { id: 'p1', title: '스트레칭', date: '2026-03-07', completed: true, timeSlot: '아침', frequency: '매일' },
+        { id: 'p2', title: '독서', date: '2026-03-07', completed: true, timeSlot: '밤', frequency: '매일' },
+      ]);
+
+      const llmClient = createMockLLMClient([]);
+      const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
+      await agent(createMockMessage('얼마나 했어?'), mockSay);
+
+      const reply = (mockSay as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(reply).toContain('100%');
+      expect(reply).toContain('대단해');
+    });
+
+    it('기록이 없으면 안내 메시지를 반환한다', async () => {
+      mockedQueryRecords.mockResolvedValueOnce([]);
+
+      const llmClient = createMockLLMClient([]);
+      const agent = createRoutineAgent(llmClient, 'db-123', mockNotionClient);
+      await agent(createMockMessage('달성률 알려줘'), mockSay);
+
+      expect(mockSay).toHaveBeenCalledWith(
+        '오늘 루틴 기록이 없어. 아침 알림에서 자동으로 생성돼.',
+      );
+    });
+  });
+
   describe('잡담 (에이전트 루프 경유)', () => {
     it('잡담 메시지는 에이전트 루프에서 도구 없이 응답한다', async () => {
       const llmClient = createMockLLMClient([
@@ -213,8 +290,8 @@ describe('createRoutineAgent', () => {
       expect(llmClient.chat).toHaveBeenCalledTimes(1);
       const callArgs = (llmClient.chat as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs).toHaveLength(2); // messages + tools
-      // ack + 응답 = 2번 say 호출
-      expect(mockSay).toHaveBeenCalledTimes(2);
+      // 지연 ack: mock 즉시 반환 → 800ms 이내 → ack 생략, 응답만 1번
+      expect(mockSay).toHaveBeenCalledTimes(1);
       expect(mockSay).toHaveBeenCalledWith('응, 힘내.');
     });
   });

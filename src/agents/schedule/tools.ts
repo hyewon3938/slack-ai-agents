@@ -10,7 +10,14 @@ const SCHEDULE_TOOL_NAMES = new Set([
   'API-get-block-children',   // 페이지 내부 블록(내용) 조회
 ]);
 
+/** 필터 결과 캐시: MCP 재연결 시 source 참조가 바뀌어 자동 무효화 */
+let cachedSource: LLMToolDefinition[] | null = null;
+let cachedFiltered: LLMToolDefinition[] | null = null;
+
 export const getScheduleTools = async (): Promise<LLMToolDefinition[]> => {
-  const tools = await getMCPTools();
-  return tools.filter((tool) => SCHEDULE_TOOL_NAMES.has(tool.name));
+  const source = await getMCPTools();
+  if (source === cachedSource && cachedFiltered) return cachedFiltered;
+  cachedSource = source;
+  cachedFiltered = source.filter((tool) => SCHEDULE_TOOL_NAMES.has(tool.name));
+  return cachedFiltered;
 };
