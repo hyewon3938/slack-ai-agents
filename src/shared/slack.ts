@@ -39,6 +39,15 @@ export const sendMessage = async (
   await say(text);
 };
 
+/** Block Kit 메시지 전송 (say 함수 사용) */
+export const sendBlockMessage = async (
+  say: SayFn,
+  text: string,
+  blocks: KnownBlock[],
+): Promise<void> => {
+  await say({ text, blocks });
+};
+
 export const sendThreadReply = async (
   say: SayFn,
   text: string,
