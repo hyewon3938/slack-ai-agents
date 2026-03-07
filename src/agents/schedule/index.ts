@@ -4,12 +4,13 @@ import type { NotionClient } from '../../shared/notion.js';
 import { classifyMessage, respondCasualChat } from '../../shared/casual-chat.js';
 import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
 import type { AgentLoopResult } from '../../shared/agent-loop.js';
-import { sendMessage } from '../../shared/slack.js';
+import { sendMessage, sendBlockMessage } from '../../shared/slack.js';
 import { getAgentRole, getAgentContext } from '../../shared/personality.js';
 import { queryTodaySchedules, queryBacklogItems } from '../../shared/notion.js';
 import { buildReminderMessage, formatDateShort, formatScheduleList } from '../../cron/schedule-reminder.js';
 import { buildSystemPrompt, getTodayString } from './prompt.js';
 import { getScheduleTools } from './tools.js';
+import { buildScheduleBlocks } from './blocks.js';
 
 const CASUAL_CHAT_MAX_LENGTH = 80;
 const ACTION_KEYWORDS = [
@@ -325,6 +326,19 @@ export const createScheduleAgent = (
       }
 
       const text = message.text.trim();
+
+      // 0. "체크" 단축어 → 오늘 일정 Block Kit (overflow 메뉴 포함)
+      if (text === '체크') {
+        const today = getTodayISO();
+        const items = await queryTodaySchedules(notionClient, dbId, today);
+        if (items.length === 0) {
+          await sendMessage(say, '오늘 일정 없어.');
+          return;
+        }
+        const { text: msgText, blocks } = buildScheduleBlocks(items, today);
+        await sendBlockMessage(say, msgText, blocks);
+        return;
+      }
 
       // 1. 잡담 감지 (하이브리드: 키워드 → LLM 분류+응답)
       const result = await classifyMessage(
