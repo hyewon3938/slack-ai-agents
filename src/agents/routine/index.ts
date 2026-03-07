@@ -1,11 +1,18 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
 import type { Client as NotionClient } from '@notionhq/client';
+import type { RoutineTemplate } from '../../shared/routine-notion.js';
 import { classifyMessage, respondCasualChat } from '../../shared/casual-chat.js';
 import { runAgentLoop, getAckMessage } from '../../shared/agent-loop.js';
 import { sendMessage } from '../../shared/slack.js';
 import { getAgentRole, getAgentContext } from '../../shared/personality.js';
-import { queryTodayRoutineRecords } from '../../shared/routine-notion.js';
+import {
+  queryTodayRoutineRecords,
+  queryRoutineTemplates,
+  queryLastRecordDate,
+  shouldCreateToday,
+  frequencyBadge,
+} from '../../shared/routine-notion.js';
 import { buildRoutineBlocks, buildFilteredRoutineBlocks } from './blocks.js';
 import { buildRoutinePrompt, getTodayString } from './prompt.js';
 import { getRoutineTools } from './tools.js';
@@ -21,7 +28,7 @@ const CASUAL_OVERRIDES = [
 ];
 
 const EXACT_KEYWORDS = new Set(['루틴', '루틴체크', '체크']);
-const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨', '없애', '지워', '초기화', '시작'];
+const CRUD_KEYWORDS = ['추가', '삭제', '빼', '변경', '수정', '넣어', '만들어', '바꿔', '옮겨', '없애', '지워', '초기화', '시작', '꺼', '켜', '끄'];
 const ANALYTICS_KEYWORDS = ['얼마나', '통계', '달성', '지켰', '기록', '분석', '몇', '퍼센트', '잘하고'];
 const DATE_KEYWORDS = ['내일', '모레', '어제', '그제', '이번주', '다음주', '저번주', '지난주'];
 const ACTION_KEYWORDS = [...CRUD_KEYWORDS, ...ANALYTICS_KEYWORDS, '루틴', '보여', '알려', '조회', '목록'];
@@ -37,6 +44,27 @@ const getTodayISO = (): string => {
   const mm = String(kst.getMonth() + 1).padStart(2, '0');
   const dd = String(kst.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+};
+
+/** 날짜를 N일 이동 (YYYY-MM-DD) */
+const addDays = (dateStr: string, days: number): string => {
+  const d = new Date(dateStr + 'T00:00:00+09:00');
+  d.setDate(d.getDate() + days);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
+/** "3/8 (토)" 형태 날짜 라벨 */
+const formatDateLabel = (dateStr: string): string => {
+  const d = new Date(dateStr + 'T00:00:00+09:00');
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const dayName = DAY_NAMES[d.getDay()];
+  return `${m}/${day} (${dayName})`;
 };
 
 const TIME_SLOTS = ['아침', '점심', '저녁', '밤'] as const;
@@ -59,6 +87,66 @@ export const detectChecklistTarget = (text: string): ChecklistTarget | null => {
     return 'all';
   }
   return null;
+};
+
+/** "내일 루틴" 미리보기 패턴 감지 */
+export const detectTomorrowRoutine = (text: string): boolean => {
+  if (!text.includes('내일')) return false;
+  if (!text.includes('루틴')) return false;
+  if (CRUD_KEYWORDS.some((k) => text.includes(k))) return false;
+  return true;
+};
+
+/** 내일 루틴 미리보기: 활성 템플릿 + 빈도 기반 필터링 */
+const sendTomorrowPreview = async (
+  notionClient: NotionClient,
+  dbId: string,
+  say: Parameters<AgentHandler>[1],
+): Promise<void> => {
+  const today = getTodayISO();
+  const tomorrow = addDays(today, 1);
+
+  const templates = await queryRoutineTemplates(notionClient, dbId);
+
+  // 빈도 기반 필터: 내일 실행 대상만 선별
+  const tomorrowTemplates: RoutineTemplate[] = [];
+  for (const t of templates) {
+    if (t.frequency === '매일') {
+      tomorrowTemplates.push(t);
+    } else {
+      const lastDate = await queryLastRecordDate(notionClient, dbId, t.title, t.timeSlot);
+      if (shouldCreateToday(t.frequency, lastDate, tomorrow)) {
+        tomorrowTemplates.push(t);
+      }
+    }
+  }
+
+  if (tomorrowTemplates.length === 0) {
+    await sendMessage(say, `내일 ${formatDateLabel(tomorrow)} 루틴은 없어.`);
+    return;
+  }
+
+  // 시간대별 그룹핑
+  const grouped = new Map<string, RoutineTemplate[]>();
+  for (const t of tomorrowTemplates) {
+    const list = grouped.get(t.timeSlot) ?? [];
+    list.push(t);
+    grouped.set(t.timeSlot, list);
+  }
+
+  let result = `내일 ${formatDateLabel(tomorrow)} 루틴이야.\n`;
+  for (const slot of TIME_SLOTS) {
+    const items = grouped.get(slot);
+    if (items && items.length > 0) {
+      result += `\n*${slot}*\n`;
+      for (const t of items) {
+        const badge = frequencyBadge(t.frequency);
+        result += `· ${t.title}${badge ? ' ' + badge : ''}\n`;
+      }
+    }
+  }
+
+  await sendMessage(say, result.trim());
 };
 
 /** 오늘 루틴 체크리스트를 조회하여 전송 */
@@ -131,14 +219,22 @@ export const createRoutineAgent = (
         return;
       }
 
-      // 3. "루틴" 포함 조회 → 체크리스트 반환 (시간대 필터 지원)
+      // 3. "내일 루틴" → 빈도 기반 미리보기 (SDK 직접 계산)
+      if (detectTomorrowRoutine(text)) {
+        // eslint-disable-next-line no-console
+        console.log(`[Routine Agent] 내일 루틴 미리보기`);
+        await sendTomorrowPreview(notionClient, dbId, say);
+        return;
+      }
+
+      // 4. "루틴" 포함 조회 → 체크리스트 반환 (시간대 필터 지원)
       const checklistTarget = detectChecklistTarget(text);
       if (checklistTarget) {
         await sendChecklist(notionClient, dbId, say, checklistTarget);
         return;
       }
 
-      // 4. LLM 에이전트 경로: 자연어 루틴 CRUD
+      // 5. LLM 에이전트 경로: 자연어 루틴 CRUD
       // eslint-disable-next-line no-console
       console.log(`[Routine Agent] 메시지 수신`);
       await sendMessage(say, getAckMessage());

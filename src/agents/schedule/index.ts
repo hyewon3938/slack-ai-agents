@@ -42,8 +42,11 @@ const hasMutation = (result: AgentLoopResult): boolean =>
 
 /** 사용자 텍스트에서 대상 날짜 추출 (오늘/내일/모레 → YYYY-MM-DD, 판별 불가 시 null) */
 export const extractMutationDate = (text: string, todayISO: string): string | null => {
+  // 백로그는 날짜 없음
+  if (text.includes('백로그')) return null;
   if (text.includes('모레')) return addDays(todayISO, 2);
   if (text.includes('내일')) return addDays(todayISO, 1);
+  if (text.includes('어제')) return addDays(todayISO, -1);
   // "오늘" 명시 또는 날짜 키워드 없음 → 오늘 (대부분의 변경은 오늘 대상)
   if (text.includes('오늘')) return todayISO;
   // 복잡한 날짜 (이번주, 다음주, N월 N일 등) → 건너뜀
@@ -51,6 +54,92 @@ export const extractMutationDate = (text: string, todayISO: string): string | nu
   if (hasComplexDate) return null;
   // 날짜 키워드 없음 → 기본 오늘
   return todayISO;
+};
+
+/** 도구 호출 arguments에서 Date 속성(YYYY-MM-DD) 추출 (깊이 탐색) */
+const extractDateFromArgs = (obj: unknown): string | null => {
+  if (obj === null || obj === undefined || typeof obj !== 'object') return null;
+  const record = obj as Record<string, unknown>;
+
+  // { date: { start: "YYYY-MM-DD..." } } 패턴 매칭
+  if ('date' in record && record['date'] && typeof record['date'] === 'object') {
+    const dateObj = record['date'] as Record<string, unknown>;
+    if (typeof dateObj['start'] === 'string') {
+      return dateObj['start'].slice(0, 10);
+    }
+  }
+
+  // 하위 객체 재귀 탐색
+  for (const value of Object.values(record)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const found = extractDateFromArgs(value);
+      if (found) return found;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = extractDateFromArgs(item);
+        if (found) return found;
+      }
+    }
+  }
+
+  return null;
+};
+
+/** 변경 도구(API-post-page, API-patch-page)의 arguments에서 대상 날짜 추출 */
+export const extractDateFromToolArgs = (
+  toolNames: string[],
+  toolArgs: Record<string, unknown>[],
+): string | null => {
+  for (let i = 0; i < toolNames.length; i++) {
+    const name = toolNames[i];
+    if (!name || !MUTATION_TOOLS.has(name)) continue;
+    const args = toolArgs[i];
+    if (!args) continue;
+    const date = extractDateFromArgs(args);
+    if (date) return date;
+  }
+  return null;
+};
+
+/** 도구 호출 arguments에서 Date가 명시적 null인지 확인 (백로그 감지) */
+const hasNullDateInArgs = (obj: unknown): boolean => {
+  if (obj === null || obj === undefined || typeof obj !== 'object') return false;
+  const record = obj as Record<string, unknown>;
+
+  // { date: null } 패턴 매칭 (백로그: Date 속성이 null)
+  if ('date' in record && record['date'] === null) {
+    return true;
+  }
+
+  // 하위 객체 재귀 탐색
+  for (const value of Object.values(record)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (hasNullDateInArgs(value)) return true;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (hasNullDateInArgs(item)) return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+/** 변경 도구의 arguments에서 백로그 여부 확인 (Date가 명시적으로 null) */
+export const isBacklogMutation = (
+  toolNames: string[],
+  toolArgs: Record<string, unknown>[],
+): boolean => {
+  for (let i = 0; i < toolNames.length; i++) {
+    const name = toolNames[i];
+    if (!name || !MUTATION_TOOLS.has(name)) continue;
+    const args = toolArgs[i];
+    if (!args) continue;
+    if (hasNullDateInArgs(args)) return true;
+  }
+  return false;
 };
 
 /** 변경 후 해당 날짜 일정 목록을 생성 (없으면 null) */
@@ -84,7 +173,7 @@ const COMPLEX_QUERY_KEYWORDS = ['이번주', '다음주', '언제', '지난주',
 /** 조회 빠른 경로 최대 길이 (간단 조회는 보통 ~15자 이내) */
 const QUERY_MAX_LENGTH = 20;
 
-type QueryTarget = 'today' | 'tomorrow' | 'dayAfter';
+type QueryTarget = 'yesterday' | 'today' | 'tomorrow' | 'dayAfter';
 
 /** 간단 조회 패턴 감지 → 대상 날짜 반환 (null이면 에이전트 루프) */
 export const detectSimpleQuery = (text: string): QueryTarget | null => {
@@ -95,7 +184,7 @@ export const detectSimpleQuery = (text: string): QueryTarget | null => {
   // 조회 의도 확인: (날짜 + 일정/조회 의도) 또는 (일정 + 조회 의도) 조합
   const hasScheduleWord = ['일정', '할일'].some((k) => text.includes(k));
   const hasQueryWord = ['보여', '알려', '조회', '목록', '있어', '있나', '뭐야', '뭘까', '뭐', '뭘'].some((k) => text.includes(k));
-  const hasDateWord = ['오늘', '내일', '모레'].some((k) => text.includes(k));
+  const hasDateWord = ['어제', '오늘', '내일', '모레'].some((k) => text.includes(k));
 
   const isQuery =
     (hasDateWord && (hasScheduleWord || hasQueryWord)) ||
@@ -105,6 +194,7 @@ export const detectSimpleQuery = (text: string): QueryTarget | null => {
 
   if (text.includes('모레')) return 'dayAfter';
   if (text.includes('내일')) return 'tomorrow';
+  if (text.includes('어제')) return 'yesterday';
   return 'today';
 };
 
@@ -131,6 +221,7 @@ const addDays = (dateStr: string, days: number): string => {
 /** 조회 대상에 따른 날짜 계산 */
 const getTargetDate = (target: QueryTarget, today: string): string => {
   switch (target) {
+    case 'yesterday': return addDays(today, -1);
     case 'today': return today;
     case 'tomorrow': return addDays(today, 1);
     case 'dayAfter': return addDays(today, 2);
@@ -150,7 +241,12 @@ const buildQueryResponse = (
     return buildReminderMessage(items, targetDate, formatted, false);
   }
 
-  const label = target === 'tomorrow' ? '내일' : '모레';
+  const dateLabels: Record<Exclude<QueryTarget, 'today'>, string> = {
+    yesterday: '어제',
+    tomorrow: '내일',
+    dayAfter: '모레',
+  };
+  const label = dateLabels[target];
 
   if (items.length === 0) {
     return `${label} ${formatted}은 일정 없어.`;
@@ -173,15 +269,11 @@ export const detectBacklogQuery = (text: string): boolean => {
   return true;
 };
 
-/** 백로그 목록 응답 생성 */
-const buildBacklogResponse = (
+/** 백로그 아이템들을 텍스트 목록으로 포맷 */
+const formatBacklogList = (
   items: import('../../shared/notion.js').ScheduleItem[],
 ): string => {
-  if (items.length === 0) {
-    return '백로그에 쌓인 거 없어. 깔끔하네.';
-  }
-
-  const list = items
+  return items
     .map((item) => {
       let line = item.title;
       if (item.category.length > 0) {
@@ -191,8 +283,32 @@ const buildBacklogResponse = (
       return line;
     })
     .join('\n');
+};
 
-  return `백로그 ${items.length}개야.\n\n${list}\n\n날짜 지정하고 싶은 거 있으면 말해줘.`;
+/** 백로그 목록 응답 생성 (빠른 경로) */
+const buildBacklogResponse = (
+  items: import('../../shared/notion.js').ScheduleItem[],
+): string => {
+  if (items.length === 0) {
+    return '백로그에 쌓인 거 없어. 깔끔하네.';
+  }
+
+  return `백로그 ${items.length}개야.\n\n${formatBacklogList(items)}\n\n날짜 지정하고 싶은 거 있으면 말해줘.`;
+};
+
+/** 변경 후 백로그 목록을 생성 (없으면 null) */
+const buildPostMutationBacklogList = async (
+  notionClient: NotionClient,
+  dbId: string,
+): Promise<string | null> => {
+  try {
+    const items = await queryBacklogItems(notionClient, dbId);
+    if (items.length === 0) return null;
+    return `\n\n백로그 ${items.length}개야.\n\n${formatBacklogList(items)}`;
+  } catch (error: unknown) {
+    console.error('[Schedule Agent] post-mutation 백로그 조회 오류:', error instanceof Error ? error.message : error);
+    return null;
+  }
 };
 
 // --- 에이전트 ---
@@ -260,14 +376,32 @@ export const createScheduleAgent = (
       // 변경 작업이면 해당 날짜 일정 목록을 코드 레벨로 추가 (LLM 라운드 절약)
       let reply = loopResult.text;
       if (hasMutation(loopResult)) {
-        const today = getTodayISO();
-        const targetDate = extractMutationDate(text, today);
-        if (targetDate) {
+        // 백로그 변경 감지: 도구 args에서 Date: null 또는 텍스트에 "백로그"
+        const isBacklog =
+          isBacklogMutation(loopResult.toolNames, loopResult.toolArgs)
+          || (text.includes('백로그') && !extractDateFromToolArgs(loopResult.toolNames, loopResult.toolArgs));
+
+        if (isBacklog) {
           // eslint-disable-next-line no-console
-          console.log(`[Schedule Agent] post-mutation 조회: ${targetDate}`);
-          const postList = await buildPostMutationList(notionClient, dbId, targetDate);
+          console.log(`[Schedule Agent] post-mutation 백로그 조회`);
+          const postList = await buildPostMutationBacklogList(notionClient, dbId);
           if (postList) {
             reply += postList;
+          }
+        } else {
+          const today = getTodayISO();
+          // 1순위: 도구 호출 arguments에서 실제 날짜 추출
+          // 2순위: 사용자 텍스트에서 날짜 추출 (오늘/내일/모레)
+          const targetDate =
+            extractDateFromToolArgs(loopResult.toolNames, loopResult.toolArgs)
+            ?? extractMutationDate(text, today);
+          if (targetDate) {
+            // eslint-disable-next-line no-console
+            console.log(`[Schedule Agent] post-mutation 조회: ${targetDate}`);
+            const postList = await buildPostMutationList(notionClient, dbId, targetDate);
+            if (postList) {
+              reply += postList;
+            }
           }
         }
       }

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { KnownEventFromType, SayFn } from '@slack/bolt';
 import type { LLMClient, LLMResponse } from '../../../shared/llm.js';
 import type { NotionClient, ScheduleItem } from '../../../shared/notion.js';
-import { createScheduleAgent, detectSimpleQuery, detectBacklogQuery } from '../index.js';
+import { createScheduleAgent, detectSimpleQuery, detectBacklogQuery, extractMutationDate, extractDateFromToolArgs, isBacklogMutation } from '../index.js';
 
 vi.mock('../../../shared/mcp-client.js', () => ({
   getMCPTools: vi.fn(() => [
@@ -67,6 +67,12 @@ describe('detectSimpleQuery', () => {
     expect(detectSimpleQuery('일정 알려줘')).toBe('today');
   });
 
+  it('어제 일정 조회 패턴을 감지한다', () => {
+    expect(detectSimpleQuery('어제 일정')).toBe('yesterday');
+    expect(detectSimpleQuery('어제 뭐 있었어')).toBe('yesterday');
+    expect(detectSimpleQuery('어제 일정 보여줘')).toBe('yesterday');
+  });
+
   it('내일/모레 패턴을 감지한다', () => {
     expect(detectSimpleQuery('내일 일정')).toBe('tomorrow');
     expect(detectSimpleQuery('내일 뭐 있어')).toBe('tomorrow');
@@ -112,6 +118,166 @@ describe('detectBacklogQuery', () => {
 
   it('긴 메시지는 false를 반환한다', () => {
     expect(detectBacklogQuery('백로그에서 내일로 옮겨줘 그거 중요한 거야')).toBe(false);
+  });
+});
+
+describe('extractMutationDate', () => {
+  const TODAY = '2026-03-07';
+
+  it('어제/오늘/내일/모레 키워드를 인식한다', () => {
+    expect(extractMutationDate('어제 미팅 완료', TODAY)).toBe('2026-03-06');
+    expect(extractMutationDate('오늘 미팅 추가', TODAY)).toBe('2026-03-07');
+    expect(extractMutationDate('내일 보고서 추가', TODAY)).toBe('2026-03-08');
+    expect(extractMutationDate('모레 약속 추가', TODAY)).toBe('2026-03-09');
+  });
+
+  it('날짜 키워드 없으면 오늘로 기본 설정한다', () => {
+    expect(extractMutationDate('미팅 추가해줘', TODAY)).toBe('2026-03-07');
+  });
+
+  it('복잡한 날짜 표현은 null을 반환한다', () => {
+    expect(extractMutationDate('이번주 금요일에 추가', TODAY)).toBeNull();
+    expect(extractMutationDate('다음주에 추가해줘', TODAY)).toBeNull();
+    expect(extractMutationDate('월요일에 추가해줘', TODAY)).toBeNull();
+    expect(extractMutationDate('3월 10일에 추가', TODAY)).toBeNull();
+  });
+
+  it('백로그 키워드가 있으면 null을 반환한다', () => {
+    expect(extractMutationDate('백로그에 추가해줘', TODAY)).toBeNull();
+    expect(extractMutationDate('백로그에 인스타 자동화 추가', TODAY)).toBeNull();
+  });
+});
+
+describe('extractDateFromToolArgs', () => {
+  it('API-post-page arguments에서 날짜를 추출한다', () => {
+    const toolNames = ['API-post-page'];
+    const toolArgs = [{
+      parent: { database_id: 'db-123' },
+      properties: {
+        Name: { title: [{ text: { content: '미팅' } }] },
+        Date: { date: { start: '2026-03-10' } },
+        '상태': { select: { name: 'todo' } },
+      },
+    }];
+
+    expect(extractDateFromToolArgs(toolNames, toolArgs)).toBe('2026-03-10');
+  });
+
+  it('API-patch-page arguments에서 날짜를 추출한다', () => {
+    const toolNames = ['API-post-search', 'API-patch-page'];
+    const toolArgs = [
+      { query: '미팅' },
+      {
+        properties: {
+          Date: { date: { start: '2026-03-15' } },
+        },
+      },
+    ];
+
+    expect(extractDateFromToolArgs(toolNames, toolArgs)).toBe('2026-03-15');
+  });
+
+  it('mutation 도구가 아닌 도구의 args는 무시한다', () => {
+    const toolNames = ['API-post-search'];
+    const toolArgs = [{
+      query: '',
+      filter: { property: 'Date', date: { start: '2026-03-10' } },
+    }];
+
+    expect(extractDateFromToolArgs(toolNames, toolArgs)).toBeNull();
+  });
+
+  it('날짜 속성이 없는 mutation은 null을 반환한다', () => {
+    const toolNames = ['API-patch-page'];
+    const toolArgs = [{
+      properties: {
+        '상태': { select: { name: 'done' } },
+      },
+    }];
+
+    expect(extractDateFromToolArgs(toolNames, toolArgs)).toBeNull();
+  });
+
+  it('datetime 형식에서 날짜 부분만 추출한다', () => {
+    const toolNames = ['API-post-page'];
+    const toolArgs = [{
+      parent: { database_id: 'db-123' },
+      properties: {
+        Date: { date: { start: '2026-03-10T14:00:00+09:00' } },
+      },
+    }];
+
+    expect(extractDateFromToolArgs(toolNames, toolArgs)).toBe('2026-03-10');
+  });
+
+  it('빈 배열이면 null을 반환한다', () => {
+    expect(extractDateFromToolArgs([], [])).toBeNull();
+  });
+});
+
+describe('isBacklogMutation', () => {
+  it('Date가 null인 API-post-page를 백로그로 감지한다', () => {
+    const toolNames = ['API-post-page'];
+    const toolArgs = [{
+      parent: { database_id: 'db-123' },
+      properties: {
+        Name: { title: [{ text: { content: '인스타 자동화' } }] },
+        Date: { date: null },
+        '상태': { select: { name: 'todo' } },
+      },
+    }];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(true);
+  });
+
+  it('Date가 있는 API-post-page는 백로그가 아니다', () => {
+    const toolNames = ['API-post-page'];
+    const toolArgs = [{
+      parent: { database_id: 'db-123' },
+      properties: {
+        Name: { title: [{ text: { content: '미팅' } }] },
+        Date: { date: { start: '2026-03-10' } },
+        '상태': { select: { name: 'todo' } },
+      },
+    }];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(false);
+  });
+
+  it('mutation 도구가 아닌 도구는 무시한다', () => {
+    const toolNames = ['API-post-search'];
+    const toolArgs = [{
+      query: '',
+      filter: { date: null },
+    }];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(false);
+  });
+
+  it('여러 도구 중 하나라도 Date: null이면 백로그로 감지한다', () => {
+    const toolNames = ['API-post-page', 'API-post-page'];
+    const toolArgs = [
+      {
+        parent: { database_id: 'db-123' },
+        properties: {
+          Name: { title: [{ text: { content: '항목1' } }] },
+          Date: { date: null },
+        },
+      },
+      {
+        parent: { database_id: 'db-123' },
+        properties: {
+          Name: { title: [{ text: { content: '항목2' } }] },
+          Date: { date: null },
+        },
+      },
+    ];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(true);
+  });
+
+  it('빈 배열이면 false를 반환한다', () => {
+    expect(isBacklogMutation([], [])).toBe(false);
   });
 });
 
