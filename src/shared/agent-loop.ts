@@ -168,6 +168,20 @@ export const runAgentLoop = async (
     console.log(`[${label}] finishReason: ${response.finishReason}, toolCalls: ${response.toolCalls.length}`);
 
     if (response.finishReason === 'stop') {
+      // 도구 미사용 환각 방지: 첫 라운드에서 도구 없이 작업 완료 응답 시 재시도
+      if (round === 0 && calledToolNames.length === 0 && tools.length > 0) {
+        const responseText = response.text ?? '';
+        const claimsAction = /했|넣|추가|완료|수정|삭제|처리|변경|옮겼|바꿨|껐|켰/.test(responseText);
+        if (claimsAction) {
+          console.warn(`[${label}] 도구 미사용 환각 감지 — 재시도`);
+          messages.push({ role: 'assistant', content: responseText });
+          messages.push({
+            role: 'user',
+            content: '방금 도구를 호출하지 않고 작업을 완료했다고 했어. 실제로 반영하려면 반드시 도구를 호출해야 해. 다시 처리해줘.',
+          });
+          continue;
+        }
+      }
       return { text: response.text ?? '처리했어.', toolNames: calledToolNames };
     }
 
