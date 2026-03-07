@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { KnownEventFromType, SayFn } from '@slack/bolt';
 import type { LLMClient, LLMResponse } from '../../../shared/llm.js';
 import type { NotionClient, ScheduleItem } from '../../../shared/notion.js';
-import { createScheduleAgent, detectSimpleQuery, detectBacklogQuery, extractMutationDate, extractDateFromToolArgs } from '../index.js';
+import { createScheduleAgent, detectSimpleQuery, detectBacklogQuery, extractMutationDate, extractDateFromToolArgs, isBacklogMutation } from '../index.js';
 
 vi.mock('../../../shared/mcp-client.js', () => ({
   getMCPTools: vi.fn(() => [
@@ -134,6 +134,11 @@ describe('extractMutationDate', () => {
     expect(extractMutationDate('월요일에 추가해줘', TODAY)).toBeNull();
     expect(extractMutationDate('3월 10일에 추가', TODAY)).toBeNull();
   });
+
+  it('백로그 키워드가 있으면 null을 반환한다', () => {
+    expect(extractMutationDate('백로그에 추가해줘', TODAY)).toBeNull();
+    expect(extractMutationDate('백로그에 인스타 자동화 추가', TODAY)).toBeNull();
+  });
 });
 
 describe('extractDateFromToolArgs', () => {
@@ -200,6 +205,72 @@ describe('extractDateFromToolArgs', () => {
 
   it('빈 배열이면 null을 반환한다', () => {
     expect(extractDateFromToolArgs([], [])).toBeNull();
+  });
+});
+
+describe('isBacklogMutation', () => {
+  it('Date가 null인 API-post-page를 백로그로 감지한다', () => {
+    const toolNames = ['API-post-page'];
+    const toolArgs = [{
+      parent: { database_id: 'db-123' },
+      properties: {
+        Name: { title: [{ text: { content: '인스타 자동화' } }] },
+        Date: { date: null },
+        '상태': { select: { name: 'todo' } },
+      },
+    }];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(true);
+  });
+
+  it('Date가 있는 API-post-page는 백로그가 아니다', () => {
+    const toolNames = ['API-post-page'];
+    const toolArgs = [{
+      parent: { database_id: 'db-123' },
+      properties: {
+        Name: { title: [{ text: { content: '미팅' } }] },
+        Date: { date: { start: '2026-03-10' } },
+        '상태': { select: { name: 'todo' } },
+      },
+    }];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(false);
+  });
+
+  it('mutation 도구가 아닌 도구는 무시한다', () => {
+    const toolNames = ['API-post-search'];
+    const toolArgs = [{
+      query: '',
+      filter: { date: null },
+    }];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(false);
+  });
+
+  it('여러 도구 중 하나라도 Date: null이면 백로그로 감지한다', () => {
+    const toolNames = ['API-post-page', 'API-post-page'];
+    const toolArgs = [
+      {
+        parent: { database_id: 'db-123' },
+        properties: {
+          Name: { title: [{ text: { content: '항목1' } }] },
+          Date: { date: null },
+        },
+      },
+      {
+        parent: { database_id: 'db-123' },
+        properties: {
+          Name: { title: [{ text: { content: '항목2' } }] },
+          Date: { date: null },
+        },
+      },
+    ];
+
+    expect(isBacklogMutation(toolNames, toolArgs)).toBe(true);
+  });
+
+  it('빈 배열이면 false를 반환한다', () => {
+    expect(isBacklogMutation([], [])).toBe(false);
   });
 });
 
