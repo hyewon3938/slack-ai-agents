@@ -3,11 +3,6 @@ import type { LLMClient, LLMResponse } from '../llm.js';
 import { runAgentLoopWithAck, ACK_DELAY_MS } from '../agent-loop.js';
 import type { AgentLoopConfig } from '../agent-loop.js';
 
-vi.mock('../mcp-client.js', () => ({
-  getMCPTools: vi.fn(() => []),
-  callMCPTool: vi.fn(),
-}));
-
 const createFastLLMClient = (text: string): LLMClient => ({
   chat: vi.fn(async (): Promise<LLMResponse> => ({
     text,
@@ -27,6 +22,7 @@ const baseConfig: AgentLoopConfig = {
   label: 'Test Agent',
   buildSystemPrompt: () => 'test prompt',
   getTools: async () => [],
+  executeToolCall: vi.fn(async () => ''),
 };
 
 describe('ACK_DELAY_MS', () => {
