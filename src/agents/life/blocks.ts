@@ -4,7 +4,7 @@
  */
 
 import type { KnownBlock } from '@slack/types';
-import type { RoutineRecordRow, ScheduleRow } from '../../shared/life-queries.js';
+import type { RoutineRecordRow, ScheduleRow, SleepRecordRow } from '../../shared/life-queries.js';
 import { frequencyBadge } from '../../shared/life-queries.js';
 
 // ─── 상수 ───────────────────────────────────────────────
@@ -445,4 +445,28 @@ export const buildScheduleBlocks = (
 
   const fallbackText = `${formatted} 일정 (${items.length}개)`;
   return { text: fallbackText, blocks };
+};
+
+// ─── 수면 블록 ──────────────────────────────────────────
+
+/** 수면 요약 Block Kit */
+export const buildSleepBlocks = (sleep: SleepRecordRow | null): KnownBlock[] => {
+  if (!sleep) {
+    return [
+      { type: 'section', text: { type: 'mrkdwn', text: '*수면*\n기록 없음' } },
+    ];
+  }
+  const hours = Math.floor(sleep.duration_minutes / 60);
+  const mins = sleep.duration_minutes % 60;
+  const duration = mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
+  const dateStr = formatDateShort(sleep.date);
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*수면* (${dateStr})\n취침 ${sleep.bedtime} → 기상 ${sleep.wake_time} (${duration})`,
+      },
+    },
+  ];
 };
