@@ -449,24 +449,31 @@ export const buildScheduleBlocks = (
 
 // ─── 수면 블록 ──────────────────────────────────────────
 
-/** 수면 요약 Block Kit */
-export const buildSleepBlocks = (sleep: SleepRecordRow | null): KnownBlock[] => {
-  if (!sleep) {
+/** 분 → "N시간 M분" 포맷 */
+const formatDuration = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
+};
+
+/** 수면 요약 Block Kit (밤잠 + 낮잠) */
+export const buildSleepBlocks = (records: SleepRecordRow[]): KnownBlock[] => {
+  if (records.length === 0) {
     return [
       { type: 'section', text: { type: 'mrkdwn', text: '*수면*\n기록 없음' } },
     ];
   }
-  const hours = Math.floor(sleep.duration_minutes / 60);
-  const mins = sleep.duration_minutes % 60;
-  const duration = mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
-  const dateStr = formatDateShort(sleep.date);
+
+  const lines = records.map((r) => {
+    const label = r.sleep_type === 'night' ? '밤잠' : '낮잠';
+    const duration = formatDuration(r.duration_minutes);
+    return `${label}  ${r.bedtime} → ${r.wake_time} (${duration})`;
+  });
+
   return [
     {
       type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*수면* (${dateStr})\n취침 ${sleep.bedtime} → 기상 ${sleep.wake_time} (${duration})`,
-      },
+      text: { type: 'mrkdwn', text: `*수면*\n${lines.join('\n')}` },
     },
   ];
 };

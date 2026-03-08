@@ -10,12 +10,12 @@ vi.mock('../../../shared/db.js', () => ({
 // ── life-queries mock ──
 const mockQueryTodayRecords = vi.fn<() => Promise<RoutineRecordRow[]>>(async () => []);
 const mockQueryTodaySchedules = vi.fn<() => Promise<ScheduleRow[]>>(async () => []);
-const mockQueryLatestSleep = vi.fn<() => Promise<SleepRecordRow | null>>(async () => null);
+const mockQuerySleepForHome = vi.fn<() => Promise<SleepRecordRow[]>>(async () => []);
 
 vi.mock('../../../shared/life-queries.js', () => ({
-  queryTodayRecords: (...args: unknown[]) => mockQueryTodayRecords(),
-  queryTodaySchedules: (...args: unknown[]) => mockQueryTodaySchedules(),
-  queryLatestSleep: () => mockQueryLatestSleep(),
+  queryTodayRecords: () => mockQueryTodayRecords(),
+  queryTodaySchedules: () => mockQueryTodaySchedules(),
+  querySleepForHome: () => mockQuerySleepForHome(),
   frequencyBadge: vi.fn(() => ''),
 }));
 
@@ -114,17 +114,26 @@ describe('publishHomeView', () => {
     expect(texts.some((t) => t.includes('루틴 없음'))).toBe(false);
   });
 
-  it('수면 기록이 있으면 수면 블록을 포함한다', async () => {
-    mockQueryLatestSleep.mockResolvedValueOnce({
-      id: 1, date: '2025-03-07', bedtime: '23:30', wake_time: '07:00',
-      duration_minutes: 450, sleep_type: 'night', memo: null,
-    });
+  it('밤잠 + 낮잠 기록을 표시한다', async () => {
+    mockQuerySleepForHome.mockResolvedValueOnce([
+      {
+        id: 1, date: '2025-03-07', bedtime: '23:30', wake_time: '07:00',
+        duration_minutes: 450, sleep_type: 'night', memo: null,
+      },
+      {
+        id: 2, date: '2025-03-08', bedtime: '14:00', wake_time: '15:00',
+        duration_minutes: 60, sleep_type: 'nap', memo: null,
+      },
+    ]);
 
     await publishHomeView(mockClient, 'U123');
 
     const texts = extractSectionTexts(getBlocks());
-    expect(texts.some((t) => t.includes('23:30'))).toBe(true);
-    expect(texts.some((t) => t.includes('07:00'))).toBe(true);
+    const sleepText = texts.find((t) => t.includes('수면'));
+    expect(sleepText).toContain('밤잠');
+    expect(sleepText).toContain('23:30');
+    expect(sleepText).toContain('낮잠');
+    expect(sleepText).toContain('14:00');
     expect(texts.some((t) => t.includes('기록 없음'))).toBe(false);
   });
 

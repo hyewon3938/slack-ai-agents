@@ -16,7 +16,7 @@ import {
 import {
   queryTodayRecords,
   queryTodaySchedules,
-  queryLatestSleep,
+  querySleepForHome,
 } from '../../shared/life-queries.js';
 import { createTodayRecords } from '../../cron/life-cron.js';
 
@@ -43,10 +43,10 @@ export const publishHomeView = async (
   // 오늘 루틴 레코드 보장 (없으면 생성)
   await createTodayRecords(today);
 
-  const [records, schedules, sleep] = await Promise.all([
+  const [records, schedules, sleepRecords] = await Promise.all([
     queryTodayRecords(today),
     queryTodaySchedules(today),
-    queryLatestSleep(),
+    querySleepForHome(today),
   ]);
 
   const blocks: KnownBlock[] = [];
@@ -83,7 +83,7 @@ export const publishHomeView = async (
 
   // 수면 섹션
   blocks.push({ type: 'divider' });
-  blocks.push(...buildSleepBlocks(sleep));
+  blocks.push(...buildSleepBlocks(sleepRecords));
 
   // 업데이트 시각
   blocks.push({ type: 'divider' });
