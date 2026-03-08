@@ -206,3 +206,42 @@ export const toUUID = (id: string): string => {
   if (hex.length !== 32) return id;
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
+
+// --- 카테고리 순서 조회 ---
+
+interface DatabaseProperty {
+  type: string;
+  multi_select?: { options: Array<{ name: string }> };
+}
+
+interface DatabaseResponse {
+  properties: Record<string, DatabaseProperty>;
+}
+
+let cachedCategoryOrder: string[] | null = null;
+
+/** Notion DB 스키마에서 카테고리 multi_select 옵션 순서 조회 (캐싱) */
+export const getCategoryOrder = async (
+  client: NotionClient,
+  dbId: string,
+): Promise<string[]> => {
+  if (cachedCategoryOrder) return cachedCategoryOrder;
+
+  const uuid = toUUID(dbId);
+  const response = await (client.request as (args: {
+    path: string;
+    method: string;
+  }) => Promise<unknown>)({
+    path: `databases/${uuid}`,
+    method: 'get',
+  }) as DatabaseResponse;
+
+  const categoryProp = response.properties['카테고리'];
+  if (categoryProp?.type === 'multi_select' && categoryProp.multi_select) {
+    cachedCategoryOrder = categoryProp.multi_select.options.map((o) => o.name);
+  } else {
+    cachedCategoryOrder = [];
+  }
+
+  return cachedCategoryOrder;
+};

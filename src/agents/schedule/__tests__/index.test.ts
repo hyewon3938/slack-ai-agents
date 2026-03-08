@@ -21,6 +21,7 @@ vi.mock('../../../shared/notion.js', async (importOriginal) => {
     ...original,
     queryTodaySchedules: vi.fn(async () => []),
     queryBacklogItems: vi.fn(async () => []),
+    getCategoryOrder: vi.fn(async () => ['약속']),
   };
 });
 
