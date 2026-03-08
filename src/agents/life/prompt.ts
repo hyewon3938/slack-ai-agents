@@ -1,32 +1,6 @@
 import { CHARACTER_PROMPT } from '../../shared/personality.js';
 import { query } from '../../shared/db.js';
-
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
-
-/** KST(UTC+9) 기준 현재 시각 */
-const getKSTDate = (): Date => {
-  const now = new Date();
-  return new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
-};
-
-/** KST 기준 오늘 날짜 (YYYY-MM-DD) */
-export const getTodayISO = (): string => {
-  const now = getKSTDate();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-/** 오늘 날짜 문자열 (YYYY-MM-DD (요일)) */
-export const getTodayString = (): string => {
-  const now = getKSTDate();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const day = DAY_NAMES[now.getDay()];
-  return `${yyyy}-${mm}-${dd} (${day})`;
-};
+import { getTodayString } from '../../shared/kst.js';
 
 /** DB에서 커스텀 지시사항 조회 */
 const loadCustomInstructions = async (): Promise<string> => {
@@ -94,10 +68,29 @@ ${CHARACTER_PROMPT}
 ~발송 완료~
 
 ## 데이터 규칙
-- 변경 후에는 간단한 확인 메시지만. 잔소리는 한 문장.
 - status 기본값: 'todo'. 날짜 없으면 date = NULL (백로그).
 - 루틴 추가: routine_templates에 INSERT (active=true). 오늘 기록은 routine_records에도 INSERT.
 - 루틴 삭제: routine_templates.active = false로 UPDATE.
 - 요일이 필요하면 직접 계산하지 말고 SQL로: to_char(date, 'Dy') 또는 EXTRACT(DOW FROM date).
-- 일정과 루틴을 크로스 분석할 수 있어 (SQL JOIN 활용).${customInstructions}`;
+- 일정과 루틴을 크로스 분석할 수 있어 (SQL JOIN 활용).
+
+## 변경 후 응답 규칙
+- 일정 추가/수정/삭제 후 → 해당 날짜의 전체 일정 목록을 조회해서 보여줘. 위 일정 표시 포맷 사용.
+- 백로그(date=NULL) 추가/수정/삭제 후 → 전체 백로그 목록을 조회해서 보여줘.
+- 잔소리는 짧게 한 문장만 붙여.
+
+## 백로그 관리
+- 백로그 = date가 NULL인 일정. 날짜 없이 "해야 할 일" 목록.
+- "백로그 보여줘" → date IS NULL인 schedules 전체 조회, 카테고리별 그룹화해서 표시.
+- 백로그 표시 포맷은 일정 포맷과 동일 (카테고리 그룹, 상태 표시). 단 날짜 범위는 없음.
+예시:
+백로그 목록이야.
+
+[개인]
+대청소
+★ 보험 정리
+
+[사업]
+► 홈페이지 리뉴얼
+로고 디자인 의뢰${customInstructions}`;
 };

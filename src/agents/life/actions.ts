@@ -12,6 +12,7 @@ import {
   postponeSchedule,
 } from '../../shared/life-queries.js';
 import { updateMessage } from '../../shared/slack.js';
+import { getTodayISO, addDays } from '../../shared/kst.js';
 import {
   ROUTINE_ACTION_ID,
   SCHEDULE_ACTION_ID,
@@ -22,18 +23,7 @@ import {
   buildFilteredRoutineBlocks,
   buildScheduleBlocks,
 } from './blocks.js';
-import { getTodayISO } from './prompt.js';
 import { publishHomeView } from './home.js';
-
-/** 날짜를 N일 이동 (YYYY-MM-DD) */
-const addDays = (dateStr: string, days: number): string => {
-  const d = new Date(dateStr + 'T00:00:00+09:00');
-  d.setDate(d.getDate() + days);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
 
 /** v2 Life Agent 액션 핸들러 등록 */
 export const registerLifeActions = (app: App): void => {

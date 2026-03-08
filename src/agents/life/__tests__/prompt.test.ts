@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getTodayString, getTodayISO, buildLifeSystemPrompt } from '../prompt.js';
+import { getTodayString, getTodayISO } from '../../../shared/kst.js';
+import { buildLifeSystemPrompt } from '../prompt.js';
 
 vi.mock('../../../shared/db.js', () => ({
   query: vi.fn(async () => ({ rows: [] })),
@@ -61,9 +62,16 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('지시사항 보여줘');
   });
 
-  it('60줄 이내의 간결한 프롬프트', async () => {
+  it('변경 후 응답 규칙과 백로그 관리를 포함한다', async () => {
+    const prompt = await buildLifeSystemPrompt('C123');
+    expect(prompt).toContain('전체 일정 목록을 조회');
+    expect(prompt).toContain('백로그');
+    expect(prompt).toContain('date IS NULL');
+  });
+
+  it('80줄 이내의 간결한 프롬프트', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
     const lineCount = prompt.split('\n').length;
-    expect(lineCount).toBeLessThan(65);
+    expect(lineCount).toBeLessThan(80);
   });
 });
