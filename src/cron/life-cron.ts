@@ -59,7 +59,7 @@ const getYesterdayISO = (): string => {
 // ─── 루틴 기록 생성 ─────────────────────────────────────
 
 /** 활성 템플릿 → 빈도 체크 → 오늘 기록 생성 */
-const createTodayRecords = async (today: string): Promise<number> => {
+export const createTodayRecords = async (today: string): Promise<number> => {
   const templates = await queryActiveTemplates();
   const existingIds = await queryExistingTemplateIds(today);
 
