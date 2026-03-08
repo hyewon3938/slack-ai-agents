@@ -48,6 +48,23 @@ export const queryOne = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   return result.rows[0] ?? null;
 };
 
+/** 전용 클라이언트로 타임아웃 적용 쿼리 실행 (SQL 도구용) */
+export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
+  text: string,
+  timeoutMs: number,
+): Promise<pg.QueryResult<T>> => {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query(`SET statement_timeout = '${timeoutMs}'`);
+    const result = await client.query<T>(text);
+    return result;
+  } finally {
+    await client.query(`SET statement_timeout = '0'`).catch(() => {/* 무시 */});
+    client.release();
+  }
+};
+
 /** 연결 풀 종료 */
 export const disconnectDB = async (): Promise<void> => {
   if (!pool) return;
