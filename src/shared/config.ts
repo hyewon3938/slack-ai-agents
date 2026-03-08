@@ -53,6 +53,9 @@ export const CONFIG = {
     evening: optionalEnv('CRON_EVENING', '0 18 * * *'),
     night: optionalEnv('CRON_NIGHT', '0 23 * * *'),
   },
+  db: {
+    url: requireEnv('DATABASE_URL'),
+  },
   routineCron: {
     morning: optionalEnv('CRON_ROUTINE_MORNING', '0 9 * * *'),
     lunch: optionalEnv('CRON_ROUTINE_LUNCH', '0 13 * * *'),

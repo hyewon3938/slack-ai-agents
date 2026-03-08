@@ -2,6 +2,8 @@ import { App } from '@slack/bolt';
 import { CONFIG } from './shared/config.js';
 import { registerMessageHandler, registerAgent } from './router.js';
 import { connectMCP, disconnectMCP } from './shared/mcp-client.js';
+import { connectDB, disconnectDB } from './shared/db.js';
+import { runMigrations } from './shared/migrate.js';
 import { createLLMClient } from './shared/llm.js';
 import { createScheduleAgent } from './agents/schedule/index.js';
 import { createRoutineAgent } from './agents/routine/index.js';
@@ -21,6 +23,10 @@ const app = new App({
 registerMessageHandler(app);
 
 const startApp = async (): Promise<void> => {
+  // DB 연결 + 마이그레이션 (가장 먼저)
+  await connectDB(CONFIG.db.url);
+  await runMigrations();
+
   await connectMCP(CONFIG.notion.apiKey);
 
   const llmClient = await createLLMClient();
@@ -64,6 +70,7 @@ const shutdown = async (): Promise<void> => {
   // eslint-disable-next-line no-console
   console.log('[App] 종료 중...');
   await disconnectMCP();
+  await disconnectDB();
   process.exit(0);
 };
 
