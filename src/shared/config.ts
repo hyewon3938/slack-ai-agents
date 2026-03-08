@@ -64,4 +64,10 @@ export const CONFIG = {
     evening: optionalEnv('CRON_ROUTINE_EVENING', '0 18 * * *'),
     night: optionalEnv('CRON_ROUTINE_NIGHT', '0 22 * * *'),
   },
+  lifeCron: {
+    morning: optionalEnv('LIFE_CRON_MORNING', '0 9 * * *'),
+    lunch: optionalEnv('LIFE_CRON_LUNCH', '0 13 * * *'),
+    evening: optionalEnv('LIFE_CRON_EVENING', '0 18 * * *'),
+    night: optionalEnv('LIFE_CRON_NIGHT', '0 22 * * *'),
+  },
 } as const;
