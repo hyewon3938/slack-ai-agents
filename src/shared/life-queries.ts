@@ -36,6 +36,16 @@ export interface ScheduleRow {
   important: boolean;
 }
 
+export interface SleepRecordRow {
+  id: number;
+  date: string;
+  bedtime: string;
+  wake_time: string;
+  duration_minutes: number;
+  sleep_type: string;
+  memo: string | null;
+}
+
 // ─── 빈도 헬퍼 ─────────────────────────────────────────
 
 /** 두 날짜 사이의 일수 (YYYY-MM-DD) */
@@ -163,4 +173,17 @@ export const postponeSchedule = async (id: number, newDate: string): Promise<voi
     "UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2",
     [newDate, id],
   );
+};
+
+// ─── 수면 쿼리 ──────────────────────────────────────
+
+/** 최근 수면 기록 조회 (밤잠 최신 1건) */
+export const queryLatestSleep = async (): Promise<SleepRecordRow | null> => {
+  const result = await query<SleepRecordRow>(
+    `SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
+     FROM sleep_records
+     WHERE sleep_type = 'night'
+     ORDER BY date DESC LIMIT 1`,
+  );
+  return result.rows[0] ?? null;
 };
