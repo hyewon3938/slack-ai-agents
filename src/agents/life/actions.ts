@@ -23,6 +23,7 @@ import {
   buildScheduleBlocks,
 } from './blocks.js';
 import { getTodayISO } from './prompt.js';
+import { publishHomeView } from './home.js';
 
 /** 날짜를 N일 이동 (YYYY-MM-DD) */
 const addDays = (dateStr: string, days: number): string => {
@@ -66,6 +67,14 @@ export const registerLifeActions = (app: App): void => {
       if (channelId && messageTs) {
         await updateMessage(client, channelId, messageTs, text, blocks);
       }
+
+      // Home 탭 갱신
+      const userId = 'user' in body && body.user
+        ? (typeof body.user === 'string' ? body.user : body.user.id)
+        : undefined;
+      if (userId) {
+        await publishHomeView(client, userId).catch(() => {});
+      }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[Life Action] 루틴 완료 처리 오류: ${msg}`);
@@ -103,6 +112,14 @@ export const registerLifeActions = (app: App): void => {
 
       if (channelId && messageTs) {
         await updateMessage(client, channelId, messageTs, text, blocks);
+      }
+
+      // Home 탭 갱신
+      const userId = 'user' in body && body.user
+        ? (typeof body.user === 'string' ? body.user : body.user.id)
+        : undefined;
+      if (userId) {
+        await publishHomeView(client, userId).catch(() => {});
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);

@@ -6,6 +6,7 @@ import { runMigrations } from './shared/migrate.js';
 import { createLLMClient } from './shared/llm.js';
 import { createLifeAgent } from './agents/life/index.js';
 import { registerLifeActions } from './agents/life/actions.js';
+import { registerHomeTab } from './agents/life/home.js';
 import { initLifeCron } from './cron/life-cron.js';
 
 const app = new App({
@@ -28,6 +29,7 @@ const startApp = async (): Promise<void> => {
   const lifeAgent = createLifeAgent(llmClient);
   registerAgent(CONFIG.channels.life, lifeAgent);
   registerLifeActions(app);
+  registerHomeTab(app);
   initLifeCron(app, {
     channelId: CONFIG.channels.life,
     schedules: CONFIG.lifeCron,
