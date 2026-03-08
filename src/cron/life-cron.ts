@@ -1,6 +1,7 @@
 /**
- * v3 크론 오케스트레이터.
- * 7슬롯 알림: 수면→일정→루틴 순서, LLM 인사/잔소리 생성.
+ * v4 크론 오케스트레이터.
+ * DB(notification_settings)에서 스케줄 로드 → 동적 크론 등록.
+ * 리마인더 체커: 매분 실행, reminders 테이블 조회 → 채널 전송.
  */
 
 import cron from 'node-cron';
@@ -16,9 +17,12 @@ import {
   shouldCreateToday,
   queryTodaySchedules,
   queryNightSleepExists,
+  queryNotificationSettings,
+  queryDueReminders,
+  deactivateReminder,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
-import { getTodayISO, getYesterdayISO } from '../shared/kst.js';
+import { getTodayISO, getYesterdayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
 import { CHARACTER_PROMPT } from '../shared/personality.js';
 import {
   buildFilteredRoutineBlocks,
@@ -33,15 +37,6 @@ import {
 export interface LifeCronConfig {
   channelId: string;
   llmClient: LLMClient;
-  schedules: {
-    sleepCheck: string;
-    morningSchedule: string;
-    morning: string;
-    lunch: string;
-    evening: string;
-    night: string;
-    nightReview: string;
-  };
 }
 
 // ─── LLM 메시지 생성 ────────────────────────────────────
@@ -144,7 +139,7 @@ export const createTodayRecords = async (today: string): Promise<number> => {
 
 // ─── 크론 태스크 ────────────────────────────────────────
 
-/** 08:50 수면 기록 체크 */
+/** 수면 기록 체크 */
 const sleepCheckTask = async (
   app: App,
   config: LifeCronConfig,
@@ -161,7 +156,7 @@ const sleepCheckTask = async (
   }
 };
 
-/** 09:00 오늘 일정 텍스트 알림 */
+/** 오늘 일정 텍스트 알림 */
 const morningScheduleTask = async (
   app: App,
   config: LifeCronConfig,
@@ -176,7 +171,7 @@ const morningScheduleTask = async (
   }
 };
 
-/** 09:05 기록 생성 + 어제 리뷰(LLM) + 아침 루틴 체크리스트 */
+/** 기록 생성 + 어제 리뷰(LLM) + 아침 루틴 체크리스트 */
 const morningTask = async (
   app: App,
   config: LifeCronConfig,
@@ -220,7 +215,7 @@ const morningTask = async (
   console.log(`[Life Cron] 아침 알림 완료 (기록 ${created}개 생성)`);
 };
 
-/** 점심 1시: 미완료 아침 + 점심 체크리스트 */
+/** 점심: 미완료 아침 + 점심 체크리스트 */
 const lunchTask = async (
   app: App,
   config: LifeCronConfig,
@@ -241,7 +236,7 @@ const lunchTask = async (
   }
 };
 
-/** 저녁 6시: 미완료 아침/점심 + 저녁 체크리스트 */
+/** 저녁: 미완료 아침/점심 + 저녁 체크리스트 */
 const eveningTask = async (
   app: App,
   config: LifeCronConfig,
@@ -264,7 +259,7 @@ const eveningTask = async (
   }
 };
 
-/** 밤 10시: 전체 루틴 요약 + LLM 마무리 */
+/** 밤: 전체 루틴 요약 + LLM 마무리 */
 const nightTask = async (
   app: App,
   config: LifeCronConfig,
@@ -293,7 +288,7 @@ const nightTask = async (
   console.log(`[Life Cron] 밤 요약 전송 완료`);
 };
 
-/** 밤 11시: 미완료 일정 + 수면 기록 확인 */
+/** 밤 리뷰: 미완료 일정 + 수면 기록 확인 */
 const nightReviewTask = async (
   app: App,
   config: LifeCronConfig,
@@ -316,7 +311,7 @@ const nightReviewTask = async (
   console.log(`[Life Cron] 밤 리뷰 전송 완료 (수면기록: ${hasRecord ? '있음' : '없음'})`);
 };
 
-// ─── 크론 등록 ──────────────────────────────────────────
+// ─── 유틸리티 ──────────────────────────────────────────
 
 const wrapTask = (
   taskFn: (app: App, config: LifeCronConfig) => Promise<void>,
@@ -342,24 +337,128 @@ const wrapTask = (
   };
 };
 
-export const initLifeCron = (
-  app: App,
-  config: LifeCronConfig,
-): void => {
-  const timezone = 'Asia/Seoul';
-  const { schedules } = config;
-
-  cron.schedule(schedules.sleepCheck, wrapTask(sleepCheckTask, app, config, '수면체크'), { timezone });
-  cron.schedule(schedules.morningSchedule, wrapTask(morningScheduleTask, app, config, '아침일정'), { timezone });
-  cron.schedule(schedules.morning, wrapTask(morningTask, app, config, '아침'), { timezone });
-  cron.schedule(schedules.lunch, wrapTask(lunchTask, app, config, '점심'), { timezone });
-  cron.schedule(schedules.evening, wrapTask(eveningTask, app, config, '저녁'), { timezone });
-  cron.schedule(schedules.night, wrapTask(nightTask, app, config, '밤'), { timezone });
-  cron.schedule(schedules.nightReview, wrapTask(nightReviewTask, app, config, '밤리뷰'), { timezone });
-
-  console.log(
-    `[Life Cron] 알림 스케줄 등록: 수면${schedules.sleepCheck}, 일정${schedules.morningSchedule}, ` +
-    `아침${schedules.morning}, 점심${schedules.lunch}, 저녁${schedules.evening}, ` +
-    `밤${schedules.night}, 밤리뷰${schedules.nightReview}`,
-  );
+/** 'HH:MM' → 'MM HH * * *' 크론 표현식 변환 */
+export const timeToCron = (timeValue: string): string => {
+  const parts = timeValue.split(':');
+  return `${Number(parts[1])} ${Number(parts[0])} * * *`;
 };
+
+// ─── slot_name → 태스크 매핑 ────────────────────────────
+
+type CronTaskFn = (app: App, config: LifeCronConfig) => Promise<void>;
+
+const SLOT_TASKS: Record<string, CronTaskFn> = {
+  sleepCheck: sleepCheckTask,
+  morningSchedule: morningScheduleTask,
+  morning: morningTask,
+  lunch: lunchTask,
+  evening: eveningTask,
+  night: nightTask,
+  nightReview: nightReviewTask,
+};
+
+// ─── CronScheduler 클래스 ───────────────────────────────
+
+interface CronTask {
+  stop: () => void;
+}
+
+export class CronScheduler {
+  private tasks = new Map<string, CronTask>();
+
+  constructor(
+    private readonly app: App,
+    private readonly config: LifeCronConfig,
+  ) {}
+
+  /** DB에서 스케줄 로드 → 크론 등록 + 리마인더 체커 시작 */
+  async init(): Promise<void> {
+    await this.loadAndSchedule();
+    this.startReminderChecker();
+  }
+
+  /** 기존 태스크 전체 파기 → DB 재로드 → 새 스케줄로 등록 */
+  async reload(): Promise<void> {
+    this.destroyAll();
+    await this.loadAndSchedule();
+    this.startReminderChecker();
+    console.log('[Life Cron] 스케줄 리로드 완료');
+  }
+
+  /** 모든 태스크 정지 + 제거 */
+  destroy(): void {
+    this.destroyAll();
+  }
+
+  // ── 내부 메서드 ──
+
+  private async loadAndSchedule(): Promise<void> {
+    const settings = await queryNotificationSettings();
+    const timezone = 'Asia/Seoul';
+    const registered: string[] = [];
+
+    for (const setting of settings) {
+      if (!setting.active) continue;
+
+      const taskFn = SLOT_TASKS[setting.slot_name];
+      if (!taskFn) continue;
+
+      const cronExpr = timeToCron(setting.time_value);
+      const task = cron.schedule(
+        cronExpr,
+        wrapTask(taskFn, this.app, this.config, setting.label),
+        { timezone },
+      );
+      this.tasks.set(setting.slot_name, task);
+      registered.push(`${setting.label}(${setting.time_value})`);
+    }
+
+    console.log(`[Life Cron] 알림 스케줄 등록: ${registered.join(', ')}`);
+  }
+
+  private startReminderChecker(): void {
+    const task = cron.schedule('* * * * *', async () => {
+      try {
+        await this.checkDueReminders();
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('[Life Cron] 리마인더 체크 오류:', msg);
+      }
+    }, { timezone: 'Asia/Seoul' });
+
+    this.tasks.set('_reminderChecker', task);
+  }
+
+  private async checkDueReminders(): Promise<void> {
+    const today = getTodayISO();
+    const currentTime = getKSTTimeString();
+    const dow = getKSTDayOfWeek();
+
+    const reminders = await queryDueReminders(today, currentTime, dow);
+
+    for (const reminder of reminders) {
+      await postToChannel(
+        this.app.client,
+        this.config.channelId,
+        `리마인더: ${reminder.title}`,
+      );
+
+      // 일회성(date 지정) → 자동 비활성화
+      if (reminder.date) {
+        await deactivateReminder(reminder.id);
+        console.log(`[Life Cron] 일회성 리마인더 비활성화: ${reminder.title}`);
+      }
+    }
+
+    if (reminders.length > 0) {
+      console.log(`[Life Cron] 리마인더 ${reminders.length}건 전송 (${currentTime})`);
+    }
+  }
+
+  private destroyAll(): void {
+    for (const task of this.tasks.values()) {
+      task.stop();
+    }
+    this.tasks.clear();
+  }
+}

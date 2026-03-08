@@ -190,6 +190,60 @@ export const queryNightSleepExists = async (
   return Number(result.rows[0]?.count ?? 0) > 0;
 };
 
+// ─── 알림 설정 쿼리 ──────────────────────────────────
+
+export interface NotificationSettingRow {
+  id: number;
+  slot_name: string;
+  label: string;
+  time_value: string;
+  active: boolean;
+}
+
+/** 알림 설정 전체 조회 */
+export const queryNotificationSettings = async (): Promise<NotificationSettingRow[]> =>
+  (await query<NotificationSettingRow>(
+    'SELECT id, slot_name, label, time_value, active FROM notification_settings ORDER BY id',
+  )).rows;
+
+// ─── 리마인더 쿼리 ──────────────────────────────────
+
+export interface ReminderRow {
+  id: number;
+  title: string;
+  time_value: string;
+  date: string | null;
+  frequency: string | null;
+  active: boolean;
+}
+
+/** 현재 시각에 발동할 리마인더 조회 */
+export const queryDueReminders = async (
+  today: string,
+  currentTime: string,
+  dow: number,
+): Promise<ReminderRow[]> =>
+  (await query<ReminderRow>(
+    `SELECT id, title, time_value, date::text, frequency, active
+     FROM reminders
+     WHERE active = true
+       AND time_value = $1
+       AND (
+         (date = $2)
+         OR (date IS NULL AND frequency = '매일')
+         OR (date IS NULL AND frequency = '평일' AND $3 BETWEEN 1 AND 5)
+         OR (date IS NULL AND frequency = '주말' AND $3 IN (0, 6))
+       )`,
+    [currentTime, today, dow],
+  )).rows;
+
+/** 리마인더 비활성화 (일회성 발동 후) */
+export const deactivateReminder = async (id: number): Promise<void> => {
+  await query('UPDATE reminders SET active = false WHERE id = $1', [id]);
+};
+
+// ─── 수면 쿼리 (Home 탭) ────────────────────────────
+
 /** Home 탭용 수면 기록 조회: 밤잠 최신 1건 + 오늘 낮잠 전부 */
 export const querySleepForHome = async (today: string): Promise<SleepRecordRow[]> => {
   const result = await query<SleepRecordRow>(
