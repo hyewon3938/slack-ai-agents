@@ -50,7 +50,7 @@ export const formatItem = (item: ScheduleItem): string => {
   if (isAppointment) {
     const time = item.date ? formatTime(item.date.start) : null;
     const timePart = time ? ` ${time}` : '';
-    return `${item.title}${timePart}${rangePart} [약속]${star}`;
+    return `${item.title}${timePart}${rangePart}${star}`;
   }
 
   if (item.status === 'done') return `~${item.title}~${rangePart}${star}`;
@@ -58,13 +58,23 @@ export const formatItem = (item: ScheduleItem): string => {
   return `${item.title}${rangePart}${star}`;
 };
 
-export const sortItems = (items: ScheduleItem[]): ScheduleItem[] => {
-  const statusOrder: Record<string, number> = {
-    done: 0,
-    'in-progress': 1,
-    todo: 2,
-  };
+const STATUS_ORDER: Record<string, number> = {
+  done: 0,
+  'in-progress': 1,
+  todo: 2,
+};
 
+/** 상태 순서로만 정렬 (카테고리 그룹 내부용) */
+export const sortByStatus = (items: ScheduleItem[]): ScheduleItem[] => {
+  return [...items].sort((a, b) => {
+    const aOrder = STATUS_ORDER[a.status ?? 'todo'] ?? 2;
+    const bOrder = STATUS_ORDER[b.status ?? 'todo'] ?? 2;
+    return aOrder - bOrder;
+  });
+};
+
+/** @deprecated groupItemsByCategory 사용 권장 */
+export const sortItems = (items: ScheduleItem[]): ScheduleItem[] => {
   return [...items].sort((a, b) => {
     const aIsAppointment = a.category.includes('약속');
     const bIsAppointment = b.category.includes('약속');
@@ -73,8 +83,8 @@ export const sortItems = (items: ScheduleItem[]): ScheduleItem[] => {
     if (!aIsAppointment && bIsAppointment) return 1;
 
     if (!aIsAppointment && !bIsAppointment) {
-      const aOrder = statusOrder[a.status ?? 'todo'] ?? 2;
-      const bOrder = statusOrder[b.status ?? 'todo'] ?? 2;
+      const aOrder = STATUS_ORDER[a.status ?? 'todo'] ?? 2;
+      const bOrder = STATUS_ORDER[b.status ?? 'todo'] ?? 2;
       return aOrder - bOrder;
     }
 
@@ -82,9 +92,85 @@ export const sortItems = (items: ScheduleItem[]): ScheduleItem[] => {
   });
 };
 
-export const formatScheduleList = (items: ScheduleItem[]): string => {
-  const sorted = sortItems(items);
-  return sorted.map(formatItem).join('\n');
+// --- 카테고리별 그룹핑 ---
+
+export interface CategoryGroup {
+  category: string;
+  items: ScheduleItem[];
+}
+
+/** 아이템의 대표 카테고리 결정 (복수 → categoryOrder 기준 가장 아래) */
+const assignCategory = (item: ScheduleItem, categoryOrder: string[]): string => {
+  if (item.category.length === 0) return '미분류';
+  if (item.category.length === 1) return item.category[0]!;
+
+  // 복수 카테고리 → categoryOrder에서 인덱스가 가장 큰 것 선택
+  let bestIndex = -1;
+  let bestCategory = item.category[item.category.length - 1]!;
+  for (const cat of item.category) {
+    const idx = categoryOrder.indexOf(cat);
+    if (idx > bestIndex) {
+      bestIndex = idx;
+      bestCategory = cat;
+    }
+  }
+  return bestCategory;
+};
+
+/** 아이템을 카테고리별로 그룹핑 (카테고리 순서: Notion DB 순서, 미분류 맨 끝) */
+export const groupItemsByCategory = (
+  items: ScheduleItem[],
+  categoryOrder: string[],
+): CategoryGroup[] => {
+  const categoryMap = new Map<string, ScheduleItem[]>();
+
+  for (const item of items) {
+    const cat = assignCategory(item, categoryOrder);
+    if (!categoryMap.has(cat)) {
+      categoryMap.set(cat, []);
+    }
+    categoryMap.get(cat)!.push(item);
+  }
+
+  const result: CategoryGroup[] = [];
+
+  // categoryOrder 순서대로 그룹 추가
+  for (const cat of categoryOrder) {
+    const groupItems = categoryMap.get(cat);
+    if (groupItems && groupItems.length > 0) {
+      result.push({ category: cat, items: sortByStatus(groupItems) });
+      categoryMap.delete(cat);
+    }
+  }
+
+  // categoryOrder에 없는 카테고리 (미분류 제외)
+  for (const [cat, groupItems] of categoryMap) {
+    if (cat !== '미분류' && groupItems.length > 0) {
+      result.push({ category: cat, items: sortByStatus(groupItems) });
+    }
+  }
+
+  // 미분류 맨 끝
+  const uncategorized = categoryMap.get('미분류');
+  if (uncategorized && uncategorized.length > 0) {
+    result.push({ category: '미분류', items: sortByStatus(uncategorized) });
+  }
+
+  return result;
+};
+
+export const formatScheduleList = (
+  items: ScheduleItem[],
+  categoryOrder: string[],
+): string => {
+  const groups = groupItemsByCategory(items, categoryOrder);
+  return groups
+    .map((g) => {
+      const header = `*[${g.category}]*`;
+      const list = g.items.map(formatItem).join('\n');
+      return `${header}\n${list}`;
+    })
+    .join('\n\n');
 };
 
 // --- 문구 ---
@@ -161,6 +247,7 @@ export const buildReminderMessage = (
   today: string,
   todayFormatted: string,
   isNight: boolean,
+  categoryOrder: string[],
 ): string => {
   if (items.length === 0) {
     if (isNight) {
@@ -169,7 +256,7 @@ export const buildReminderMessage = (
     return pickRandom(NO_SCHEDULE_MESSAGES).replace('{date}', todayFormatted);
   }
 
-  const list = formatScheduleList(items);
+  const list = formatScheduleList(items, categoryOrder);
 
   if (!isNight) {
     const greeting = pickRandom(GREETING_MESSAGES).replace('{date}', todayFormatted);
@@ -303,8 +390,9 @@ export const generateScheduleGreeting = async (
 export const buildReminderWithGreeting = (
   greeting: string,
   items: ScheduleItem[],
+  categoryOrder: string[],
 ): string => {
   if (items.length === 0) return greeting;
-  const list = formatScheduleList(items);
+  const list = formatScheduleList(items, categoryOrder);
   return `${greeting}\n\n${list}`;
 };

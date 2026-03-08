@@ -1,6 +1,6 @@
 import type { KnownBlock } from '@slack/types';
 import type { ScheduleItem } from '../../shared/notion.js';
-import { sortItems, formatItem, formatDateShort } from '../../cron/schedule-reminder.js';
+import { groupItemsByCategory, formatItem, formatDateShort } from '../../cron/schedule-reminder.js';
 
 export const ACTION_ID = 'schedule_status';
 
@@ -61,10 +61,11 @@ const buildOverflowOptions = (
 
 // --- 블록 빌드 ---
 
-/** 일정 목록을 Block Kit으로 빌드 (overflow 메뉴 포함) */
+/** 일정 목록을 Block Kit으로 빌드 (카테고리별 그룹핑 + overflow 메뉴) */
 export const buildScheduleBlocks = (
   items: ScheduleItem[],
   targetDate: string,
+  categoryOrder: string[],
   headerText?: string,
 ): { text: string; blocks: KnownBlock[] } => {
   const blocks: KnownBlock[] = [];
@@ -76,45 +77,50 @@ export const buildScheduleBlocks = (
     text: { type: 'mrkdwn', text: `*${headerText ?? `${formatted} 일정`}*` },
   });
 
-  const sorted = sortItems(items);
+  const groups = groupItemsByCategory(items, categoryOrder);
 
-  // overflow 없는 항목(약속)은 한 블록에 모아서 표시
-  // overflow 있는 항목은 개별 section (accessory 필요)
-  const noOverflowLines: string[] = [];
-
-  const flushNoOverflow = (): void => {
-    if (noOverflowLines.length === 0) return;
+  for (const group of groups) {
+    // 카테고리 서브 헤더
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: noOverflowLines.join('\n') },
+      text: { type: 'mrkdwn', text: `*[${group.category}]*` },
     });
-    noOverflowLines.length = 0;
-  };
 
-  for (const item of sorted) {
-    const isAppointment = item.category.includes('약속');
-    const itemText = formatItem(item);
+    // overflow 없는 항목(약속)은 한 블록에 모아서 표시
+    // overflow 있는 항목은 개별 section (accessory 필요)
+    const noOverflowLines: string[] = [];
 
-    if (isAppointment || !item.status) {
-      // 약속: overflow 불필요 → 버퍼에 모음
-      noOverflowLines.push(itemText);
-    } else {
-      // overflow 필요한 항목 앞에 버퍼 비우기
-      flushNoOverflow();
+    const flushNoOverflow = (): void => {
+      if (noOverflowLines.length === 0) return;
       blocks.push({
         type: 'section',
-        text: { type: 'mrkdwn', text: itemText },
-        accessory: {
-          type: 'overflow',
-          action_id: ACTION_ID,
-          options: buildOverflowOptions(item, targetDate),
-        },
+        text: { type: 'mrkdwn', text: noOverflowLines.join('\n') },
       });
-    }
-  }
+      noOverflowLines.length = 0;
+    };
 
-  // 남은 약속 항목 비우기
-  flushNoOverflow();
+    for (const item of group.items) {
+      const isAppointment = item.category.includes('약속');
+      const itemText = formatItem(item);
+
+      if (isAppointment || !item.status) {
+        noOverflowLines.push(itemText);
+      } else {
+        flushNoOverflow();
+        blocks.push({
+          type: 'section',
+          text: { type: 'mrkdwn', text: itemText },
+          accessory: {
+            type: 'overflow',
+            action_id: ACTION_ID,
+            options: buildOverflowOptions(item, targetDate),
+          },
+        });
+      }
+    }
+
+    flushNoOverflow();
+  }
 
   // 하단 통계 — 약속 제외, 할일만 카운트
   const tasks = items.filter((i) => !i.category.includes('약속'));

@@ -39,7 +39,7 @@ describe('encodeOverflowValue / parseOverflowValue', () => {
 describe('buildScheduleBlocks', () => {
   it('할일 항목에 overflow 메뉴가 포함된다', () => {
     const items = [createItem({ status: 'todo' })];
-    const { blocks } = buildScheduleBlocks(items, '2026-03-07');
+    const { blocks } = buildScheduleBlocks(items, '2026-03-07', ['약속']);
 
     const sectionWithAccessory = blocks.find(
       (b) => b.type === 'section' && 'accessory' in b,
@@ -49,7 +49,7 @@ describe('buildScheduleBlocks', () => {
 
   it('약속 항목에는 overflow 메뉴가 없다', () => {
     const items = [createItem({ category: ['약속'] })];
-    const { blocks } = buildScheduleBlocks(items, '2026-03-07');
+    const { blocks } = buildScheduleBlocks(items, '2026-03-07', ['약속']);
 
     const sectionWithAccessory = blocks.find(
       (b) => b.type === 'section' && 'accessory' in b,
@@ -59,7 +59,7 @@ describe('buildScheduleBlocks', () => {
 
   it('todo 항목에 "내일로 미루기" 옵션이 포함된다', () => {
     const items = [createItem({ status: 'todo' })];
-    const { blocks } = buildScheduleBlocks(items, '2026-03-07');
+    const { blocks } = buildScheduleBlocks(items, '2026-03-07', ['약속']);
 
     const sectionWithAccessory = blocks.find(
       (b) => b.type === 'section' && 'accessory' in b,
@@ -73,7 +73,7 @@ describe('buildScheduleBlocks', () => {
 
   it('done 항목에는 "내일로 미루기" 옵션이 없다', () => {
     const items = [createItem({ status: 'done' })];
-    const { blocks } = buildScheduleBlocks(items, '2026-03-07');
+    const { blocks } = buildScheduleBlocks(items, '2026-03-07', ['약속']);
 
     const sectionWithAccessory = blocks.find(
       (b) => b.type === 'section' && 'accessory' in b,
@@ -86,7 +86,7 @@ describe('buildScheduleBlocks', () => {
 
   it('in-progress 항목에 "내일로 미루기" 옵션이 포함된다', () => {
     const items = [createItem({ status: 'in-progress' })];
-    const { blocks } = buildScheduleBlocks(items, '2026-03-07');
+    const { blocks } = buildScheduleBlocks(items, '2026-03-07', ['약속']);
 
     const sectionWithAccessory = blocks.find(
       (b) => b.type === 'section' && 'accessory' in b,
@@ -102,7 +102,7 @@ describe('buildScheduleBlocks', () => {
       createItem({ id: 'p1', status: 'done' }),
       createItem({ id: 'p2', status: 'todo' }),
     ];
-    const { blocks } = buildScheduleBlocks(items, '2026-03-07');
+    const { blocks } = buildScheduleBlocks(items, '2026-03-07', ['약속']);
 
     const context = blocks.find((b) => b.type === 'context') as {
       elements?: Array<{ text: string }>;
