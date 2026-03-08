@@ -94,7 +94,7 @@ export interface AgentLoopConfig {
   /** 로그 라벨 (예: 'Schedule Agent') */
   label: string;
   /** 시스템 프롬프트 생성 함수 */
-  buildSystemPrompt: () => string;
+  buildSystemPrompt: () => string | Promise<string>;
   /** 도구 목록 제공 함수 */
   getTools: () => Promise<LLMToolDefinition[]>;
   /** 도구 실행기 */
@@ -145,7 +145,7 @@ export const runAgentLoop = async (
   const { label, buildSystemPrompt, getTools, executeToolCall } = config;
   const executor = executeToolCall;
 
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt();
   const tools = await getTools();
 
   const messages: LLMMessage[] = [

@@ -33,6 +33,7 @@ export interface ScheduleRow {
   status: string;
   category: string | null;
   memo: string | null;
+  important: boolean;
 }
 
 // ─── 빈도 헬퍼 ─────────────────────────────────────────
@@ -143,7 +144,7 @@ export const completeRecord = async (id: number): Promise<void> => {
 /** 특정 날짜의 일정 조회 (당일 + 기간 일정 포함) */
 export const queryTodaySchedules = async (today: string): Promise<ScheduleRow[]> =>
   (await query<ScheduleRow>(
-    `SELECT id, title, date::text, end_date::text, status, category, memo
+    `SELECT id, title, date::text, end_date::text, status, category, memo, important
      FROM schedules
      WHERE status != 'cancelled'
        AND (date = $1 OR (date <= $1 AND end_date >= $1))
