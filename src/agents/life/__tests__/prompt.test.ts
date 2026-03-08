@@ -40,6 +40,7 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('schedules');
     expect(prompt).toContain('routine_templates');
     expect(prompt).toContain('routine_records');
+    expect(prompt).toContain('sleep_records');
     expect(prompt).toContain('custom_instructions');
   });
 
@@ -49,6 +50,7 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('자연스럽게 대화해');
     expect(prompt).toContain('도구로 조회해');
     expect(prompt).toContain('크로스 분석');
+    expect(prompt).toContain('to_char');
   });
 
   it('일정 표시 포맷을 포함한다', async () => {
