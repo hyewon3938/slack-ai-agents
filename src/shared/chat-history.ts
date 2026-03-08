@@ -32,15 +32,9 @@ export class ChatHistory {
     this.store.set(channelId, entries);
   }
 
-  /** 시스템 프롬프트에 주입할 대화 맥락 문자열 (없으면 빈 문자열) */
-  toContext(channelId: string): string {
-    const entries = this.store.get(channelId);
-    if (!entries || entries.length === 0) return '';
-
-    const lines = entries.map((e) =>
-      e.role === 'user' ? `사용자: ${e.content}` : `잔소리꾼: ${e.content}`,
-    );
-    return `\n\n[최근 대화]\n${lines.join('\n')}`;
+  /** API 메시지 배열로 반환 (role: user/assistant) */
+  toMessages(channelId: string): ReadonlyArray<{ role: 'user' | 'assistant'; content: string }> {
+    return this.store.get(channelId) ?? [];
   }
 
   /** 히스토리 크기 (쌍 수) */

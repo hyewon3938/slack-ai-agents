@@ -54,9 +54,10 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
         text,
         {
           label: 'Life Agent',
-          buildSystemPrompt: () => buildLifeSystemPrompt(history, channelId),
+          buildSystemPrompt: () => buildLifeSystemPrompt(channelId),
           getTools: async () => SQL_TOOLS,
           executeToolCall: executeSQLTool,
+          historyMessages: history.toMessages(channelId),
         },
       );
 

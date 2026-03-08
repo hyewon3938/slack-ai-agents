@@ -1,5 +1,4 @@
 import { CHARACTER_PROMPT } from '../../shared/personality.js';
-import type { ChatHistory } from '../../shared/chat-history.js';
 import { query } from '../../shared/db.js';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
@@ -45,11 +44,10 @@ const loadCustomInstructions = async (): Promise<string> => {
 
 /** v2 통합 에이전트 시스템 프롬프트 */
 export const buildLifeSystemPrompt = async (
-  history: ChatHistory,
   channelId: string,
 ): Promise<string> => {
   const today = getTodayString();
-  const context = history.toContext(channelId);
+  void channelId; // 향후 채널별 설정 확장용
   const customInstructions = await loadCustomInstructions();
 
   return `너는 '잔소리꾼'이야. 사용자의 일정과 루틴을 함께 관리하는 친구.
@@ -101,5 +99,5 @@ ${CHARACTER_PROMPT}
 - 루틴 추가: routine_templates에 INSERT (active=true). 오늘 기록은 routine_records에도 INSERT.
 - 루틴 삭제: routine_templates.active = false로 UPDATE.
 - 요일이 필요하면 직접 계산하지 말고 SQL로: to_char(date, 'Dy') 또는 EXTRACT(DOW FROM date).
-- 일정과 루틴을 크로스 분석할 수 있어 (SQL JOIN 활용).${customInstructions}${context}`;
+- 일정과 루틴을 크로스 분석할 수 있어 (SQL JOIN 활용).${customInstructions}`;
 };

@@ -99,6 +99,8 @@ export interface AgentLoopConfig {
   getTools: () => Promise<LLMToolDefinition[]>;
   /** 도구 실행기 */
   executeToolCall: ToolExecutor;
+  /** 대화 히스토리 (user/assistant 메시지 배열) */
+  historyMessages?: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 /** 도구 호출 실행 (병렬) */
@@ -142,7 +144,7 @@ export const runAgentLoop = async (
   userText: string,
   config: AgentLoopConfig,
 ): Promise<AgentLoopResult> => {
-  const { label, buildSystemPrompt, getTools, executeToolCall } = config;
+  const { label, buildSystemPrompt, getTools, executeToolCall, historyMessages } = config;
   const executor = executeToolCall;
 
   const systemPrompt = await buildSystemPrompt();
@@ -150,6 +152,7 @@ export const runAgentLoop = async (
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
+    ...(historyMessages ?? []).map((m) => ({ role: m.role as LLMMessage['role'], content: m.content })),
     { role: 'user', content: userText },
   ];
 
@@ -207,14 +210,16 @@ export const runAgentLoop = async (
     console.log(`[${label}] finishReason: ${response.finishReason}, toolCalls: ${response.toolCalls.length}`);
 
     if (response.finishReason === 'stop') {
-      // 도구 미사용 환각 방지: 도구를 한 번도 호출하지 않고 작업 완료 응답 시 1회 재시도
+      // 도구 미사용 환각 방지: 사용자가 데이터 변경/조회를 요청했는데 도구 호출 없이 응답하면 재시도
       if (!hallucinationRetried && calledToolNames.length === 0 && tools.length > 0) {
         const responseText = response.text ?? '';
-        // 액션 동사가 있거나, 텍스트가 비어있으면 환각/실패로 판단
+        // 1) 사용자 메시지에 실제 액션 요청이 있는지 확인
+        const userRequestsAction = /보여|알려|조회|추가|삭제|수정|변경|기록|등록|설정|확인해|찾아/.test(userText);
+        // 2) 응답에 데이터 변경을 주장하는 동사가 있는지 확인
         const claimsAction = responseText
-          ? /했|넣|추가|완료|수정|삭제|처리|변경|옮겼|바꿨|껐|켰/.test(responseText)
+          ? /했어|넣었|추가했|완료했|수정했|삭제했|처리했|변경했|옮겼|바꿨|등록했|기록했/.test(responseText)
           : true;
-        if (claimsAction) {
+        if (userRequestsAction && claimsAction) {
           hallucinationRetried = true;
           console.warn(`[${label}] 도구 미사용 환각 감지 — 재시도`);
           messages.push({ role: 'assistant', content: responseText || '(도구 호출 없이 응답)' });
