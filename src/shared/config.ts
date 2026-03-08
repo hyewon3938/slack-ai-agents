@@ -33,6 +33,7 @@ export const CONFIG = {
   },
   llm: {
     provider: requireLLMProvider('LLM_PROVIDER', 'gemini'),
+    model: process.env['LLM_MODEL'] ?? '',
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
     geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
