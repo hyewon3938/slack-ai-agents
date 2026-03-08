@@ -91,7 +91,7 @@ export class ClaudeLLMClient implements LLMClient {
   private client: Anthropic;
   private model: string;
 
-  constructor(apiKey: string, model = 'claude-3-5-haiku-latest') {
+  constructor(apiKey: string, model = 'claude-sonnet-4-20250514') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
   }
@@ -150,15 +150,16 @@ export class GeminiLLMClient implements LLMClient {
 
 export const createLLMClient = async (): Promise<LLMClient> => {
   const { CONFIG } = await import('./config.js');
+  const modelOverride = CONFIG.llm.model || undefined;
 
   if (CONFIG.llm.provider === 'groq') {
-    return new GroqLLMClient(CONFIG.llm.groqApiKey);
+    return new GroqLLMClient(CONFIG.llm.groqApiKey, modelOverride);
   }
   if (CONFIG.llm.provider === 'anthropic') {
-    return new ClaudeLLMClient(CONFIG.llm.anthropicApiKey);
+    return new ClaudeLLMClient(CONFIG.llm.anthropicApiKey, modelOverride);
   }
   if (CONFIG.llm.provider === 'gemini') {
-    return new GeminiLLMClient(CONFIG.llm.geminiApiKey);
+    return new GeminiLLMClient(CONFIG.llm.geminiApiKey, modelOverride);
   }
   throw new Error(`지원하지 않는 LLM provider: ${CONFIG.llm.provider}`);
 };
