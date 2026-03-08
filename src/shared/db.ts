@@ -1,6 +1,13 @@
 import pg from 'pg';
 
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+// pg 드라이버가 DATE/TIMESTAMP를 JavaScript Date 객체로 변환하면
+// JSON.stringify 시 '2026-03-08T15:00:00.000Z' 같은 UTC 타임스탬프가 되어
+// LLM이 날짜를 오해함. 원본 문자열 그대로 반환하도록 설정.
+types.setTypeParser(1082, (val: string) => val);  // DATE → 'YYYY-MM-DD'
+types.setTypeParser(1114, (val: string) => val);  // TIMESTAMP
+types.setTypeParser(1184, (val: string) => val);  // TIMESTAMPTZ
 
 let pool: pg.Pool | null = null;
 

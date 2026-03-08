@@ -45,9 +45,12 @@ export const CONFIG = {
     url: requireEnv('DATABASE_URL'),
   },
   lifeCron: {
-    morning: optionalEnv('LIFE_CRON_MORNING', '0 9 * * *'),
+    sleepCheck: optionalEnv('LIFE_CRON_SLEEP_CHECK', '50 8 * * *'),
+    morningSchedule: optionalEnv('LIFE_CRON_MORNING_SCHEDULE', '0 9 * * *'),
+    morning: optionalEnv('LIFE_CRON_MORNING', '5 9 * * *'),
     lunch: optionalEnv('LIFE_CRON_LUNCH', '0 13 * * *'),
     evening: optionalEnv('LIFE_CRON_EVENING', '0 18 * * *'),
     night: optionalEnv('LIFE_CRON_NIGHT', '0 22 * * *'),
+    nightReview: optionalEnv('LIFE_CRON_NIGHT_REVIEW', '0 23 * * *'),
   },
 } as const;

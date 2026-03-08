@@ -11,7 +11,7 @@ vi.mock('pg', () => {
     this.connect = mockConnect;
     this.end = mockEnd;
   });
-  return { default: { Pool: MockPool } };
+  return { default: { Pool: MockPool, types: { setTypeParser: vi.fn() } } };
 });
 
 const { connectDB, query, queryOne, disconnectDB } = await import('../db.js');

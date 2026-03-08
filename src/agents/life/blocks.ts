@@ -126,137 +126,57 @@ export const buildFilteredRoutineBlocks = (
   return buildRoutineBlocks(filtered, today, slotFilter);
 };
 
-// ─── 아침/밤 메시지 (하드코딩) ──────────────────────────
+// ─── 아침/밤 메시지 (LLM 생성 텍스트 기반) ─────────────
 
-const MORNING_100: ReadonlyArray<(pct: number) => string> = [
-  (pct) => `어제 루틴 ${pct}%. 다 했네, 역시. 오늘도 이대로 가.`,
-  (pct) => `어제 루틴 ${pct}%. 잘했어. 오늘도 이 기세로.`,
-  (pct) => `어제 루틴 ${pct}%. 빠짐없이 다 챙겼네. 오늘도 그렇게 하자.`,
+/** 아침 인사 블록 (LLM 생성 텍스트) */
+export const buildMorningGreetingBlocks = (greetingText: string): KnownBlock[] => [
+  { type: 'section', text: { type: 'mrkdwn', text: greetingText } },
 ];
 
-const MORNING_GOOD: ReadonlyArray<(pct: number) => string> = [
-  (pct) => `어제 루틴 ${pct}%. 나쁘진 않은데, 빠뜨린 거 좀 신경 써.`,
-  (pct) => `어제 루틴 ${pct}%. 거의 다 했네. 남은 것도 챙기자.`,
-  (pct) => `어제 루틴 ${pct}%. 잘하고 있어. 빠진 것도 신경 쓰자.`,
-];
-
-const MORNING_BAD: ReadonlyArray<(pct: number) => string> = [
-  (pct) => `어제 루틴 ${pct}%. 바빴어? 오늘은 좀 챙겨.`,
-  (pct) => `어제 루틴 ${pct}%야. 몸은 괜찮아? 오늘은 하나씩 해보자.`,
-  (pct) => `어제 루틴 ${pct}%. 좀 힘들었나. 오늘은 다시 해보자.`,
-];
-
-const MORNING_NO_RECORD: readonly string[] = [
-  '어제 루틴 기록이 없네. 괜찮아? 오늘부터 다시 시작하자.',
-  '어제 기록이 없어. 무슨 일 있었어? 오늘은 하나씩 해보자.',
-  '어제 루틴을 못 챙겼네. 오늘은 하나씩 신경 써.',
-];
-
-const SLOT_FOCUS: Record<string, readonly string[]> = {
-  '아침': [
-    '아침 루틴을 주로 못 지켰네. 아침 쪽에 집중해 보자.',
-    '아침이 제일 약하네. 내일은 아침부터 챙겨.',
-  ],
-  '점심': [
-    '점심 루틴을 자주 놓쳤네. 점심 시간 좀 신경 써.',
-    '점심 쪽이 약해. 점심 루틴 챙기는 게 우선이야.',
-  ],
-  '저녁': [
-    '저녁 루틴을 많이 놓쳤네. 저녁에 여유 좀 가져.',
-    '저녁 쪽이 취약해. 저녁 루틴 다시 챙겨봐.',
-  ],
-  '밤': [
-    '밤 루틴을 자주 빠뜨렸네. 자기 전에 체크하는 습관 들여.',
-    '밤 쪽이 약해. 자기 전 루틴 챙겨.',
-  ],
-};
-
-/** 어제 기록 중 달성률이 가장 낮은 시간대 분석 */
-const buildSlotAnalysis = (records: RoutineRecordRow[]): string | null => {
-  const slotStats = TIME_SLOT_ORDER.map((slot) => {
-    const slotRecords = records.filter((r) => r.time_slot === slot);
-    if (slotRecords.length === 0) return null;
-    const completedCount = slotRecords.filter((r) => r.completed).length;
-    return { slot, pct: Math.round((completedCount / slotRecords.length) * 100) };
-  }).filter((s): s is NonNullable<typeof s> => s !== null);
-
-  if (slotStats.length < 2) return null;
-
-  const worstSlot = slotStats.reduce((worst, curr) => (curr.pct < worst.pct ? curr : worst));
-  if (worstSlot.pct >= 70) return null;
-
-  const msgs = SLOT_FOCUS[worstSlot.slot];
-  return msgs ? pick(msgs) : null;
-};
-
-/** 아침 인사 블록 (어제 완료율 + 시간대 분석) */
-export const buildMorningGreetingBlocks = (
-  yesterdayRecords: RoutineRecordRow[],
-): KnownBlock[] => {
-  const blocks: KnownBlock[] = [];
-
-  if (yesterdayRecords.length > 0) {
-    const total = yesterdayRecords.length;
-    const completed = yesterdayRecords.filter((r) => r.completed).length;
-    const pct = Math.round((completed / total) * 100);
-
-    let greeting: string;
-    if (pct === 100) {
-      greeting = pick(MORNING_100)(pct);
-    } else if (pct >= 70) {
-      greeting = pick(MORNING_GOOD)(pct);
-    } else {
-      greeting = pick(MORNING_BAD)(pct);
-    }
-
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: greeting } });
-
-    const slotAnalysis = buildSlotAnalysis(yesterdayRecords);
-    if (slotAnalysis) {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: slotAnalysis } });
-    }
-  } else {
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: pick(MORNING_NO_RECORD) },
-    });
-  }
-
-  return blocks;
-};
-
-const NIGHT_COMPLETE: readonly string[] = [
-  '오늘 루틴 전부 완료. 수고했어, 푹 쉬어.',
-  '다 했네. 잘했어. 이제 쉬어.',
-  '오늘도 다 챙겼네. 수고했어.',
-];
-
-const NIGHT_INCOMPLETE: ReadonlyArray<(c: number, t: number) => string> = [
-  (c, t) => `오늘 루틴 ${c}/${t} 완료. 남은 건 내일 꼭 챙겨.`,
-  (c, t) => `오늘 ${c}/${t} 달성. 아쉽지만 내일 다시 하자.`,
-  (c, t) => `오늘 루틴 ${c}/${t}이야. 남은 것도 신경 써.`,
-];
-
-/** 밤 요약 블록 (전체 체크리스트 + 마무리 메시지) */
+/** 밤 요약 블록 (전체 체크리스트 + LLM 마무리 메시지) */
 export const buildNightSummaryBlocks = (
   records: RoutineRecordRow[],
   today: string,
+  summaryText: string,
 ): { text: string; blocks: KnownBlock[] } => {
   const result = buildRoutineBlocks(records, today);
-  const total = records.length;
-  const completed = records.filter((r) => r.completed).length;
-
-  const finalText = total === completed
-    ? pick(NIGHT_COMPLETE)
-    : pick(NIGHT_INCOMPLETE)(completed, total);
 
   result.blocks.push({
     type: 'section',
-    text: { type: 'mrkdwn', text: `\n${finalText}` },
+    text: { type: 'mrkdwn', text: `\n${summaryText}` },
   });
 
   return result;
 };
+
+// ─── 수면 리마인더 ──────────────────────────────────────
+
+const SLEEP_REMINDER_MORNING: readonly string[] = [
+  '좋은 아침! 어제 수면 기록 아직 안 남겼지? 일어난 김에 적어둬.',
+  '잘 잤어? 수면 기록 남겨두자. 까먹기 전에!',
+  '아침이야! 어제 몇 시에 잤는지 기록해두면 좋겠다.',
+];
+
+const SLEEP_REMINDER_NIGHT: readonly string[] = [
+  '오늘 수면 기록 아직이야. 내일 아침에 까먹기 전에 지금 남겨두는 게 좋아!',
+  '수면 기록 아직 안 했지? 자기 전에 적어두자!',
+  '오늘 수면 기록 깜빡한 것 같아. 지금 남겨둘래?',
+];
+
+const SLEEP_RECORDED: readonly string[] = [
+  '오늘 수면 기록 잘 남겨져 있어. 푹 자!',
+  '수면 기록 확인했어. 잘 적어뒀네! 오늘도 수고했어.',
+  '오늘 수면 기록 잘 들어가 있어. 편하게 쉬어!',
+];
+
+/** 수면 리마인더 텍스트 */
+export const buildSleepReminderText = (timeOfDay: 'morning' | 'night'): string => {
+  const pool = timeOfDay === 'morning' ? SLEEP_REMINDER_MORNING : SLEEP_REMINDER_NIGHT;
+  return pick(pool);
+};
+
+/** 수면 기록 확인 완료 텍스트 */
+export const buildSleepRecordedText = (): string => pick(SLEEP_RECORDED);
 
 // ─── 일정 블록 ──────────────────────────────────────────
 
@@ -442,6 +362,42 @@ export const buildScheduleBlocks = (
 
   const fallbackText = `${formatted} 일정 (${items.length}개)`;
   return { text: fallbackText, blocks };
+};
+
+// ─── 일정 텍스트 (크론 알림용 — 블록킷 없이) ────────────
+
+/** 일정 텍스트 메시지 (블록킷 없이 순수 텍스트) */
+export const buildScheduleText = (
+  items: ScheduleRow[],
+  targetDate: string,
+  headerOverride?: string,
+): string => {
+  const formatted = formatDateShort(targetDate);
+  const header = headerOverride ?? `${formatted} 일정이야.`;
+  const groups = groupByCategory(items);
+  const lines: string[] = [header, ''];
+
+  for (const group of groups) {
+    lines.push(`[${group.category}]`);
+    for (const item of group.items) {
+      lines.push(formatScheduleItem(item));
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
+};
+
+/** 밤 미완료 일정 텍스트 (없으면 null) */
+export const buildNightScheduleText = (
+  items: ScheduleRow[],
+  targetDate: string,
+): string | null => {
+  const incomplete = items.filter(
+    (s) => s.category !== '약속' && s.status !== 'done' && s.status !== 'cancelled',
+  );
+  if (incomplete.length === 0) return null;
+  return buildScheduleText(incomplete, targetDate, '오늘 아직 못 끝낸 일정이야. 내일로 넘길 건 정리해둬!');
 };
 
 // ─── 수면 블록 ──────────────────────────────────────────
