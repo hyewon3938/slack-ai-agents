@@ -11,8 +11,10 @@ import { registerRoutineActions } from './agents/routine/actions.js';
 import { registerScheduleActions } from './agents/schedule/actions.js';
 import { createNotionClient } from './shared/notion.js';
 import { createLifeAgent } from './agents/life/index.js';
+import { registerLifeActions } from './agents/life/actions.js';
 import { initCronJobs } from './cron/index.js';
 import { initRoutineCron } from './cron/routine-cron.js';
+import { initLifeCron } from './cron/life-cron.js';
 
 const app = new App({
   token: CONFIG.slack.botToken,
@@ -50,8 +52,13 @@ const startApp = async (): Promise<void> => {
   if (CONFIG.channels.life) {
     const lifeAgent = createLifeAgent(llmClient);
     registerAgent(CONFIG.channels.life, lifeAgent);
+    registerLifeActions(app);
+    initLifeCron(app, {
+      channelId: CONFIG.channels.life,
+      schedules: CONFIG.lifeCron,
+    });
     // eslint-disable-next-line no-console
-    console.log('[App] Life Agent (v2) 등록 완료');
+    console.log('[App] Life Agent (v2) + Cron 등록 완료');
   }
 
   // Cron Jobs
