@@ -1,5 +1,4 @@
 import type { LLMClient, LLMMessage, LLMToolCall, LLMToolDefinition } from './llm.js';
-import { callMCPTool } from './mcp-client.js';
 
 // ---- 상수 ----
 
@@ -81,9 +80,9 @@ export const runAgentLoopWithAck = async (
 export interface AgentLoopResult {
   /** 최종 응답 텍스트 */
   text: string;
-  /** 루프 중 호출된 MCP 도구 이름 목록 (중복 포함) */
+  /** 루프 중 호출된 도구 이름 목록 (중복 포함) */
   toolNames: string[];
-  /** 루프 중 호출된 MCP 도구의 arguments 목록 (toolNames와 순서 대응) */
+  /** 루프 중 호출된 도구의 arguments 목록 (toolNames와 순서 대응) */
   toolArgs: Record<string, unknown>[];
 }
 
@@ -98,15 +97,15 @@ export interface AgentLoopConfig {
   buildSystemPrompt: () => string;
   /** 도구 목록 제공 함수 */
   getTools: () => Promise<LLMToolDefinition[]>;
-  /** 커스텀 도구 실행기 (미지정 시 MCP 도구 사용) */
-  executeToolCall?: ToolExecutor;
+  /** 도구 실행기 */
+  executeToolCall: ToolExecutor;
 }
 
-/** 도구 호출 실행 (병렬). executor 미지정 시 MCP 도구 사용 */
+/** 도구 호출 실행 (병렬) */
 export const executeToolCalls = async (
   toolCalls: LLMToolCall[],
   label: string,
-  executor: ToolExecutor = callMCPTool,
+  executor: ToolExecutor,
 ): Promise<LLMMessage[]> => {
   const results = await Promise.all(
     toolCalls.map(async (tc): Promise<LLMMessage> => {
@@ -137,17 +136,14 @@ export const executeToolCalls = async (
   return results;
 };
 
-/**
- * LLM 에이전트 루프: LLM → 도구 호출 → LLM → … → 최종 응답.
- * 양쪽 에이전트(schedule, routine)에서 공통으로 사용.
- */
+/** LLM 에이전트 루프: LLM → 도구 호출 → LLM → … → 최종 응답. */
 export const runAgentLoop = async (
   llmClient: LLMClient,
   userText: string,
   config: AgentLoopConfig,
 ): Promise<AgentLoopResult> => {
   const { label, buildSystemPrompt, getTools, executeToolCall } = config;
-  const executor = executeToolCall ?? callMCPTool;
+  const executor = executeToolCall;
 
   const systemPrompt = buildSystemPrompt();
   const tools = await getTools();
