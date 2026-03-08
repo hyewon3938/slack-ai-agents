@@ -315,10 +315,18 @@ const formatScheduleItem = (item: ScheduleRow): string => {
   // 중요 표시
   const star = item.important ? '★ ' : '';
 
-  if (isAppointment) return `${star}${item.title}${rangePart}`;
-  if (item.status === 'done') return `~${star}${item.title}~${rangePart}`;
-  if (item.status === 'in-progress') return `► ${star}${item.title}${rangePart}`;
-  return `${star}${item.title}${rangePart}`;
+  let line: string;
+  if (isAppointment) line = `${star}${item.title}${rangePart}`;
+  else if (item.status === 'done') line = `~${star}${item.title}~${rangePart}`;
+  else if (item.status === 'in-progress') line = `► ${star}${item.title}${rangePart}`;
+  else line = `${star}${item.title}${rangePart}`;
+
+  // 메모 표시
+  if (item.memo) {
+    line += `\n  └ ${item.memo}`;
+  }
+
+  return line;
 };
 
 /** overflow value 형식: "scheduleId|newStatus|targetDate" */

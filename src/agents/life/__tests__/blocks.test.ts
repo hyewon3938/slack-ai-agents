@@ -311,6 +311,36 @@ describe('buildScheduleBlocks', () => {
     }
   });
 
+  it('메모가 있으면 └ 표시', () => {
+    const items = [
+      makeSchedule({ id: 1, title: '회의', memo: '자료 준비 필요' }),
+    ];
+
+    const { blocks } = buildScheduleBlocks(items, '2026-03-08');
+    const textContent = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
+      .join(' ');
+
+    expect(textContent).toContain('회의');
+    expect(textContent).toContain('└ 자료 준비 필요');
+  });
+
+  it('메모가 없으면 └ 미표시', () => {
+    const items = [
+      makeSchedule({ id: 1, title: '회의', memo: null }),
+    ];
+
+    const { blocks } = buildScheduleBlocks(items, '2026-03-08');
+    const textContent = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
+      .join(' ');
+
+    expect(textContent).toContain('회의');
+    expect(textContent).not.toContain('└');
+  });
+
   it('미분류 카테고리 맨 끝', () => {
     const items = [
       makeSchedule({ id: 1, title: '기타', category: null }),

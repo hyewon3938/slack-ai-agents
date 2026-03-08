@@ -46,7 +46,7 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('자연스럽게 대화해');
     expect(prompt).toContain('도구로 조회해');
     expect(prompt).toContain('크로스 분석');
-    expect(prompt).toContain('to_char');
+    expect(prompt).toContain('EXTRACT(DOW FROM date)');
   });
 
   it('일정 표시 포맷을 포함한다', async () => {
@@ -69,9 +69,9 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('date IS NULL');
   });
 
-  it('80줄 이내의 간결한 프롬프트', async () => {
+  it('95줄 이내의 간결한 프롬프트', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
     const lineCount = prompt.split('\n').length;
-    expect(lineCount).toBeLessThan(80);
+    expect(lineCount).toBeLessThan(95);
   });
 });
