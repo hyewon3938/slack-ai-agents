@@ -177,13 +177,19 @@ export const postponeSchedule = async (id: number, newDate: string): Promise<voi
 
 // ─── 수면 쿼리 ──────────────────────────────────────
 
-/** 최근 수면 기록 조회 (밤잠 최신 1건) */
-export const queryLatestSleep = async (): Promise<SleepRecordRow | null> => {
+/** Home 탭용 수면 기록 조회: 밤잠 최신 1건 + 오늘 낮잠 전부 */
+export const querySleepForHome = async (today: string): Promise<SleepRecordRow[]> => {
   const result = await query<SleepRecordRow>(
-    `SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
-     FROM sleep_records
-     WHERE sleep_type = 'night'
-     ORDER BY date DESC LIMIT 1`,
+    `(SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
+      FROM sleep_records
+      WHERE sleep_type = 'night'
+      ORDER BY date DESC LIMIT 1)
+     UNION ALL
+     (SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
+      FROM sleep_records
+      WHERE sleep_type = 'nap' AND date = $1
+      ORDER BY bedtime)`,
+    [today],
   );
-  return result.rows[0] ?? null;
+  return result.rows;
 };
