@@ -2,15 +2,28 @@ import { CHARACTER_PROMPT } from '../../shared/personality.js';
 import { query } from '../../shared/db.js';
 import { getTodayString } from '../../shared/kst.js';
 
-/** DB에서 커스텀 지시사항 조회 */
+/** DB에서 커스텀 지시사항 조회 (카테고리별 그룹화, active만) */
 const loadCustomInstructions = async (): Promise<string> => {
   try {
-    const result = await query<{ instruction: string }>(
-      'SELECT instruction FROM custom_instructions ORDER BY created_at',
+    const result = await query<{ instruction: string; category: string }>(
+      `SELECT instruction, category FROM custom_instructions
+       WHERE active = true ORDER BY category, created_at`,
     );
     if (result.rows.length === 0) return '';
-    const lines = result.rows.map((r) => `- ${r.instruction}`).join('\n');
-    return `\n\n## 사용자 지시사항\n${lines}`;
+
+    const grouped = new Map<string, string[]>();
+    for (const row of result.rows) {
+      const list = grouped.get(row.category) ?? [];
+      list.push(row.instruction);
+      grouped.set(row.category, list);
+    }
+
+    let lines = '';
+    for (const [cat, instructions] of grouped) {
+      lines += `\n[${cat}]\n`;
+      lines += instructions.map((i) => `- ${i}`).join('\n');
+    }
+    return `\n\n## 사용자 지시사항${lines}`;
   } catch {
     return '';
   }
@@ -38,17 +51,31 @@ ${CHARACTER_PROMPT}
 - 데이터를 언급하려면 반드시 도구로 조회해. 추측으로 데이터를 말하지 마.
 
 ## 커스텀 지시사항 관리
+
+### 명시적 저장 (source = 'user')
 - "앞으로", "항상", "매번", "기억해" 같은 지속적 지시 → custom_instructions에 INSERT.
-- "지시사항 보여줘" → custom_instructions 전체 조회해서 보여줘.
-- "지시사항 삭제해줘" → 해당 custom_instructions DELETE.
-- 저장/삭제 후 간단히 확인만 해줘.
+- category: 일정/루틴/수면/응답/기타 중 적절한 것으로 분류. source: 'user'.
+- "지시사항 보여줘" → active=true인 custom_instructions 조회, 카테고리별로 보여줘.
+- "지시사항 삭제해줘" → active = false로 UPDATE. 실제 DELETE 하지 마.
+
+### 자동 감지 (source = 'auto')
+대화 중 사용자의 지속적 선호/습관/패턴이 보이면 자동으로 저장해.
+- 조건: 앞으로도 반복될 정보일 때만. 예: "나 화요일은 재택이야", "아침에 커피 안 마셔".
+- 일회성 사실은 저장하지 마. 예: "오늘 점심 김치찌개 먹었어" → 저장 안 함.
+- source: 'auto', 적절한 category. 저장 후 "기억해둘게!" 같은 짧은 한마디만.
+
+### 통합 규칙 (저장 전 최적화)
+- 저장 전에 같은 category의 기존 지시사항을 조회해.
+- 겹치거나 모순되면: 기존 것 active=false → 통합된 새 내용으로 INSERT.
+- 단, source='user' 기존 지시는 자동 통합으로 비활성화하지 마. 모순 시 사용자에게 확인.
+- source='auto' 기존 지시는 더 나은 정보로 자유롭게 교체 가능.
 
 ## DB 스키마
 - schedules: id, title, date, end_date, status(todo/in-progress/done/cancelled), category, memo, important(boolean), created_at
 - routine_templates: id, name, time_slot(아침/점심/저녁/밤), frequency(매일/격일/3일마다/주1회), active, created_at
 - routine_records: id, template_id(→routine_templates.id), date, completed, created_at
 - sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo, created_at
-- custom_instructions: id, instruction, created_at
+- custom_instructions: id, instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active(boolean), created_at
 
 ## 요일 계산 — 절대 규칙
 - 요일을 절대 머릿속으로 계산하지 마. 반드시 SQL로 조회해.
