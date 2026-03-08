@@ -6,6 +6,7 @@
 import type { KnownBlock } from '@slack/types';
 import type { RoutineRecordRow, ScheduleRow, SleepRecordRow } from '../../shared/life-queries.js';
 import { frequencyBadge } from '../../shared/life-queries.js';
+import { formatDateShort } from '../../shared/kst.js';
 
 // ─── 상수 ───────────────────────────────────────────────
 
@@ -14,20 +15,8 @@ export const SCHEDULE_ACTION_ID = 'life_schedule_status';
 export const POSTPONE_ACTION = 'postpone';
 
 const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
 const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
-
-// ─── 날짜 포맷 ─────────────────────────────────────────
-
-/** "YYYY-MM-DD" → "3/7(토)" */
-export const formatDateShort = (dateStr: string): string => {
-  const d = new Date(dateStr + 'T00:00:00+09:00');
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
-  const dayName = DAY_NAMES[d.getDay()];
-  return `${month}/${day}(${dayName})`;
-};
 
 // ─── 루틴 필터 인코딩/파싱 ──────────────────────────────
 
