@@ -6,7 +6,7 @@
 import type { App } from '@slack/bolt';
 import type { WebClient } from '@slack/web-api';
 import type { KnownBlock } from '@slack/types';
-import { getTodayISO, getKSTTimeString, formatDateShort } from '../../shared/kst.js';
+import { getEffectiveTodayISO, getKSTTimeString, formatDateShort } from '../../shared/kst.js';
 import {
   buildRoutineBlocks,
   buildScheduleBlocks,
@@ -26,7 +26,7 @@ export const publishHomeView = async (
   client: WebClient,
   userId: string,
 ): Promise<void> => {
-  const today = getTodayISO();
+  const today = getEffectiveTodayISO();
 
   // 오늘 루틴 레코드 보장 (없으면 생성)
   await createTodayRecords(today);

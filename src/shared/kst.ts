@@ -60,6 +60,24 @@ export const getKSTTimeString = (): string => {
 /** KST 기준 요일 번호 (0=일 ~ 6=토) */
 export const getKSTDayOfWeek = (): number => getKSTDate().getDay();
 
+/**
+ * 생활 기준 "오늘" 날짜 (YYYY-MM-DD).
+ * 새벽 5시 이전이면 아직 전날로 취급 — 올빼미형 사용자 대응.
+ * Home 탭, 루틴/일정 표시 등 사용자 관점 "오늘"에 사용.
+ */
+export const DAY_BOUNDARY_HOUR = 5;
+
+export const getEffectiveTodayISO = (): string => {
+  const d = getKSTDate();
+  if (d.getHours() < DAY_BOUNDARY_HOUR) {
+    d.setDate(d.getDate() - 1);
+  }
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 // ─── 날짜 문자열 기반 (DB 값 파싱) ─────────────────────
 
 /**
