@@ -34,6 +34,7 @@ const makeSchedule = (overrides: Partial<ScheduleRow> = {}): ScheduleRow => ({
   status: 'todo',
   category: '업무',
   memo: null,
+  important: false,
   ...overrides,
 });
 
