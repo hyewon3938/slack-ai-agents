@@ -10,6 +10,7 @@ import { createRoutineAgent } from './agents/routine/index.js';
 import { registerRoutineActions } from './agents/routine/actions.js';
 import { registerScheduleActions } from './agents/schedule/actions.js';
 import { createNotionClient } from './shared/notion.js';
+import { createLifeAgent } from './agents/life/index.js';
 import { initCronJobs } from './cron/index.js';
 import { initRoutineCron } from './cron/routine-cron.js';
 
@@ -44,6 +45,14 @@ const startApp = async (): Promise<void> => {
   );
   registerAgent(CONFIG.channels.routine, routineAgent);
   registerRoutineActions(app, notionClient, CONFIG.notion.routineDbId);
+
+  // v2 Life Agent (LIFE_CHANNEL_ID 설정 시)
+  if (CONFIG.channels.life) {
+    const lifeAgent = createLifeAgent(llmClient);
+    registerAgent(CONFIG.channels.life, lifeAgent);
+    // eslint-disable-next-line no-console
+    console.log('[App] Life Agent (v2) 등록 완료');
+  }
 
   // Cron Jobs
   initCronJobs(app, notionClient, {
