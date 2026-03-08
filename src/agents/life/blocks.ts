@@ -323,10 +323,13 @@ const formatScheduleItem = (item: ScheduleRow): string => {
     rangePart = ` ${formatDateShort(item.date)}~${formatDateShort(item.end_date)}`;
   }
 
-  if (isAppointment) return `${item.title}${rangePart}`;
-  if (item.status === 'done') return `~${item.title}~${rangePart}`;
-  if (item.status === 'in-progress') return `► ${item.title}${rangePart}`;
-  return `${item.title}${rangePart}`;
+  // 중요 표시
+  const star = item.important ? '★ ' : '';
+
+  if (isAppointment) return `${star}${item.title}${rangePart}`;
+  if (item.status === 'done') return `~${star}${item.title}~${rangePart}`;
+  if (item.status === 'in-progress') return `► ${star}${item.title}${rangePart}`;
+  return `${star}${item.title}${rangePart}`;
 };
 
 /** overflow value 형식: "scheduleId|newStatus|targetDate" */
