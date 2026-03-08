@@ -177,6 +177,19 @@ export const postponeSchedule = async (id: number, newDate: string): Promise<voi
 
 // ─── 수면 쿼리 ──────────────────────────────────────
 
+/** 어젯밤 수면 기록 존재 확인 (date가 어제 또는 오늘인 밤잠) */
+export const queryNightSleepExists = async (
+  yesterday: string,
+  today: string,
+): Promise<boolean> => {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*)::text as count FROM sleep_records
+     WHERE sleep_type = 'night' AND date IN ($1, $2)`,
+    [yesterday, today],
+  );
+  return Number(result.rows[0]?.count ?? 0) > 0;
+};
+
 /** Home 탭용 수면 기록 조회: 밤잠 최신 1건 + 오늘 낮잠 전부 */
 export const querySleepForHome = async (today: string): Promise<SleepRecordRow[]> => {
   const result = await query<SleepRecordRow>(

@@ -12,7 +12,7 @@ vi.mock('pg', () => {
     this.connect = mockConnect;
     this.end = mockEnd;
   });
-  return { default: { Pool: MockPool } };
+  return { default: { Pool: MockPool, types: { setTypeParser: vi.fn() } } };
 });
 
 // connectDB 후에야 query()가 동작하므로 먼저 연결

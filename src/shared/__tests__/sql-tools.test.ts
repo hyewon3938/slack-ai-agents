@@ -134,7 +134,7 @@ vi.mock('pg', () => {
     this.connect = mockConnect;
     this.end = mockEnd;
   });
-  return { default: { Pool: MockPool } };
+  return { default: { Pool: MockPool, types: { setTypeParser: vi.fn() } } };
 });
 
 describe('executeSQLTool', () => {
