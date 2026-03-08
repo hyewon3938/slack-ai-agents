@@ -47,6 +47,7 @@ export const CONFIG = {
   channels: {
     schedule: requireEnv('SCHEDULE_CHANNEL_ID'),
     routine: requireEnv('ROUTINE_CHANNEL_ID'),
+    life: process.env['LIFE_CHANNEL_ID'] ?? '',
   },
   cron: {
     morning: optionalEnv('CRON_MORNING', '0 9 * * *'),
