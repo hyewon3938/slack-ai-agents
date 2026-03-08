@@ -21,24 +21,57 @@
 - Runtime: Node.js + TypeScript (strict)
 - Slack: @slack/bolt (Socket Mode)
 - LLM: Claude Sonnet (메인) — 명리학 분석 전용: Gemini
-- DB: PostgreSQL (Oracle Cloud VM)
+- DB: PostgreSQL (Docker / Oracle Cloud VM)
 - Cron: node-cron (timezone: Asia/Seoul)
 - Test: vitest
+
+## 프로젝트 구조
+
+```
+src/
+├── app.ts                    # 서버 진입점
+├── router.ts                 # 채널별 에이전트 라우팅
+├── agents/
+│   └── life/                 # 통합 라이프 에이전트
+│       ├── index.ts          # 에이전트 생성 (SQL 도구 기반)
+│       ├── prompt.ts         # 시스템 프롬프트 (DB 스키마 + 캐릭터)
+│       ├── actions.ts        # 인터랙티브 버튼 핸들러 (루틴 완료 등)
+│       └── blocks.ts         # Slack Block Kit 메시지 빌더
+├── cron/
+│   └── life-cron.ts          # 통합 크론 알림 (아침/점심/저녁/밤)
+└── shared/
+    ├── config.ts             # 환경변수 검증 + 설정
+    ├── llm.ts                # LLM 추상화 (Anthropic/Gemini/Groq)
+    ├── agent-loop.ts         # 에이전트 루프 (LLM ↔ 도구 반복)
+    ├── db.ts                 # PostgreSQL 연결 + 쿼리
+    ├── migrate.ts            # DB 마이그레이션 실행
+    ├── sql-tools.ts          # SQL 도구 정의 (query_db, modify_db, get_schema)
+    ├── life-queries.ts       # 크론용 SQL 조회 헬퍼
+    ├── chat-history.ts       # 대화 히스토리 관리
+    ├── personality.ts        # 캐릭터 프롬프트 정의
+    └── slack.ts              # Slack API 유틸리티
+db/
+├── migrations/               # SQL 마이그레이션 파일
+│   ├── 001_init.sql          # 일정, 루틴 테이블
+│   └── 002_sleep_records.sql # 수면 기록 테이블
+├── migrate.ts                # 마이그레이션 실행 스크립트
+├── migrate-from-notion.ts    # Notion → PostgreSQL 1회성 마이그레이션
+└── test-connection.ts        # DB 연결 테스트
+```
 
 ## 핵심 설계 원칙
 
 - **단일 에이전트**: 채널별 분리 없이 하나의 에이전트가 모든 도메인 처리 (LLM이 자율 판단)
 - **SQL 도구 기반**: LLM이 직접 SQL을 작성하여 데이터 조회/변경/분석
-- **최소 프롬프트**: DB 스키마 + 캐릭터 규칙만. 150줄 규칙 대신 모델 자율성 활용
+- **최소 프롬프트**: DB 스키마 + 캐릭터 규칙만. 모델 자율성 활용
 - **크로스 분석**: 모든 라이프 데이터가 한 DB에 → SQL JOIN으로 패턴 분석
 - **환경변수 기반 설정**: API 키, DB 접속 정보 등 모두 .env로 관리
 
-## Slack 채널 구조
+## Slack 채널
 
 | 채널 | 용도 |
 |------|------|
 | #life | 메인. 모든 자연어 대화, 기록, 분석 |
-| #daily | 크론 알림 전용 (아침 브리핑, 밤 리뷰) |
 
 ## DB 스키마 (PostgreSQL)
 
@@ -52,7 +85,10 @@ routine_templates: id, name, time_slot, frequency, active, created_at
 -- 루틴 일별 기록
 routine_records: id, template_id(FK), date, completed, created_at
 
--- 확장 예정: diary, sleep, expenses, fortune
+-- 수면 기록
+sleep_records: id, date, bedtime, wake_time, duration_minutes, memo, created_at
+
+-- 확장 예정: diary, expenses, fortune
 ```
 
 ## 에이전트 도구
@@ -107,8 +143,3 @@ routine_records: id, template_id(FK), date, completed, created_at
 
 - 커밋이 3~5개 쌓이거나, 주제가 바뀌는 시점에 "여기서 커밋 끊자", "새 브랜치 파자", "PR 만들자" 등을 먼저 제안할 것
 - 하나의 브랜치에서 서로 다른 기능이 섞이기 시작하면 PR 머지 → 새 브랜치 전환을 권유할 것
-
-## v1 → v2 전환
-
-현재 v1(Notion + Gemini Flash) → v2(PostgreSQL + Claude Sonnet) 전환 중.
-v1 히스토리와 회고는 `docs/project-history.md` 참조.
