@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { RoutineRecordRow, ScheduleRow } from '../../../shared/life-queries.js';
+import { formatDateShort } from '../../../shared/kst.js';
 import {
   buildRoutineBlocks,
   buildFilteredRoutineBlocks,
@@ -8,7 +9,6 @@ import {
   buildScheduleBlocks,
   parseButtonValue,
   parseOverflowValue,
-  formatDateShort,
   ROUTINE_ACTION_ID,
   SCHEDULE_ACTION_ID,
 } from '../blocks.js';

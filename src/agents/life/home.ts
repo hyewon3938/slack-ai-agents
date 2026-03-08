@@ -6,9 +6,8 @@
 import type { App } from '@slack/bolt';
 import type { WebClient } from '@slack/web-api';
 import type { KnownBlock } from '@slack/types';
-import { getTodayISO } from './prompt.js';
+import { getTodayISO, getKSTTimeString, formatDateShort } from '../../shared/kst.js';
 import {
-  formatDateShort,
   buildRoutineBlocks,
   buildScheduleBlocks,
   buildSleepBlocks,
@@ -19,17 +18,6 @@ import {
   querySleepForHome,
 } from '../../shared/life-queries.js';
 import { createTodayRecords } from '../../cron/life-cron.js';
-
-// ─── KST 시각 헬퍼 ──────────────────────────────────
-
-/** KST(UTC+9) 기준 현재 시각의 HH:MM 문자열 */
-const getKSTTimeString = (): string => {
-  const now = new Date();
-  const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
-  const hh = String(kst.getHours()).padStart(2, '0');
-  const mm = String(kst.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-};
 
 // ─── Home 탭 빌드 ───────────────────────────────────
 

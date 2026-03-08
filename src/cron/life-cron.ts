@@ -16,6 +16,7 @@ import {
   queryTodaySchedules,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
+import { getTodayISO, getYesterdayISO } from '../shared/kst.js';
 import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
@@ -32,29 +33,6 @@ export interface LifeCronConfig {
     night: string;
   };
 }
-
-// ─── KST 날짜 헬퍼 ─────────────────────────────────────
-
-/** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
-const getTodayISO = (): string => {
-  const now = new Date();
-  const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
-  const yyyy = kst.getFullYear();
-  const mm = String(kst.getMonth() + 1).padStart(2, '0');
-  const dd = String(kst.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-/** KST 기준 어제 날짜 */
-const getYesterdayISO = (): string => {
-  const now = new Date();
-  const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
-  kst.setDate(kst.getDate() - 1);
-  const yyyy = kst.getFullYear();
-  const mm = String(kst.getMonth() + 1).padStart(2, '0');
-  const dd = String(kst.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
 
 // ─── 루틴 기록 생성 ─────────────────────────────────────
 

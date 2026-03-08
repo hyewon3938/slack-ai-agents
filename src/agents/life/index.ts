@@ -5,7 +5,8 @@ import { sendBlockMessage, sendMessage } from '../../shared/slack.js';
 import { SQL_TOOLS, executeSQLTool } from '../../shared/sql-tools.js';
 import { ChatHistory } from '../../shared/chat-history.js';
 import { queryTodaySchedules } from '../../shared/life-queries.js';
-import { buildLifeSystemPrompt, getTodayISO } from './prompt.js';
+import { buildLifeSystemPrompt } from './prompt.js';
+import { getTodayISO } from '../../shared/kst.js';
 import { buildScheduleBlocks } from './blocks.js';
 
 /** 단축 키워드 → fast path (LLM 호출 없이 Block Kit 응답) */
