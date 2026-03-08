@@ -19,6 +19,7 @@ COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile --production && yarn cache clean
 
 COPY --from=builder /app/dist ./dist
+COPY db/ ./db/
 
 USER node
 
