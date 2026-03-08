@@ -183,6 +183,17 @@ const getSchemaInfo = async (tableName?: string): Promise<string> => {
   return output;
 };
 
+// ---- Post-modify 훅 ----
+
+export type PostModifyHook = (sql: string) => void | Promise<void>;
+
+let postModifyHook: PostModifyHook | null = null;
+
+/** modify_db 실행 후 호출될 훅 등록 */
+export const setPostModifyHook = (hook: PostModifyHook): void => {
+  postModifyHook = hook;
+};
+
 // ---- SQL 도구 실행기 ----
 
 /**
@@ -209,6 +220,14 @@ export const executeSQLTool = async (
       if (error) return JSON.stringify({ error });
 
       const result = await queryWithClient(sql, SQL_TIMEOUT_MS);
+
+      // fire-and-forget: 훅 실행 (응답 지연 없음)
+      if (postModifyHook) {
+        Promise.resolve(postModifyHook(sql)).catch((err: unknown) => {
+          console.error('[SQL Tools] post-modify hook 오류:', err);
+        });
+      }
+
       return JSON.stringify({ rowCount: result.rowCount, rows: result.rows });
     }
 

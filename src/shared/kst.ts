@@ -57,6 +57,9 @@ export const getKSTTimeString = (): string => {
   return `${hh}:${mm}`;
 };
 
+/** KST 기준 요일 번호 (0=일 ~ 6=토) */
+export const getKSTDayOfWeek = (): number => getKSTDate().getDay();
+
 // ─── 날짜 문자열 기반 (DB 값 파싱) ─────────────────────
 
 /**
