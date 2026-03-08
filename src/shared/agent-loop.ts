@@ -87,20 +87,26 @@ export interface AgentLoopResult {
   toolArgs: Record<string, unknown>[];
 }
 
+/** 도구 실행기 타입 */
+export type ToolExecutor = (name: string, args: Record<string, unknown>) => Promise<string>;
+
 /** 에이전트 루프 설정 */
 export interface AgentLoopConfig {
   /** 로그 라벨 (예: 'Schedule Agent') */
   label: string;
   /** 시스템 프롬프트 생성 함수 */
   buildSystemPrompt: () => string;
-  /** MCP 도구 목록 제공 함수 */
+  /** 도구 목록 제공 함수 */
   getTools: () => Promise<LLMToolDefinition[]>;
+  /** 커스텀 도구 실행기 (미지정 시 MCP 도구 사용) */
+  executeToolCall?: ToolExecutor;
 }
 
-/** MCP 도구 호출 실행 (병렬) */
+/** 도구 호출 실행 (병렬). executor 미지정 시 MCP 도구 사용 */
 export const executeToolCalls = async (
   toolCalls: LLMToolCall[],
   label: string,
+  executor: ToolExecutor = callMCPTool,
 ): Promise<LLMMessage[]> => {
   const results = await Promise.all(
     toolCalls.map(async (tc): Promise<LLMMessage> => {
@@ -108,7 +114,7 @@ export const executeToolCalls = async (
       console.log(`[${label}] 도구 호출: ${tc.name}`, JSON.stringify(tc.arguments).slice(0, 200));
       try {
         const result = await withTimeout(
-          callMCPTool(tc.name, tc.arguments),
+          executor(tc.name, tc.arguments),
           TOOL_TIMEOUT_MS,
           `도구 ${tc.name}`,
         );
@@ -140,7 +146,8 @@ export const runAgentLoop = async (
   userText: string,
   config: AgentLoopConfig,
 ): Promise<AgentLoopResult> => {
-  const { label, buildSystemPrompt, getTools } = config;
+  const { label, buildSystemPrompt, getTools, executeToolCall } = config;
+  const executor = executeToolCall ?? callMCPTool;
 
   const systemPrompt = buildSystemPrompt();
   const tools = await getTools();
@@ -235,7 +242,7 @@ export const runAgentLoop = async (
         toolCalls: response.toolCalls,
       });
 
-      const toolResults = await executeToolCalls(response.toolCalls, label);
+      const toolResults = await executeToolCalls(response.toolCalls, label, executor);
       messages.push(...toolResults);
       continue;
     }
