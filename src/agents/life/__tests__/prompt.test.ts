@@ -39,6 +39,8 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('routine_records');
     expect(prompt).toContain('sleep_records');
     expect(prompt).toContain('custom_instructions');
+    expect(prompt).toContain('source(user/auto)');
+    expect(prompt).toContain('active(boolean)');
   });
 
   it('대화 방식과 데이터 규칙을 포함한다', async () => {
@@ -60,6 +62,10 @@ describe('buildLifeSystemPrompt', () => {
     const prompt = await buildLifeSystemPrompt('C123');
     expect(prompt).toContain('custom_instructions에 INSERT');
     expect(prompt).toContain('지시사항 보여줘');
+    expect(prompt).toContain("source = 'user'");
+    expect(prompt).toContain("source = 'auto'");
+    expect(prompt).toContain('active = false');
+    expect(prompt).toContain('통합 규칙');
   });
 
   it('변경 후 응답 규칙과 백로그 관리를 포함한다', async () => {
@@ -69,9 +75,9 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('date IS NULL');
   });
 
-  it('95줄 이내의 간결한 프롬프트', async () => {
+  it('120줄 이내의 간결한 프롬프트', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
     const lineCount = prompt.split('\n').length;
-    expect(lineCount).toBeLessThan(95);
+    expect(lineCount).toBeLessThan(120);
   });
 });
