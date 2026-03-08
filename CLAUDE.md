@@ -56,7 +56,8 @@ db/
 │   ├── 002_sleep_records.sql # 수면 기록 테이블
 │   ├── 003_schedule_important.sql # 일정 중요 표시
 │   ├── 004_custom_instructions.sql # 커스텀 지시사항
-│   └── 005_sleep_type.sql    # 수면 유형 (밤잠/낮잠)
+│   ├── 005_sleep_type.sql    # 수면 유형 (밤잠/낮잠)
+│   └── 006_smart_memory.sql  # 스마트 메모리 (카테고리/source/active)
 ├── migrate.ts                # 마이그레이션 실행 스크립트
 ├── migrate-from-notion.ts    # Notion → PostgreSQL 1회성 마이그레이션
 └── test-connection.ts        # DB 연결 테스트
@@ -91,8 +92,8 @@ routine_records: id, template_id(FK), date, completed, created_at
 -- 수면 기록
 sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo, created_at
 
--- 커스텀 지시사항 (Slack에서 설정, 시스템 프롬프트에 반영)
-custom_instructions: id, instruction, created_at
+-- 커스텀 지시사항 (스마트 메모리: 카테고리 분류 + 자동 감지 + soft-delete)
+custom_instructions: id, instruction, category, source(user/auto), active, created_at
 
 -- 확장 예정: diary, expenses, fortune
 ```
@@ -149,3 +150,4 @@ custom_instructions: id, instruction, created_at
 
 - 커밋이 3~5개 쌓이거나, 주제가 바뀌는 시점에 "여기서 커밋 끊자", "새 브랜치 파자", "PR 만들자" 등을 먼저 제안할 것
 - 하나의 브랜치에서 서로 다른 기능이 섞이기 시작하면 PR 머지 → 새 브랜치 전환을 권유할 것
+- `docs/developer-profile.md` (gitignore 대상)에 개발자 작업 스타일, 의사결정 패턴, 성향 분석을 기록 중. 협업 중 눈에 띄는 포인트(강점, 개선점, 새로운 패턴)가 발견되면 해당 문서의 "관찰 메모" 섹션에 날짜와 함께 추가할 것
