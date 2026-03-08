@@ -77,7 +77,7 @@ db/
 
 ```sql
 -- 일정
-schedules: id, title, date, end_date, status, category, memo, created_at
+schedules: id, title, date, end_date, status, category, memo, important, created_at
 
 -- 루틴 템플릿
 routine_templates: id, name, time_slot, frequency, active, created_at
@@ -87,6 +87,9 @@ routine_records: id, template_id(FK), date, completed, created_at
 
 -- 수면 기록
 sleep_records: id, date, bedtime, wake_time, duration_minutes, memo, created_at
+
+-- 커스텀 지시사항 (Slack에서 설정, 시스템 프롬프트에 반영)
+custom_instructions: id, instruction, created_at
 
 -- 확장 예정: diary, expenses, fortune
 ```
