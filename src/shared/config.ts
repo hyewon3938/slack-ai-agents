@@ -38,31 +38,11 @@ export const CONFIG = {
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
     geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
   },
-  notion: {
-    apiKey: requireEnv('NOTION_API_KEY'),
-    scheduleDbId: requireEnv('NOTION_SCHEDULE_DB_ID'),
-    routineDbId: requireEnv('NOTION_ROUTINE_DB_ID'),
-    sleepDbId: optionalEnv('NOTION_SLEEP_DB_ID', ''),
-  },
   channels: {
-    schedule: requireEnv('SCHEDULE_CHANNEL_ID'),
-    routine: requireEnv('ROUTINE_CHANNEL_ID'),
-    life: process.env['LIFE_CHANNEL_ID'] ?? '',
-  },
-  cron: {
-    morning: optionalEnv('CRON_MORNING', '0 9 * * *'),
-    lunch: optionalEnv('CRON_LUNCH', '0 13 * * *'),
-    evening: optionalEnv('CRON_EVENING', '0 18 * * *'),
-    night: optionalEnv('CRON_NIGHT', '0 23 * * *'),
+    life: requireEnv('LIFE_CHANNEL_ID'),
   },
   db: {
     url: requireEnv('DATABASE_URL'),
-  },
-  routineCron: {
-    morning: optionalEnv('CRON_ROUTINE_MORNING', '0 9 * * *'),
-    lunch: optionalEnv('CRON_ROUTINE_LUNCH', '0 13 * * *'),
-    evening: optionalEnv('CRON_ROUTINE_EVENING', '0 18 * * *'),
-    night: optionalEnv('CRON_ROUTINE_NIGHT', '0 22 * * *'),
   },
   lifeCron: {
     morning: optionalEnv('LIFE_CRON_MORNING', '0 9 * * *'),
