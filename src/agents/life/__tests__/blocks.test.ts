@@ -186,42 +186,14 @@ describe('buildFilteredRoutineBlocks', () => {
 // ─── buildMorningGreetingBlocks ────────────────────────
 
 describe('buildMorningGreetingBlocks', () => {
-  it('어제 기록이 있으면 완료율 포함', () => {
-    const records = [
-      makeRecord({ completed: true }),
-      makeRecord({ id: 2, completed: false, name: '독서' }),
-    ];
+  it('LLM 생성 텍스트를 블록으로 변환', () => {
+    const greeting = '어제 루틴 85%. 잘하고 있어! 밤 루틴만 좀 더 챙기자.';
+    const blocks = buildMorningGreetingBlocks(greeting);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.type).toBe('section');
 
-    const blocks = buildMorningGreetingBlocks(records);
-    expect(blocks.length).toBeGreaterThan(0);
-
-    const text = blocks
-      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
-      .join(' ');
-    expect(text).toContain('50%');
-  });
-
-  it('어제 기록이 없으면 기본 메시지', () => {
-    const blocks = buildMorningGreetingBlocks([]);
-    expect(blocks.length).toBeGreaterThan(0);
-
-    const text = blocks
-      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
-      .join(' ');
-    expect(text).toMatch(/어제|기록|루틴/);
-  });
-
-  it('100% 완료 시 칭찬 메시지', () => {
-    const records = [
-      makeRecord({ completed: true }),
-      makeRecord({ id: 2, completed: true, name: '독서' }),
-    ];
-
-    const blocks = buildMorningGreetingBlocks(records);
-    const text = blocks
-      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
-      .join(' ');
-    expect(text).toContain('100%');
+    const text = (blocks[0] as { text: { text: string } }).text.text;
+    expect(text).toBe(greeting);
   });
 });
 
@@ -234,23 +206,25 @@ describe('buildNightSummaryBlocks', () => {
       makeRecord({ id: 2, completed: false, name: '독서' }),
     ];
 
-    const { text, blocks } = buildNightSummaryBlocks(records, '2026-03-08');
+    const summaryText = '오늘도 수고했어! 내일은 독서도 챙기자.';
+    const { text, blocks } = buildNightSummaryBlocks(records, '2026-03-08', summaryText);
     expect(text).toContain('1/2');
     // 마무리 메시지 블록이 추가됨
     expect(blocks.length).toBeGreaterThan(3);
   });
 
-  it('전부 완료 시 완료 메시지', () => {
+  it('전부 완료 시 LLM 마무리 메시지 포함', () => {
     const records = [
       makeRecord({ completed: true }),
     ];
 
-    const { blocks } = buildNightSummaryBlocks(records, '2026-03-08');
+    const summaryText = '오늘 루틴 다 챙겼네! 수고했어, 푹 쉬어.';
+    const { blocks } = buildNightSummaryBlocks(records, '2026-03-08', summaryText);
     const lastSection = blocks.filter((b) => b.type === 'section').pop();
     const text = lastSection && 'text' in lastSection
       ? (lastSection.text as { text: string }).text
       : '';
-    expect(text).toMatch(/수고|잘했|챙겼/);
+    expect(text).toContain('수고했어');
   });
 });
 

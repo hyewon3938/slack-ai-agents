@@ -33,6 +33,7 @@ const startApp = async (): Promise<void> => {
   initLifeCron(app, {
     channelId: CONFIG.channels.life,
     schedules: CONFIG.lifeCron,
+    llmClient,
   });
 
   await app.start();
