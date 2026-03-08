@@ -53,7 +53,10 @@ src/
 db/
 ├── migrations/               # SQL 마이그레이션 파일
 │   ├── 001_init.sql          # 일정, 루틴 테이블
-│   └── 002_sleep_records.sql # 수면 기록 테이블
+│   ├── 002_sleep_records.sql # 수면 기록 테이블
+│   ├── 003_schedule_important.sql # 일정 중요 표시
+│   ├── 004_custom_instructions.sql # 커스텀 지시사항
+│   └── 005_sleep_type.sql    # 수면 유형 (밤잠/낮잠)
 ├── migrate.ts                # 마이그레이션 실행 스크립트
 ├── migrate-from-notion.ts    # Notion → PostgreSQL 1회성 마이그레이션
 └── test-connection.ts        # DB 연결 테스트
@@ -86,7 +89,7 @@ routine_templates: id, name, time_slot, frequency, active, created_at
 routine_records: id, template_id(FK), date, completed, created_at
 
 -- 수면 기록
-sleep_records: id, date, bedtime, wake_time, duration_minutes, memo, created_at
+sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo, created_at
 
 -- 커스텀 지시사항 (Slack에서 설정, 시스템 프롬프트에 반영)
 custom_instructions: id, instruction, created_at
