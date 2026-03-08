@@ -22,16 +22,7 @@ import {
   buildFilteredRoutineBlocks,
   buildScheduleBlocks,
 } from './blocks.js';
-
-/** KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD) */
-const getTodayISO = (): string => {
-  const now = new Date();
-  const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60_000);
-  const yyyy = kst.getFullYear();
-  const mm = String(kst.getMonth() + 1).padStart(2, '0');
-  const dd = String(kst.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
+import { getTodayISO } from './prompt.js';
 
 /** 날짜를 N일 이동 (YYYY-MM-DD) */
 const addDays = (dateStr: string, days: number): string => {
