@@ -102,9 +102,8 @@ export const formatDateShort = (dateStr: string): string => {
 };
 
 /**
- * 이번 주 + 다음 주 날짜-요일 참조표.
+ * 지난 주 + 이번 주 + 다음 주 날짜-요일 참조표 (3주).
  * LLM이 요일을 직접 계산하지 않도록 참조 데이터 제공.
- * 예: "이번 주: 3/8(일) 3/9(월) ... 3/14(토)"
  */
 export const getWeekReference = (): string => {
   const d = getKSTDate();
@@ -122,10 +121,12 @@ export const getWeekReference = (): string => {
     return parts.join(' ');
   };
 
+  const prevSunday = new Date(sunday);
+  prevSunday.setDate(sunday.getDate() - 7);
   const nextSunday = new Date(sunday);
   nextSunday.setDate(sunday.getDate() + 7);
 
-  return `이번 주: ${formatWeek(sunday)}\n다음 주: ${formatWeek(nextSunday)}`;
+  return `지난 주: ${formatWeek(prevSunday)}\n이번 주: ${formatWeek(sunday)}\n다음 주: ${formatWeek(nextSunday)}`;
 };
 
 /** 날짜 문자열에 N일 더하기 (YYYY-MM-DD → YYYY-MM-DD) */
