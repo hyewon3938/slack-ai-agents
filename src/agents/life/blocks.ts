@@ -231,8 +231,8 @@ const groupByCategory = (items: ScheduleRow[]): CategoryGroup[] => {
   return result;
 };
 
-/** 일정 항목 포맷 */
-const formatScheduleItem = (item: ScheduleRow): string => {
+/** 일정 항목 제목 포맷 (메모 제외) */
+const formatScheduleTitle = (item: ScheduleRow): string => {
   const isAppointment = item.category === '약속';
 
   // 기간 일정 표시
@@ -244,22 +244,16 @@ const formatScheduleItem = (item: ScheduleRow): string => {
   // 중요 표시 (제목 뒤)
   const star = item.important ? ' ★' : '';
 
-  let line: string;
-  if (isAppointment) line = `${item.title}${rangePart}${star}`;
-  else if (item.status === 'done') line = `~${item.title}~${rangePart}${star}`;
-  else if (item.status === 'in-progress') line = `► ${item.title}${rangePart}${star}`;
-  else line = `${item.title}${rangePart}${star}`;
+  if (isAppointment) return `${item.title}${rangePart}${star}`;
+  if (item.status === 'done') return `~${item.title}~${rangePart}${star}`;
+  if (item.status === 'in-progress') return `► ${item.title}${rangePart}${star}`;
+  return `${item.title}${rangePart}${star}`;
+};
 
-  // 메모 표시 (이탤릭 + 멀티라인)
-  if (item.memo) {
-    const memoLines = item.memo.split('\n');
-    line += `\n_└ ${memoLines[0]}_`;
-    for (let i = 1; i < memoLines.length; i++) {
-      line += `\n_${memoLines[i]}_`;
-    }
-  }
-
-  return line;
+/** 메모 텍스트 포맷 (└ 접두어 + 줄바꿈) */
+const formatMemoText = (memo: string): string => {
+  const lines = memo.split('\n');
+  return lines.map((l, i) => (i === 0 ? `└ ${l}` : `  ${l}`)).join('\n');
 };
 
 /** overflow value 형식: "scheduleId|newStatus|targetDate" */
@@ -340,34 +334,45 @@ export const buildScheduleBlocks = (
       text: { type: 'mrkdwn', text: `*[${group.category}]*` },
     });
 
-    const noOverflowLines: string[] = [];
+    const addMemoContext = (memo: string | null): void => {
+      if (!memo) return;
+      blocks.push({
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: formatMemoText(memo) }],
+      });
+    };
+
+    const noOverflowLines: { title: string; memo: string | null }[] = [];
 
     const flushNoOverflow = (): void => {
       if (noOverflowLines.length === 0) return;
       blocks.push({
         type: 'section',
-        text: { type: 'mrkdwn', text: noOverflowLines.join('\n') },
+        text: { type: 'mrkdwn', text: noOverflowLines.map((l) => l.title).join('\n') },
       });
+      // 메모가 있는 항목들의 메모를 context로 추가
+      for (const l of noOverflowLines) addMemoContext(l.memo);
       noOverflowLines.length = 0;
     };
 
     for (const item of group.items) {
       const isAppointment = item.category === '약속';
-      const itemText = formatScheduleItem(item);
+      const titleText = formatScheduleTitle(item);
 
       if (isAppointment || !item.status) {
-        noOverflowLines.push(itemText);
+        noOverflowLines.push({ title: titleText, memo: item.memo });
       } else {
         flushNoOverflow();
         blocks.push({
           type: 'section',
-          text: { type: 'mrkdwn', text: itemText },
+          text: { type: 'mrkdwn', text: titleText },
           accessory: {
             type: 'overflow',
             action_id: SCHEDULE_ACTION_ID,
             options: buildOverflowOptions(item, targetDate),
           },
         });
+        addMemoContext(item.memo);
       }
     }
 
@@ -403,7 +408,8 @@ export const buildScheduleText = (
   for (const group of groups) {
     lines.push(`[${group.category}]`);
     for (const item of group.items) {
-      lines.push(formatScheduleItem(item));
+      lines.push(formatScheduleTitle(item));
+      if (item.memo) lines.push(formatMemoText(item.memo));
     }
     lines.push('');
   }
