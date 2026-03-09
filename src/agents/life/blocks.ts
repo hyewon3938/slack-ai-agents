@@ -250,11 +250,8 @@ const formatScheduleTitle = (item: ScheduleRow): string => {
   return `${item.title}${rangePart}${star}`;
 };
 
-/** 메모 텍스트 포맷 (└ 접두어 + 줄바꿈) */
-const formatMemoText = (memo: string): string => {
-  const lines = memo.split('\n');
-  return lines.map((l, i) => (i === 0 ? `└ ${l}` : `  ${l}`)).join('\n');
-};
+/** 메모 텍스트 포맷 (Block Kit context용 — └ 없이) */
+const formatMemoText = (memo: string): string => memo;
 
 /** overflow value 형식: "scheduleId|newStatus|targetDate" */
 export const encodeOverflowValue = (
@@ -409,7 +406,11 @@ export const buildScheduleText = (
     lines.push(`[${group.category}]`);
     for (const item of group.items) {
       lines.push(formatScheduleTitle(item));
-      if (item.memo) lines.push(formatMemoText(item.memo));
+      if (item.memo) {
+        const memoLines = item.memo.split('\n');
+        lines.push(`└ ${memoLines[0]}`);
+        for (let i = 1; i < memoLines.length; i++) lines.push(`  ${memoLines[i]}`);
+      }
     }
     lines.push('');
   }

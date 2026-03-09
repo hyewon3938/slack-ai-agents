@@ -285,7 +285,7 @@ describe('buildScheduleBlocks', () => {
     }
   });
 
-  it('메모가 있으면 context 블록으로 └ 표시', () => {
+  it('메모가 있으면 context 블록으로 표시', () => {
     const items = [
       makeSchedule({ id: 1, title: '회의', memo: '자료 준비 필요' }),
     ];
@@ -302,7 +302,7 @@ describe('buildScheduleBlocks', () => {
       .filter((b) => b.type === 'context')
       .map((b) => ('elements' in b ? (b.elements as Array<{ text: string }>)[0]?.text : ''))
       .join(' ');
-    expect(contextTexts).toContain('└ 자료 준비 필요');
+    expect(contextTexts).toContain('자료 준비 필요');
   });
 
   it('메모가 없으면 └ 미표시', () => {
