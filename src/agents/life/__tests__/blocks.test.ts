@@ -305,6 +305,32 @@ describe('buildScheduleBlocks', () => {
     expect(contextTexts).toContain('자료 준비 필요');
   });
 
+  it('compact 모드: overflow 메뉴 없이 렌더링', () => {
+    const items = [
+      makeSchedule({ id: 1, title: '회의', category: '업무' }),
+    ];
+
+    const { blocks } = buildScheduleBlocks(items, '2026-03-08', undefined, { compact: true });
+
+    const overflowBlocks = blocks.filter(
+      (b) => b.type === 'section' && 'accessory' in b,
+    );
+    expect(overflowBlocks).toHaveLength(0);
+  });
+
+  it('완료 일정 메모에 취소선 적용', () => {
+    const items = [
+      makeSchedule({ id: 1, title: '발송', status: 'done', memo: '택배 3건' }),
+    ];
+
+    const { blocks } = buildScheduleBlocks(items, '2026-03-08');
+    const contextTexts = blocks
+      .filter((b) => b.type === 'context')
+      .map((b) => ('elements' in b ? (b.elements as Array<{ text: string }>)[0]?.text : ''));
+
+    expect(contextTexts.some((t) => t.includes('~택배 3건~'))).toBe(true);
+  });
+
   it('메모가 없으면 └ 미표시', () => {
     const items = [
       makeSchedule({ id: 1, title: '회의', memo: null }),
