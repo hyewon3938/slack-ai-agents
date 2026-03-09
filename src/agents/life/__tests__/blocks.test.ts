@@ -285,19 +285,24 @@ describe('buildScheduleBlocks', () => {
     }
   });
 
-  it('메모가 있으면 └ 표시', () => {
+  it('메모가 있으면 context 블록으로 └ 표시', () => {
     const items = [
       makeSchedule({ id: 1, title: '회의', memo: '자료 준비 필요' }),
     ];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
-    const textContent = blocks
+
+    const sectionText = blocks
       .filter((b) => b.type === 'section')
       .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
       .join(' ');
+    expect(sectionText).toContain('회의');
 
-    expect(textContent).toContain('회의');
-    expect(textContent).toContain('└ 자료 준비 필요');
+    const contextTexts = blocks
+      .filter((b) => b.type === 'context')
+      .map((b) => ('elements' in b ? (b.elements as Array<{ text: string }>)[0]?.text : ''))
+      .join(' ');
+    expect(contextTexts).toContain('└ 자료 준비 필요');
   });
 
   it('메모가 없으면 └ 미표시', () => {
