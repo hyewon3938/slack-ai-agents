@@ -12,7 +12,7 @@
     "lint": "eslint src/",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "deploy": "ssh -i ~/.ssh/slack-ai-agents.key ubuntu@140.245.69.231 ~/deploy.sh"
+    "deploy": "ssh -i ~/.ssh/slack-ai-agents.key ubuntu@140.245.69.231 'bash ~/deploy.sh'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

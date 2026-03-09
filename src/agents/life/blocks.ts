@@ -77,7 +77,7 @@ export const buildRoutineBlocks = (
       if (record.completed) {
         blocks.push({
           type: 'section',
-          text: { type: 'mrkdwn', text: `~${record.name}~${suffix} :white_check_mark:` },
+          text: { type: 'mrkdwn', text: `~${record.name}~${suffix}` },
         });
       } else {
         blocks.push({
