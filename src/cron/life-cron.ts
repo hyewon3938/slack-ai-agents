@@ -33,6 +33,7 @@ import {
   buildSleepReminderText,
   buildSleepRecordedText,
 } from '../agents/life/blocks.js';
+import { buildLifeContext } from '../shared/life-context.js';
 
 export interface LifeCronConfig {
   channelId: string;
@@ -179,17 +180,20 @@ const morningTask = async (
   // 1. 오늘 기록 생성
   const created = await createTodayRecords(today);
 
-  // 2. 어제 통계 → LLM 인사
+  // 2. 생활 맥락 + 어제 통계 → LLM 인사
   const yesterdayRecords = await queryTodayRecords(yesterday);
   const stats = calcRoutineStats(yesterdayRecords);
+  const lifeContext = await buildLifeContext('morning');
 
   const slotText = Object.entries(stats.slotBreakdown)
     .map(([s, d]) => `${s} ${d.rate}%`)
     .join(', ');
 
-  const context = yesterdayRecords.length > 0
-    ? `아침 인사 생성해줘.\n어제 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${stats.weakestSlot ? `\n가장 약한 시간대: ${stats.weakestSlot}` : ''}`
-    : '아침 인사 생성해줘. 어제 루틴 기록이 없어.';
+  const baseContext = yesterdayRecords.length > 0
+    ? `어제 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${stats.weakestSlot ? `\n가장 약한 시간대: ${stats.weakestSlot}` : ''}`
+    : '어제 루틴 기록이 없어.';
+
+  const context = `아침 인사 생성해줘. 생활 맥락 기반으로 잔소리 포함해서.\n${baseContext}${lifeContext}`;
 
   const greeting = await generateCronMessage(
     config.llmClient, context,
@@ -267,11 +271,12 @@ const nightTask = async (
   if (records.length === 0) return;
 
   const stats = calcRoutineStats(records);
+  const lifeContext = await buildLifeContext('night');
   const slotText = Object.entries(stats.slotBreakdown)
     .map(([s, d]) => `${s} ${d.rate}%`)
     .join(', ');
 
-  const context = `밤 마무리 메시지 생성해줘.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}`;
+  const context = `밤 마무리 메시지 생성해줘. 생활 맥락 기반으로 하루를 종합해서 잔소리 포함.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${lifeContext}`;
 
   const summary = await generateCronMessage(
     config.llmClient, context,

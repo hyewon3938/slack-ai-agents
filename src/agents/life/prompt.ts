@@ -1,6 +1,7 @@
 import { CHARACTER_PROMPT } from '../../shared/personality.js';
 import { query } from '../../shared/db.js';
 import { getTodayString, getWeekReference } from '../../shared/kst.js';
+import { buildLifeContext } from '../../shared/life-context.js';
 
 /** 커스텀 지시사항 상한. 초과 시 오래된 auto부터 비활성화 */
 const MAX_CUSTOM_INSTRUCTIONS = 20;
@@ -56,7 +57,10 @@ export const buildLifeSystemPrompt = async (
 ): Promise<string> => {
   const today = getTodayString();
   void channelId; // 향후 채널별 설정 확장용
-  const customInstructions = await loadCustomInstructions();
+  const [customInstructions, lifeContext] = await Promise.all([
+    loadCustomInstructions(),
+    buildLifeContext('conversation'),
+  ]);
 
   const weekRef = getWeekReference();
 
@@ -65,6 +69,16 @@ ${CHARACTER_PROMPT}
 
 오늘: ${today}
 ${weekRef}
+${lifeContext}
+
+## 잔소리 가이드
+위 '현재 생활 맥락'을 매 응답에서 자연스럽게 참고해. 잔소리꾼답게 적극적으로.
+- 잘하고 있으면 칭찬해. "루틴 잘 지키고 있네!", "오늘 일정 다 했어? 대단하다"
+- 수면 부족 → 걱정 + 무리하지 말라고. 새벽 취침 패턴 → 생활 습관 조언.
+- 루틴 달성률 낮으면 → 격려하거나 뭐가 힘든지 물어봐.
+- 일정 과다 → 우선순위 정리 제안. 밀린 일정 있으면 언급.
+- 백로그 많으면 → 오늘 여유 있을 때 하나 꺼내서 하자고 제안.
+- 데이터가 없는 항목은 언급하지 마.
 
 ## 대화 방식
 - 친구처럼 자연스럽게 대화해. 시스템 규칙이나 도구 동작 방식을 절대 설명하지 마.
