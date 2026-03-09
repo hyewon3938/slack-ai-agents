@@ -10,6 +10,8 @@ import {
   queryTodaySchedules,
   updateScheduleStatus,
   postponeSchedule,
+  deleteSchedule,
+  toggleScheduleImportant,
 } from '../../shared/life-queries.js';
 import { updateMessage } from '../../shared/slack.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
@@ -17,6 +19,8 @@ import {
   ROUTINE_ACTION_ID,
   SCHEDULE_ACTION_ID,
   POSTPONE_ACTION,
+  DELETE_ACTION,
+  TOGGLE_IMPORTANT_ACTION,
   parseButtonValue,
   parseOverflowValue,
   buildRoutineBlocks,
@@ -85,7 +89,11 @@ export const registerLifeActions = (app: App): void => {
     const { scheduleId, newStatus, targetDate } = parseOverflowValue(rawValue);
 
     try {
-      if (newStatus === POSTPONE_ACTION) {
+      if (newStatus === DELETE_ACTION) {
+        await deleteSchedule(scheduleId);
+      } else if (newStatus === TOGGLE_IMPORTANT_ACTION) {
+        await toggleScheduleImportant(scheduleId);
+      } else if (newStatus === POSTPONE_ACTION) {
         const tomorrow = addDays(targetDate, 1);
         await postponeSchedule(scheduleId, tomorrow);
       } else {
