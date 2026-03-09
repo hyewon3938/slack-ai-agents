@@ -3,7 +3,7 @@ import { CONFIG } from './shared/config.js';
 import { registerMessageHandler, registerAgent } from './router.js';
 import { connectDB, disconnectDB } from './shared/db.js';
 import { runMigrations } from './shared/migrate.js';
-import { createLLMClient } from './shared/llm.js';
+import { createLLMClient, createCronLLMClient } from './shared/llm.js';
 import { createLifeAgent } from './agents/life/index.js';
 import { registerLifeActions } from './agents/life/actions.js';
 import { registerHomeTab } from './agents/life/home.js';
@@ -25,6 +25,7 @@ const startApp = async (): Promise<void> => {
   await runMigrations();
 
   const llmClient = await createLLMClient();
+  const cronLLMClient = await createCronLLMClient();
 
   // Life Agent
   const lifeAgent = createLifeAgent(llmClient);
@@ -32,10 +33,10 @@ const startApp = async (): Promise<void> => {
   registerLifeActions(app);
   registerHomeTab(app);
 
-  // 크론 스케줄러 (DB 기반 동적 스케줄)
+  // 크론 스케줄러 (DB 기반 동적 스케줄) — Gemini Flash로 비용 절감
   const cronScheduler = new CronScheduler(app, {
     channelId: CONFIG.channels.life,
-    llmClient,
+    llmClient: cronLLMClient,
   });
   await cronScheduler.init();
 

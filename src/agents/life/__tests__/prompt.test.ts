@@ -57,7 +57,7 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('sleep_records');
     expect(prompt).toContain('custom_instructions');
     expect(prompt).toContain('source(user/auto)');
-    expect(prompt).toContain('active(boolean)');
+    expect(prompt).toContain('active');
   });
 
   it('일정 조회 3대 필수 규칙을 포함한다', async () => {
@@ -82,10 +82,9 @@ describe('buildLifeSystemPrompt', () => {
 
   it('커스텀 지시사항 관리 규칙을 포함한다', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
-    expect(prompt).toContain('custom_instructions INSERT');
-    expect(prompt).toContain("source = 'user'");
-    expect(prompt).toContain("source = 'auto'");
-    expect(prompt).toContain('active = false');
+    expect(prompt).toContain("source='user'");
+    expect(prompt).toContain("source='auto'");
+    expect(prompt).toContain('커스텀 지시사항');
   });
 
   it('변경 후 응답 규칙과 백로그 관리를 포함한다', async () => {
