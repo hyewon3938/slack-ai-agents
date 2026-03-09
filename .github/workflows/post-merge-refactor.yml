@@ -1,0 +1,113 @@
+name: Post-Merge Refactoring
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  refactor:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-engines
+
+      - name: Get merged PR info
+        id: pr_info
+        run: |
+          DIFF=$(git diff HEAD~1 -- '*.ts' '*.mjs' ':!dist/' | head -3000)
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # PR 리뷰 코멘트 가져오기
+          COMMENTS=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments --jq '.[].body' 2>/dev/null | head -2000 || echo "코멘트 없음")
+          echo "comments<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get conventions
+        id: conventions
+        run: |
+          if [ -f docs/conventions.md ]; then
+            REFACTOR_SECTION=$(sed -n '/리팩토링/,/^##[^#]/p' docs/conventions.md | head -50)
+          else
+            REFACTOR_SECTION="리팩토링 기준 없음"
+          fi
+          echo "refactor_rules<<EOF" >> $GITHUB_OUTPUT
+          echo "$REFACTOR_SECTION" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Analyze refactoring needs
+        id: analysis
+        uses: anthropics/anthropic-ai-action@main
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-20250514
+          prompt: |
+            머지된 PR의 코드와 리뷰 코멘트를 분석해서 리팩토링이 필요한지 판단해주세요.
+
+            ## 리팩토링 기준
+            ${{ steps.conventions.outputs.refactor_rules }}
+
+            ## 머지된 코드 변경사항
+            ```
+            ${{ steps.pr_info.outputs.diff }}
+            ```
+
+            ## PR 리뷰 코멘트
+            ${{ steps.pr_info.outputs.comments }}
+
+            ## 판단 기준
+            - 🔴 필수 수정 코멘트가 있었는데 해결 안 된 것
+            - 코드 중복이 3회 이상 발견된 것
+            - 리팩토링 기준에 명시된 트리거에 해당하는 것
+
+            ## 출력
+            리팩토링이 필요하면:
+            REFACTOR_NEEDED=true
+            - 어떤 파일의 어떤 부분을 왜 리팩토링해야 하는지 목록
+
+            리팩토링이 불필요하면:
+            REFACTOR_NEEDED=false
+            - 이유 한 줄
+
+      - name: Create refactoring issue
+        if: contains(steps.analysis.outputs.response, 'REFACTOR_NEEDED=true')
+        run: |
+          gh issue create \
+            --title "refactor: PR #${{ github.event.pull_request.number }} 머지 후 리팩토링" \
+            --body "$(cat <<'EOF'
+          ## 원본 PR
+          #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}
+
+          ## 리팩토링 분석
+          ${{ steps.analysis.outputs.response }}
+
+          ## 작업 방법
+          `/start-feature` 스킬로 이 이슈를 기반으로 리팩토링을 진행하세요.
+
+          ---
+          🤖 AI 자동 생성 이슈
+          EOF
+          )" \
+            --label "refactor"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
