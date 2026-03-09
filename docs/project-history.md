@@ -393,9 +393,11 @@ Claude Code의 모든 확장 기능(Skills, Hooks, MCP, Scheduled Tasks, GitHub 
 - daily-dev-review (매일 새벽 5시): 개발 성향 분석 → developer-profile.md
 - daily-work-summary (매일 오전 9시): 전날 작업 팩트 요약 → work-log.md
 
-**GitHub Actions (2개 워크플로우)**
-- PR 코드 리뷰: PR 열릴 때 자동 AI 리뷰 + 컨벤션 괴리 감지
-- 머지 후 리팩토링: 머지 시 리팩토링 필요성 분석 → 자동 이슈 생성
+**~~GitHub Actions (2개 워크플로우)~~ → 삭제됨**
+- ~~PR 코드 리뷰: PR 열릴 때 자동 AI 리뷰 + 컨벤션 괴리 감지~~
+- ~~머지 후 리팩토링: 머지 시 리팩토링 필요성 분석 → 자동 이슈 생성~~
+- 존재하지 않는 `anthropics/anthropic-ai-action` 참조로 처음부터 미작동.
+- `/review-code` 스킬로 로컬 리뷰 + 리팩토링 후 PR하는 방식이 1인+AI 워크플로우에 더 적합하여 삭제.
 
 **MCP 서버 (2개)**
 - PostgreSQL: 개발 중 DB 직접 조회/분석
