@@ -3,7 +3,6 @@ dist/
 .env
 *.log
 .DS_Store
-docs/developer-profile.md
 docs/ai-workflow-portfolio.md
 .env.production
 .mcp.json
