@@ -12,6 +12,12 @@ import { getTodayISO, getYesterdayISO } from './kst.js';
 /** 맥락 생성 타이밍 */
 export type ContextTiming = 'morning' | 'night' | 'conversation';
 
+/** 날짜 파라미터 (한 번 계산, 서브 함수에 전달) */
+interface DateParams {
+  today: string;
+  yesterday: string;
+}
+
 interface SleepRow {
   date: string;
   bedtime: string;
@@ -24,14 +30,6 @@ interface SleepAvgRow {
   avg_duration: string | null;
   avg_bedtime_hour: string | null;
   count: string;
-}
-
-interface LateNightRow {
-  consecutive_late: string;
-}
-
-interface NapRow {
-  nap_count: string;
 }
 
 interface RoutineDayRow {
@@ -47,16 +45,13 @@ interface ScheduleCountRow {
   count: string;
 }
 
-// ─── 수면 맥락 ──────────────────────────────────────────
+// ─── 수면 서브 쿼리 ─────────────────────────────────────
 
-/** 어젯밤 수면 + 7일 패턴 + 낮잠 */
-const querySleepContext = async (timing: ContextTiming): Promise<string> => {
-  const today = getTodayISO();
-  const yesterday = getYesterdayISO();
-
-  const parts: string[] = [];
-
-  // 1. 어젯밤 수면 (date가 어제 또는 오늘인 밤잠)
+/** 어젯밤 수면 시간 + 취침/기상 */
+const queryLastNight = async (
+  { today, yesterday }: DateParams,
+  timing: ContextTiming,
+): Promise<string | null> => {
   const lastNight = await query<SleepRow>(
     `SELECT date::text, bedtime, wake_time, duration_minutes, sleep_type
      FROM sleep_records
@@ -70,14 +65,14 @@ const querySleepContext = async (timing: ContextTiming): Promise<string> => {
     const hours = Math.floor(s.duration_minutes / 60);
     const mins = s.duration_minutes % 60;
     const durationText = mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
-    parts.push(`어젯밤 ${durationText} (${s.bedtime}~${s.wake_time})`);
-  } else if (timing === 'morning') {
-    parts.push('어젯밤 수면 미기록');
-  } else {
-    parts.push('어젯밤 수면 기록 없음');
+    return `어젯밤 ${durationText} (${s.bedtime}~${s.wake_time})`;
   }
 
-  // 2. 7일 평균 (데이터 2건 이상일 때만)
+  return timing === 'morning' ? '어젯밤 수면 미기록' : '어젯밤 수면 기록 없음';
+};
+
+/** 7일 평균 수면 시간 (데이터 2건 이상일 때만) */
+const queryWeekAvg = async ({ today }: DateParams): Promise<string | null> => {
   const weekAvg = await query<SleepAvgRow>(
     `SELECT ROUND(AVG(duration_minutes))::text as avg_duration,
             ROUND(AVG(
@@ -93,40 +88,16 @@ const querySleepContext = async (timing: ContextTiming): Promise<string> => {
   );
 
   const avgRow = weekAvg.rows[0];
-  if (avgRow && Number(avgRow.count) >= 2) {
-    const avgMins = Number(avgRow.avg_duration);
-    const avgH = Math.floor(avgMins / 60);
-    const avgM = avgMins % 60;
-    const avgDurationText = avgM > 0 ? `${avgH}시간 ${avgM}분` : `${avgH}시간`;
-    parts.push(`7일 평균 ${avgDurationText}`);
-  }
+  if (!avgRow || Number(avgRow.count) < 2) return null;
 
-  // 3. 연속 자정 이후 취침 패턴
-  const latePattern = await query<LateNightRow>(
-    `SELECT COUNT(*)::text as consecutive_late
-     FROM (
-       SELECT date, bedtime,
-              ROW_NUMBER() OVER (ORDER BY date DESC) as rn
-       FROM sleep_records
-       WHERE sleep_type = 'night' AND date >= ($1::date - 7)
-       ORDER BY date DESC
-     ) sub
-     WHERE bedtime::time >= '00:00' AND bedtime::time < '06:00'
-       AND rn = (
-         SELECT COUNT(*) FROM (
-           SELECT date, bedtime,
-                  ROW_NUMBER() OVER (ORDER BY date DESC) as rn2
-           FROM sleep_records
-           WHERE sleep_type = 'night' AND date >= ($1::date - 7)
-           ORDER BY date DESC
-         ) sub2
-         WHERE (bedtime::time >= '00:00' AND bedtime::time < '06:00')
-           AND rn2 <= rn
-       )`,
-    [today],
-  );
+  const avgMins = Number(avgRow.avg_duration);
+  const avgH = Math.floor(avgMins / 60);
+  const avgM = avgMins % 60;
+  return `7일 평균 ${avgM > 0 ? `${avgH}시간 ${avgM}분` : `${avgH}시간`}`;
+};
 
-  // 간소화: 최근 연속 새벽 취침 감지
+/** 최근 연속 자정 이후 취침 패턴 */
+const queryLateNightPattern = async ({ today }: DateParams): Promise<string | null> => {
   const recentLate = await query<{ cnt: string }>(
     `WITH ranked AS (
        SELECT date, bedtime,
@@ -141,22 +112,43 @@ const querySleepContext = async (timing: ContextTiming): Promise<string> => {
   );
 
   const lateDays = Number(recentLate.rows[0]?.cnt ?? 0);
-  if (lateDays >= 2) {
-    parts.push(`최근 ${lateDays}일 연속 자정 이후 취침`);
-  }
+  return lateDays >= 2 ? `최근 ${lateDays}일 연속 자정 이후 취침` : null;
+};
 
-  // 4. 오늘 낮잠 (밤/대화 타이밍)
+/** 오늘 낮잠 횟수 (morning 제외) */
+const queryNaps = async ({ today }: DateParams): Promise<string | null> => {
+  const naps = await query<{ nap_count: string }>(
+    `SELECT COUNT(*)::text as nap_count
+     FROM sleep_records
+     WHERE sleep_type = 'nap' AND date = $1`,
+    [today],
+  );
+
+  const napCount = Number(naps.rows[0]?.nap_count ?? 0);
+  return napCount > 0 ? `오늘 낮잠 ${napCount}회` : null;
+};
+
+// ─── 수면 맥락 ──────────────────────────────────────────
+
+/** 어젯밤 수면 + 7일 패턴 + 낮잠 */
+const querySleepContext = async (
+  dates: DateParams,
+  timing: ContextTiming,
+): Promise<string> => {
+  const parts: string[] = [];
+
+  const lastNight = await queryLastNight(dates, timing);
+  if (lastNight) parts.push(lastNight);
+
+  const weekAvg = await queryWeekAvg(dates);
+  if (weekAvg) parts.push(weekAvg);
+
+  const latePattern = await queryLateNightPattern(dates);
+  if (latePattern) parts.push(latePattern);
+
   if (timing !== 'morning') {
-    const naps = await query<NapRow>(
-      `SELECT COUNT(*)::text as nap_count
-       FROM sleep_records
-       WHERE sleep_type = 'nap' AND date = $1`,
-      [today],
-    );
-    const napCount = Number(naps.rows[0]?.nap_count ?? 0);
-    if (napCount > 0) {
-      parts.push(`오늘 낮잠 ${napCount}회`);
-    }
+    const nap = await queryNaps(dates);
+    if (nap) parts.push(nap);
   }
 
   return parts.length > 0 ? `수면: ${parts.join('. ')}.` : '';
@@ -165,13 +157,14 @@ const querySleepContext = async (timing: ContextTiming): Promise<string> => {
 // ─── 루틴 맥락 ──────────────────────────────────────────
 
 /** 오늘/어제 달성률 + 7일 평균 */
-const queryRoutineContext = async (timing: ContextTiming): Promise<string> => {
-  const today = getTodayISO();
-  const yesterday = getYesterdayISO();
+const queryRoutineContext = async (
+  dates: DateParams,
+  timing: ContextTiming,
+): Promise<string> => {
   const parts: string[] = [];
 
   // 아침에는 어제 기준, 나머지는 오늘 기준
-  const targetDate = timing === 'morning' ? yesterday : today;
+  const targetDate = timing === 'morning' ? dates.yesterday : dates.today;
   const label = timing === 'morning' ? '어제' : '오늘';
 
   const dayStats = await query<RoutineDayRow>(
@@ -201,7 +194,7 @@ const queryRoutineContext = async (timing: ContextTiming): Promise<string> => {
        WHERE r.date >= ($1::date - 7) AND r.date < $1
        GROUP BY r.date
      ) sub`,
-    [today],
+    [dates.today],
   );
 
   const avgRate = weekAvg.rows[0]?.avg_rate;
@@ -215,8 +208,7 @@ const queryRoutineContext = async (timing: ContextTiming): Promise<string> => {
 // ─── 일정 맥락 ──────────────────────────────────────────
 
 /** 오늘/내일 일정 수 + 밀린 일정 + 백로그 */
-const queryScheduleContext = async (): Promise<string> => {
-  const today = getTodayISO();
+const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   const parts: string[] = [];
 
   // 오늘 일정 (전체 + 미완료)
@@ -290,10 +282,15 @@ export const buildLifeContext = async (
   timing: ContextTiming = 'conversation',
 ): Promise<string> => {
   try {
+    const dates: DateParams = {
+      today: getTodayISO(),
+      yesterday: getYesterdayISO(),
+    };
+
     const [sleep, routine, schedule] = await Promise.all([
-      querySleepContext(timing),
-      queryRoutineContext(timing),
-      queryScheduleContext(),
+      querySleepContext(dates, timing),
+      queryRoutineContext(dates, timing),
+      queryScheduleContext(dates),
     ]);
 
     const lines = [sleep, routine, schedule].filter(Boolean);
