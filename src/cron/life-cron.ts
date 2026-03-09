@@ -139,7 +139,7 @@ export const createTodayRecords = async (today: string): Promise<number> => {
 
 // ─── 크론 태스크 ────────────────────────────────────────
 
-/** 수면 기록 체크 */
+/** 수면 기록 체크 — 기록 유무와 관계없이 항상 알림 전송 */
 const sleepCheckTask = async (
   app: App,
   config: LifeCronConfig,
@@ -148,12 +148,9 @@ const sleepCheckTask = async (
   const yesterday = getYesterdayISO();
   const hasRecord = await queryNightSleepExists(yesterday, today);
 
-  if (!hasRecord) {
-    await postToChannel(app.client, config.channelId, buildSleepReminderText('morning'));
-    console.log('[Life Cron] 수면 기록 리마인더 전송');
-  } else {
-    console.log('[Life Cron] 수면 기록 있음 — 리마인더 생략');
-  }
+  const text = hasRecord ? buildSleepRecordedText('morning') : buildSleepReminderText('morning');
+  await postToChannel(app.client, config.channelId, text);
+  console.log(`[Life Cron] 수면 체크 알림 전송 (기록: ${hasRecord ? '있음' : '없음'})`);
 };
 
 /** 오늘 일정 텍스트 알림 */
@@ -305,7 +302,7 @@ const nightReviewTask = async (
 
   // 2. 수면 기록 확인 (마지막에 — 묻히지 않게)
   const hasRecord = await queryNightSleepExists(yesterday, today);
-  const sleepText = hasRecord ? buildSleepRecordedText() : buildSleepReminderText('night');
+  const sleepText = hasRecord ? buildSleepRecordedText('night') : buildSleepReminderText('night');
   await postToChannel(app.client, config.channelId, sleepText);
 
   console.log(`[Life Cron] 밤 리뷰 전송 완료 (수면기록: ${hasRecord ? '있음' : '없음'})`);

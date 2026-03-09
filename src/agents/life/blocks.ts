@@ -13,6 +13,8 @@ import { formatDateShort } from '../../shared/kst.js';
 export const ROUTINE_ACTION_ID = 'life_routine_complete';
 export const SCHEDULE_ACTION_ID = 'life_schedule_status';
 export const POSTPONE_ACTION = 'postpone';
+export const DELETE_ACTION = 'delete';
+export const TOGGLE_IMPORTANT_ACTION = 'toggle_important';
 
 const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
 
@@ -163,7 +165,13 @@ const SLEEP_REMINDER_NIGHT: readonly string[] = [
   '오늘 수면 기록 깜빡한 것 같아. 지금 남겨둘래?',
 ];
 
-const SLEEP_RECORDED: readonly string[] = [
+const SLEEP_RECORDED_MORNING: readonly string[] = [
+  '수면 기록 미리 해뒀네! 잘했어.',
+  '수면 기록 확인했어. 벌써 적어놨구나!',
+  '오 수면 기록 이미 남겨놨네. 칭찬해!',
+];
+
+const SLEEP_RECORDED_NIGHT: readonly string[] = [
   '오늘 수면 기록 잘 남겨져 있어. 푹 자!',
   '수면 기록 확인했어. 잘 적어뒀네! 오늘도 수고했어.',
   '오늘 수면 기록 잘 들어가 있어. 편하게 쉬어!',
@@ -176,7 +184,8 @@ export const buildSleepReminderText = (timeOfDay: 'morning' | 'night'): string =
 };
 
 /** 수면 기록 확인 완료 텍스트 */
-export const buildSleepRecordedText = (): string => pick(SLEEP_RECORDED);
+export const buildSleepRecordedText = (timeOfDay: 'morning' | 'night' = 'night'): string =>
+  pick(timeOfDay === 'morning' ? SLEEP_RECORDED_MORNING : SLEEP_RECORDED_NIGHT);
 
 // ─── 일정 블록 ──────────────────────────────────────────
 
@@ -232,18 +241,22 @@ const formatScheduleItem = (item: ScheduleRow): string => {
     rangePart = ` ${formatDateShort(item.date)}~${formatDateShort(item.end_date)}`;
   }
 
-  // 중요 표시
-  const star = item.important ? '★ ' : '';
+  // 중요 표시 (제목 뒤)
+  const star = item.important ? ' ★' : '';
 
   let line: string;
-  if (isAppointment) line = `${star}${item.title}${rangePart}`;
-  else if (item.status === 'done') line = `~${star}${item.title}~${rangePart}`;
-  else if (item.status === 'in-progress') line = `► ${star}${item.title}${rangePart}`;
-  else line = `${star}${item.title}${rangePart}`;
+  if (isAppointment) line = `${item.title}${rangePart}${star}`;
+  else if (item.status === 'done') line = `~${item.title}~${rangePart}${star}`;
+  else if (item.status === 'in-progress') line = `► ${item.title}${rangePart}${star}`;
+  else line = `${item.title}${rangePart}${star}`;
 
-  // 메모 표시
+  // 메모 표시 (이탤릭 + 멀티라인)
   if (item.memo) {
-    line += `\n  └ ${item.memo}`;
+    const memoLines = item.memo.split('\n');
+    line += `\n_└ ${memoLines[0]}_`;
+    for (let i = 1; i < memoLines.length; i++) {
+      line += `\n_${memoLines[i]}_`;
+    }
   }
 
   return line;
@@ -291,6 +304,16 @@ const buildOverflowOptions = (
       value: encodeOverflowValue(item.id, POSTPONE_ACTION, targetDate),
     });
   }
+
+  options.push({
+    text: { type: 'plain_text' as const, text: item.important ? '중요 해제' : '중요 표시' },
+    value: encodeOverflowValue(item.id, TOGGLE_IMPORTANT_ACTION, targetDate),
+  });
+
+  options.push({
+    text: { type: 'plain_text' as const, text: '삭제하기' },
+    value: encodeOverflowValue(item.id, DELETE_ACTION, targetDate),
+  });
 
   return options;
 };
