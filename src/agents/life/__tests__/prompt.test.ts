@@ -6,6 +6,10 @@ vi.mock('../../../shared/db.js', () => ({
   query: vi.fn(async () => ({ rows: [] })),
 }));
 
+vi.mock('../../../shared/life-context.js', () => ({
+  buildLifeContext: vi.fn(async () => '\n\n## 현재 생활 맥락\n수면: 테스트 맥락'),
+}));
+
 describe('getTodayString', () => {
   it('YYYY-MM-DD (요일) 형식을 반환한다', () => {
     const result = getTodayString();
@@ -94,9 +98,17 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('date IS NULL');
   });
 
-  it('160줄 이내의 간결한 프롬프트', async () => {
+  it('생활 맥락과 잔소리 가이드를 포함한다', async () => {
+    const prompt = await buildLifeSystemPrompt('C123');
+    expect(prompt).toContain('현재 생활 맥락');
+    expect(prompt).toContain('잔소리 가이드');
+    expect(prompt).toContain('수면 부족');
+    expect(prompt).toContain('백로그');
+  });
+
+  it('170줄 이내의 간결한 프롬프트', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
     const lineCount = prompt.split('\n').length;
-    expect(lineCount).toBeLessThan(160);
+    expect(lineCount).toBeLessThan(170);
   });
 });
