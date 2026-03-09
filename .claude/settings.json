@@ -1,0 +1,33 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(cat - | jq -r '.tool_input.file_path // empty' 2>/dev/null); if [ -z \"$FILE\" ]; then exit 0; fi; if echo \"$FILE\" | grep -qE '\\.(ts|mjs|json)$'; then cd \"$CLAUDE_PROJECT_DIR\" && npx prettier --write \"$FILE\" 2>/dev/null; fi; if echo \"$FILE\" | grep -qE '\\.(ts|mjs)$'; then npx eslint --fix \"$FILE\" 2>/dev/null; fi; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CMD=$(cat - | jq -r '.tool_input.command // empty' 2>/dev/null); if ! echo \"$CMD\" | grep -q 'git commit'; then exit 0; fi; cd \"$CLAUDE_PROJECT_DIR\" && yarn lint --quiet 2>&1 | tail -20 && npx tsc --noEmit 2>&1 | tail -20",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "CMD=$(cat - | jq -r '.tool_input.command // empty' 2>/dev/null); if ! echo \"$CMD\" | grep -q 'git commit'; then exit 0; fi; cd \"$CLAUDE_PROJECT_DIR\" && bash scripts/check-secrets.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
