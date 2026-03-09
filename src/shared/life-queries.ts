@@ -167,6 +167,16 @@ export const updateScheduleStatus = async (id: number, status: string): Promise<
   await query('UPDATE schedules SET status = $1 WHERE id = $2', [status, id]);
 };
 
+/** 일정 삭제 */
+export const deleteSchedule = async (id: number): Promise<void> => {
+  await query('DELETE FROM schedules WHERE id = $1', [id]);
+};
+
+/** 일정 중요 표시 토글 */
+export const toggleScheduleImportant = async (id: number): Promise<void> => {
+  await query('UPDATE schedules SET important = NOT important WHERE id = $1', [id]);
+};
+
 /** 일정 내일로 미루기 (date 변경 + status → todo) */
 export const postponeSchedule = async (id: number, newDate: string): Promise<void> => {
   await query(
@@ -244,12 +254,12 @@ export const deactivateReminder = async (id: number): Promise<void> => {
 
 // ─── 수면 쿼리 (Home 탭) ────────────────────────────
 
-/** Home 탭용 수면 기록 조회: 밤잠 최신 1건 + 오늘 낮잠 전부 */
+/** Home 탭용 수면 기록 조회: 오늘 날짜 밤잠 + 낮잠 (effective date 기준) */
 export const querySleepForHome = async (today: string): Promise<SleepRecordRow[]> => {
   const result = await query<SleepRecordRow>(
     `(SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
       FROM sleep_records
-      WHERE sleep_type = 'night'
+      WHERE sleep_type = 'night' AND date = $1
       ORDER BY date DESC LIMIT 1)
      UNION ALL
      (SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
