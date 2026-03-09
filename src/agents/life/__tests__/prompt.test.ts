@@ -23,11 +23,12 @@ describe('getTodayISO', () => {
 describe('getWeekReference', () => {
   it('이번 주와 다음 주 날짜-요일 참조표를 반환한다', () => {
     const result = getWeekReference();
+    expect(result).toContain('지난 주:');
     expect(result).toContain('이번 주:');
     expect(result).toContain('다음 주:');
     // 각 주에 7개 날짜 포함
     const lines = result.split('\n');
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(3);
     for (const line of lines) {
       expect(line).toMatch(/[일월화수목금토]/);
     }
