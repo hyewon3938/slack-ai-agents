@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getTodayString, getTodayISO } from '../../../shared/kst.js';
+import { getTodayString, getTodayISO, getWeekReference } from '../../../shared/kst.js';
 import { buildLifeSystemPrompt } from '../prompt.js';
 
 vi.mock('../../../shared/db.js', () => ({
@@ -20,6 +20,20 @@ describe('getTodayISO', () => {
   });
 });
 
+describe('getWeekReference', () => {
+  it('이번 주와 다음 주 날짜-요일 참조표를 반환한다', () => {
+    const result = getWeekReference();
+    expect(result).toContain('이번 주:');
+    expect(result).toContain('다음 주:');
+    // 각 주에 7개 날짜 포함
+    const lines = result.split('\n');
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).toMatch(/[일월화수목금토]/);
+    }
+  });
+});
+
 describe('buildLifeSystemPrompt', () => {
   it('캐릭터 프롬프트를 포함한다', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
@@ -27,9 +41,11 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('친한 친구');
   });
 
-  it('오늘 날짜를 포함한다', async () => {
+  it('오늘 날짜와 주간 참조표를 포함한다', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
     expect(prompt).toMatch(/오늘: \d{4}-\d{2}-\d{2}/);
+    expect(prompt).toContain('이번 주:');
+    expect(prompt).toContain('다음 주:');
   });
 
   it('DB 스키마 정보를 포함한다', async () => {
@@ -43,12 +59,17 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('active(boolean)');
   });
 
-  it('대화 방식과 데이터 규칙을 포함한다', async () => {
+  it('일정 조회 3대 필수 규칙을 포함한다', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
-    expect(prompt).toContain('자연스럽게 대화해');
-    expect(prompt).toContain('도구로 조회해');
-    expect(prompt).toContain('크로스 분석');
+    // 기간 일정 WHERE 패턴
+    expect(prompt).toContain('date <= ');
+    expect(prompt).toContain('end_date >= ');
+    // 요일 SQL
     expect(prompt).toContain('EXTRACT(DOW FROM date)');
+    // 정렬 ORDER BY
+    expect(prompt).toContain("WHEN 'done' THEN 1");
+    expect(prompt).toContain("WHEN 'in-progress' THEN 2");
+    expect(prompt).toContain("WHEN 'todo' THEN 3");
   });
 
   it('일정 표시 포맷을 포함한다', async () => {
@@ -60,17 +81,15 @@ describe('buildLifeSystemPrompt', () => {
 
   it('커스텀 지시사항 관리 규칙을 포함한다', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
-    expect(prompt).toContain('custom_instructions에 INSERT');
-    expect(prompt).toContain('지시사항 보여줘');
+    expect(prompt).toContain('custom_instructions INSERT');
     expect(prompt).toContain("source = 'user'");
     expect(prompt).toContain("source = 'auto'");
     expect(prompt).toContain('active = false');
-    expect(prompt).toContain('통합 규칙');
   });
 
   it('변경 후 응답 규칙과 백로그 관리를 포함한다', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
-    expect(prompt).toContain('전체 일정 목록을 조회');
+    expect(prompt).toContain('3대 필수 규칙으로 조회');
     expect(prompt).toContain('백로그');
     expect(prompt).toContain('date IS NULL');
   });
