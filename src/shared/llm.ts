@@ -164,6 +164,26 @@ export const createLLMClient = async (): Promise<LLMClient> => {
   throw new Error(`지원하지 않는 LLM provider: ${CONFIG.llm.provider}`);
 };
 
+/**
+ * 크론 전용 LLM 클라이언트 생성.
+ * Gemini Flash로 비용 절감 (단순 인사/요약 메시지 생성용).
+ * GEMINI_API_KEY 미설정 시 메인 클라이언트로 폴백.
+ */
+export const createCronLLMClient = async (): Promise<LLMClient> => {
+  const { CONFIG } = await import('./config.js');
+
+  if (CONFIG.llm.geminiApiKey) {
+    // eslint-disable-next-line no-console
+    console.log('[LLM] 크론용 Gemini Flash 클라이언트 생성');
+    return new GeminiLLMClient(CONFIG.llm.geminiApiKey, 'gemini-2.5-flash');
+  }
+
+  // Gemini API 키 없으면 메인 클라이언트로 폴백
+  // eslint-disable-next-line no-console
+  console.log('[LLM] GEMINI_API_KEY 미설정 — 크론도 메인 LLM 사용');
+  return createLLMClient();
+};
+
 // ---- Groq 변환 함수 (테스트 가능하도록 export) ----
 
 export function toGroqMessages(
