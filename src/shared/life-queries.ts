@@ -252,6 +252,13 @@ export const deactivateReminder = async (id: number): Promise<void> => {
   await query('UPDATE reminders SET active = false WHERE id = $1', [id]);
 };
 
+export interface SleepEventRow {
+  id: number;
+  date: string;
+  event_time: string;
+  memo: string | null;
+}
+
 // ─── 수면 쿼리 (Home 탭) ────────────────────────────
 
 /** Home 탭용 수면 기록 조회: 오늘 날짜 밤잠 + 낮잠 (effective date 기준) */
@@ -270,3 +277,11 @@ export const querySleepForHome = async (today: string): Promise<SleepRecordRow[]
   );
   return result.rows;
 };
+
+/** Home 탭용 수면 중간 기상 이벤트 조회 */
+export const querySleepEventsForHome = async (today: string): Promise<SleepEventRow[]> =>
+  (await query<SleepEventRow>(
+    `SELECT id, date::text, event_time, memo FROM sleep_events
+     WHERE date = $1 ORDER BY event_time`,
+    [today],
+  )).rows;
