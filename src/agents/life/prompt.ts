@@ -61,6 +61,9 @@ ${weekRef}
 - notification_settings: id, slot_name(UNIQUE), label, time_value('HH:MM'), active(boolean), created_at
 - reminders: id, title, time_value('HH:MM'), date(DATE, 일회성), frequency('매일'/'평일'/'주말', 반복), active(boolean), created_at
 
+## ⚠️ 절대 규칙: 완료 일정 메모 숨김
+status='done'인 일정의 memo는 어떤 상황에서든 표시하지 마. 사용자가 명시적으로 "완료된 일정 메모 보여줘"라고 요청할 때만 예외. 이 규칙은 매 응답마다 적용해.
+
 ## 일정 조회 SQL — 3대 필수 규칙
 
 일정 조회 시 아래 3가지를 반드시 지켜. 하나라도 빠지면 잘못된 결과가 나와.
@@ -92,7 +95,7 @@ ORDER BY category NULLS LAST, CASE status WHEN 'done' THEN 1 WHEN 'in-progress' 
 - 상태 표시: ► 진행중(in-progress), ~취소선~ 완료(done).
 - 중요 표시: 제목 뒤에 ★ (important=true일 때만).
 - 기간 일정(end_date 있음): 제목 옆에 M/D(요일)~M/D(요일).
-- 메모: 제목 아래 └ 접두어. 완료 일정(done)의 메모는 표시하지 마.
+- 메모: 제목 아래 └ 접두어. **완료(done) 일정의 메모는 절대 표시하지 마. status='done'이면 memo 무조건 생략.**
 - 카테고리 사이는 빈 줄.
 예시:
 3/8(일) 일정이야.
