@@ -365,6 +365,51 @@ Slack App Home 탭에 오늘의 일정 + 루틴 + 수면 요약을 영구 표시
 
 ---
 
+## AI 개발 워크플로우 자동화
+
+**날짜:** 2026-03-09
+
+### 배경
+
+프로젝트가 안정화되면서 "어떻게 개발하는가" 자체를 최적화할 시점이 왔음.
+Claude Code의 모든 확장 기능(Skills, Hooks, MCP, Scheduled Tasks, GitHub Actions)을 활용하여
+개발 워크플로우 전체를 AI 기반으로 자동화.
+
+### 구현 내용
+
+**Hooks (품질 게이트, 3개)**
+- PostToolUse: 파일 수정 후 prettier + eslint --fix 자동 실행
+- PreToolUse: 커밋 전 lint + tsc 타입 체크
+- PreToolUse: 커밋 전 민감정보 유출 스캔 (scripts/check-secrets.sh)
+- 범용/프로젝트 2-tier: prettier+민감정보는 모든 프로젝트에 적용
+
+**커스텀 스킬 (4개)**
+- `/init-project` (범용): 프로젝트 첫 세팅 — 컨벤션, 브랜치 전략, 라벨 체계, CLAUDE.md 전부 자동 생성
+- `/start-feature` (프로젝트): 이슈 생성 → 브랜치 → 설계 → 히스토리 기록까지 한번에
+- `/review-code` (프로젝트): 코드 리뷰 + 컨벤션 점검 + 컨벤션 자동 진화 제안
+- `/review-me` (범용): 개발 성향/AI 협업 패턴/강점/개선점 분석
+
+**Scheduled Tasks (예약 작업, 2개)**
+- daily-dev-review (매일 새벽 5시): 개발 성향 분석 → developer-profile.md
+- daily-work-summary (매일 오전 9시): 전날 작업 팩트 요약 → work-log.md
+
+**GitHub Actions (2개 워크플로우)**
+- PR 코드 리뷰: PR 열릴 때 자동 AI 리뷰 + 컨벤션 괴리 감지
+- 머지 후 리팩토링: 머지 시 리팩토링 필요성 분석 → 자동 이슈 생성
+
+**MCP 서버 (2개)**
+- PostgreSQL: 개발 중 DB 직접 조회/분석
+- Slack: 채널 메시지 읽기/쓰기
+
+### 설계 결정
+
+1. **범용 vs 프로젝트 분리**: init-project, review-me, Hook(prettier+민감정보)은 범용(~/.claude/). 나머지는 프로젝트 종속.
+2. **스킬 간 파일 기반 연결**: init-project가 생성한 컨벤션/라벨 규칙을 start-feature/review-code가 참조.
+3. **컨벤션 자동 진화**: 코드 리뷰 시 실제 코드 패턴과 컨벤션 괴리 감지 → 업데이트 제안.
+4. **리팩토링 안전장치**: 자동 코드 수정이 아닌 이슈 생성 → 사람 승인 후 작업.
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -375,3 +420,4 @@ Slack App Home 탭에 오늘의 일정 + 루틴 + 수면 요약을 영구 표시
 | 2026-03-08 | 카테고리 그룹핑 + v1 아키텍처 회고 + v2 설계 결정 |
 | 2026-03-08 | v2 인프라 개선 (KST 수정, App Home, 프롬프트 강화) |
 | 2026-03-08 | 스마트 메모리 시스템 설계 (오픈클로 연구 기반, Issue #51) |
+| 2026-03-09 | AI 개발 워크플로우 자동화 (Hooks, Skills, Scheduled Tasks, GitHub Actions, MCP) |
