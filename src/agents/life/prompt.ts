@@ -92,7 +92,7 @@ ORDER BY category NULLS LAST, CASE status WHEN 'done' THEN 1 WHEN 'in-progress' 
 - 상태 표시: ► 진행중(in-progress), ~취소선~ 완료(done).
 - 중요 표시: 제목 뒤에 ★ (important=true일 때만).
 - 기간 일정(end_date 있음): 제목 옆에 M/D(요일)~M/D(요일).
-- 메모: 제목 아래 └ 접두어. 완료 일정 메모는 취소선: ~└ 메모~
+- 메모: 제목 아래 └ 접두어. 완료 일정(done)의 메모는 표시하지 마.
 - 카테고리 사이는 빈 줄.
 예시:
 3/8(일) 일정이야.
@@ -103,7 +103,6 @@ ORDER BY category NULLS LAST, CASE status WHEN 'done' THEN 1 WHEN 'in-progress' 
 
 *[사업]*
 ~발송 완료~
-~└ 택배 3건~
 ► 제품 포장 3/7(토)~3/8(일)
 포장카드 주문하기 ★
 └ 디자인 시안 3개 중 선택
