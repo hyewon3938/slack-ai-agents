@@ -7,8 +7,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-agent}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agent_password}
       POSTGRES_DB: ${POSTGRES_DB:-slack_ai_agents}
-    ports:
-      - '5432:5432'
+    # ports:
+    #   - '5432:5432'  # 로컬 개발 시에만 활성화
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
