@@ -4,7 +4,7 @@
  */
 
 import type { KnownBlock } from '@slack/types';
-import type { RoutineRecordRow, ScheduleRow, SleepRecordRow } from '../../shared/life-queries.js';
+import type { RoutineRecordRow, ScheduleRow, SleepRecordRow, SleepEventRow } from '../../shared/life-queries.js';
 import { frequencyBadge } from '../../shared/life-queries.js';
 import { formatDateShort } from '../../shared/kst.js';
 
@@ -250,9 +250,6 @@ const formatScheduleTitle = (item: ScheduleRow): string => {
   return `${item.title}${rangePart}${star}`;
 };
 
-/** 메모 텍스트 포맷 (Block Kit context용 — └ 없이) */
-const formatMemoText = (memo: string): string => memo;
-
 /** overflow value 형식: "scheduleId|newStatus|targetDate" */
 export const encodeOverflowValue = (
   scheduleId: number,
@@ -309,14 +306,20 @@ const buildOverflowOptions = (
   return options;
 };
 
+/** 메모 텍스트에 취소선 적용 (완료 일정용) */
+const formatMemoWithStrike = (memo: string, isDone: boolean): string =>
+  isDone ? memo.split('\n').map((l) => `~${l}~`).join('\n') : memo;
+
 /** 일정 목록 Block Kit 빌드 (카테고리별 그룹핑 + overflow 메뉴) */
 export const buildScheduleBlocks = (
   items: ScheduleRow[],
   targetDate: string,
   headerText?: string,
+  options?: { compact?: boolean },
 ): { text: string; blocks: KnownBlock[] } => {
   const blocks: KnownBlock[] = [];
   const formatted = formatDateShort(targetDate);
+  const compact = options?.compact ?? false;
 
   blocks.push({
     type: 'section',
@@ -331,49 +334,77 @@ export const buildScheduleBlocks = (
       text: { type: 'mrkdwn', text: `*[${group.category}]*` },
     });
 
-    const addMemoContext = (memo: string | null): void => {
+    const addMemoContext = (memo: string | null, isDone: boolean): void => {
       if (!memo) return;
       blocks.push({
         type: 'context',
-        elements: [{ type: 'mrkdwn', text: formatMemoText(memo) }],
+        elements: [{ type: 'mrkdwn', text: formatMemoWithStrike(memo, isDone) }],
       });
     };
 
-    const noOverflowLines: { title: string; memo: string | null }[] = [];
-
-    const flushNoOverflow = (): void => {
-      if (noOverflowLines.length === 0) return;
-      blocks.push({
-        type: 'section',
-        text: { type: 'mrkdwn', text: noOverflowLines.map((l) => l.title).join('\n') },
-      });
-      // 메모가 있는 항목들의 메모를 context로 추가
-      for (const l of noOverflowLines) addMemoContext(l.memo);
-      noOverflowLines.length = 0;
-    };
-
-    for (const item of group.items) {
-      const isAppointment = item.category === '약속';
-      const titleText = formatScheduleTitle(item);
-
-      if (isAppointment || !item.status) {
-        noOverflowLines.push({ title: titleText, memo: item.memo });
-      } else {
-        flushNoOverflow();
+    if (compact) {
+      // compact: overflow 없이, 메모 있는 항목은 개별 섹션+context
+      const batch: string[] = [];
+      const flushBatch = (): void => {
+        if (batch.length === 0) return;
         blocks.push({
           type: 'section',
-          text: { type: 'mrkdwn', text: titleText },
-          accessory: {
-            type: 'overflow',
-            action_id: SCHEDULE_ACTION_ID,
-            options: buildOverflowOptions(item, targetDate),
-          },
+          text: { type: 'mrkdwn', text: batch.join('\n') },
         });
-        addMemoContext(item.memo);
-      }
-    }
+        batch.length = 0;
+      };
 
-    flushNoOverflow();
+      for (const item of group.items) {
+        const titleText = formatScheduleTitle(item);
+        if (item.memo) {
+          flushBatch();
+          blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: titleText },
+          });
+          addMemoContext(item.memo, item.status === 'done');
+        } else {
+          batch.push(titleText);
+        }
+      }
+      flushBatch();
+    } else {
+      // full: overflow 메뉴 포함
+      const noOverflowLines: { title: string; memo: string | null; isDone: boolean }[] = [];
+
+      const flushNoOverflow = (): void => {
+        if (noOverflowLines.length === 0) return;
+        blocks.push({
+          type: 'section',
+          text: { type: 'mrkdwn', text: noOverflowLines.map((l) => l.title).join('\n') },
+        });
+        for (const l of noOverflowLines) addMemoContext(l.memo, l.isDone);
+        noOverflowLines.length = 0;
+      };
+
+      for (const item of group.items) {
+        const isAppointment = item.category === '약속';
+        const titleText = formatScheduleTitle(item);
+
+        if (isAppointment || !item.status) {
+          noOverflowLines.push({ title: titleText, memo: item.memo, isDone: item.status === 'done' });
+        } else {
+          flushNoOverflow();
+          blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: titleText },
+            accessory: {
+              type: 'overflow',
+              action_id: SCHEDULE_ACTION_ID,
+              options: buildOverflowOptions(item, targetDate),
+            },
+          });
+          addMemoContext(item.memo, item.status === 'done');
+        }
+      }
+
+      flushNoOverflow();
+    }
   }
 
   // 하단 통계 — 약속 제외
@@ -407,9 +438,15 @@ export const buildScheduleText = (
     for (const item of group.items) {
       lines.push(formatScheduleTitle(item));
       if (item.memo) {
+        const isDone = item.status === 'done';
         const memoLines = item.memo.split('\n');
-        lines.push(`└ ${memoLines[0]}`);
-        for (let i = 1; i < memoLines.length; i++) lines.push(`  ${memoLines[i]}`);
+        if (isDone) {
+          lines.push(`~└ ${memoLines[0]}~`);
+          for (let i = 1; i < memoLines.length; i++) lines.push(`~  ${memoLines[i]}~`);
+        } else {
+          lines.push(`└ ${memoLines[0]}`);
+          for (let i = 1; i < memoLines.length; i++) lines.push(`  ${memoLines[i]}`);
+        }
       }
     }
     lines.push('');
@@ -439,8 +476,11 @@ const formatDuration = (minutes: number): string => {
   return mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
 };
 
-/** 수면 요약 Block Kit (밤잠 + 낮잠) */
-export const buildSleepBlocks = (records: SleepRecordRow[]): KnownBlock[] => {
+/** 수면 요약 Block Kit (밤잠 + 낮잠 + 메모 + 중간 기상) */
+export const buildSleepBlocks = (
+  records: SleepRecordRow[],
+  events?: SleepEventRow[],
+): KnownBlock[] => {
   if (records.length === 0) {
     return [
       { type: 'section', text: { type: 'mrkdwn', text: '*수면*\n기록 없음' } },
@@ -453,10 +493,32 @@ export const buildSleepBlocks = (records: SleepRecordRow[]): KnownBlock[] => {
     return `${label}  ${r.bedtime} → ${r.wake_time} (${duration})`;
   });
 
-  return [
+  const blocks: KnownBlock[] = [
     {
       type: 'section',
       text: { type: 'mrkdwn', text: `*수면*\n${lines.join('\n')}` },
     },
   ];
+
+  // 수면 메모 (context)
+  const memos = records.filter((r) => r.memo).map((r) => r.memo!);
+  if (memos.length > 0) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: memos.join('\n') }],
+    });
+  }
+
+  // 중간 기상 이벤트
+  if (events && events.length > 0) {
+    const eventTexts = events.map((e) =>
+      e.memo ? `${e.event_time} ${e.memo}` : e.event_time,
+    );
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `중간 기상: ${eventTexts.join(', ')}` }],
+    });
+  }
+
+  return blocks;
 };

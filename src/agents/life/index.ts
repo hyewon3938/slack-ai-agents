@@ -9,15 +9,13 @@ import { buildLifeSystemPrompt } from './prompt.js';
 import { getTodayISO } from '../../shared/kst.js';
 import { buildScheduleBlocks } from './blocks.js';
 
-/** 단축 키워드 → fast path (LLM 호출 없이 Block Kit 응답) */
-const FAST_PATHS: Record<string, 'schedule'> = {
-  '일정': 'schedule',
-};
+/** 일정 조회 패턴 (오늘 일정 fast path) */
+const SCHEDULE_QUERY_RE = /^(오늘\s*)?일정(\s*(보여줘|보여|알려줘|뭐야|확인|뭐\s*있어))?[.?!]?$/;
 
 /**
  * v2 통합 에이전트 생성.
  * 일정 + 루틴을 하나의 에이전트로 관리. SQL 도구만 사용.
- * 단축 키워드("일정")는 fast path로 Block Kit 즉시 응답.
+ * 일정 조회 패턴은 fast path로 Block Kit 즉시 응답.
  */
 export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
   const history = new ChatHistory();
@@ -29,9 +27,8 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
     const channelId = message.channel;
     const trimmed = text.trim();
 
-    // ── fast path: 단축 키워드 ──
-    const fastPath = FAST_PATHS[trimmed];
-    if (fastPath === 'schedule') {
+    // ── fast path: 일정 조회 ──
+    if (SCHEDULE_QUERY_RE.test(trimmed)) {
       try {
         const today = getTodayISO();
         const items = await queryTodaySchedules(today);
@@ -39,7 +36,11 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
           await sendMessage(say, '오늘은 일정이 없어.');
           return;
         }
-        const { text: fallback, blocks } = buildScheduleBlocks(items, today);
+        // "일정" 단독 → full (overflow 포함), 그 외 → compact (버튼 없이)
+        const compact = trimmed !== '일정';
+        const { text: fallback, blocks } = buildScheduleBlocks(
+          items, today, undefined, compact ? { compact: true } : undefined,
+        );
         await sendBlockMessage(say, fallback, blocks);
       } catch (error: unknown) {
         console.error('[Life Agent] 일정 fast path 오류:', error);

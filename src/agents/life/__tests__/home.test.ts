@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RoutineRecordRow, ScheduleRow, SleepRecordRow } from '../../../shared/life-queries.js';
+import type { RoutineRecordRow, ScheduleRow, SleepRecordRow, SleepEventRow } from '../../../shared/life-queries.js';
 
 // ── DB mock ──
 vi.mock('../../../shared/db.js', () => ({
@@ -11,11 +11,13 @@ vi.mock('../../../shared/db.js', () => ({
 const mockQueryTodayRecords = vi.fn<() => Promise<RoutineRecordRow[]>>(async () => []);
 const mockQueryTodaySchedules = vi.fn<() => Promise<ScheduleRow[]>>(async () => []);
 const mockQuerySleepForHome = vi.fn<() => Promise<SleepRecordRow[]>>(async () => []);
+const mockQuerySleepEventsForHome = vi.fn<() => Promise<SleepEventRow[]>>(async () => []);
 
 vi.mock('../../../shared/life-queries.js', () => ({
   queryTodayRecords: () => mockQueryTodayRecords(),
   queryTodaySchedules: () => mockQueryTodaySchedules(),
   querySleepForHome: () => mockQuerySleepForHome(),
+  querySleepEventsForHome: () => mockQuerySleepEventsForHome(),
   frequencyBadge: vi.fn(() => ''),
 }));
 
@@ -135,6 +137,28 @@ describe('publishHomeView', () => {
     expect(sleepText).toContain('낮잠');
     expect(sleepText).toContain('14:00');
     expect(texts.some((t) => t.includes('기록 없음'))).toBe(false);
+  });
+
+  it('수면 메모와 중간 기상 이벤트를 표시한다', async () => {
+    mockQuerySleepForHome.mockResolvedValueOnce([
+      {
+        id: 1, date: '2025-03-07', bedtime: '23:30', wake_time: '07:00',
+        duration_minutes: 450, sleep_type: 'night', memo: '뒤척임',
+      },
+    ]);
+    mockQuerySleepEventsForHome.mockResolvedValueOnce([
+      { id: 1, date: '2025-03-07', event_time: '03:00', memo: '화장실' },
+    ]);
+
+    await publishHomeView(mockClient, 'U123');
+
+    const blocks = getBlocks();
+    const contextTexts = blocks
+      .filter((b) => b.type === 'context')
+      .map((b) => b.elements?.[0]?.text ?? '');
+
+    expect(contextTexts.some((t) => t.includes('뒤척임'))).toBe(true);
+    expect(contextTexts.some((t) => t.includes('중간 기상') && t.includes('03:00'))).toBe(true);
   });
 
   it('헤더에 대시보드를 포함한다', async () => {
