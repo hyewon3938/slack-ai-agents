@@ -4,7 +4,7 @@ import { startOfWeek, addDays, format, isToday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { getCategoryStyle } from '@/lib/types';
+import { getCategoryStyle, compareByStatus } from '@/lib/types';
 import { computeWeekLayout, type WeekSpan } from '@/lib/calendar-utils';
 import { StatusBadge } from '../schedule/status-badge';
 import { DroppableDay } from './droppable-day';
@@ -53,7 +53,7 @@ export function WeekView({
   return (
     <div className="flex flex-col md:flex-1">
       {/* 데스크탑: 가로 7열 + 스패닝 바 */}
-      <div className="relative hidden md:grid md:grid-cols-7">
+      <div className="relative hidden bg-white md:grid md:flex-1 md:grid-cols-7">
         {days.map((day) => {
           const dateStr = format(day, 'yyyy-MM-dd');
           const daySingles = layout.singleDay.get(dateStr) ?? [];
@@ -178,11 +178,13 @@ export function WeekView({
 /** 모바일용: 해당 날짜의 모든 일정 (다일 포함) */
 function getMobileSchedules(date: Date, schedules: ScheduleRow[]): ScheduleRow[] {
   const dateStr = format(date, 'yyyy-MM-dd');
-  return schedules.filter((s) => {
-    if (s.date === dateStr) return true;
-    if (s.date && s.end_date && s.date <= dateStr && s.end_date >= dateStr) return true;
-    return false;
-  });
+  return schedules
+    .filter((s) => {
+      if (s.date === dateStr) return true;
+      if (s.date && s.end_date && s.date <= dateStr && s.end_date >= dateStr) return true;
+      return false;
+    })
+    .sort(compareByStatus);
 }
 
 function WeekSpanBar({

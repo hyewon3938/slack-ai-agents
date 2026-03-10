@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [menuOpen, mobileMenuOpen]);
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col">
       {/* 데스크탑 상단 네비 */}
       <header className="hidden border-b border-gray-200 bg-white md:block">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
@@ -97,10 +97,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* 메인 콘텐츠 */}
-      <main className="flex flex-1 flex-col pb-16 md:pb-0">{children}</main>
+      <main className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
 
       {/* 모바일 하단 탭 */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
         <div className="flex">
           <a
             href="/schedules"

@@ -21,6 +21,19 @@ export type ScheduleStatus = 'todo' | 'in-progress' | 'done' | 'cancelled';
 
 export const SCHEDULE_STATUSES: ScheduleStatus[] = ['todo', 'in-progress', 'done', 'cancelled'];
 
+/** 상태 정렬 순서: 진행중 → 할일 → 완료 → 취소 */
+const STATUS_ORDER: Record<string, number> = {
+  'in-progress': 0,
+  todo: 1,
+  done: 2,
+  cancelled: 3,
+};
+
+/** 상태 기준 정렬 비교 함수 */
+export function compareByStatus(a: ScheduleRow, b: ScheduleRow): number {
+  return (STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4);
+}
+
 export const STATUS_LABELS: Record<ScheduleStatus, string> = {
   todo: '할일',
   'in-progress': '진행중',
