@@ -62,8 +62,8 @@ describe('parseButtonValue', () => {
     const { recordId, filter } = parseButtonValue('42|아침,점심|아침');
     expect(recordId).toBe(42);
     expect(filter).not.toBeNull();
-    expect(filter!.targetSlots).toEqual(['아침', '점심']);
-    expect(filter!.incompleteFrom).toEqual(['아침']);
+    expect(filter?.targetSlots).toEqual(['아침', '점심']);
+    expect(filter?.incompleteFrom).toEqual(['아침']);
   });
 });
 
@@ -184,7 +184,7 @@ describe('buildMorningGreetingBlocks', () => {
     const greeting = '어제 루틴 85%. 잘하고 있어! 밤 루틴만 좀 더 챙기자.';
     const blocks = buildMorningGreetingBlocks(greeting);
     expect(blocks.length).toBe(1);
-    expect(blocks[0]!.type).toBe('section');
+    expect(blocks[0]?.type).toBe('section');
 
     const text = (blocks[0] as { text: { text: string } }).text.text;
     expect(text).toBe(greeting);

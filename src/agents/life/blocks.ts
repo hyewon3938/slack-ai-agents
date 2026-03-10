@@ -23,7 +23,11 @@ export const TOGGLE_IMPORTANT_ACTION = 'toggle_important';
 
 const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
 
-const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
+const pick = <T>(arr: readonly T[]): T => {
+  const item = arr[Math.floor(Math.random() * arr.length)];
+  if (item === undefined) throw new Error('pick: empty array');
+  return item;
+};
 
 // ─── 루틴 필터 인코딩/파싱 ──────────────────────────────
 
@@ -229,8 +233,12 @@ const groupByCategory = (items: ScheduleRow[]): CategoryGroup[] => {
 
   for (const item of items) {
     const cat = item.category ?? '미분류';
-    if (!categoryMap.has(cat)) categoryMap.set(cat, []);
-    categoryMap.get(cat)!.push(item);
+    const existing = categoryMap.get(cat);
+    if (existing) {
+      existing.push(item);
+    } else {
+      categoryMap.set(cat, [item]);
+    }
   }
 
   const result: CategoryGroup[] = [];
@@ -242,7 +250,7 @@ const groupByCategory = (items: ScheduleRow[]): CategoryGroup[] => {
   });
 
   for (const cat of categories) {
-    const items = categoryMap.get(cat)!;
+    const items = categoryMap.get(cat) ?? [];
     items.sort((a, b) => {
       const aOrder = STATUS_ORDER[a.status] ?? 2;
       const bOrder = STATUS_ORDER[b.status] ?? 2;
@@ -286,8 +294,8 @@ export const parseOverflowValue = (
   const parts = value.split('|');
   return {
     scheduleId: Number(parts[0]),
-    newStatus: parts[1]!,
-    targetDate: parts[2]!,
+    newStatus: parts[1] ?? '',
+    targetDate: parts[2] ?? '',
   };
 };
 
@@ -533,7 +541,7 @@ export const buildSleepBlocks = (
   ];
 
   // 수면 메모 (context)
-  const memos = records.filter((r) => r.memo).map((r) => r.memo!);
+  const memos = records.map((r) => r.memo).filter((m): m is string => m != null);
   if (memos.length > 0) {
     blocks.push({
       type: 'context',
