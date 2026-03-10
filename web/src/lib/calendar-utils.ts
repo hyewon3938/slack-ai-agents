@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import type { ScheduleRow } from './types';
+import { compareByStatus } from './types';
 
 export interface WeekSpan {
   schedule: ScheduleRow;
@@ -81,6 +82,11 @@ export function computeWeekLayout(weekDays: Date[], schedules: ScheduleRow[]): W
       if (!singleDay.has(dateStr)) singleDay.set(dateStr, []);
       singleDay.get(dateStr)!.push(s);
     }
+  }
+
+  // 단일 일정 상태순 정렬: 진행중 → 할일 → 완료
+  for (const [, items] of singleDay) {
+    items.sort(compareByStatus);
   }
 
   return { spans, singleDay, laneCount: lanes.length };
