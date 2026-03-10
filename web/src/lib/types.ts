@@ -21,6 +21,13 @@ export type ScheduleStatus = 'todo' | 'in-progress' | 'done' | 'cancelled';
 
 export const SCHEDULE_STATUSES: ScheduleStatus[] = ['todo', 'in-progress', 'done', 'cancelled'];
 
+const VALID_STATUSES = new Set<string>(SCHEDULE_STATUSES);
+
+/** status 값이 유효한지 검증 */
+export function isValidStatus(value: unknown): value is ScheduleStatus {
+  return typeof value === 'string' && VALID_STATUSES.has(value);
+}
+
 /** 상태 정렬 순서: 진행중 → 할일 → 완료 → 취소 */
 const STATUS_ORDER: Record<string, number> = {
   'in-progress': 0,

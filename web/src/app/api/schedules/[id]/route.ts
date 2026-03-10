@@ -6,6 +6,7 @@ import {
   deleteSchedule,
   ensureCategoryExists,
 } from '@/lib/queries';
+import { isValidStatus } from '@/lib/types';
 
 export async function GET(
   _request: Request,
@@ -46,6 +47,10 @@ export async function PATCH(
       memo: string | null;
       important: boolean;
     }>;
+
+    if (body.status !== undefined && !isValidStatus(body.status)) {
+      return NextResponse.json({ error: '유효하지 않은 상태값이야' }, { status: 400 });
+    }
 
     if (body.category) {
       await ensureCategoryExists(body.category);
