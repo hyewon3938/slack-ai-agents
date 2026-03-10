@@ -1,7 +1,7 @@
 'use client';
 
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { getCategoryStyle, colorToHex } from '@/lib/types';
+import { getCategoryStyle } from '@/lib/types';
 import { StatusBadge } from './status-badge';
 
 interface ScheduleCardProps {
@@ -57,12 +57,11 @@ export function ScheduleCard({
         </div>
       );
     }
-    const hex = colorToHex(colorKey);
     return (
       <div
         onClick={() => onClick?.(schedule)}
         className={`cursor-pointer truncate rounded border-l-2 px-1.5 py-0.5 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
-        style={{ backgroundColor: catStyle.styles?.bg, color: hex, borderLeftColor: catStyle.styles?.border }}
+        style={{ backgroundColor: catStyle.styles?.bg, color: catStyle.styles?.text, borderLeftColor: catStyle.styles?.border }}
       >
         {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
         {schedule.title}
@@ -127,7 +126,7 @@ function CategoryBadge({ colorKey, label }: { colorKey: string; label: string })
   return (
     <span
       className="rounded-full px-2 py-0.5 text-xs"
-      style={{ backgroundColor: style.styles?.bg, color: colorToHex(colorKey) }}
+      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
     >
       {label}
     </span>

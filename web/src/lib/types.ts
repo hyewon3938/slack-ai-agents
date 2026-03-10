@@ -54,15 +54,24 @@ export const CATEGORY_COLORS: Record<string, CategoryColors> = Object.fromEntrie
   Object.entries(PRESET_COLORS).map(([k, v]) => [k, v.colors]),
 );
 
-/** hex 값에서 밝은 bg/border/진한 text 색상 inline style 생성 */
+/** hex 색상의 상대 밝기 (0~1) */
+function luminance(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+/** hex 값에서 배경색 기반 스타일 생성 (색상 → 배경, 텍스트 자동 결정) */
 export function hexToStyles(hex: string): { bg: string; border: string; text: string } {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
+  const textColor = luminance(hex) > 0.6 ? '#1f2937' : '#ffffff';
   return {
-    bg: `rgba(${r}, ${g}, ${b}, 0.15)`,
-    border: `rgba(${r}, ${g}, ${b}, 0.4)`,
-    text: hex,
+    bg: `rgba(${r}, ${g}, ${b}, 0.85)`,
+    border: `rgba(${r}, ${g}, ${b}, 1)`,
+    text: textColor,
   };
 }
 

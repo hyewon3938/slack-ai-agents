@@ -217,12 +217,7 @@ export function useSchedules() {
   };
 
   const handleSelectDate = (dateStr: string) => {
-    if (view === 'month') {
-      setSelectedDate(dateStr === selectedDate ? null : dateStr);
-    } else {
-      setCurrentDate(new Date(dateStr + 'T12:00:00'));
-      setView('day');
-    }
+    setSelectedDate(dateStr === selectedDate ? null : dateStr);
   };
 
   const toggleCategory = (name: string) => {
