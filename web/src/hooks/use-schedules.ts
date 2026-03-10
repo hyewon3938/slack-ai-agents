@@ -62,6 +62,10 @@ export function useSchedules() {
         fetch('/api/categories'),
       ]);
 
+      if (schedulesRes.status === 401 || categoriesRes.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
       if (schedulesRes.ok) {
         const data = (await schedulesRes.json()) as { data: ScheduleRow[] };
         setSchedules(data.data);
@@ -178,6 +182,40 @@ export function useSchedules() {
     }
   };
 
+  const handleDateChange = async (id: number, newDate: string) => {
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: newDate }),
+      });
+      if (res.ok) {
+        setSchedules((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, date: newDate } : s)),
+        );
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleEndDateChange = async (id: number, endDate: string) => {
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ end_date: endDate }),
+      });
+      if (res.ok) {
+        setSchedules((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, end_date: endDate } : s)),
+        );
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const handleSelectDate = (dateStr: string) => {
     if (view === 'month') {
       setSelectedDate(dateStr === selectedDate ? null : dateStr);
@@ -228,6 +266,8 @@ export function useSchedules() {
     handleNext,
     handleToday,
     handleStatusChange,
+    handleDateChange,
+    handleEndDateChange,
     handleCreate,
     handleUpdate,
     handleDelete,
