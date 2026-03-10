@@ -34,5 +34,25 @@ services:
       retries: 3
       start_period: 10s
 
+  web:
+    build: ./web
+    container_name: slack-ai-agents-web
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent_password}@db:5432/${POSTGRES_DB:-slack_ai_agents}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/auth').then(r => process.exit(r.ok || r.status === 401 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 volumes:
   pgdata:
