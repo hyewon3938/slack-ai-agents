@@ -9,11 +9,12 @@ import {
   format,
   isSameMonth,
   isToday,
-  isSameDay,
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { ScheduleCard } from '../schedule/schedule-card';
+import { DroppableDay } from './droppable-day';
+import { DraggableCard } from './draggable-card';
 
 interface MonthViewProps {
   currentDate: Date;
@@ -79,8 +80,9 @@ export function MonthView({
           const dayOfWeek = day.getDay();
 
           return (
-            <div
+            <DroppableDay
               key={dateStr}
+              dateStr={dateStr}
               onClick={() => onSelectDate(dateStr)}
               className={`min-h-[80px] cursor-pointer border-b border-r border-gray-100 p-1 transition md:min-h-[100px] ${
                 !isCurrentMonth ? 'bg-gray-50/50' : 'bg-white hover:bg-blue-50/30'
@@ -104,7 +106,7 @@ export function MonthView({
 
               <div className="space-y-0.5">
                 {daySchedules.slice(0, MAX_VISIBLE).map((s) => (
-                  <ScheduleCard
+                  <DraggableCard
                     key={s.id}
                     schedule={s}
                     categories={categories}
@@ -119,7 +121,7 @@ export function MonthView({
                   </div>
                 )}
               </div>
-            </div>
+            </DroppableDay>
           );
         })}
       </div>
@@ -152,7 +154,7 @@ export function DayDetailPanel({
   });
 
   return (
-    <div className="border-t border-gray-200 bg-white p-4 md:border-t-0 md:border-l">
+    <div className="border-t border-gray-200 bg-white p-4 md:border-l">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold text-gray-800">{formatted}</h3>
         <button
