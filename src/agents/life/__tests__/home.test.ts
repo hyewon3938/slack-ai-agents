@@ -42,7 +42,7 @@ interface BlockWithText {
 }
 
 const extractSectionTexts = (blocks: BlockWithText[]): string[] =>
-  blocks.filter((b) => b.type === 'section' && b.text?.text).map((b) => b.text!.text);
+  blocks.filter((b) => b.type === 'section' && b.text?.text).map((b) => b.text?.text ?? '');
 
 describe('publishHomeView', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -199,7 +199,7 @@ describe('publishHomeView', () => {
     const headers = blocks.filter((b) => b.type === 'header');
 
     expect(headers).toHaveLength(1);
-    expect(headers[0]!.text!.text).toContain('대시보드');
+    expect(headers[0]?.text?.text).toContain('대시보드');
   });
 
   it('마지막 업데이트 시각을 포함한다', async () => {
@@ -207,8 +207,8 @@ describe('publishHomeView', () => {
 
     const blocks = getBlocks();
     const contexts = blocks.filter((b) => b.type === 'context');
-    const lastContext = contexts[contexts.length - 1]!;
+    const lastContext = contexts[contexts.length - 1];
 
-    expect(lastContext.elements![0]!.text).toMatch(/마지막 업데이트: \d{2}:\d{2}/);
+    expect(lastContext?.elements?.[0]?.text).toMatch(/마지막 업데이트: \d{2}:\d{2}/);
   });
 });

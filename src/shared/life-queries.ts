@@ -149,7 +149,9 @@ export const createRecord = async (templateId: number, today: string): Promise<n
     'INSERT INTO routine_records (template_id, date, completed) VALUES ($1, $2, false) RETURNING id',
     [templateId, today],
   );
-  return result.rows[0]!.id;
+  const row = result.rows[0];
+  if (!row) throw new Error('createRecord: INSERT returned no rows');
+  return row.id;
 };
 
 /** 루틴 완료 처리 (완료 시점 기록) */
