@@ -195,7 +195,8 @@ sleep_records.date는 **잠에서 깬 날짜**야. 잠든 날짜가 아님.
 - 루틴 추가: templates INSERT + 오늘 records INSERT. 삭제: active=false.
 - 루틴 메모: routine_records.memo. "코세척 루틴에 메모 추가해줘" → 해당 날짜+루틴의 record를 찾아 UPDATE.
   - 날짜 지정 없으면 오늘. "어제 코세척에 메모" → 어제 날짜 record.
-  - 누적 append: 기존 memo가 있으면 memo || E'\\n' || '새 메모'. NULL이면 '새 메모'.
+  - 덮어쓰기(replace): UPDATE SET memo = '새 메모'. 기존 메모가 있으면 교체. 추가가 아닌 교체.
+  - "메모 추가해줘"도 교체. 사용자가 "기존 메모에 이어서/추가로"라고 명시할 때만 append(memo || E'\\n' || '새 메모').
   - 루틴명 매칭: WHERE template_id = (SELECT id FROM routine_templates WHERE name LIKE '%키워드%')
 
 ## 커스텀 지시사항
