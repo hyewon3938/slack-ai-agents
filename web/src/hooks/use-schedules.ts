@@ -199,12 +199,12 @@ export function useSchedules() {
     }
   };
 
-  const handleEndDateChange = async (id: number, endDate: string) => {
+  const handleEndDateChange = async (id: number, endDate: string | null) => {
     try {
       const res = await fetch(`/api/schedules/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ end_date: endDate }),
+        body: JSON.stringify({ end_date: endDate || null }),
       });
       if (res.ok) {
         setSchedules((prev) =>

@@ -72,80 +72,82 @@ export default function SchedulesPage() {
 
   return (
     <AppShell>
-      <CalendarHeader
-        view={view}
-        onViewChange={setView}
-        title={getTitle(view, currentDate)}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        onToday={handleToday}
-        onAdd={() => setShowCreateModal(true)}
-      />
+      <div className="flex flex-1 flex-col">
+        <CalendarHeader
+          view={view}
+          onViewChange={setView}
+          title={getTitle(view, currentDate)}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          onToday={handleToday}
+          onAdd={() => setShowCreateModal(true)}
+        />
 
-      <FilterBar
-        categories={categories}
-        selectedCategories={selectedCategories}
-        selectedStatuses={selectedStatuses}
-        onToggleCategory={toggleCategory}
-        onToggleStatus={toggleStatus}
-        onClearFilters={clearFilters}
-      />
+        <FilterBar
+          categories={categories}
+          selectedCategories={selectedCategories}
+          selectedStatuses={selectedStatuses}
+          onToggleCategory={toggleCategory}
+          onToggleStatus={toggleStatus}
+          onClearFilters={clearFilters}
+        />
 
-      <DndCalendar
-        schedules={filteredSchedules}
-        categories={categories}
-        onDateChange={handleDateChange}
-        onEndDateChange={handleEndDateChange}
-      >
-        <div className={view === 'month' && selectedDate ? 'md:flex' : ''}>
-          <div className={view === 'month' && selectedDate ? 'flex-1' : ''}>
-            {view === 'month' && (
-              <MonthView
-                currentDate={currentDate}
-                schedules={filteredSchedules}
-                categories={categories}
-                selectedDate={selectedDate}
-                onSelectDate={handleSelectDate}
-                onScheduleClick={setEditingSchedule}
-                onStatusChange={handleStatusChange}
-              />
-            )}
-            {view === 'week' && (
-              <WeekView
-                currentDate={currentDate}
-                schedules={filteredSchedules}
-                categories={categories}
-                selectedDate={selectedDate}
-                onSelectDate={handleSelectDate}
-                onScheduleClick={setEditingSchedule}
-                onStatusChange={handleStatusChange}
-              />
-            )}
-            {view === 'day' && (
-              <DayView
-                currentDate={currentDate}
-                schedules={filteredSchedules}
-                categories={categories}
-                onScheduleClick={setEditingSchedule}
-                onStatusChange={handleStatusChange}
-              />
+        <DndCalendar
+          schedules={filteredSchedules}
+          categories={categories}
+          onDateChange={handleDateChange}
+          onEndDateChange={handleEndDateChange}
+        >
+          <div className={`md:flex md:flex-1 md:min-h-0 ${view === 'month' && selectedDate ? '' : 'md:flex-col'}`}>
+            <div className={view === 'month' && selectedDate ? 'flex-1' : 'md:flex md:flex-1 md:flex-col'}>
+              {view === 'month' && (
+                <MonthView
+                  currentDate={currentDate}
+                  schedules={filteredSchedules}
+                  categories={categories}
+                  selectedDate={selectedDate}
+                  onSelectDate={handleSelectDate}
+                  onScheduleClick={setEditingSchedule}
+                  onStatusChange={handleStatusChange}
+                />
+              )}
+              {view === 'week' && (
+                <WeekView
+                  currentDate={currentDate}
+                  schedules={filteredSchedules}
+                  categories={categories}
+                  selectedDate={selectedDate}
+                  onSelectDate={handleSelectDate}
+                  onScheduleClick={setEditingSchedule}
+                  onStatusChange={handleStatusChange}
+                />
+              )}
+              {view === 'day' && (
+                <DayView
+                  currentDate={currentDate}
+                  schedules={filteredSchedules}
+                  categories={categories}
+                  onScheduleClick={setEditingSchedule}
+                  onStatusChange={handleStatusChange}
+                />
+              )}
+            </div>
+
+            {view === 'month' && selectedDate && (
+              <div className="w-full md:sticky md:top-0 md:w-80 md:self-stretch md:max-h-[calc(100vh-160px)] md:overflow-y-auto">
+                <DayDetailPanel
+                  dateStr={selectedDate}
+                  schedules={filteredSchedules}
+                  categories={categories}
+                  onScheduleClick={setEditingSchedule}
+                  onStatusChange={handleStatusChange}
+                  onClose={() => handleSelectDate(selectedDate)}
+                />
+              </div>
             )}
           </div>
-
-          {view === 'month' && selectedDate && (
-            <div className="w-full md:sticky md:top-0 md:w-80 md:self-start md:max-h-[calc(100vh-160px)] md:overflow-y-auto">
-              <DayDetailPanel
-                dateStr={selectedDate}
-                schedules={filteredSchedules}
-                categories={categories}
-                onScheduleClick={setEditingSchedule}
-                onStatusChange={handleStatusChange}
-                onClose={() => handleSelectDate(selectedDate)}
-              />
-            </div>
-          )}
-        </div>
-      </DndCalendar>
+        </DndCalendar>
+      </div>
 
       {/* 생성 모달 */}
       <Modal

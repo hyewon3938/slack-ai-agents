@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { PRESET_COLORS, colorToHex } from '@/lib/types';
+import { PRESET_COLORS, colorToHex, getCategoryStyle } from '@/lib/types';
 
 interface ColorPickerProps {
   value: string;
   onChange: (color: string) => void;
+  previewLabel?: string;
 }
 
 function hslToHex(h: number, s: number, l: number): string {
@@ -41,7 +42,7 @@ function hexToHsl(hex: string): [number, number, number] {
 
 const PRESET_LIST = Object.entries(PRESET_COLORS).filter(([k]) => k !== 'gray');
 
-export function ColorPicker({ value, onChange }: ColorPickerProps) {
+export function ColorPicker({ value, onChange, previewLabel }: ColorPickerProps) {
   const [open, setOpen] = useState(false);
   const hex = colorToHex(value);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -68,6 +69,14 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       />
       {open && (
         <div className="absolute top-10 right-0 z-50 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+          {/* 미리보기 */}
+          {previewLabel && (
+            <div className="mb-3">
+              <div className="mb-1.5 text-[10px] font-medium text-gray-400">미리보기</div>
+              <TagPreview label={previewLabel} colorKey={value} />
+            </div>
+          )}
+
           {/* 프리셋 색상 */}
           <div className="mb-3">
             <div className="mb-1.5 text-[10px] font-medium text-gray-400">프리셋</div>
@@ -94,6 +103,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             <div className="mb-1.5 text-[10px] font-medium text-gray-400">커스텀</div>
             <HslGradient
               hex={hex}
+              previewLabel={previewLabel}
               onApply={(h) => {
                 onChange(h);
                 setOpen(false);
@@ -106,7 +116,26 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
   );
 }
 
-function HslGradient({ hex, onApply }: { hex: string; onApply: (hex: string) => void }) {
+function TagPreview({ label, colorKey }: { label: string; colorKey: string }) {
+  const style = getCategoryStyle(colorKey);
+  if (style.isPreset && style.classes) {
+    return (
+      <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.classes.bg} ${style.classes.text}`}>
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function HslGradient({ hex, previewLabel, onApply }: { hex: string; previewLabel?: string; onApply: (hex: string) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hue, setHue] = useState(() => hexToHsl(hex)[0]);
   const [preview, setPreview] = useState(hex);
@@ -213,6 +242,11 @@ function HslGradient({ hex, onApply }: { hex: string; onApply: (hex: string) => 
           적용
         </button>
       </div>
+      {previewLabel && (
+        <div className="border-t border-gray-100 pt-2">
+          <TagPreview label={previewLabel} colorKey={preview} />
+        </div>
+      )}
     </div>
   );
 }

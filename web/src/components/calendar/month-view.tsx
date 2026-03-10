@@ -11,6 +11,7 @@ import {
   isToday,
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { computeWeekLayout, type WeekSpan } from '@/lib/calendar-utils';
@@ -31,7 +32,7 @@ interface MonthViewProps {
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const MAX_VISIBLE = 3;
 const LANE_HEIGHT = 22;
-const DATE_ROW_HEIGHT = 30;
+const DATE_ROW_HEIGHT = 34;
 
 export function MonthView({
   currentDate,
@@ -55,7 +56,7 @@ export function MonthView({
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col md:flex-1">
       {/* 요일 헤더 */}
       <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
         {DAY_NAMES.map((name, i) => (
@@ -96,7 +97,7 @@ export function MonthView({
                   } ${selected ? 'ring-2 ring-inset ring-blue-400' : ''}`}
                 >
                   <div
-                    className={`mb-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                    className={`mb-1.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                       today
                         ? 'bg-blue-500 text-white'
                         : !isCurrentMonth
@@ -144,6 +145,7 @@ export function MonthView({
                 categories={categories}
                 dateRowHeight={DATE_ROW_HEIGHT}
                 laneHeight={LANE_HEIGHT}
+                weekIdx={weekIdx}
                 onClick={() => onScheduleClick(span.schedule)}
               />
             ))}
@@ -159,14 +161,37 @@ function SpanningBar({
   categories,
   dateRowHeight,
   laneHeight,
+  weekIdx,
   onClick,
 }: {
   span: WeekSpan;
   categories: CategoryRow[];
   dateRowHeight: number;
   laneHeight: number;
+  weekIdx: number;
   onClick: () => void;
 }) {
+  const suffix = `-m${weekIdx}`;
+  const {
+    setNodeRef: moveRef,
+    listeners: moveListeners,
+    attributes: moveAttrs,
+    isDragging,
+  } = useDraggable({ id: `move-${span.schedule.id}${suffix}` });
+  const {
+    setNodeRef: resizeLRef,
+    listeners: resizeLListeners,
+    attributes: resizeLAttrs,
+  } = useDraggable({ id: `resize-${span.schedule.id}${suffix}` });
+  const {
+    setNodeRef: resizeRRef,
+    listeners: resizeRListeners,
+    attributes: resizeRAttrs,
+  } = useDraggable({ id: `resize-r-${span.schedule.id}${suffix}` });
+
+  const showLeftHandle = !span.startsBeforeWeek;
+  const showRightHandle = !span.endsAfterWeek;
+
   const cat = categories.find((c) => c.name === span.schedule.category);
   const colorKey = cat?.color ?? 'gray';
   const catStyle = getCategoryStyle(colorKey);
@@ -183,26 +208,58 @@ function SpanningBar({
 
   const textClasses = `h-full truncate rounded px-1.5 text-xs leading-5 ${isDone ? 'line-through opacity-60' : ''}`;
 
-  if (catStyle.isPreset && catStyle.classes) {
-    return (
-      <div style={barStyle} onClick={onClick} className="pointer-events-auto cursor-pointer">
-        <div className={`${textClasses} ${catStyle.classes.bg} ${catStyle.classes.text}`}>
-          {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
-          {span.schedule.title}
-        </div>
-      </div>
-    );
-  }
+  const inner = catStyle.isPreset && catStyle.classes ? (
+    <div
+      ref={moveRef}
+      {...moveListeners}
+      {...moveAttrs}
+      className={`${textClasses} ${catStyle.classes.bg} ${catStyle.classes.text}`}
+    >
+      {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
+      {span.schedule.title}
+    </div>
+  ) : (
+    <div
+      ref={moveRef}
+      {...moveListeners}
+      {...moveAttrs}
+      className={textClasses}
+      style={{ backgroundColor: catStyle.styles?.bg, color: catStyle.styles?.text }}
+    >
+      {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
+      {span.schedule.title}
+    </div>
+  );
 
   return (
-    <div style={barStyle} onClick={onClick} className="pointer-events-auto cursor-pointer">
-      <div
-        className={textClasses}
-        style={{ backgroundColor: catStyle.styles?.bg, color: catStyle.styles?.text }}
-      >
-        {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
-        {span.schedule.title}
-      </div>
+    <div
+      style={barStyle}
+      onClick={onClick}
+      className={`group pointer-events-auto cursor-pointer ${isDragging ? 'opacity-30' : ''}`}
+    >
+      {showLeftHandle && (
+        <div
+          ref={resizeLRef}
+          {...resizeLListeners}
+          {...resizeLAttrs}
+          className="absolute top-0 left-0 z-20 h-full w-2 cursor-col-resize opacity-0 hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+        </div>
+      )}
+      {inner}
+      {showRightHandle && (
+        <div
+          ref={resizeRRef}
+          {...resizeRListeners}
+          {...resizeRAttrs}
+          className="absolute top-0 right-0 z-20 h-full w-2 cursor-col-resize opacity-0 hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+        </div>
+      )}
     </div>
   );
 }
@@ -232,7 +289,7 @@ export function DayDetailPanel({
   });
 
   return (
-    <div className="border-t border-gray-200 bg-white p-4 md:border-l">
+    <div className="min-h-full border-t border-b border-gray-200 bg-white p-4 md:border-l">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold text-gray-800">{formatted}</h3>
         <button
