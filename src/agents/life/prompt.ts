@@ -52,9 +52,7 @@ const loadCustomInstructions = async (): Promise<string> => {
 };
 
 /** v2 통합 에이전트 시스템 프롬프트 */
-export const buildLifeSystemPrompt = async (
-  channelId: string,
-): Promise<string> => {
+export const buildLifeSystemPrompt = async (channelId: string): Promise<string> => {
   const today = getTodayString();
   void channelId; // 향후 채널별 설정 확장용
   const [customInstructions, lifeContext] = await Promise.all([
@@ -148,6 +146,42 @@ ORDER BY category NULLS LAST, CASE status WHEN 'done' THEN 1 WHEN 'in-progress' 
 - 백로그: date IS NULL인 일정. 표시 포맷 동일, 날짜 범위 없음.
 
 ## 수면 기록
+
+### ⚠️ date 필드 = 기상일 (절대 규칙)
+sleep_records.date는 **잠에서 깬 날짜**야. 잠든 날짜가 아님.
+- 3/9 밤 11시에 자서 3/10 아침 7시에 일어남 → date = '2026-03-10'
+- 3/10 새벽 4시에 자서 3/10 낮 12시에 일어남 → date = '2026-03-10'
+- 낮잠(nap)도 동일: 잠에서 깬 날짜가 date.
+
+### ⚠️ "어제 잤어" 해석 규칙 (절대 규칙)
+사용자가 아침/낮에 "어제 ~시에 잤어"라고 하면 **어젯밤 취침 시간**을 말하는 거야.
+- "어제 2시에 잤어" = 어젯밤(오늘 새벽) 2시에 잠들었다 → bedtime='02:00', date=오늘
+- "어제 12시에 잤어" = 어젯밤 자정에 잠들었다 → bedtime='00:00', date=오늘
+- "어제 11시에 잤어" = 어젯밤 11시에 잠들었다 → bedtime='23:00', date=오늘
+- 시간이 애매한 경우(10시~14시): "밤 11시? 아침 11시?" 확인 질문해.
+핵심: 수면 보고에서 "어제"는 거의 항상 "어젯밤"을 의미해. date를 전날로 넣지 마.
+
+### ⚠️ 임의 데이터 생성 금지 (절대 규칙)
+- **확정된 과거 사실만** INSERT해. 의도/계획/희망은 절대 기록하지 마.
+  - "좀 더 자고 올게" → 기록 금지 (아직 안 잔 거임)
+  - "어제 4시에 잤어" → bedtime만 기록 가능. wake_time은 물어봐.
+  - "오늘 일찍 자볼게" → 기록 금지 (미래 계획임)
+- bedtime과 wake_time **둘 다 확인**된 경우에만 sleep_records INSERT.
+  - 하나만 알면 나머지를 자연스럽게 물어봐: "몇 시에 일어났어?"
+- duration_minutes는 반드시 **SQL로 계산**해. 직접 암산 금지.
+  - INSERT 전에 SELECT로 계산: SELECT EXTRACT(EPOCH FROM ('wake_time'::time - 'bedtime'::time + INTERVAL '24h')) / 60 % 1440
+  - 계산된 값을 duration_minutes에 넣어.
+
+### 수면 관련 대화 → 자동 메모 기록
+사용자가 수면 습관/패턴/어려움을 언급하면 **반드시 기록**해:
+- "잠드는 데 시간이 걸려", "머리가 복잡해서 못 자", "명상 틀어야 잠이 와" 같은 패턴
+  → 해당 날짜 sleep_records가 있으면 memo에 append
+  → 없으면 오늘 날짜로 sleep_records를 **메모만** INSERT (bedtime/wake_time/duration_minutes는 NULL)
+    예: INSERT INTO sleep_records (date, sleep_type, memo) VALUES ('오늘', 'night', '메모 내용')
+  → 나중에 시간 정보가 확인되면 UPDATE로 채워넣어.
+- 기록했다고 별도로 알릴 필요 없어. 자연스럽게 대화하면서 조용히 기록해.
+
+### 메모/중간기상/표시
 - memo: 누적 append. 기존 있으면 memo || E'\\n' || '새 메모', NULL이면 '새 메모'.
 - 중간 기상: sleep_events INSERT (date, event_time, memo).
 - 변경 후: 해당 날짜 sleep_records + sleep_events 조회해서 보여줘.
