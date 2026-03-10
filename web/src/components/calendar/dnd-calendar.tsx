@@ -15,6 +15,9 @@ import { ScheduleCard } from '../schedule/schedule-card';
 
 function parseDragId(id: string | number): { type: 'move' | 'resize'; scheduleId: number } {
   const str = String(id);
+  if (str.startsWith('resize-r-')) {
+    return { type: 'resize', scheduleId: Number(str.slice(9)) };
+  }
   if (str.startsWith('resize-')) {
     return { type: 'resize', scheduleId: Number(str.slice(7)) };
   }
@@ -71,9 +74,14 @@ export function DndCalendar({
       if (!schedule) return;
 
       if (currentDragType === 'resize') {
-        // 기간 설정: end_date 변경
-        if (targetDate > (schedule.date ?? '')) {
+        const scheduleDate = schedule.date ?? '';
+        if (targetDate > scheduleDate) {
+          // 오른쪽으로 드래그: end_date 설정
           onEndDateChange?.(scheduleId, targetDate);
+        } else if (targetDate < scheduleDate) {
+          // 왼쪽으로 드래그: 시작일을 앞당기고 원래 시작일을 end_date로
+          onDateChange(scheduleId, targetDate);
+          onEndDateChange?.(scheduleId, schedule.end_date ?? scheduleDate);
         }
       } else {
         // 날짜 이동

@@ -29,8 +29,6 @@ export function ScheduleForm({
   const [category, setCategory] = useState(schedule?.category ?? '');
   const [memo, setMemo] = useState(schedule?.memo ?? '');
   const [important, setImportant] = useState(schedule?.important ?? false);
-  const [newCategory, setNewCategory] = useState('');
-  const [showNewCategory, setShowNewCategory] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,13 +37,12 @@ export function ScheduleForm({
 
     setSaving(true);
     try {
-      const finalCategory = showNewCategory ? newCategory.trim() : category;
       await onSubmit({
         title: title.trim(),
         date: date || null,
         end_date: showEndDate && endDate ? endDate : null,
         status,
-        category: finalCategory || null,
+        category: category || null,
         memo: memo || null,
         important,
       });
@@ -138,50 +135,18 @@ export function ScheduleForm({
       {/* 카테고리 */}
       <div>
         <label className="mb-1 block text-xs text-gray-500">카테고리</label>
-        {!showNewCategory ? (
-          <div className="flex gap-2">
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">없음</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setShowNewCategory(true)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-100"
-            >
-              + 추가
-            </button>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              placeholder="새 카테고리 이름"
-              autoFocus
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setShowNewCategory(false);
-                setNewCategory('');
-              }}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-100"
-            >
-              취소
-            </button>
-          </div>
-        )}
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">없음</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* 중요 */}

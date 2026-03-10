@@ -28,7 +28,8 @@ export function CalendarHeader({
   ];
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
+    <div className="border-b border-gray-200 bg-white px-4 py-3">
+    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2">
       {/* 날짜 네비게이션 */}
       <div className="flex items-center gap-1">
         <button
@@ -89,6 +90,7 @@ export function CalendarHeader({
       >
         +
       </button>
+    </div>
     </div>
   );
 }

@@ -92,7 +92,13 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
 
           <div className="border-t border-gray-100 pt-3">
             <div className="mb-1.5 text-[10px] font-medium text-gray-400">커스텀</div>
-            <HslGradient hex={hex} onChange={(h) => { onChange(h); setOpen(false); }} />
+            <HslGradient
+              hex={hex}
+              onApply={(h) => {
+                onChange(h);
+                setOpen(false);
+              }}
+            />
           </div>
         </div>
       )}
@@ -100,9 +106,10 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
   );
 }
 
-function HslGradient({ hex, onChange }: { hex: string; onChange: (hex: string) => void }) {
+function HslGradient({ hex, onApply }: { hex: string; onApply: (hex: string) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hue, setHue] = useState(() => hexToHsl(hex)[0]);
+  const [preview, setPreview] = useState(hex);
   const dragging = useRef(false);
 
   const drawCanvas = useCallback(
@@ -139,9 +146,9 @@ function HslGradient({ hex, onChange }: { hex: string; onChange: (hex: string) =
       const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height - 1));
       const s = (x / rect.width) * 100;
       const l = 100 - (y / rect.height) * 100;
-      onChange(hslToHex(hue, s, l));
+      setPreview(hslToHex(hue, s, l));
     },
-    [hue, onChange],
+    [hue],
   );
 
   const handleMouseDown = useCallback(
@@ -165,7 +172,6 @@ function HslGradient({ hex, onChange }: { hex: string; onChange: (hex: string) =
 
   return (
     <div className="space-y-2">
-      {/* SL 그라데이션 캔버스 */}
       <canvas
         ref={canvasRef}
         width={232}
@@ -177,7 +183,6 @@ function HslGradient({ hex, onChange }: { hex: string; onChange: (hex: string) =
         onMouseLeave={handleMouseUp}
       />
 
-      {/* Hue 슬라이더 */}
       <input
         type="range"
         min={0}
@@ -192,13 +197,21 @@ function HslGradient({ hex, onChange }: { hex: string; onChange: (hex: string) =
         }}
       />
 
-      {/* 미리보기 + hex 표시 */}
-      <div className="flex items-center gap-2">
-        <div
-          className="h-6 w-6 rounded-full border border-gray-200"
-          style={{ backgroundColor: hex }}
-        />
-        <span className="text-xs font-mono text-gray-500">{hex}</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className="h-6 w-6 rounded-full border border-gray-200"
+            style={{ backgroundColor: preview }}
+          />
+          <span className="font-mono text-xs text-gray-500">{preview}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onApply(preview)}
+          className="rounded-md bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600"
+        >
+          적용
+        </button>
       </div>
     </div>
   );

@@ -24,17 +24,37 @@ export function DraggableCard({
   });
 
   const {
-    attributes: resizeAttrs,
-    listeners: resizeListeners,
-    setNodeRef: resizeRef,
-    isDragging: isResizing,
+    attributes: resizeLAttrs,
+    listeners: resizeLListeners,
+    setNodeRef: resizeLRef,
+    isDragging: isResizingL,
   } = useDraggable({
     id: `resize-${schedule.id}`,
   });
 
+  const {
+    attributes: resizeRAttrs,
+    listeners: resizeRListeners,
+    setNodeRef: resizeRRef,
+    isDragging: isResizingR,
+  } = useDraggable({
+    id: `resize-r-${schedule.id}`,
+  });
+
   if (compact) {
+    const faded = isDragging || isResizingL || isResizingR;
     return (
-      <div className={`group relative ${isDragging || isResizing ? 'opacity-30' : ''}`}>
+      <div className={`group relative ${faded ? 'opacity-30' : ''}`}>
+        {/* 리사이즈 핸들 (좌측) */}
+        <div
+          ref={resizeLRef}
+          {...resizeLListeners}
+          {...resizeLAttrs}
+          className="absolute top-0 left-0 z-10 h-full w-2 cursor-col-resize opacity-0 group-hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+        </div>
         <div
           ref={setNodeRef}
           {...listeners}
@@ -48,13 +68,12 @@ export function DraggableCard({
             compact
           />
         </div>
-        {/* 리사이즈 핸들 (우측 끝) */}
+        {/* 리사이즈 핸들 (우측) */}
         <div
-          ref={resizeRef}
-          {...resizeListeners}
-          {...resizeAttrs}
-          className="absolute top-0 right-0 h-full w-2 cursor-col-resize opacity-0 group-hover:opacity-100"
-          title="드래그하여 기간 설정"
+          ref={resizeRRef}
+          {...resizeRListeners}
+          {...resizeRAttrs}
+          className="absolute top-0 right-0 z-10 h-full w-2 cursor-col-resize opacity-0 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
