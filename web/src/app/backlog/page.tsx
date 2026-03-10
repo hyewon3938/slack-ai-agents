@@ -1,6 +1,6 @@
 'use client';
 
-import { getCategoryStyle, colorToHex } from '@/lib/types';
+import { getCategoryStyle } from '@/lib/types';
 import { useBacklog } from '@/hooks/use-backlog';
 import { AppShell } from '@/components/ui/app-shell';
 import { Modal } from '@/components/ui/modal';
@@ -75,7 +75,7 @@ export default function BacklogPage() {
                   ) : (
                     <h2
                       className="mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold"
-                      style={{ backgroundColor: style.styles?.bg, color: colorToHex(colorKey) }}
+                      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
                     >
                       {cat} ({items.length})
                     </h2>

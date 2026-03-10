@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { CategoryRow } from '@/lib/types';
-import { getCategoryStyle, colorToHex } from '@/lib/types';
+import { getCategoryStyle } from '@/lib/types';
 import { AppShell } from '@/components/ui/app-shell';
 import { ColorPicker } from '@/components/ui/color-picker';
 
@@ -188,11 +188,10 @@ function CategoryBadge({ name, colorKey }: { name: string; colorKey: string }) {
       </span>
     );
   }
-  const hex = colorToHex(colorKey);
   return (
     <span
       className="rounded-full px-3 py-1 text-xs font-semibold"
-      style={{ backgroundColor: style.styles?.bg, color: hex }}
+      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
     >
       {name}
     </span>
