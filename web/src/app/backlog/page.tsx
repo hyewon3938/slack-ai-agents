@@ -1,6 +1,6 @@
 'use client';
 
-import { CATEGORY_COLORS } from '@/lib/types';
+import { getCategoryStyle, colorToHex } from '@/lib/types';
 import { useBacklog } from '@/hooks/use-backlog';
 import { AppShell } from '@/components/ui/app-shell';
 import { Modal } from '@/components/ui/modal';
@@ -39,7 +39,7 @@ export default function BacklogPage() {
   return (
     <AppShell>
       <div className="border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center justify-between">
+        <div className="mx-auto flex max-w-3xl items-center justify-between">
           <h1 className="text-lg font-bold text-gray-800">
             백로그 <span className="text-sm font-normal text-gray-400">({schedules.length}건)</span>
           </h1>
@@ -52,7 +52,7 @@ export default function BacklogPage() {
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="mx-auto max-w-3xl p-4">
         {schedules.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-gray-400">백로그 없음</p>
@@ -64,13 +64,22 @@ export default function BacklogPage() {
               const items = grouped.get(cat) ?? [];
               const catRow = categories.find((c) => c.name === cat);
               const colorKey = catRow?.color ?? 'gray';
-              const colors = CATEGORY_COLORS[colorKey] ?? CATEGORY_COLORS.gray!;
+              const style = getCategoryStyle(colorKey);
 
               return (
                 <div key={cat}>
-                  <h2 className={`mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${colors.bg} ${colors.text}`}>
-                    {cat} ({items.length})
-                  </h2>
+                  {style.isPreset && style.classes ? (
+                    <h2 className={`mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.classes.bg} ${style.classes.text}`}>
+                      {cat} ({items.length})
+                    </h2>
+                  ) : (
+                    <h2
+                      className="mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold"
+                      style={{ backgroundColor: style.styles?.bg, color: colorToHex(colorKey) }}
+                    >
+                      {cat} ({items.length})
+                    </h2>
+                  )}
 
                   <div className="space-y-2">
                     {items.map((s) => (

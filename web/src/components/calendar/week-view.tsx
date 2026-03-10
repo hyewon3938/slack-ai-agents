@@ -1,9 +1,11 @@
 'use client';
 
-import { startOfWeek, addDays, format, isToday, isSameDay } from 'date-fns';
+import { startOfWeek, addDays, format, isToday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { ScheduleCard } from '../schedule/schedule-card';
+import { DroppableDay } from './droppable-day';
+import { DraggableCard } from './draggable-card';
 
 interface WeekViewProps {
   currentDate: Date;
@@ -48,8 +50,9 @@ export function WeekView({
           const dayOfWeek = day.getDay();
 
           return (
-            <div
+            <DroppableDay
               key={dateStr}
+              dateStr={dateStr}
               onClick={() => onSelectDate(dateStr)}
               className={`min-h-[300px] cursor-pointer border-r border-gray-100 p-2 ${
                 selected ? 'bg-blue-50/50' : 'bg-white hover:bg-gray-50/50'
@@ -74,7 +77,7 @@ export function WeekView({
 
               <div className="space-y-1.5">
                 {daySchedules.map((s) => (
-                  <ScheduleCard
+                  <DraggableCard
                     key={s.id}
                     schedule={s}
                     categories={categories}
@@ -83,7 +86,7 @@ export function WeekView({
                   />
                 ))}
               </div>
-            </div>
+            </DroppableDay>
           );
         })}
       </div>
@@ -95,47 +98,36 @@ export function WeekView({
           const daySchedules = getSchedulesForDate(day);
           const today = isToday(day);
           const selected = selectedDate === dateStr;
-          const dayOfWeek = day.getDay();
 
           return (
-            <div
+            <DroppableDay
               key={dateStr}
+              dateStr={dateStr}
               onClick={() => onSelectDate(dateStr)}
               className={`border-b border-gray-100 ${selected ? 'bg-blue-50/30' : ''}`}
             >
               {/* 날짜 헤더 */}
-              <div className="flex items-center gap-3 px-4 py-2">
+              <div className="flex items-center gap-4 px-4 py-3">
                 <div
-                  className={`flex h-10 w-10 flex-col items-center justify-center rounded-full ${
+                  className={`flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-full ${
                     today ? 'bg-blue-500 text-white' : 'bg-gray-100'
                   }`}
                 >
-                  <span className="text-[10px] leading-none">
+                  <span className="text-[10px] font-medium leading-none">
                     {format(day, 'EEE', { locale: ko })}
                   </span>
-                  <span className="text-sm font-bold leading-none">{format(day, 'd')}</span>
+                  <span className="text-base font-bold leading-tight">{format(day, 'd')}</span>
                 </div>
-                <span
-                  className={`text-sm font-medium ${
-                    today
-                      ? 'text-blue-600'
-                      : dayOfWeek === 0
-                        ? 'text-red-500'
-                        : dayOfWeek === 6
-                          ? 'text-blue-500'
-                          : 'text-gray-700'
-                  }`}
-                >
-                  {format(day, 'M월 d일', { locale: ko })}
-                </span>
-                <span className="text-xs text-gray-400">{daySchedules.length}건</span>
+                {daySchedules.length > 0 && (
+                  <span className="text-xs text-gray-400">{daySchedules.length}건</span>
+                )}
               </div>
 
               {/* 일정 목록 */}
               {daySchedules.length > 0 && (
-                <div className="space-y-1.5 px-4 pb-3 pl-[68px]">
+                <div className="space-y-1.5 px-4 pb-3 pl-[76px]">
                   {daySchedules.map((s) => (
-                    <ScheduleCard
+                    <DraggableCard
                       key={s.id}
                       schedule={s}
                       categories={categories}
@@ -145,7 +137,7 @@ export function WeekView({
                   ))}
                 </div>
               )}
-            </div>
+            </DroppableDay>
           );
         })}
       </div>

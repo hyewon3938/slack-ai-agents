@@ -18,6 +18,10 @@ export function useBacklog() {
         fetch('/api/categories'),
       ]);
 
+      if (schedulesRes.status === 401 || categoriesRes.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
       if (schedulesRes.ok) {
         const data = (await schedulesRes.json()) as { data: ScheduleRow[] };
         setSchedules(data.data);

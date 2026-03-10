@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 const NAV_ITEMS = [
   { href: '/schedules', label: '캘린더', icon: '📅' },
   { href: '/backlog', label: '백로그', icon: '📋' },
+  { href: '/categories', label: '카테고리', icon: '🏷' },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {

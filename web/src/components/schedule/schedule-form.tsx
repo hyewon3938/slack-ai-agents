@@ -24,6 +24,7 @@ export function ScheduleForm({
   const [title, setTitle] = useState(schedule?.title ?? '');
   const [date, setDate] = useState(schedule?.date ?? defaultDate ?? '');
   const [endDate, setEndDate] = useState(schedule?.end_date ?? '');
+  const [showEndDate, setShowEndDate] = useState(!!schedule?.end_date);
   const [status, setStatus] = useState(schedule?.status ?? 'todo');
   const [category, setCategory] = useState(schedule?.category ?? '');
   const [memo, setMemo] = useState(schedule?.memo ?? '');
@@ -42,7 +43,7 @@ export function ScheduleForm({
       await onSubmit({
         title: title.trim(),
         date: date || null,
-        end_date: endDate || null,
+        end_date: showEndDate && endDate ? endDate : null,
         status,
         category: finalCategory || null,
         memo: memo || null,
@@ -70,18 +71,40 @@ export function ScheduleForm({
       </div>
 
       {/* 날짜 */}
-      <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="mb-1 block text-xs text-gray-500">날짜</label>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+
+      {/* 종료일 토글 */}
+      {!showEndDate ? (
+        <button
+          type="button"
+          onClick={() => setShowEndDate(true)}
+          className="text-xs text-blue-500 hover:text-blue-600"
+        >
+          + 종료일 추가
+        </button>
+      ) : (
         <div>
-          <label className="mb-1 block text-xs text-gray-500">시작일</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-gray-500">종료일</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="text-xs text-gray-500">종료일</label>
+            <button
+              type="button"
+              onClick={() => {
+                setShowEndDate(false);
+                setEndDate('');
+              }}
+              className="text-xs text-gray-400 hover:text-red-400"
+            >
+              종료일 제거
+            </button>
+          </div>
           <input
             type="date"
             value={endDate}
@@ -89,7 +112,7 @@ export function ScheduleForm({
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
           />
         </div>
-      </div>
+      )}
 
       {/* 상태 */}
       <div>
@@ -134,7 +157,7 @@ export function ScheduleForm({
               onClick={() => setShowNewCategory(true)}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-100"
             >
-              + 새로
+              + 추가
             </button>
           </div>
         ) : (

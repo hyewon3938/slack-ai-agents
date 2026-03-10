@@ -10,6 +10,7 @@ import { MonthView, DayDetailPanel } from '@/components/calendar/month-view';
 import { WeekView } from '@/components/calendar/week-view';
 import { DayView } from '@/components/calendar/day-view';
 import { FilterBar } from '@/components/ui/filter-bar';
+import { DndCalendar } from '@/components/calendar/dnd-calendar';
 import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/components/schedule/schedule-form';
 
@@ -48,6 +49,8 @@ export default function SchedulesPage() {
     handleNext,
     handleToday,
     handleStatusChange,
+    handleDateChange,
+    handleEndDateChange,
     handleCreate,
     handleUpdate,
     handleDelete,
@@ -88,54 +91,61 @@ export default function SchedulesPage() {
         onClearFilters={clearFilters}
       />
 
-      <div className={view === 'month' && selectedDate ? 'md:flex' : ''}>
-        <div className={view === 'month' && selectedDate ? 'flex-1' : ''}>
-          {view === 'month' && (
-            <MonthView
-              currentDate={currentDate}
-              schedules={filteredSchedules}
-              categories={categories}
-              selectedDate={selectedDate}
-              onSelectDate={handleSelectDate}
-              onScheduleClick={setEditingSchedule}
-              onStatusChange={handleStatusChange}
-            />
-          )}
-          {view === 'week' && (
-            <WeekView
-              currentDate={currentDate}
-              schedules={filteredSchedules}
-              categories={categories}
-              selectedDate={selectedDate}
-              onSelectDate={handleSelectDate}
-              onScheduleClick={setEditingSchedule}
-              onStatusChange={handleStatusChange}
-            />
-          )}
-          {view === 'day' && (
-            <DayView
-              currentDate={currentDate}
-              schedules={filteredSchedules}
-              categories={categories}
-              onScheduleClick={setEditingSchedule}
-              onStatusChange={handleStatusChange}
-            />
+      <DndCalendar
+        schedules={filteredSchedules}
+        categories={categories}
+        onDateChange={handleDateChange}
+        onEndDateChange={handleEndDateChange}
+      >
+        <div className={view === 'month' && selectedDate ? 'md:flex' : ''}>
+          <div className={view === 'month' && selectedDate ? 'flex-1' : ''}>
+            {view === 'month' && (
+              <MonthView
+                currentDate={currentDate}
+                schedules={filteredSchedules}
+                categories={categories}
+                selectedDate={selectedDate}
+                onSelectDate={handleSelectDate}
+                onScheduleClick={setEditingSchedule}
+                onStatusChange={handleStatusChange}
+              />
+            )}
+            {view === 'week' && (
+              <WeekView
+                currentDate={currentDate}
+                schedules={filteredSchedules}
+                categories={categories}
+                selectedDate={selectedDate}
+                onSelectDate={handleSelectDate}
+                onScheduleClick={setEditingSchedule}
+                onStatusChange={handleStatusChange}
+              />
+            )}
+            {view === 'day' && (
+              <DayView
+                currentDate={currentDate}
+                schedules={filteredSchedules}
+                categories={categories}
+                onScheduleClick={setEditingSchedule}
+                onStatusChange={handleStatusChange}
+              />
+            )}
+          </div>
+
+          {view === 'month' && selectedDate && (
+            <div className="w-full md:w-80">
+              <DayDetailPanel
+                dateStr={selectedDate}
+                schedules={filteredSchedules}
+                categories={categories}
+                onScheduleClick={setEditingSchedule}
+                onStatusChange={handleStatusChange}
+                onClose={() => handleSelectDate(selectedDate)}
+              />
+            </div>
           )}
         </div>
-
-        {view === 'month' && selectedDate && (
-          <div className="w-full md:w-80">
-            <DayDetailPanel
-              dateStr={selectedDate}
-              schedules={filteredSchedules}
-              categories={categories}
-              onScheduleClick={setEditingSchedule}
-              onStatusChange={handleStatusChange}
-              onClose={() => handleSelectDate(selectedDate)}
-            />
-          </div>
-        )}
-      </div>
+      </DndCalendar>
 
       {/* 생성 모달 */}
       <Modal
