@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import { compareByStatus } from '@/lib/types';
 import { ScheduleCard } from '../schedule/schedule-card';
 
 interface DayViewProps {
@@ -29,9 +30,10 @@ export function DayView({
 
   const formatted = format(currentDate, 'yyyy년 M월 d일 (EEE)', { locale: ko });
 
-  // 카테고리별 그룹핑
+  // 카테고리별 그룹핑 (그룹 내 상태순 정렬)
+  const sorted = [...daySchedules].sort(compareByStatus);
   const grouped = new Map<string, ScheduleRow[]>();
-  for (const s of daySchedules) {
+  for (const s of sorted) {
     const cat = s.category ?? '미분류';
     const list = grouped.get(cat) ?? [];
     list.push(s);
