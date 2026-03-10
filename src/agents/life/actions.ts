@@ -8,10 +8,12 @@ import {
   completeRecord,
   queryTodayRecords,
   queryTodaySchedules,
+  queryBacklogSchedules,
   updateScheduleStatus,
   postponeSchedule,
   deleteSchedule,
   toggleScheduleImportant,
+  moveScheduleToDate,
 } from '../../shared/life-queries.js';
 import { updateMessage } from '../../shared/slack.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
@@ -21,6 +23,7 @@ import {
   POSTPONE_ACTION,
   DELETE_ACTION,
   TOGGLE_IMPORTANT_ACTION,
+  MOVE_TO_TODAY_ACTION,
   parseButtonValue,
   parseOverflowValue,
   buildRoutineBlocks,
@@ -96,12 +99,19 @@ export const registerLifeActions = (app: App): void => {
       } else if (newStatus === POSTPONE_ACTION) {
         const tomorrow = addDays(targetDate, 1);
         await postponeSchedule(scheduleId, tomorrow);
+      } else if (newStatus === MOVE_TO_TODAY_ACTION) {
+        await moveScheduleToDate(scheduleId, getTodayISO());
       } else {
         await updateScheduleStatus(scheduleId, newStatus);
       }
 
-      const items = await queryTodaySchedules(targetDate);
-      const { text, blocks } = buildScheduleBlocks(items, targetDate);
+      const isBacklog = targetDate === 'backlog';
+      const items = isBacklog
+        ? await queryBacklogSchedules()
+        : await queryTodaySchedules(targetDate);
+      const { text, blocks } = isBacklog
+        ? buildScheduleBlocks(items, 'backlog', undefined, { backlog: true })
+        : buildScheduleBlocks(items, targetDate);
 
       const channelId =
         'channel' in body && body.channel ? body.channel.id : undefined;

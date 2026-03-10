@@ -176,6 +176,22 @@ export const queryTodaySchedules = async (today: string): Promise<ScheduleRow[]>
     )
   ).rows;
 
+/** 백로그 일정 조회 (날짜 미지정 항목) */
+export const queryBacklogSchedules = async (): Promise<ScheduleRow[]> =>
+  (
+    await query<ScheduleRow>(
+      `SELECT id, title, date::text, end_date::text, status, category, memo, important
+     FROM schedules
+     WHERE date IS NULL AND status != 'cancelled'
+     ORDER BY category NULLS LAST, important DESC, title`,
+    )
+  ).rows;
+
+/** 일정을 특정 날짜로 이동 */
+export const moveScheduleToDate = async (id: number, date: string): Promise<void> => {
+  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2", [date, id]);
+};
+
 /** 일정 상태 변경 */
 export const updateScheduleStatus = async (id: number, status: string): Promise<void> => {
   await query('UPDATE schedules SET status = $1 WHERE id = $2', [status, id]);

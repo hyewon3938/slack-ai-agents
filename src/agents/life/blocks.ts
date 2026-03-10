@@ -20,6 +20,7 @@ export const SCHEDULE_ACTION_ID = 'life_schedule_status';
 export const POSTPONE_ACTION = 'postpone';
 export const DELETE_ACTION = 'delete';
 export const TOGGLE_IMPORTANT_ACTION = 'toggle_important';
+export const MOVE_TO_TODAY_ACTION = 'move_today';
 
 const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
 
@@ -344,20 +345,38 @@ const formatMemoWithStrike = (memo: string, isDone: boolean): string =>
         .join('\n')
     : memo;
 
+/** backlog 전용 overflow: "오늘로 이동" + "삭제" */
+const buildBacklogOverflowOptions = (
+  item: ScheduleRow,
+): Array<{ text: { type: 'plain_text'; text: string }; value: string }> => [
+  {
+    text: { type: 'plain_text' as const, text: '오늘로 이동' },
+    value: encodeOverflowValue(item.id, MOVE_TO_TODAY_ACTION, 'backlog'),
+  },
+  {
+    text: { type: 'plain_text' as const, text: '삭제하기' },
+    value: encodeOverflowValue(item.id, DELETE_ACTION, 'backlog'),
+  },
+];
+
 /** 일정 목록 Block Kit 빌드 (카테고리별 그룹핑 + overflow 메뉴) */
 export const buildScheduleBlocks = (
   items: ScheduleRow[],
   targetDate: string,
   headerText?: string,
-  options?: { compact?: boolean },
+  options?: { compact?: boolean; backlog?: boolean },
 ): { text: string; blocks: KnownBlock[] } => {
   const blocks: KnownBlock[] = [];
-  const formatted = formatDateShort(targetDate);
+  const backlog = options?.backlog ?? false;
+  const formatted = backlog ? '' : formatDateShort(targetDate);
   const compact = options?.compact ?? false;
+  const headerLabel = backlog
+    ? `백로그 (${items.length}건)`
+    : `${formatted} 일정`;
 
   blocks.push({
     type: 'section',
-    text: { type: 'mrkdwn', text: `*${headerText ?? `${formatted} 일정`}*` },
+    text: { type: 'mrkdwn', text: `*${headerText ?? headerLabel}*` },
   });
 
   const groups = groupByCategory(items);
@@ -420,7 +439,20 @@ export const buildScheduleBlocks = (
         const isAppointment = item.category === '약속';
         const titleText = formatScheduleTitle(item);
 
-        if (isAppointment || !item.status) {
+        if (backlog) {
+          // backlog: 모든 항목에 overflow (오늘로 이동 + 삭제)
+          flushNoOverflow();
+          blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: titleText },
+            accessory: {
+              type: 'overflow',
+              action_id: SCHEDULE_ACTION_ID,
+              options: buildBacklogOverflowOptions(item),
+            },
+          });
+          addMemoContext(item.memo, item.status === 'done');
+        } else if (isAppointment || !item.status) {
           noOverflowLines.push({
             title: titleText,
             memo: item.memo,
@@ -454,7 +486,9 @@ export const buildScheduleBlocks = (
     elements: [{ type: 'mrkdwn', text: `${done}/${tasks.length} 완료` }],
   });
 
-  const fallbackText = `${formatted} 일정 (${items.length}개)`;
+  const fallbackText = backlog
+    ? `백로그 (${items.length}건)`
+    : `${formatted} 일정 (${items.length}개)`;
   return { text: fallbackText, blocks };
 };
 
