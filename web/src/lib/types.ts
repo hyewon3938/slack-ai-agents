@@ -67,7 +67,7 @@ export function hexToStyles(hex: string): { bg: string; border: string; text: st
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  const textColor = luminance(hex) > 0.6 ? '#1f2937' : '#ffffff';
+  const textColor = luminance(hex) > 0.45 ? '#1f2937' : '#ffffff';
   return {
     bg: `rgba(${r}, ${g}, ${b}, 0.85)`,
     border: `rgba(${r}, ${g}, ${b}, 1)`,

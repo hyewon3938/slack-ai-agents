@@ -12,6 +12,8 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import { getCategoryStyle } from '@/lib/types';
+import { computeWeekLayout, type WeekSpan } from '@/lib/calendar-utils';
 import { ScheduleCard } from '../schedule/schedule-card';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
@@ -28,6 +30,8 @@ interface MonthViewProps {
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const MAX_VISIBLE = 3;
+const LANE_HEIGHT = 22;
+const DATE_ROW_HEIGHT = 30;
 
 export function MonthView({
   currentDate,
@@ -44,14 +48,11 @@ export function MonthView({
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
 
-  const getSchedulesForDate = (date: Date): ScheduleRow[] => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    return schedules.filter((s) => {
-      if (s.date === dateStr) return true;
-      if (s.date && s.end_date && s.date <= dateStr && s.end_date >= dateStr) return true;
-      return false;
-    });
-  };
+  // 주 단위로 분할
+  const weeks: Date[][] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    weeks.push(days.slice(i, i + 7));
+  }
 
   return (
     <div className="flex flex-col">
@@ -69,61 +70,138 @@ export function MonthView({
         ))}
       </div>
 
-      {/* 날짜 그리드 */}
-      <div className="grid flex-1 grid-cols-7">
-        {days.map((day) => {
-          const dateStr = format(day, 'yyyy-MM-dd');
-          const daySchedules = getSchedulesForDate(day);
-          const isCurrentMonth = isSameMonth(day, currentDate);
-          const today = isToday(day);
-          const selected = selectedDate === dateStr;
-          const dayOfWeek = day.getDay();
+      {/* 주 단위 렌더링 */}
+      {weeks.map((weekDays, weekIdx) => {
+        const layout = computeWeekLayout(weekDays, schedules);
+        const spanAreaHeight = layout.laneCount * LANE_HEIGHT;
 
-          return (
-            <DroppableDay
-              key={dateStr}
-              dateStr={dateStr}
-              onClick={() => onSelectDate(dateStr)}
-              className={`min-h-[80px] cursor-pointer border-b border-r border-gray-100 p-1 transition md:min-h-[100px] ${
-                !isCurrentMonth ? 'bg-gray-50/50' : 'bg-white hover:bg-blue-50/30'
-              } ${selected ? 'ring-2 ring-inset ring-blue-400' : ''}`}
-            >
-              <div
-                className={`mb-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                  today
-                    ? 'bg-blue-500 text-white'
-                    : !isCurrentMonth
-                      ? 'text-gray-300'
-                      : dayOfWeek === 0
-                        ? 'text-red-500'
-                        : dayOfWeek === 6
-                          ? 'text-blue-500'
-                          : 'text-gray-700'
-                }`}
-              >
-                {format(day, 'd')}
-              </div>
+        return (
+          <div key={weekIdx} className="relative grid grid-cols-7">
+            {/* 날짜 셀 */}
+            {weekDays.map((day) => {
+              const dateStr = format(day, 'yyyy-MM-dd');
+              const daySingles = layout.singleDay.get(dateStr) ?? [];
+              const isCurrentMonth = isSameMonth(day, currentDate);
+              const today = isToday(day);
+              const selected = selectedDate === dateStr;
+              const dayOfWeek = day.getDay();
 
-              <div className="space-y-0.5">
-                {daySchedules.slice(0, MAX_VISIBLE).map((s) => (
-                  <DraggableCard
-                    key={s.id}
-                    schedule={s}
-                    categories={categories}
-                    onStatusChange={onStatusChange}
-                    onClick={onScheduleClick}
-                    compact
-                  />
-                ))}
-                {daySchedules.length > MAX_VISIBLE && (
-                  <div className="px-1 text-xs text-gray-400">
-                    +{daySchedules.length - MAX_VISIBLE}
+              return (
+                <DroppableDay
+                  key={dateStr}
+                  dateStr={dateStr}
+                  onClick={() => onSelectDate(dateStr)}
+                  className={`min-h-[80px] cursor-pointer border-b border-r border-gray-100 p-1 transition md:min-h-[100px] ${
+                    !isCurrentMonth ? 'bg-gray-50/50' : 'bg-white hover:bg-blue-50/30'
+                  } ${selected ? 'ring-2 ring-inset ring-blue-400' : ''}`}
+                >
+                  <div
+                    className={`mb-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                      today
+                        ? 'bg-blue-500 text-white'
+                        : !isCurrentMonth
+                          ? 'text-gray-300'
+                          : dayOfWeek === 0
+                            ? 'text-red-500'
+                            : dayOfWeek === 6
+                              ? 'text-blue-500'
+                              : 'text-gray-700'
+                    }`}
+                  >
+                    {format(day, 'd')}
                   </div>
-                )}
-              </div>
-            </DroppableDay>
-          );
-        })}
+
+                  {/* 스패닝 바 공간 확보 */}
+                  {spanAreaHeight > 0 && <div style={{ height: `${spanAreaHeight}px` }} />}
+
+                  {/* 단일 일정 */}
+                  <div className="space-y-0.5">
+                    {daySingles.slice(0, MAX_VISIBLE).map((s) => (
+                      <DraggableCard
+                        key={s.id}
+                        schedule={s}
+                        categories={categories}
+                        onStatusChange={onStatusChange}
+                        onClick={onScheduleClick}
+                        compact
+                      />
+                    ))}
+                    {daySingles.length > MAX_VISIBLE && (
+                      <div className="px-1 text-xs text-gray-400">
+                        +{daySingles.length - MAX_VISIBLE}
+                      </div>
+                    )}
+                  </div>
+                </DroppableDay>
+              );
+            })}
+
+            {/* 스패닝 바 (절대 위치) */}
+            {layout.spans.map((span) => (
+              <SpanningBar
+                key={`span-${span.schedule.id}-${weekIdx}`}
+                span={span}
+                categories={categories}
+                dateRowHeight={DATE_ROW_HEIGHT}
+                laneHeight={LANE_HEIGHT}
+                onClick={() => onScheduleClick(span.schedule)}
+              />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SpanningBar({
+  span,
+  categories,
+  dateRowHeight,
+  laneHeight,
+  onClick,
+}: {
+  span: WeekSpan;
+  categories: CategoryRow[];
+  dateRowHeight: number;
+  laneHeight: number;
+  onClick: () => void;
+}) {
+  const cat = categories.find((c) => c.name === span.schedule.category);
+  const colorKey = cat?.color ?? 'gray';
+  const catStyle = getCategoryStyle(colorKey);
+  const isDone = span.schedule.status === 'done' || span.schedule.status === 'cancelled';
+
+  const barStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: `calc(${(span.startCol / 7) * 100}% + 2px)`,
+    width: `calc(${((span.endCol - span.startCol + 1) / 7) * 100}% - 4px)`,
+    top: `${dateRowHeight + span.lane * laneHeight}px`,
+    height: `${laneHeight - 2}px`,
+    zIndex: 10,
+  };
+
+  const textClasses = `h-full truncate rounded px-1.5 text-xs leading-5 ${isDone ? 'line-through opacity-60' : ''}`;
+
+  if (catStyle.isPreset && catStyle.classes) {
+    return (
+      <div style={barStyle} onClick={onClick} className="pointer-events-auto cursor-pointer">
+        <div className={`${textClasses} ${catStyle.classes.bg} ${catStyle.classes.text}`}>
+          {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
+          {span.schedule.title}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={barStyle} onClick={onClick} className="pointer-events-auto cursor-pointer">
+      <div
+        className={textClasses}
+        style={{ backgroundColor: catStyle.styles?.bg, color: catStyle.styles?.text }}
+      >
+        {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
+        {span.schedule.title}
       </div>
     </div>
   );
