@@ -96,6 +96,24 @@ export const buildRoutineBlocks = (
           },
         });
       }
+
+      // 루틴 메모 표시
+      if (record.memo) {
+        blocks.push({
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: record.completed
+                ? record.memo
+                    .split('\n')
+                    .map((l) => `~${l}~`)
+                    .join('\n')
+                : record.memo,
+            },
+          ],
+        });
+      }
     }
   }
 

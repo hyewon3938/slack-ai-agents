@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RoutineRecordRow, ScheduleRow, SleepRecordRow, SleepEventRow } from '../../../shared/life-queries.js';
+import type {
+  RoutineRecordRow,
+  ScheduleRow,
+  SleepRecordRow,
+  SleepEventRow,
+} from '../../../shared/life-queries.js';
 
 // ── DB mock ──
 vi.mock('../../../shared/db.js', () => ({
@@ -37,9 +42,7 @@ interface BlockWithText {
 }
 
 const extractSectionTexts = (blocks: BlockWithText[]): string[] =>
-  blocks
-    .filter((b) => b.type === 'section' && b.text?.text)
-    .map((b) => b.text!.text);
+  blocks.filter((b) => b.type === 'section' && b.text?.text).map((b) => b.text!.text);
 
 describe('publishHomeView', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,8 +92,14 @@ describe('publishHomeView', () => {
   it('일정이 있으면 일정 블록을 포함한다', async () => {
     mockQueryTodaySchedules.mockResolvedValueOnce([
       {
-        id: 1, title: '미팅', date: '2025-03-08', end_date: null,
-        status: 'todo', category: '업무', memo: null, important: false,
+        id: 1,
+        title: '미팅',
+        date: '2025-03-08',
+        end_date: null,
+        status: 'todo',
+        category: '업무',
+        memo: null,
+        important: false,
       },
     ]);
 
@@ -104,8 +113,15 @@ describe('publishHomeView', () => {
   it('루틴이 있으면 루틴 블록을 포함한다', async () => {
     mockQueryTodayRecords.mockResolvedValueOnce([
       {
-        id: 1, template_id: 1, date: '2025-03-08', completed: false,
-        name: '스트레칭', time_slot: '아침', frequency: '매일',
+        id: 1,
+        template_id: 1,
+        date: '2025-03-08',
+        completed: false,
+        completed_at: null,
+        memo: null,
+        name: '스트레칭',
+        time_slot: '아침',
+        frequency: '매일',
       },
     ]);
 
@@ -119,12 +135,22 @@ describe('publishHomeView', () => {
   it('밤잠 + 낮잠 기록을 표시한다', async () => {
     mockQuerySleepForHome.mockResolvedValueOnce([
       {
-        id: 1, date: '2025-03-07', bedtime: '23:30', wake_time: '07:00',
-        duration_minutes: 450, sleep_type: 'night', memo: null,
+        id: 1,
+        date: '2025-03-07',
+        bedtime: '23:30',
+        wake_time: '07:00',
+        duration_minutes: 450,
+        sleep_type: 'night',
+        memo: null,
       },
       {
-        id: 2, date: '2025-03-08', bedtime: '14:00', wake_time: '15:00',
-        duration_minutes: 60, sleep_type: 'nap', memo: null,
+        id: 2,
+        date: '2025-03-08',
+        bedtime: '14:00',
+        wake_time: '15:00',
+        duration_minutes: 60,
+        sleep_type: 'nap',
+        memo: null,
       },
     ]);
 
@@ -142,8 +168,13 @@ describe('publishHomeView', () => {
   it('수면 메모와 중간 기상 이벤트를 표시한다', async () => {
     mockQuerySleepForHome.mockResolvedValueOnce([
       {
-        id: 1, date: '2025-03-07', bedtime: '23:30', wake_time: '07:00',
-        duration_minutes: 450, sleep_type: 'night', memo: '뒤척임',
+        id: 1,
+        date: '2025-03-07',
+        bedtime: '23:30',
+        wake_time: '07:00',
+        duration_minutes: 450,
+        sleep_type: 'night',
+        memo: '뒤척임',
       },
     ]);
     mockQuerySleepEventsForHome.mockResolvedValueOnce([
