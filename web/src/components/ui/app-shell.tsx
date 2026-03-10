@@ -9,7 +9,8 @@ const NAV_ITEMS = [
   { href: '/categories', label: '카테고리', icon: '🏷' },
 ] as const;
 
-const MORE_ITEMS = [
+/** 모바일 더보기 메뉴 항목 (하단 탭에 없는 페이지들) */
+const MOBILE_MORE_ITEMS = [
   { href: '/categories', label: '카테고리 관리', icon: '🏷' },
   // 확장 예정:
   // { href: '/sleep', label: '수면 기록', icon: '🌙' },
@@ -29,7 +30,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.push('/login');
   };
 
-  // 바깥 클릭 시 메뉴 닫기
   useEffect(() => {
     if (!menuOpen && !mobileMenuOpen) return;
     const handler = (e: MouseEvent) => {
@@ -65,7 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
 
-          {/* 데스크탑 햄버거 메뉴 */}
+          {/* 데스크탑: 로그아웃만 */}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
@@ -77,21 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                {MORE_ITEMS.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMenuOpen(false)}
-                    className={`flex items-center gap-2 px-4 py-2.5 text-sm transition ${
-                      pathname === item.href ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span>{item.icon}</span>
-                    {item.label}
-                  </a>
-                ))}
-                <div className="my-1 border-t border-gray-100" />
+              <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                 <button
                   onClick={() => {
                     setMenuOpen(false);
@@ -116,7 +102,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* 모바일 하단 탭 */}
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white md:hidden">
         <div className="flex">
-          {/* 캘린더, 백로그 탭 */}
           <a
             href="/schedules"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
@@ -136,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span>백로그</span>
           </a>
 
-          {/* 더보기 탭 */}
+          {/* 모바일 더보기 */}
           <div className="relative flex flex-1" ref={mobileMenuRef}>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -150,7 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {mobileMenuOpen && (
               <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                {MORE_ITEMS.map((item) => (
+                {MOBILE_MORE_ITEMS.map((item) => (
                   <a
                     key={item.href}
                     href={item.href}
