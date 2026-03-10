@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { getIronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 
@@ -5,8 +6,12 @@ export interface SessionData {
   authenticated: boolean;
 }
 
+// iron-session은 32자 이상 필요. 미설정이거나 짧으면 자동 생성 (재시작 시 세션 무효화됨)
+const envSecret = process.env.SESSION_SECRET;
+const secret = envSecret && envSecret.length >= 32 ? envSecret : randomBytes(32).toString('hex');
+
 const SESSION_OPTIONS = {
-  password: process.env.SESSION_SECRET ?? 'fallback-secret-must-be-32-chars-long!!',
+  password: secret,
   cookieName: 'life-dashboard-session',
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',
