@@ -15,7 +15,8 @@ export async function POST(request: Request) {
     await session.save();
 
     return NextResponse.json({ data: { authenticated: true } });
-  } catch {
+  } catch (err) {
+    console.error('[auth] login error:', err);
     return NextResponse.json({ error: '로그인 실패' }, { status: 500 });
   }
 }
