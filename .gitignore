@@ -6,3 +6,5 @@ dist/
 docs/ai-workflow-portfolio.md
 .env.production
 .mcp.json
+web/.next/
+web/node_modules/
