@@ -1,0 +1,82 @@
+import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
+import {
+  queryScheduleById,
+  updateSchedule,
+  deleteSchedule,
+  ensureCategoryExists,
+} from '@/lib/queries';
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  if (!(await requireAuth())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const { id } = await params;
+    const data = await queryScheduleById(Number(id));
+    if (!data) {
+      return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
+    }
+    return NextResponse.json({ data });
+  } catch {
+    return NextResponse.json({ error: '일정 조회 실패' }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  if (!(await requireAuth())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const { id } = await params;
+    const body = (await request.json()) as Partial<{
+      title: string;
+      date: string | null;
+      end_date: string | null;
+      status: string;
+      category: string | null;
+      memo: string | null;
+      important: boolean;
+    }>;
+
+    if (body.category) {
+      await ensureCategoryExists(body.category);
+    }
+
+    const data = await updateSchedule(Number(id), body);
+    if (!data) {
+      return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
+    }
+    return NextResponse.json({ data });
+  } catch {
+    return NextResponse.json({ error: '일정 수정 실패' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  if (!(await requireAuth())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const { id } = await params;
+    const deleted = await deleteSchedule(Number(id));
+    if (!deleted) {
+      return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
+    }
+    return NextResponse.json({ data: { id: Number(id) } });
+  } catch {
+    return NextResponse.json({ error: '일정 삭제 실패' }, { status: 500 });
+  }
+}
