@@ -133,7 +133,7 @@ export default function SchedulesPage() {
           </div>
 
           {view === 'month' && selectedDate && (
-            <div className="w-full md:w-80">
+            <div className="w-full md:sticky md:top-0 md:w-80 md:self-start md:max-h-[calc(100vh-160px)] md:overflow-y-auto">
               <DayDetailPanel
                 dateStr={selectedDate}
                 schedules={filteredSchedules}

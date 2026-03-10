@@ -29,7 +29,8 @@ export function FilterBar({
   const hasFilters = selectedCategories.size > 0 || selectedStatuses.size > 0;
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-1.5 border-b border-gray-100 bg-white px-4 py-2">
+    <div className="border-b border-gray-100 bg-white px-4 py-2">
+    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-1.5">
       <span className="text-xs text-gray-400">필터:</span>
 
       {/* 상태 필터 */}
@@ -79,6 +80,7 @@ export function FilterBar({
           초기화
         </button>
       )}
+    </div>
     </div>
   );
 }
