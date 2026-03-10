@@ -4,13 +4,17 @@ import { runAgentLoop } from '../../shared/agent-loop.js';
 import { sendBlockMessage, sendMessage } from '../../shared/slack.js';
 import { SQL_TOOLS, executeSQLTool } from '../../shared/sql-tools.js';
 import { ChatHistory } from '../../shared/chat-history.js';
-import { queryTodaySchedules } from '../../shared/life-queries.js';
+import { queryTodaySchedules, queryBacklogSchedules } from '../../shared/life-queries.js';
 import { buildLifeSystemPrompt } from './prompt.js';
-import { getTodayISO } from '../../shared/kst.js';
+import { getTodayISO, addDays } from '../../shared/kst.js';
 import { buildScheduleBlocks } from './blocks.js';
 
 /** 일정 조회 패턴 (오늘 일정 fast path) */
 const SCHEDULE_QUERY_RE = /^(오늘\s*)?일정(\s*(보여줘|보여|알려줘|뭐야|확인|뭐\s*있어))?[.?!]?$/;
+/** 내일 일정 조회 패턴 */
+const TOMORROW_SCHEDULE_RE = /^내일\s*일정(\s*(보여줘|보여|알려줘|뭐야|확인|뭐\s*있어))?[.?!]?$/;
+/** 백로그 조회 패턴 */
+const BACKLOG_QUERY_RE = /^백로그(\s*(보여줘|보여|알려줘|확인|뭐야|뭐\s*있어))?[.?!]?$/;
 
 /**
  * v2 통합 에이전트 생성.
@@ -26,6 +30,43 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
 
     const channelId = message.channel;
     const trimmed = text.trim();
+
+    // ── fast path: 백로그 조회 ──
+    if (BACKLOG_QUERY_RE.test(trimmed)) {
+      try {
+        const items = await queryBacklogSchedules();
+        if (items.length === 0) {
+          await sendMessage(say, '백로그에 쌓인 거 없어.');
+          return;
+        }
+        const { text: fallback, blocks } = buildScheduleBlocks(
+          items, 'backlog', undefined, { backlog: true },
+        );
+        await sendBlockMessage(say, fallback, blocks);
+      } catch (error: unknown) {
+        console.error('[Life Agent] 백로그 fast path 오류:', error);
+        await sendMessage(say, '백로그 조회 중 오류가 발생했어.');
+      }
+      return;
+    }
+
+    // ── fast path: 내일 일정 조회 ──
+    if (TOMORROW_SCHEDULE_RE.test(trimmed)) {
+      try {
+        const tomorrow = addDays(getTodayISO(), 1);
+        const items = await queryTodaySchedules(tomorrow);
+        if (items.length === 0) {
+          await sendMessage(say, '내일은 일정이 없어.');
+          return;
+        }
+        const { text: fallback, blocks } = buildScheduleBlocks(items, tomorrow);
+        await sendBlockMessage(say, fallback, blocks);
+      } catch (error: unknown) {
+        console.error('[Life Agent] 내일 일정 fast path 오류:', error);
+        await sendMessage(say, '내일 일정 조회 중 오류가 발생했어.');
+      }
+      return;
+    }
 
     // ── fast path: 일정 조회 ──
     if (SCHEDULE_QUERY_RE.test(trimmed)) {
