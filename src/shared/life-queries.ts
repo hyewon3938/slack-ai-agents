@@ -20,9 +20,9 @@ export interface RoutineRecordRow {
   template_id: number;
   date: string;
   completed: boolean;
-  name: string;       // JOIN routine_templates
-  time_slot: string;   // JOIN
-  frequency: string;   // JOIN
+  name: string; // JOIN routine_templates
+  time_slot: string; // JOIN
+  frequency: string; // JOIN
 }
 
 export interface ScheduleRow {
@@ -39,9 +39,9 @@ export interface ScheduleRow {
 export interface SleepRecordRow {
   id: number;
   date: string;
-  bedtime: string;
-  wake_time: string;
-  duration_minutes: number;
+  bedtime: string | null;
+  wake_time: string | null;
+  duration_minutes: number | null;
   sleep_type: string;
   memo: string | null;
 }
@@ -97,14 +97,17 @@ export const frequencyBadge = (frequency: string): string => {
 
 /** 활성 루틴 템플릿 전체 조회 */
 export const queryActiveTemplates = async (): Promise<RoutineTemplateRow[]> =>
-  (await query<RoutineTemplateRow>(
-    'SELECT id, name, time_slot, frequency FROM routine_templates WHERE active = true ORDER BY id',
-  )).rows;
+  (
+    await query<RoutineTemplateRow>(
+      'SELECT id, name, time_slot, frequency FROM routine_templates WHERE active = true ORDER BY id',
+    )
+  ).rows;
 
 /** 특정 날짜의 루틴 기록 조회 (템플릿 JOIN) */
 export const queryTodayRecords = async (today: string): Promise<RoutineRecordRow[]> =>
-  (await query<RoutineRecordRow>(
-    `SELECT r.id, r.template_id, r.date::text, r.completed,
+  (
+    await query<RoutineRecordRow>(
+      `SELECT r.id, r.template_id, r.date::text, r.completed,
             t.name, t.time_slot, t.frequency
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
@@ -114,15 +117,18 @@ export const queryTodayRecords = async (today: string): Promise<RoutineRecordRow
          WHEN '아침' THEN 1 WHEN '점심' THEN 2
          WHEN '저녁' THEN 3 WHEN '밤' THEN 4
        END, t.name`,
-    [today],
-  )).rows;
+      [today],
+    )
+  ).rows;
 
 /** 특정 날짜에 이미 생성된 기록의 template_id 집합 */
 export const queryExistingTemplateIds = async (today: string): Promise<Set<number>> => {
-  const rows = (await query<{ template_id: number }>(
-    'SELECT template_id FROM routine_records WHERE date = $1',
-    [today],
-  )).rows;
+  const rows = (
+    await query<{ template_id: number }>(
+      'SELECT template_id FROM routine_records WHERE date = $1',
+      [today],
+    )
+  ).rows;
   return new Set(rows.map((r) => r.template_id));
 };
 
@@ -153,14 +159,16 @@ export const completeRecord = async (id: number): Promise<void> => {
 
 /** 특정 날짜의 일정 조회 (당일 + 기간 일정 포함) */
 export const queryTodaySchedules = async (today: string): Promise<ScheduleRow[]> =>
-  (await query<ScheduleRow>(
-    `SELECT id, title, date::text, end_date::text, status, category, memo, important
+  (
+    await query<ScheduleRow>(
+      `SELECT id, title, date::text, end_date::text, status, category, memo, important
      FROM schedules
      WHERE status != 'cancelled'
        AND (date = $1 OR (date <= $1 AND end_date >= $1))
      ORDER BY category NULLS LAST, status, title`,
-    [today],
-  )).rows;
+      [today],
+    )
+  ).rows;
 
 /** 일정 상태 변경 */
 export const updateScheduleStatus = async (id: number, status: string): Promise<void> => {
@@ -179,19 +187,13 @@ export const toggleScheduleImportant = async (id: number): Promise<void> => {
 
 /** 일정 내일로 미루기 (date 변경 + status → todo) */
 export const postponeSchedule = async (id: number, newDate: string): Promise<void> => {
-  await query(
-    "UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2",
-    [newDate, id],
-  );
+  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2", [newDate, id]);
 };
 
 // ─── 수면 쿼리 ──────────────────────────────────────
 
 /** 어젯밤 수면 기록 존재 확인 (date가 어제 또는 오늘인 밤잠) */
-export const queryNightSleepExists = async (
-  yesterday: string,
-  today: string,
-): Promise<boolean> => {
+export const queryNightSleepExists = async (yesterday: string, today: string): Promise<boolean> => {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*)::text as count FROM sleep_records
      WHERE sleep_type = 'night' AND date IN ($1, $2)`,
@@ -212,9 +214,11 @@ export interface NotificationSettingRow {
 
 /** 알림 설정 전체 조회 */
 export const queryNotificationSettings = async (): Promise<NotificationSettingRow[]> =>
-  (await query<NotificationSettingRow>(
-    'SELECT id, slot_name, label, time_value, active FROM notification_settings ORDER BY id',
-  )).rows;
+  (
+    await query<NotificationSettingRow>(
+      'SELECT id, slot_name, label, time_value, active FROM notification_settings ORDER BY id',
+    )
+  ).rows;
 
 // ─── 리마인더 쿼리 ──────────────────────────────────
 
@@ -233,8 +237,9 @@ export const queryDueReminders = async (
   currentTime: string,
   dow: number,
 ): Promise<ReminderRow[]> =>
-  (await query<ReminderRow>(
-    `SELECT id, title, time_value, date::text, frequency, active
+  (
+    await query<ReminderRow>(
+      `SELECT id, title, time_value, date::text, frequency, active
      FROM reminders
      WHERE active = true
        AND time_value = $1
@@ -244,8 +249,9 @@ export const queryDueReminders = async (
          OR (date IS NULL AND frequency = '평일' AND $3 BETWEEN 1 AND 5)
          OR (date IS NULL AND frequency = '주말' AND $3 IN (0, 6))
        )`,
-    [currentTime, today, dow],
-  )).rows;
+      [currentTime, today, dow],
+    )
+  ).rows;
 
 /** 리마인더 비활성화 (일회성 발동 후) */
 export const deactivateReminder = async (id: number): Promise<void> => {
@@ -280,8 +286,10 @@ export const querySleepForHome = async (today: string): Promise<SleepRecordRow[]
 
 /** Home 탭용 수면 중간 기상 이벤트 조회 */
 export const querySleepEventsForHome = async (today: string): Promise<SleepEventRow[]> =>
-  (await query<SleepEventRow>(
-    `SELECT id, date::text, event_time, memo FROM sleep_events
+  (
+    await query<SleepEventRow>(
+      `SELECT id, date::text, event_time, memo FROM sleep_events
      WHERE date = $1 ORDER BY event_time`,
-    [today],
-  )).rows;
+      [today],
+    )
+  ).rows;

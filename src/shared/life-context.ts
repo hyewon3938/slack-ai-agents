@@ -20,10 +20,11 @@ interface DateParams {
 
 interface SleepRow {
   date: string;
-  bedtime: string;
-  wake_time: string;
-  duration_minutes: number;
+  bedtime: string | null;
+  wake_time: string | null;
+  duration_minutes: number | null;
   sleep_type: string;
+  memo: string | null;
 }
 
 interface SleepAvgRow {
@@ -53,7 +54,7 @@ const queryLastNight = async (
   timing: ContextTiming,
 ): Promise<string | null> => {
   const lastNight = await query<SleepRow>(
-    `SELECT date::text, bedtime, wake_time, duration_minutes, sleep_type
+    `SELECT date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
      FROM sleep_records
      WHERE sleep_type = 'night' AND date IN ($1, $2)
      ORDER BY date DESC LIMIT 1`,
@@ -62,6 +63,9 @@ const queryLastNight = async (
 
   if (lastNight.rows.length > 0) {
     const s = lastNight.rows[0]!;
+    if (s.duration_minutes == null || s.bedtime == null || s.wake_time == null) {
+      return s.memo ? `어젯밤 수면 (시간 미기록, 메모 있음)` : `어젯밤 수면 (시간 미기록)`;
+    }
     const hours = Math.floor(s.duration_minutes / 60);
     const mins = s.duration_minutes % 60;
     const durationText = mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
@@ -83,7 +87,7 @@ const queryWeekAvg = async ({ today }: DateParams): Promise<string | null> => {
             ), 1)::text as avg_bedtime_hour,
             COUNT(*)::text as count
      FROM sleep_records
-     WHERE sleep_type = 'night' AND date >= ($1::date - 7)`,
+     WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND duration_minutes IS NOT NULL`,
     [today],
   );
 
@@ -103,7 +107,7 @@ const queryLateNightPattern = async ({ today }: DateParams): Promise<string | nu
        SELECT date, bedtime,
               ROW_NUMBER() OVER (ORDER BY date DESC) as rn
        FROM sleep_records
-       WHERE sleep_type = 'night' AND date >= ($1::date - 7)
+       WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND bedtime IS NOT NULL
      )
      SELECT COUNT(*)::text as cnt FROM ranked
      WHERE rn <= 3
@@ -131,10 +135,7 @@ const queryNaps = async ({ today }: DateParams): Promise<string | null> => {
 // ─── 수면 맥락 ──────────────────────────────────────────
 
 /** 어젯밤 수면 + 7일 패턴 + 낮잠 */
-const querySleepContext = async (
-  dates: DateParams,
-  timing: ContextTiming,
-): Promise<string> => {
+const querySleepContext = async (dates: DateParams, timing: ContextTiming): Promise<string> => {
   const parts: string[] = [];
 
   const lastNight = await queryLastNight(dates, timing);
@@ -157,10 +158,7 @@ const querySleepContext = async (
 // ─── 루틴 맥락 ──────────────────────────────────────────
 
 /** 오늘/어제 달성률 + 7일 평균 */
-const queryRoutineContext = async (
-  dates: DateParams,
-  timing: ContextTiming,
-): Promise<string> => {
+const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Promise<string> => {
   const parts: string[] = [];
 
   // 아침에는 어제 기준, 나머지는 오늘 기준
@@ -226,7 +224,9 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
     const total = Number(todayRow.total);
     const incomplete = Number(todayRow.incomplete);
     if (total > 0) {
-      parts.push(`오늘 ${total}건${incomplete > 0 && incomplete < total ? ` (미완료 ${incomplete}건)` : ''}`);
+      parts.push(
+        `오늘 ${total}건${incomplete > 0 && incomplete < total ? ` (미완료 ${incomplete}건)` : ''}`,
+      );
     } else {
       parts.push('오늘 일정 없음');
     }
@@ -278,9 +278,7 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
  * 타이밍에 따라 데이터 부재 처리가 달라진다.
  * 데이터가 전혀 없으면 빈 문자열 반환.
  */
-export const buildLifeContext = async (
-  timing: ContextTiming = 'conversation',
-): Promise<string> => {
+export const buildLifeContext = async (timing: ContextTiming = 'conversation'): Promise<string> => {
   try {
     const dates: DateParams = {
       today: getTodayISO(),
