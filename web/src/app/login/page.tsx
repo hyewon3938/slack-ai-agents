@@ -1,13 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +20,9 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        router.push('/schedules');
+        // 풀 리로드로 쿠키 확실히 적용 (router.push는 쿠키 타이밍 이슈)
+        window.location.href = '/schedules';
+        return;
       } else {
         const data = (await res.json()) as { error?: string };
         setError(data.error ?? '로그인 실패');
