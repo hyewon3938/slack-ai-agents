@@ -108,7 +108,7 @@ export default function CategoriesPage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
-            <ColorPicker value={newColor} onChange={setNewColor} />
+            <ColorPicker value={newColor} onChange={setNewColor} previewLabel={newName.trim() || '카테고리'} />
             <button
               type="submit"
               disabled={!newName.trim()}
@@ -138,7 +138,7 @@ export default function CategoriesPage() {
                       className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                       autoFocus
                     />
-                    <ColorPicker value={editColor} onChange={setEditColor} />
+                    <ColorPicker value={editColor} onChange={setEditColor} previewLabel={editName.trim() || '카테고리'} />
                     <button
                       onClick={() => handleUpdate(cat.id)}
                       className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600"
