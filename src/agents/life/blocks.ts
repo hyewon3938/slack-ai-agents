@@ -4,7 +4,12 @@
  */
 
 import type { KnownBlock } from '@slack/types';
-import type { RoutineRecordRow, ScheduleRow, SleepRecordRow, SleepEventRow } from '../../shared/life-queries.js';
+import type {
+  RoutineRecordRow,
+  ScheduleRow,
+  SleepRecordRow,
+  SleepEventRow,
+} from '../../shared/life-queries.js';
 import { frequencyBadge } from '../../shared/life-queries.js';
 import { formatDateShort } from '../../shared/kst.js';
 
@@ -279,12 +284,10 @@ const buildOverflowOptions = (
   targetDate: string,
 ): Array<{ text: { type: 'plain_text'; text: string }; value: string }> => {
   const currentStatus = item.status ?? 'todo';
-  const options = STATUS_OPTIONS
-    .filter((opt) => opt.status !== currentStatus)
-    .map((opt) => ({
-      text: { type: 'plain_text' as const, text: opt.label },
-      value: encodeOverflowValue(item.id, opt.status, targetDate),
-    }));
+  const options = STATUS_OPTIONS.filter((opt) => opt.status !== currentStatus).map((opt) => ({
+    text: { type: 'plain_text' as const, text: opt.label },
+    value: encodeOverflowValue(item.id, opt.status, targetDate),
+  }));
 
   if (currentStatus !== 'done') {
     options.push({
@@ -308,7 +311,12 @@ const buildOverflowOptions = (
 
 /** 메모 텍스트에 취소선 적용 (완료 일정용) */
 const formatMemoWithStrike = (memo: string, isDone: boolean): string =>
-  isDone ? memo.split('\n').map((l) => `~${l}~`).join('\n') : memo;
+  isDone
+    ? memo
+        .split('\n')
+        .map((l) => `~${l}~`)
+        .join('\n')
+    : memo;
 
 /** 일정 목록 Block Kit 빌드 (카테고리별 그룹핑 + overflow 메뉴) */
 export const buildScheduleBlocks = (
@@ -387,7 +395,11 @@ export const buildScheduleBlocks = (
         const titleText = formatScheduleTitle(item);
 
         if (isAppointment || !item.status) {
-          noOverflowLines.push({ title: titleText, memo: item.memo, isDone: item.status === 'done' });
+          noOverflowLines.push({
+            title: titleText,
+            memo: item.memo,
+            isDone: item.status === 'done',
+          });
         } else {
           flushNoOverflow();
           blocks.push({
@@ -456,15 +468,16 @@ export const buildScheduleText = (
 };
 
 /** 밤 미완료 일정 텍스트 (없으면 null) */
-export const buildNightScheduleText = (
-  items: ScheduleRow[],
-  targetDate: string,
-): string | null => {
+export const buildNightScheduleText = (items: ScheduleRow[], targetDate: string): string | null => {
   const incomplete = items.filter(
     (s) => s.category !== '약속' && s.status !== 'done' && s.status !== 'cancelled',
   );
   if (incomplete.length === 0) return null;
-  return buildScheduleText(incomplete, targetDate, '오늘 아직 못 끝낸 일정이야. 내일로 넘길 건 정리해둬!');
+  return buildScheduleText(
+    incomplete,
+    targetDate,
+    '오늘 아직 못 끝낸 일정이야. 내일로 넘길 건 정리해둬!',
+  );
 };
 
 // ─── 수면 블록 ──────────────────────────────────────────
@@ -482,13 +495,14 @@ export const buildSleepBlocks = (
   events?: SleepEventRow[],
 ): KnownBlock[] => {
   if (records.length === 0) {
-    return [
-      { type: 'section', text: { type: 'mrkdwn', text: '*수면*\n기록 없음' } },
-    ];
+    return [{ type: 'section', text: { type: 'mrkdwn', text: '*수면*\n기록 없음' } }];
   }
 
   const lines = records.map((r) => {
     const label = r.sleep_type === 'night' ? '밤잠' : '낮잠';
+    if (r.bedtime == null || r.wake_time == null || r.duration_minutes == null) {
+      return `${label}  (시간 미기록)`;
+    }
     const duration = formatDuration(r.duration_minutes);
     return `${label}  ${r.bedtime} → ${r.wake_time} (${duration})`;
   });
@@ -511,9 +525,7 @@ export const buildSleepBlocks = (
 
   // 중간 기상 이벤트
   if (events && events.length > 0) {
-    const eventTexts = events.map((e) =>
-      e.memo ? `${e.event_time} ${e.memo}` : e.event_time,
-    );
+    const eventTexts = events.map((e) => (e.memo ? `${e.event_time} ${e.memo}` : e.event_time));
     blocks.push({
       type: 'context',
       elements: [{ type: 'mrkdwn', text: `중간 기상: ${eventTexts.join(', ')}` }],
