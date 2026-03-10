@@ -87,7 +87,7 @@ ${lifeContext}
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ 있음)
 - schedules: title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category, memo, important(bool)
 - routine_templates: name, time_slot(아침/점심/저녁/밤), frequency(매일/격일/3일마다/주1회), active
-- routine_records: template_id(FK), date, completed
+- routine_records: template_id(FK), date, completed, completed_at(완료 시점), memo
 - sleep_records: date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo
 - sleep_events: date, event_time('HH:MM'), memo
 - custom_instructions: instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active
@@ -193,6 +193,10 @@ sleep_records.date는 **잠에서 깬 날짜**야. 잠든 날짜가 아님.
 ## 데이터 규칙
 - important 기본 FALSE, 명시적 요청만 TRUE. status 기본 'todo', 날짜 없으면 NULL(백로그).
 - 루틴 추가: templates INSERT + 오늘 records INSERT. 삭제: active=false.
+- 루틴 메모: routine_records.memo. "코세척 루틴에 메모 추가해줘" → 해당 날짜+루틴의 record를 찾아 UPDATE.
+  - 날짜 지정 없으면 오늘. "어제 코세척에 메모" → 어제 날짜 record.
+  - 누적 append: 기존 memo가 있으면 memo || E'\\n' || '새 메모'. NULL이면 '새 메모'.
+  - 루틴명 매칭: WHERE template_id = (SELECT id FROM routine_templates WHERE name LIKE '%키워드%')
 
 ## 커스텀 지시사항
 - "앞으로/항상/매번/기억해" → INSERT(source='user'). 조회/삭제도 가능.

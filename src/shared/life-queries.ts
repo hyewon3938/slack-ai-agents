@@ -20,6 +20,8 @@ export interface RoutineRecordRow {
   template_id: number;
   date: string;
   completed: boolean;
+  completed_at: string | null;
+  memo: string | null;
   name: string; // JOIN routine_templates
   time_slot: string; // JOIN
   frequency: string; // JOIN
@@ -107,7 +109,7 @@ export const queryActiveTemplates = async (): Promise<RoutineTemplateRow[]> =>
 export const queryTodayRecords = async (today: string): Promise<RoutineRecordRow[]> =>
   (
     await query<RoutineRecordRow>(
-      `SELECT r.id, r.template_id, r.date::text, r.completed,
+      `SELECT r.id, r.template_id, r.date::text, r.completed, r.completed_at::text, r.memo,
             t.name, t.time_slot, t.frequency
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
@@ -150,9 +152,11 @@ export const createRecord = async (templateId: number, today: string): Promise<n
   return result.rows[0]!.id;
 };
 
-/** 루틴 완료 처리 */
+/** 루틴 완료 처리 (완료 시점 기록) */
 export const completeRecord = async (id: number): Promise<void> => {
-  await query('UPDATE routine_records SET completed = true WHERE id = $1', [id]);
+  await query('UPDATE routine_records SET completed = true, completed_at = NOW() WHERE id = $1', [
+    id,
+  ]);
 };
 
 // ─── 일정 쿼리 ──────────────────────────────────────────

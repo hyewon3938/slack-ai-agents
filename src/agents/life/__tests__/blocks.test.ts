@@ -20,6 +20,8 @@ const makeRecord = (overrides: Partial<RoutineRecordRow> = {}): RoutineRecordRow
   template_id: 10,
   date: '2026-03-08',
   completed: false,
+  completed_at: null,
+  memo: null,
   name: '운동',
   time_slot: '아침',
   frequency: '매일',
@@ -90,16 +92,12 @@ describe('buildRoutineBlocks', () => {
     expect(text).toContain('0/2');
 
     // 버튼이 있는 블록 찾기
-    const buttonBlocks = blocks.filter(
-      (b) => b.type === 'section' && 'accessory' in b,
-    );
+    const buttonBlocks = blocks.filter((b) => b.type === 'section' && 'accessory' in b);
     expect(buttonBlocks).toHaveLength(2);
   });
 
   it('완료된 루틴은 취소선 + 체크마크', () => {
-    const records = [
-      makeRecord({ id: 1, completed: true }),
-    ];
+    const records = [makeRecord({ id: 1, completed: true })];
 
     const { blocks } = buildRoutineBlocks(records, '2026-03-08');
     const textBlocks = blocks.filter(
@@ -127,9 +125,7 @@ describe('buildRoutineBlocks', () => {
     const records = [makeRecord()];
     const { blocks } = buildRoutineBlocks(records, '2026-03-08');
 
-    const buttonBlock = blocks.find(
-      (b) => b.type === 'section' && 'accessory' in b,
-    );
+    const buttonBlock = blocks.find((b) => b.type === 'section' && 'accessory' in b);
     expect(buttonBlock).toBeDefined();
     if (buttonBlock && 'accessory' in buttonBlock) {
       const accessory = buttonBlock.accessory as { action_id: string };
@@ -167,9 +163,7 @@ describe('buildFilteredRoutineBlocks', () => {
       makeRecord({ id: 3, time_slot: '점심', name: '점심약' }),
     ];
 
-    const { blocks } = buildFilteredRoutineBlocks(
-      records, '2026-03-08', ['점심'], ['아침'],
-    );
+    const { blocks } = buildFilteredRoutineBlocks(records, '2026-03-08', ['점심'], ['아침']);
 
     const textContent = blocks
       .filter((b) => b.type === 'section')
@@ -214,16 +208,13 @@ describe('buildNightSummaryBlocks', () => {
   });
 
   it('전부 완료 시 LLM 마무리 메시지 포함', () => {
-    const records = [
-      makeRecord({ completed: true }),
-    ];
+    const records = [makeRecord({ completed: true })];
 
     const summaryText = '오늘 루틴 다 챙겼네! 수고했어, 푹 쉬어.';
     const { blocks } = buildNightSummaryBlocks(records, '2026-03-08', summaryText);
     const lastSection = blocks.filter((b) => b.type === 'section').pop();
-    const text = lastSection && 'text' in lastSection
-      ? (lastSection.text as { text: string }).text
-      : '';
+    const text =
+      lastSection && 'text' in lastSection ? (lastSection.text as { text: string }).text : '';
     expect(text).toContain('수고했어');
   });
 });
@@ -257,9 +248,7 @@ describe('buildScheduleBlocks', () => {
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
 
     // overflow가 있는 블록 (업무 항목)
-    const overflowBlocks = blocks.filter(
-      (b) => b.type === 'section' && 'accessory' in b,
-    );
+    const overflowBlocks = blocks.filter((b) => b.type === 'section' && 'accessory' in b);
     expect(overflowBlocks.length).toBe(1);
 
     if (overflowBlocks[0] && 'accessory' in overflowBlocks[0]) {
@@ -286,9 +275,7 @@ describe('buildScheduleBlocks', () => {
   });
 
   it('메모가 있으면 context 블록으로 표시', () => {
-    const items = [
-      makeSchedule({ id: 1, title: '회의', memo: '자료 준비 필요' }),
-    ];
+    const items = [makeSchedule({ id: 1, title: '회의', memo: '자료 준비 필요' })];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
 
@@ -306,22 +293,16 @@ describe('buildScheduleBlocks', () => {
   });
 
   it('compact 모드: overflow 메뉴 없이 렌더링', () => {
-    const items = [
-      makeSchedule({ id: 1, title: '회의', category: '업무' }),
-    ];
+    const items = [makeSchedule({ id: 1, title: '회의', category: '업무' })];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08', undefined, { compact: true });
 
-    const overflowBlocks = blocks.filter(
-      (b) => b.type === 'section' && 'accessory' in b,
-    );
+    const overflowBlocks = blocks.filter((b) => b.type === 'section' && 'accessory' in b);
     expect(overflowBlocks).toHaveLength(0);
   });
 
   it('완료 일정 메모에 취소선 적용', () => {
-    const items = [
-      makeSchedule({ id: 1, title: '발송', status: 'done', memo: '택배 3건' }),
-    ];
+    const items = [makeSchedule({ id: 1, title: '발송', status: 'done', memo: '택배 3건' })];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
     const contextTexts = blocks
@@ -332,9 +313,7 @@ describe('buildScheduleBlocks', () => {
   });
 
   it('메모가 없으면 └ 미표시', () => {
-    const items = [
-      makeSchedule({ id: 1, title: '회의', memo: null }),
-    ];
+    const items = [makeSchedule({ id: 1, title: '회의', memo: null })];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
     const textContent = blocks
