@@ -86,9 +86,9 @@ export const calcRoutineStats = (records: RoutineRecordRow[]): RoutineStats => {
 
   const slots: Record<string, { total: number; completed: number; rate: number }> = {};
   for (const r of records) {
-    if (!slots[r.time_slot]) slots[r.time_slot] = { total: 0, completed: 0, rate: 0 };
-    slots[r.time_slot]!.total++;
-    if (r.completed) slots[r.time_slot]!.completed++;
+    const slot = slots[r.time_slot] ?? (slots[r.time_slot] = { total: 0, completed: 0, rate: 0 });
+    slot.total++;
+    if (r.completed) slot.completed++;
   }
   for (const s of Object.values(slots)) {
     s.rate = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0;
@@ -97,7 +97,10 @@ export const calcRoutineStats = (records: RoutineRecordRow[]): RoutineStats => {
   let weakestSlot: string | null = null;
   let minRate = 100;
   for (const [slot, stat] of Object.entries(slots)) {
-    if (stat.rate < minRate) { minRate = stat.rate; weakestSlot = slot; }
+    if (stat.rate < minRate) {
+      minRate = stat.rate;
+      weakestSlot = slot;
+    }
   }
   if (minRate >= 70) weakestSlot = null;
 
@@ -115,14 +118,10 @@ export const createTodayRecords = async (today: string): Promise<number> => {
 
   let created = 0;
   for (const t of candidates) {
-    let shouldCreate = false;
-
-    if (t.frequency === '매일') {
-      shouldCreate = true;
-    } else {
-      const lastDate = await queryLastRecordDate(t.id);
-      shouldCreate = shouldCreateToday(t.frequency, lastDate, today);
-    }
+    const shouldCreate =
+      t.frequency === '매일'
+        ? true
+        : shouldCreateToday(t.frequency, await queryLastRecordDate(t.id), today);
 
     if (shouldCreate) {
       try {
@@ -141,39 +140,30 @@ export const createTodayRecords = async (today: string): Promise<number> => {
 // ─── 크론 태스크 ────────────────────────────────────────
 
 /** 수면 기록 체크 — 기록 유무와 관계없이 항상 알림 전송 */
-const sleepCheckTask = async (
-  app: App,
-  config: LifeCronConfig,
-): Promise<void> => {
+const sleepCheckTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const yesterday = getYesterdayISO();
   const hasRecord = await queryNightSleepExists(yesterday, today);
 
   const text = hasRecord ? buildSleepRecordedText('morning') : buildSleepReminderText('morning');
   await postToChannel(app.client, config.channelId, text);
-  console.log(`[Life Cron] 수면 체크 알림 전송 (기록: ${hasRecord ? '있음' : '없음'})`);
+  console.warn(`[Life Cron] 수면 체크 알림 전송 (기록: ${hasRecord ? '있음' : '없음'})`);
 };
 
 /** 오늘 일정 텍스트 알림 */
-const morningScheduleTask = async (
-  app: App,
-  config: LifeCronConfig,
-): Promise<void> => {
+const morningScheduleTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const schedules = await queryTodaySchedules(today);
 
   if (schedules.length > 0) {
     const text = buildScheduleText(schedules, today);
     await postToChannel(app.client, config.channelId, text);
-    console.log('[Life Cron] 아침 일정 알림 전송');
+    console.warn('[Life Cron] 아침 일정 알림 전송');
   }
 };
 
 /** 기록 생성 + 어제 리뷰(LLM) + 아침 루틴 체크리스트 */
-const morningTask = async (
-  app: App,
-  config: LifeCronConfig,
-): Promise<void> => {
+const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const yesterday = getYesterdayISO();
 
@@ -189,15 +179,19 @@ const morningTask = async (
     .map(([s, d]) => `${s} ${d.rate}%`)
     .join(', ');
 
-  const baseContext = yesterdayRecords.length > 0
-    ? `어제 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${stats.weakestSlot ? `\n가장 약한 시간대: ${stats.weakestSlot}` : ''}`
-    : '어제 루틴 기록이 없어.';
+  const baseContext =
+    yesterdayRecords.length > 0
+      ? `어제 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${stats.weakestSlot ? `\n가장 약한 시간대: ${stats.weakestSlot}` : ''}`
+      : '어제 루틴 기록이 없어.';
 
   const context = `아침 인사 생성해줘. 생활 맥락 기반으로 잔소리 포함해서.\n${baseContext}${lifeContext}`;
 
   const greeting = await generateCronMessage(
-    config.llmClient, context,
-    stats.rate > 0 ? `어제 루틴 ${stats.rate}%. 오늘도 힘내자!` : '좋은 아침! 오늘도 같이 힘내보자.',
+    config.llmClient,
+    context,
+    stats.rate > 0
+      ? `어제 루틴 ${stats.rate}%. 오늘도 힘내자!`
+      : '좋은 아침! 오늘도 같이 힘내보자.',
   );
   const greetingBlocks = buildMorningGreetingBlocks(greeting);
 
@@ -213,14 +207,11 @@ const morningTask = async (
     await postBlockMessage(app.client, config.channelId, '아침 인사', greetingBlocks);
   }
 
-  console.log(`[Life Cron] 아침 알림 완료 (기록 ${created}개 생성)`);
+  console.warn(`[Life Cron] 아침 알림 완료 (기록 ${created}개 생성)`);
 };
 
 /** 점심: 미완료 아침 + 점심 체크리스트 */
-const lunchTask = async (
-  app: App,
-  config: LifeCronConfig,
-): Promise<void> => {
+const lunchTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const records = await queryTodayRecords(today);
 
@@ -229,19 +220,14 @@ const lunchTask = async (
   );
 
   if (hasItems) {
-    const { text, blocks } = buildFilteredRoutineBlocks(
-      records, today, ['점심'], ['아침'],
-    );
+    const { text, blocks } = buildFilteredRoutineBlocks(records, today, ['점심'], ['아침']);
     await postBlockMessage(app.client, config.channelId, text, blocks);
-    console.log(`[Life Cron] 점심 알림 전송 완료`);
+    console.warn(`[Life Cron] 점심 알림 전송 완료`);
   }
 };
 
 /** 저녁: 미완료 아침/점심 + 저녁 체크리스트 */
-const eveningTask = async (
-  app: App,
-  config: LifeCronConfig,
-): Promise<void> => {
+const eveningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const records = await queryTodayRecords(today);
 
@@ -252,19 +238,14 @@ const eveningTask = async (
   );
 
   if (hasItems) {
-    const { text, blocks } = buildFilteredRoutineBlocks(
-      records, today, ['저녁'], ['아침', '점심'],
-    );
+    const { text, blocks } = buildFilteredRoutineBlocks(records, today, ['저녁'], ['아침', '점심']);
     await postBlockMessage(app.client, config.channelId, text, blocks);
-    console.log(`[Life Cron] 저녁 알림 전송 완료`);
+    console.warn(`[Life Cron] 저녁 알림 전송 완료`);
   }
 };
 
 /** 밤: 전체 루틴 요약 + LLM 마무리 */
-const nightTask = async (
-  app: App,
-  config: LifeCronConfig,
-): Promise<void> => {
+const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const records = await queryTodayRecords(today);
 
@@ -279,7 +260,8 @@ const nightTask = async (
   const context = `밤 마무리 메시지 생성해줘. 생활 맥락 기반으로 하루를 종합해서 잔소리 포함.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${lifeContext}`;
 
   const summary = await generateCronMessage(
-    config.llmClient, context,
+    config.llmClient,
+    context,
     stats.completed === stats.total
       ? '오늘 루틴 다 했어! 수고했어, 푹 쉬어.'
       : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`,
@@ -287,14 +269,11 @@ const nightTask = async (
 
   const { text, blocks } = buildNightSummaryBlocks(records, today, summary);
   await postBlockMessage(app.client, config.channelId, text, blocks);
-  console.log(`[Life Cron] 밤 요약 전송 완료`);
+  console.warn(`[Life Cron] 밤 요약 전송 완료`);
 };
 
 /** 밤 리뷰: 미완료 일정 + 수면 기록 확인 */
-const nightReviewTask = async (
-  app: App,
-  config: LifeCronConfig,
-): Promise<void> => {
+const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const yesterday = getYesterdayISO();
 
@@ -310,7 +289,7 @@ const nightReviewTask = async (
   const sleepText = hasRecord ? buildSleepRecordedText('night') : buildSleepReminderText('night');
   await postToChannel(app.client, config.channelId, sleepText);
 
-  console.log(`[Life Cron] 밤 리뷰 전송 완료 (수면기록: ${hasRecord ? '있음' : '없음'})`);
+  console.warn(`[Life Cron] 밤 리뷰 전송 완료 (수면기록: ${hasRecord ? '있음' : '없음'})`);
 };
 
 // ─── 유틸리티 ──────────────────────────────────────────
@@ -329,7 +308,8 @@ const wrapTask = (
       console.error(`[Life Cron] ${label} 실패:`, msg);
       try {
         await postToChannel(
-          app.client, config.channelId,
+          app.client,
+          config.channelId,
           `${label} 알림 처리 중 오류가 발생했어. 잠시 후 다시 확인해줘.`,
         );
       } catch {
@@ -384,7 +364,7 @@ export class CronScheduler {
     this.destroyAll();
     await this.loadAndSchedule();
     this.startReminderChecker();
-    console.log('[Life Cron] 스케줄 리로드 완료');
+    console.warn('[Life Cron] 스케줄 리로드 완료');
   }
 
   /** 모든 태스크 정지 + 제거 */
@@ -406,27 +386,29 @@ export class CronScheduler {
       if (!taskFn) continue;
 
       const cronExpr = timeToCron(setting.time_value);
-      const task = cron.schedule(
-        cronExpr,
-        wrapTask(taskFn, this.app, this.config, setting.label),
-        { timezone },
-      );
+      const task = cron.schedule(cronExpr, wrapTask(taskFn, this.app, this.config, setting.label), {
+        timezone,
+      });
       this.tasks.set(setting.slot_name, task);
       registered.push(`${setting.label}(${setting.time_value})`);
     }
 
-    console.log(`[Life Cron] 알림 스케줄 등록: ${registered.join(', ')}`);
+    console.warn(`[Life Cron] 알림 스케줄 등록: ${registered.join(', ')}`);
   }
 
   private startReminderChecker(): void {
-    const task = cron.schedule('* * * * *', async () => {
-      try {
-        await this.checkDueReminders();
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
-        console.error('[Life Cron] 리마인더 체크 오류:', msg);
-      }
-    }, { timezone: 'Asia/Seoul' });
+    const task = cron.schedule(
+      '* * * * *',
+      async () => {
+        try {
+          await this.checkDueReminders();
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : String(error);
+          console.error('[Life Cron] 리마인더 체크 오류:', msg);
+        }
+      },
+      { timezone: 'Asia/Seoul' },
+    );
 
     this.tasks.set('_reminderChecker', task);
   }
@@ -439,21 +421,17 @@ export class CronScheduler {
     const reminders = await queryDueReminders(today, currentTime, dow);
 
     for (const reminder of reminders) {
-      await postToChannel(
-        this.app.client,
-        this.config.channelId,
-        `리마인더: ${reminder.title}`,
-      );
+      await postToChannel(this.app.client, this.config.channelId, `리마인더: ${reminder.title}`);
 
       // 일회성(date 지정) → 자동 비활성화
       if (reminder.date) {
         await deactivateReminder(reminder.id);
-        console.log(`[Life Cron] 일회성 리마인더 비활성화: ${reminder.title}`);
+        console.warn(`[Life Cron] 일회성 리마인더 비활성화: ${reminder.title}`);
       }
     }
 
     if (reminders.length > 0) {
-      console.log(`[Life Cron] 리마인더 ${reminders.length}건 전송 (${currentTime})`);
+      console.warn(`[Life Cron] 리마인더 ${reminders.length}건 전송 (${currentTime})`);
     }
   }
 

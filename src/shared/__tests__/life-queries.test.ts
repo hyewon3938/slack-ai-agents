@@ -100,30 +100,33 @@ describe('queryActiveTemplates', () => {
 
     const result = await queryActiveTemplates();
     expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe('운동');
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('routine_templates'),
-      undefined,
-    );
+    expect(result[0]?.name).toBe('운동');
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('routine_templates'), undefined);
   });
 });
 
 describe('queryTodayRecords', () => {
   it('JOIN 쿼리로 레코드 + 템플릿 정보 조회', async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{
-        id: 1, template_id: 10, date: '2026-03-08', completed: false,
-        name: '운동', time_slot: '아침', frequency: '매일',
-      }],
+      rows: [
+        {
+          id: 1,
+          template_id: 10,
+          date: '2026-03-08',
+          completed: false,
+          name: '운동',
+          time_slot: '아침',
+          frequency: '매일',
+        },
+      ],
     });
 
     const result = await queryTodayRecords('2026-03-08');
     expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe('운동');
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('JOIN routine_templates'),
-      ['2026-03-08'],
-    );
+    expect(result[0]?.name).toBe('운동');
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('JOIN routine_templates'), [
+      '2026-03-08',
+    ]);
   });
 });
 
@@ -160,10 +163,10 @@ describe('createRecord', () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] });
     const id = await createRecord(1, '2026-03-08');
     expect(id).toBe(42);
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO routine_records'),
-      [1, '2026-03-08'],
-    );
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO routine_records'), [
+      1,
+      '2026-03-08',
+    ]);
   });
 });
 
@@ -171,10 +174,7 @@ describe('completeRecord', () => {
   it('UPDATE completed = true 실행', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await completeRecord(42);
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('completed = true'),
-      [42],
-    );
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('completed = true'), [42]);
   });
 });
 
@@ -183,12 +183,22 @@ describe('completeRecord', () => {
 describe('queryTodaySchedules', () => {
   it('당일 + 기간 일정 조회', async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, title: '회의', date: '2026-03-08', end_date: null, status: 'todo', category: '업무', memo: null }],
+      rows: [
+        {
+          id: 1,
+          title: '회의',
+          date: '2026-03-08',
+          end_date: null,
+          status: 'todo',
+          category: '업무',
+          memo: null,
+        },
+      ],
     });
 
     const result = await queryTodaySchedules('2026-03-08');
     expect(result).toHaveLength(1);
-    expect(result[0]!.title).toBe('회의');
+    expect(result[0]?.title).toBe('회의');
   });
 });
 
@@ -196,10 +206,10 @@ describe('updateScheduleStatus', () => {
   it('상태 업데이트 SQL 실행', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await updateScheduleStatus(1, 'done');
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE schedules'),
-      ['done', 1],
-    );
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE schedules'), [
+      'done',
+      1,
+    ]);
   });
 });
 
@@ -207,9 +217,9 @@ describe('postponeSchedule', () => {
   it('날짜 변경 + status → todo', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await postponeSchedule(1, '2026-03-09');
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining("status = 'todo'"),
-      ['2026-03-09', 1],
-    );
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'todo'"), [
+      '2026-03-09',
+      1,
+    ]);
   });
 });

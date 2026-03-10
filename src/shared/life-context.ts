@@ -61,8 +61,8 @@ const queryLastNight = async (
     [yesterday, today],
   );
 
-  if (lastNight.rows.length > 0) {
-    const s = lastNight.rows[0]!;
+  const s = lastNight.rows[0];
+  if (s) {
     if (s.duration_minutes == null || s.bedtime == null || s.wake_time == null) {
       return s.memo ? `어젯밤 수면 (시간 미기록, 메모 있음)` : `어젯밤 수면 (시간 미기록)`;
     }
