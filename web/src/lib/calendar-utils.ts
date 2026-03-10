@@ -6,6 +6,8 @@ export interface WeekSpan {
   startCol: number;
   endCol: number;
   lane: number;
+  startsBeforeWeek: boolean;
+  endsAfterWeek: boolean;
 }
 
 export interface WeekLayout {
@@ -71,7 +73,9 @@ export function computeWeekLayout(weekDays: Date[], schedules: ScheduleRow[]): W
         lanes[lane]![c] = true;
       }
 
-      spans.push({ schedule: s, startCol, endCol, lane });
+      const startsBeforeWeek = s.date! < weekStart;
+      const endsAfterWeek = s.end_date! > weekEnd;
+      spans.push({ schedule: s, startCol, endCol, lane, startsBeforeWeek, endsAfterWeek });
     } else {
       const dateStr = s.date!;
       if (!singleDay.has(dateStr)) singleDay.set(dateStr, []);

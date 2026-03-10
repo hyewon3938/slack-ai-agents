@@ -97,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* 메인 콘텐츠 */}
-      <main className="flex-1 pb-16 md:pb-0">{children}</main>
+      <main className="flex flex-1 flex-col pb-16 md:pb-0">{children}</main>
 
       {/* 모바일 하단 탭 */}
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white md:hidden">
