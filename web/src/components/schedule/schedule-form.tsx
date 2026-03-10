@@ -35,6 +35,12 @@ export function ScheduleForm({
     e.preventDefault();
     if (!title.trim()) return;
 
+    // 종료일이 시작일보다 이전이면 경고
+    if (showEndDate && endDate && date && endDate < date) {
+      alert('종료일은 시작일 이후여야 해');
+      return;
+    }
+
     setSaving(true);
     try {
       await onSubmit({
@@ -47,6 +53,8 @@ export function ScheduleForm({
         important,
       });
       onClose();
+    } catch {
+      alert('저장에 실패했어');
     } finally {
       setSaving(false);
     }

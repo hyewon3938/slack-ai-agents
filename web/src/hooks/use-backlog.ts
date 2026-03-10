@@ -57,47 +57,63 @@ export function useBacklog() {
   });
 
   const handleAssignDate = async (id: number, date: string) => {
-    const res = await fetch(`/api/schedules/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, status: 'todo' }),
-    });
-    if (res.ok) {
-      setAssigningDate(null);
-      await fetchData();
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, status: 'todo' }),
+      });
+      if (res.ok) {
+        setAssigningDate(null);
+        await fetchData();
+      }
+    } catch {
+      alert('날짜 지정에 실패했어');
     }
   };
 
   const handleUpdate = async (data: Partial<ScheduleRow>) => {
     if (!editingSchedule) return;
-    const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (res.ok) {
-      setEditingSchedule(null);
-      await fetchData();
+    try {
+      const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        setEditingSchedule(null);
+        await fetchData();
+      }
+    } catch {
+      alert('일정 수정에 실패했어');
     }
   };
 
   const handleDelete = async () => {
     if (!editingSchedule) return;
-    const res = await fetch(`/api/schedules/${editingSchedule.id}`, { method: 'DELETE' });
-    if (res.ok) {
-      setEditingSchedule(null);
-      await fetchData();
+    try {
+      const res = await fetch(`/api/schedules/${editingSchedule.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setEditingSchedule(null);
+        await fetchData();
+      }
+    } catch {
+      alert('일정 삭제에 실패했어');
     }
   };
 
   const handleCreate = async (data: Partial<ScheduleRow>) => {
-    const res = await fetch('/api/schedules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, date: null }),
-    });
-    if (res.ok) {
-      await fetchData();
+    try {
+      const res = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...data, date: null }),
+      });
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch {
+      alert('일정 생성에 실패했어');
     }
   };
 

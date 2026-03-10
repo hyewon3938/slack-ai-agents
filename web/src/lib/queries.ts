@@ -72,6 +72,10 @@ export const createSchedule = async (data: {
   return row;
 };
 
+const SCHEDULE_COLUMNS = new Set([
+  'title', 'date', 'end_date', 'status', 'category', 'memo', 'important',
+]);
+
 export const updateSchedule = async (
   id: number,
   data: Partial<{
@@ -89,7 +93,7 @@ export const updateSchedule = async (
   let idx = 1;
 
   for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
+    if (value !== undefined && SCHEDULE_COLUMNS.has(key)) {
       fields.push(`${key} = $${idx}`);
       values.push(value);
       idx++;
@@ -139,6 +143,8 @@ export const createCategory = async (data: {
   return row;
 };
 
+const CATEGORY_COLUMNS = new Set(['name', 'color', 'sort_order']);
+
 export const updateCategory = async (
   id: number,
   data: Partial<{ name: string; color: string; sort_order: number }>,
@@ -148,7 +154,7 @@ export const updateCategory = async (
   let idx = 1;
 
   for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
+    if (value !== undefined && CATEGORY_COLUMNS.has(key)) {
       fields.push(`${key} = $${idx}`);
       values.push(value);
       idx++;
