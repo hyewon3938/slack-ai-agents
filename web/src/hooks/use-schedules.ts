@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   format,
   addMonths,
@@ -86,15 +86,19 @@ export function useSchedules() {
   }, [fetchData]);
 
   // 필터링
-  const filteredSchedules = schedules.filter((s) => {
-    if (selectedCategories.size > 0 && !selectedCategories.has(s.category ?? '미분류')) {
-      return false;
-    }
-    if (selectedStatuses.size > 0 && !selectedStatuses.has(s.status)) {
-      return false;
-    }
-    return true;
-  });
+  const filteredSchedules = useMemo(
+    () =>
+      schedules.filter((s) => {
+        if (selectedCategories.size > 0 && !selectedCategories.has(s.category ?? '미분류')) {
+          return false;
+        }
+        if (selectedStatuses.size > 0 && !selectedStatuses.has(s.status)) {
+          return false;
+        }
+        return true;
+      }),
+    [schedules, selectedCategories, selectedStatuses],
+  );
 
   // 네비게이션
   const handlePrev = () => {
@@ -149,36 +153,48 @@ export function useSchedules() {
   };
 
   const handleCreate = async (data: Partial<ScheduleRow>) => {
-    const res = await fetch('/api/schedules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (res.ok) {
-      await fetchData();
+    try {
+      const res = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch {
+      alert('일정 생성에 실패했어');
     }
   };
 
   const handleUpdate = async (data: Partial<ScheduleRow>) => {
     if (!editingSchedule) return;
-    const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (res.ok) {
-      await fetchData();
+    try {
+      const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch {
+      alert('일정 수정에 실패했어');
     }
   };
 
   const handleDelete = async () => {
     if (!editingSchedule) return;
-    const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
-      method: 'DELETE',
-    });
-    if (res.ok) {
-      setEditingSchedule(null);
-      await fetchData();
+    try {
+      const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setEditingSchedule(null);
+        await fetchData();
+      }
+    } catch {
+      alert('일정 삭제에 실패했어');
     }
   };
 

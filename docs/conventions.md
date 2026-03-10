@@ -48,6 +48,61 @@
 
 ---
 
+## React 컴포넌트 컨벤션 (web/)
+
+### 컴포넌트 분류
+
+| 분류 | 위치 | 역할 | 예시 |
+|------|------|------|------|
+| Page | `app/**/page.tsx` | 데이터 페칭, 상태 관리, 레이아웃 조합 | `schedules/page.tsx` |
+| Feature | `components/{도메인}/` | 도메인 로직 + UI, 콜백으로 외부 통신 | `month-view.tsx`, `schedule-form.tsx` |
+| UI | `components/ui/` | 도메인 무관, 재사용 가능, 비즈니스 로직 없음 | `modal.tsx`, `filter-bar.tsx` |
+| Atom | `components/{도메인}/` | 단일 개념, 순수 표현 컴포넌트 | `status-badge.tsx` |
+
+### 컴포넌트 구조 규칙
+
+- **named export만 사용** (default export는 `page.tsx`만 예외)
+- **Props 인터페이스**는 컴포넌트 파일 상단에 정의
+- **콜백 네이밍**: 외부 전달용 `on*` (onSubmit, onClose), 내부 핸들러 `handle*` (handleClick)
+- **한 파일 = 한 컴포넌트** 원칙. 내부 서브컴포넌트는 같은 파일에 허용하되 export 금지
+- 컴포넌트 파일 200줄 초과 시 서브컴포넌트나 유틸 분리 검토
+
+### 상태 관리
+
+- **Server Components**: 데이터 조회가 주 목적인 경우 (현재는 사용 안 함, 필요 시 도입)
+- **Client 상태**: `useState`로 로컬 UI 상태 관리. 글로벌 상태 라이브러리 불필요
+- **URL 상태**: 뷰 전환, 필터 등 공유 가능한 상태는 URL 파라미터 활용
+- **폼 상태**: 필드 5~6개 수준은 `useState` 직접 관리. 라이브러리 불필요
+
+### 공통 추상화 기준
+
+- **같은 UI 패턴이 2곳 이상** 반복되면 공통 컴포넌트로 추출
+- **같은 상수/맵이 2곳 이상** 반복되면 `lib/types.ts` 또는 전용 상수 파일로 이동
+- **같은 hook 패턴이 2곳 이상** 반복되면 `hooks/`로 추출
+- 추상화 비용 > 중복 비용이면 중복 허용 (소규모 프로젝트 기준)
+
+### 스타일링 (Tailwind)
+
+- **정적 스타일**: Tailwind 클래스 직접 사용
+- **동적 색상**: Tailwind가 동적 클래스를 지원하지 않으므로 inline `style` 사용
+- **색상 맵**: 상태/카테고리별 색상 매핑은 `lib/types.ts`에 중앙 관리
+- **반응형**: `md:` 브레이크포인트 (모바일 퍼스트)
+
+### 에러 처리
+
+- **API 호출 (`fetch`)**: 반드시 try-catch 감싸기
+- **catch 블록**: `unknown` 타입 + 사용자에게 피드백 (alert 또는 UI 에러 상태)
+- **폼 제출**: loading 상태 관리 (`setSaving(true)` → finally에서 해제)
+
+### 임포트 순서 (React 파일)
+
+1. React / Next.js (`react`, `next/navigation` 등)
+2. 외부 패키지 (`@dnd-kit`, `date-fns` 등)
+3. 내부 라이브러리 (`@/lib/...`, `@/hooks/...`)
+4. 같은 디렉토리 컴포넌트 (`./schedule-card`)
+
+---
+
 ## 설계 원칙
 
 | 원칙 | 적용 방식 |

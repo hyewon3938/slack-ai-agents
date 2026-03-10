@@ -6,6 +6,7 @@ import {
   createSchedule,
   ensureCategoryExists,
 } from '@/lib/queries';
+import { isValidStatus } from '@/lib/types';
 
 export async function GET(request: Request) {
   if (!(await requireAuth())) {
@@ -52,6 +53,10 @@ export async function POST(request: Request) {
 
     if (!body.title?.trim()) {
       return NextResponse.json({ error: '제목을 입력해줘' }, { status: 400 });
+    }
+
+    if (body.status !== undefined && !isValidStatus(body.status)) {
+      return NextResponse.json({ error: '유효하지 않은 상태값이야' }, { status: 400 });
     }
 
     if (body.category) {

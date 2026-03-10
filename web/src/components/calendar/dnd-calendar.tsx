@@ -15,18 +15,24 @@ import { ScheduleCard } from '../schedule/schedule-card';
 
 type DragType = 'move' | 'resize-left' | 'resize-right';
 
+const DRAG_ID_PATTERN = /^(resize-r-|resize-|move-)(\d+)/;
+
 function parseDragId(id: string | number): { type: DragType; scheduleId: number } {
   const str = String(id);
-  if (str.startsWith('resize-r-')) {
-    return { type: 'resize-right', scheduleId: parseInt(str.slice(9), 10) };
+  const match = DRAG_ID_PATTERN.exec(str);
+
+  if (match) {
+    const prefix = match[1];
+    const scheduleId = Number(match[2]);
+    const type: DragType =
+      prefix === 'resize-r-' ? 'resize-right' :
+      prefix === 'resize-' ? 'resize-left' : 'move';
+    return { type, scheduleId };
   }
-  if (str.startsWith('resize-')) {
-    return { type: 'resize-left', scheduleId: parseInt(str.slice(7), 10) };
-  }
-  if (str.startsWith('move-')) {
-    return { type: 'move', scheduleId: parseInt(str.slice(5), 10) };
-  }
-  return { type: 'move', scheduleId: parseInt(str, 10) };
+
+  // 프리픽스 없는 경우 (숫자만)
+  const numMatch = /^(\d+)/.exec(str);
+  return { type: 'move', scheduleId: numMatch ? Number(numMatch[1]) : NaN };
 }
 
 interface DndCalendarProps {

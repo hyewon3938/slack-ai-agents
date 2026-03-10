@@ -37,36 +37,56 @@ export default function CategoriesPage() {
     e.preventDefault();
     if (!newName.trim()) return;
 
-    const res = await fetch('/api/categories', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName.trim(), color: newColor }),
-    });
-    if (res.ok) {
-      setNewName('');
-      setNewColor('violet');
-      await fetchCategories();
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), color: newColor }),
+      });
+      if (res.ok) {
+        setNewName('');
+        setNewColor('violet');
+        await fetchCategories();
+      } else {
+        const data = (await res.json()) as { error?: string };
+        alert(data.error ?? '카테고리 추가 실패');
+      }
+    } catch {
+      alert('카테고리 추가에 실패했어');
     }
   };
 
   const handleUpdate = async (id: number) => {
     if (!editName.trim()) return;
 
-    const res = await fetch(`/api/categories/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName.trim(), color: editColor }),
-    });
-    if (res.ok) {
-      setEditingId(null);
-      await fetchCategories();
+    try {
+      const res = await fetch(`/api/categories/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName.trim(), color: editColor }),
+      });
+      if (res.ok) {
+        setEditingId(null);
+        await fetchCategories();
+      } else {
+        const data = (await res.json()) as { error?: string };
+        alert(data.error ?? '카테고리 수정 실패');
+      }
+    } catch {
+      alert('카테고리 수정에 실패했어');
     }
   };
 
   const handleDelete = async (id: number) => {
-    const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      await fetchCategories();
+    if (!confirm(`'${categories.find((c) => c.id === id)?.name}' 카테고리를 삭제할까?`)) return;
+
+    try {
+      const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchCategories();
+      }
+    } catch {
+      alert('카테고리 삭제에 실패했어');
     }
   };
 

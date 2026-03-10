@@ -624,6 +624,38 @@ CREATE TABLE categories (
 6. PWA 매니페스트 (모바일 홈 화면 설치)
 7. Docker 통합
 
+### Phase 2: 인터랙션 강화 (2026-03-11)
+
+Phase 1 기본 구현 후 실사용 피드백 기반으로 UX를 대폭 개선.
+
+**드래그 앤 드롭 (@dnd-kit)**
+- 일정 카드 드래그로 날짜 이동 (월간/주간뷰)
+- 다일 일정 기간 조절: 좌/우 리사이즈 핸들 분리 (`resize-left`, `resize-right`)
+- 시작일까지 드래그 시 단일 일정으로 자동 변환 (`end_date → null`)
+- 다일 일정 이동 시 기간 유지 (duration 계산하여 양쪽 날짜 shift)
+- 주 경계 넘는 일정의 리사이즈 핸들 조건부 표시 (`startsBeforeWeek`/`endsAfterWeek`)
+
+**주간뷰 스패닝 바 → 카드 스타일 통일**
+- WeekSpanBar를 ScheduleCard 풀 모드와 동일 구조로 재작성
+- 체크박스, 상태 배지, 카테고리 배지 포함
+- DroppableDay ID 충돌 버그 해결 (모바일/데스크탑 동일 ID로 @dnd-kit 충돌)
+
+**일정 정렬 시스템**
+- 상태순 정렬: 진행중 → 할일 → 완료 → 취소
+- SQL 레벨 + 클라이언트 레벨 이중 적용 (`compareByStatus` 유틸리티)
+- 모든 뷰(월/주/일/DayDetailPanel)에 일관 적용
+
+**모바일 최적화**
+- 주간뷰 모바일 레이아웃: 날짜 옆 카드 배치, 건수 표시 개선
+- `viewport-fit: cover` + `safe-area-inset-bottom` (Safari 홈 바 대응)
+- `min-h-dvh` (동적 뷰포트 높이), FAB/하단탭 safe area 패딩
+
+**기타 UI 개선**
+- 데스크탑 캘린더 뷰포트 높이 채우기 (flex chain)
+- HSL 색상 피커에 카테고리 태그 미리보기 추가
+- DayDetailPanel 전체 높이 + 하단 테두리
+- 로그인 세션 버그 수정 (SESSION_SECRET 한글 14자 → hex 64자)
+
 ---
 
 ## 변경 이력
@@ -641,3 +673,5 @@ CREATE TABLE categories (
 | 2026-03-09 | 생활 맥락 인식 잔소리 시스템 (SQL 사전 집계 → 프롬프트 주입, Issue #60, PR #61) |
 | 2026-03-10 | 루틴 메모 + 완료 시점 기록 (자연어 메모, completed_at 축적, Issue #65) |
 | 2026-03-10 | 백로그/내일일정 fast path 추가 (LLM 없이 Block Kit 즉시 응답, Issue #68, PR #69) |
+| 2026-03-10 | 웹 대시보드 Phase 1 — 캘린더 뷰, 일정/카테고리 CRUD, 백로그, PWA (Issue #73) |
+| 2026-03-11 | 웹 대시보드 Phase 2 — DnD, 상태 정렬, 모바일 safe area, 로그인 버그 수정 (Issue #73) |
