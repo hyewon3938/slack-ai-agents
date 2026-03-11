@@ -8,6 +8,7 @@ import type { LLMClient, LLMMessage } from '../shared/llm.js';
 import { postToChannel } from '../shared/slack.js';
 import { CONFIG } from '../shared/config.js';
 import { getTodayISO, getYesterdayISO } from '../shared/kst.js';
+import { query } from '../shared/db.js';
 
 const REPO = 'hyewon3938/slack-ai-agents';
 const GITHUB_API = 'https://api.github.com';
@@ -198,6 +199,27 @@ const generateWorkSummary = async (
   return response.text ?? '요약 생성 실패';
 };
 
+// ─── DB: Opus 분석 결과 조회 ─────────────────────────────
+
+interface DevAnalysisRow {
+  analysis: string;
+  date: string;
+}
+
+/** 어제자 Opus 분석 결과 조회 (없으면 null) */
+const fetchOpusAnalysis = async (): Promise<string | null> => {
+  try {
+    const yesterday = getYesterdayISO();
+    const result = await query<DevAnalysisRow>(
+      'SELECT analysis FROM dev_analyses WHERE date = $1',
+      [yesterday],
+    );
+    return result.rows[0]?.analysis ?? null;
+  } catch {
+    return null;
+  }
+};
+
 // ─── Slack 전송 포맷 ────────────────────────────────────
 
 const getProjectChannelId = (): string =>
@@ -217,8 +239,20 @@ export const setDevCronClients = (clients: DevCronClients): void => {
   devCronClients = clients;
 };
 
-/** 개발자 리뷰 크론 태스크 */
+/** 개발자 리뷰 크론 태스크 — Opus 분석(DB) 우선, 없으면 Sonnet 자체 생성 */
 export const devReviewTask = async (app: App): Promise<void> => {
+  const today = getTodayISO();
+
+  // 1. Opus 분석 결과가 DB에 있으면 우선 사용
+  const opusAnalysis = await fetchOpusAnalysis();
+  if (opusAnalysis) {
+    const message = `📋 *Daily Dev Review — ${today}*\n\n${opusAnalysis}`;
+    await postToChannel(app.client, getProjectChannelId(), message);
+    console.warn('[Dev Cron] 개발자 리뷰 전송 완료 (Opus 분석)');
+    return;
+  }
+
+  // 2. Opus 분석 없으면 GitHub API + Sonnet으로 자체 생성
   const stats = await fetchRecentCommits();
   if (!stats) {
     console.warn('[Dev Cron] 최근 24시간 커밋 없음 — devReview 스킵');
@@ -231,12 +265,11 @@ export const devReviewTask = async (app: App): Promise<void> => {
     return;
   }
 
-  const today = getTodayISO();
   const review = await generateDevReview(client, stats);
   const message = `📋 *Daily Dev Review — ${today}*\n\n${review}`;
 
   await postToChannel(app.client, getProjectChannelId(), message);
-  console.warn('[Dev Cron] 개발자 리뷰 전송 완료');
+  console.warn('[Dev Cron] 개발자 리뷰 전송 완료 (Sonnet 자체 생성)');
 };
 
 /** 작업 요약 크론 태스크 */
