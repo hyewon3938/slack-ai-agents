@@ -59,7 +59,7 @@ export default function BacklogPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-3xl overflow-hidden p-4">
+      <div className="mx-auto w-full max-w-3xl overflow-hidden p-4">
         {schedules.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-gray-400">백로그 없음</p>

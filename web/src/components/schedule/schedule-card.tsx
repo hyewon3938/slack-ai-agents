@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { StatusBadge } from './status-badge';
@@ -32,6 +33,7 @@ export function ScheduleCard({
   onClick,
   compact,
 }: ScheduleCardProps) {
+  const [memoExpanded, setMemoExpanded] = useState(false);
   const cat = categories.find((c) => c.name === schedule.category);
   const colorKey = cat?.color ?? 'gray';
   const catStyle = getCategoryStyle(colorKey);
@@ -114,9 +116,19 @@ export function ScheduleCard({
           </div>
 
           {schedule.memo && (
-            <p className={`mt-1.5 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'}`}>
-              {schedule.memo}
-            </p>
+            <div className="mt-1.5">
+              <p className={`whitespace-pre-wrap text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'} ${memoExpanded ? 'max-h-60 overflow-y-auto' : 'line-clamp-3'}`}>
+                {schedule.memo}
+              </p>
+              {schedule.memo.split('\n').length > 3 || schedule.memo.length > 120 ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMemoExpanded(!memoExpanded); }}
+                  className="mt-0.5 text-xs text-blue-500 hover:text-blue-600"
+                >
+                  {memoExpanded ? '줄이기' : '더보기'}
+                </button>
+              ) : null}
+            </div>
           )}
         </div>
       </div>
