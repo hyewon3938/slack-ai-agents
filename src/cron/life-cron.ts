@@ -34,6 +34,7 @@ import {
   buildSleepRecordedText,
 } from '../agents/life/blocks.js';
 import { buildLifeContext } from '../shared/life-context.js';
+import { publishHomeView, getCachedHomeUserId } from '../agents/life/home.js';
 
 export interface LifeCronConfig {
   channelId: string;
@@ -142,8 +143,7 @@ export const createTodayRecords = async (today: string): Promise<number> => {
 /** 수면 기록 체크 — 기록 유무와 관계없이 항상 알림 전송 */
 const sleepCheckTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const yesterday = getYesterdayISO();
-  const hasRecord = await queryNightSleepExists(yesterday, today);
+  const hasRecord = await queryNightSleepExists(today);
 
   const text = hasRecord ? buildSleepRecordedText('morning') : buildSleepReminderText('morning');
   await postToChannel(app.client, config.channelId, text);
@@ -205,6 +205,18 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
     await postBlockMessage(app.client, config.channelId, text, fullBlocks);
   } else if (greetingBlocks.length > 0) {
     await postBlockMessage(app.client, config.channelId, '아침 인사', greetingBlocks);
+  }
+
+  // 4. 앱홈 능동 갱신 (날짜 전환 반영)
+  const userId = getCachedHomeUserId();
+  if (userId) {
+    try {
+      await publishHomeView(app.client, userId);
+      console.warn('[Life Cron] 앱홈 갱신 완료');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Life Cron] 앱홈 갱신 실패: ${msg}`);
+    }
   }
 
   console.warn(`[Life Cron] 아침 알림 완료 (기록 ${created}개 생성)`);
@@ -275,7 +287,6 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
 /** 밤 리뷰: 미완료 일정 + 수면 기록 확인 */
 const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const yesterday = getYesterdayISO();
 
   // 1. 미완료 일정 텍스트
   const schedules = await queryTodaySchedules(today);
@@ -285,7 +296,7 @@ const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> 
   }
 
   // 2. 수면 기록 확인 (마지막에 — 묻히지 않게)
-  const hasRecord = await queryNightSleepExists(yesterday, today);
+  const hasRecord = await queryNightSleepExists(today);
   const sleepText = hasRecord ? buildSleepRecordedText('night') : buildSleepReminderText('night');
   await postToChannel(app.client, config.channelId, sleepText);
 
