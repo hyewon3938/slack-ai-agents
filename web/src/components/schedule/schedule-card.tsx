@@ -117,7 +117,7 @@ export function ScheduleCard({
 
           {schedule.memo && (
             <div className="mt-1.5">
-              <p className={`whitespace-pre-wrap text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'} ${memoExpanded ? 'max-h-60 overflow-y-auto' : 'line-clamp-3'}`}>
+              <p className={`whitespace-pre-wrap text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'} ${memoExpanded ? '' : 'line-clamp-3'}`}>
                 {schedule.memo}
               </p>
               {schedule.memo.split('\n').length > 3 || schedule.memo.length > 120 ? (
