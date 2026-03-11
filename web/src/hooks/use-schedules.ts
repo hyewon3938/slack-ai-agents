@@ -16,9 +16,15 @@ import {
 } from 'date-fns';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import type { CalendarView } from '@/components/calendar/calendar-header';
+import { WEEK_START } from '@/lib/calendar-utils';
+
+function getInitialView(): CalendarView {
+  if (typeof window === 'undefined') return 'day';
+  return window.innerWidth >= 768 ? 'month' : 'day';
+}
 
 export function useSchedules() {
-  const [view, setView] = useState<CalendarView>('week');
+  const [view, setView] = useState<CalendarView>(getInitialView);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -35,12 +41,12 @@ export function useSchedules() {
 
     switch (view) {
       case 'month':
-        start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
-        end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
+        start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: WEEK_START });
+        end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: WEEK_START });
         break;
       case 'week':
-        start = startOfWeek(currentDate, { weekStartsOn: 0 });
-        end = endOfWeek(currentDate, { weekStartsOn: 0 });
+        start = startOfWeek(currentDate, { weekStartsOn: WEEK_START });
+        end = endOfWeek(currentDate, { weekStartsOn: WEEK_START });
         break;
       case 'day':
         start = currentDate;
@@ -83,6 +89,14 @@ export function useSchedules() {
 
   useEffect(() => {
     fetchData();
+
+    // 15초 폴링 (탭이 보이는 동안만)
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 15_000);
+    return () => clearInterval(id);
   }, [fetchData]);
 
   // 필터링

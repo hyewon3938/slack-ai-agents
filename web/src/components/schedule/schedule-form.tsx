@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { SCHEDULE_STATUSES, STATUS_LABELS } from '@/lib/types';
 
@@ -11,6 +11,7 @@ interface ScheduleFormProps {
   onSubmit: (data: Partial<ScheduleRow>) => Promise<void>;
   onDelete?: () => Promise<void>;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export function ScheduleForm({
@@ -20,6 +21,7 @@ export function ScheduleForm({
   onSubmit,
   onDelete,
   onClose,
+  onDirtyChange,
 }: ScheduleFormProps) {
   const [title, setTitle] = useState(schedule?.title ?? '');
   const [date, setDate] = useState(schedule?.date ?? defaultDate ?? '');
@@ -30,6 +32,31 @@ export function ScheduleForm({
   const [memo, setMemo] = useState(schedule?.memo ?? '');
   const [important, setImportant] = useState(schedule?.important ?? false);
   const [saving, setSaving] = useState(false);
+  const [editingMemo, setEditingMemo] = useState(!schedule?.memo);
+
+  const isDirty = useCallback(() => {
+    if (!schedule) {
+      return !!(title || date || endDate || memo || category || important);
+    }
+    return (
+      title !== (schedule.title ?? '') ||
+      date !== (schedule.date ?? '') ||
+      endDate !== (schedule.end_date ?? '') ||
+      status !== schedule.status ||
+      category !== (schedule.category ?? '') ||
+      memo !== (schedule.memo ?? '') ||
+      important !== (schedule.important ?? false)
+    );
+  }, [title, date, endDate, status, category, memo, important, schedule]);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty());
+  }, [isDirty, onDirtyChange]);
+
+  const handleClose = useCallback(() => {
+    if (isDirty() && !confirm('수정 중인 내용이 있어. 닫을까?')) return;
+    onClose();
+  }, [isDirty, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +88,7 @@ export function ScheduleForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 overflow-hidden">
       {/* 제목 */}
       <div>
         <input
@@ -82,7 +109,7 @@ export function ScheduleForm({
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
         />
       </div>
 
@@ -114,7 +141,7 @@ export function ScheduleForm({
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            className="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
           />
         </div>
       )}
@@ -170,14 +197,33 @@ export function ScheduleForm({
 
       {/* 메모 */}
       <div>
-        <label className="mb-1 block text-xs text-gray-500">메모</label>
-        <textarea
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          placeholder="메모 (선택)"
-          rows={3}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        />
+        <div className="mb-1 flex items-center justify-between">
+          <label className="text-xs text-gray-500">메모</label>
+          {!editingMemo && (
+            <button
+              type="button"
+              onClick={() => setEditingMemo(true)}
+              className="text-xs text-blue-500 hover:text-blue-600"
+            >
+              메모 수정
+            </button>
+          )}
+        </div>
+        {editingMemo ? (
+          <textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="메모 (선택)"
+            rows={3}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none md:min-h-[140px]"
+          />
+        ) : (
+          <div className="max-h-[120px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 md:max-h-[200px]">
+            <p className="whitespace-pre-wrap text-sm text-gray-700">
+              {memo || <span className="text-gray-400">메모 없음</span>}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 버튼 */}
@@ -194,7 +240,7 @@ export function ScheduleForm({
         <div className="flex-1" />
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-500 transition hover:bg-gray-100"
         >
           취소

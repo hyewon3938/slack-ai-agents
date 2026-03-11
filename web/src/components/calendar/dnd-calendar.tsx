@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DndContext,
-  DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  pointerWithin,
   useSensor,
   useSensors,
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { ScheduleCard } from '../schedule/schedule-card';
 
 type DragType = 'move' | 'resize-left' | 'resize-right';
 
@@ -52,19 +52,36 @@ export function DndCalendar({
 }: DndCalendarProps) {
   const [activeSchedule, setActiveSchedule] = useState<ScheduleRow | null>(null);
   const [dragType, setDragType] = useState<DragType>('move');
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const isDragging = useRef(false);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
     }),
   );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (isDragging.current) {
+        setMousePos({ x: e.clientX, y: e.clientY });
+      }
+    };
+    document.addEventListener('mousemove', handler);
+    return () => document.removeEventListener('mousemove', handler);
+  }, []);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const { type, scheduleId } = parseDragId(event.active.id);
       setDragType(type);
       const schedule = schedules.find((s) => s.id === scheduleId);
-      if (schedule) setActiveSchedule(schedule);
+      if (schedule) {
+        isDragging.current = true;
+        const e = event.activatorEvent as MouseEvent;
+        setMousePos({ x: e.clientX, y: e.clientY });
+        setActiveSchedule(schedule);
+      }
     },
     [schedules],
   );
@@ -72,6 +89,7 @@ export function DndCalendar({
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const currentDragType = dragType;
+      isDragging.current = false;
       setActiveSchedule(null);
       const { active, over } = event;
       if (!over) return;
@@ -133,29 +151,36 @@ export function DndCalendar({
   const isResize = dragType === 'resize-left' || dragType === 'resize-right';
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      {children}
-      <DragOverlay dropAnimation={null}>
-        {activeSchedule && (
-          <div className={`w-48 opacity-80 ${!isResize ? 'rotate-2' : ''}`}>
-            {isResize ? (
-              <div className="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700">
-                {activeSchedule.title} — 기간 설정 중
-              </div>
-            ) : (
-              <ScheduleCard
-                schedule={activeSchedule}
-                categories={categories}
-                compact
-              />
-            )}
-          </div>
+    <>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        {children}
+      </DndContext>
+      {activeSchedule &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              left: mousePos.x + 12,
+              top: mousePos.y - 16,
+              pointerEvents: 'none',
+              zIndex: 9999,
+            }}
+          >
+            <div className="w-48 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-lg ring-1 ring-gray-200">
+              {isResize ? (
+                <span className="text-blue-600">{activeSchedule.title} — 기간 설정 중</span>
+              ) : (
+                <span className="truncate block">{activeSchedule.title}</span>
+              )}
+            </div>
+          </div>,
+          document.body,
         )}
-      </DragOverlay>
-    </DndContext>
+    </>
   );
 }

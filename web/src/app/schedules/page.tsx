@@ -1,8 +1,10 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { startOfWeek, endOfWeek } from 'date-fns';
+import { WEEK_START } from '@/lib/calendar-utils';
 import { useSchedules } from '@/hooks/use-schedules';
 import { AppShell } from '@/components/ui/app-shell';
 import { CalendarHeader } from '@/components/calendar/calendar-header';
@@ -11,6 +13,7 @@ import { WeekView } from '@/components/calendar/week-view';
 import { DayView } from '@/components/calendar/day-view';
 import { FilterBar } from '@/components/ui/filter-bar';
 import { DndCalendar } from '@/components/calendar/dnd-calendar';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/components/schedule/schedule-form';
 
@@ -19,8 +22,8 @@ function getTitle(view: string, currentDate: Date): string {
     case 'month':
       return format(currentDate, 'yyyy년 M월', { locale: ko });
     case 'week': {
-      const ws = startOfWeek(currentDate, { weekStartsOn: 0 });
-      const we = endOfWeek(currentDate, { weekStartsOn: 0 });
+      const ws = startOfWeek(currentDate, { weekStartsOn: WEEK_START });
+      const we = endOfWeek(currentDate, { weekStartsOn: WEEK_START });
       return `${format(ws, 'M/d')} - ${format(we, 'M/d')}`;
     }
     case 'day':
@@ -59,6 +62,12 @@ export default function SchedulesPage() {
     toggleStatus,
     clearFilters,
   } = useSchedules();
+
+  const [formDirty, setFormDirty] = useState(false);
+  const handleBeforeClose = useCallback(
+    () => !formDirty || confirm('수정 중인 내용이 있어. 닫을까?'),
+    [formDirty],
+  );
 
   if (loading) {
     return (
@@ -133,8 +142,9 @@ export default function SchedulesPage() {
               )}
             </div>
 
+            {/* 데스크탑: 사이드 패널 */}
             {view === 'month' && selectedDate && (
-              <div className="w-full md:sticky md:top-0 md:w-80 md:self-stretch md:max-h-[calc(100vh-160px)] md:overflow-y-auto">
+              <div className="hidden md:block md:sticky md:top-0 md:w-80 md:self-stretch md:max-h-[calc(100vh-160px)] md:overflow-y-auto">
                 <DayDetailPanel
                   dateStr={selectedDate}
                   schedules={filteredSchedules}
@@ -149,10 +159,28 @@ export default function SchedulesPage() {
         </DndCalendar>
       </div>
 
+      {/* 모바일: 바텀시트 */}
+      <BottomSheet
+        open={view === 'month' && !!selectedDate}
+        onClose={() => selectedDate && handleSelectDate(selectedDate)}
+      >
+        {selectedDate && (
+          <DayDetailPanel
+            dateStr={selectedDate}
+            schedules={filteredSchedules}
+            categories={categories}
+            onScheduleClick={setEditingSchedule}
+            onStatusChange={handleStatusChange}
+            onClose={() => handleSelectDate(selectedDate)}
+          />
+        )}
+      </BottomSheet>
+
       {/* 생성 모달 */}
       <Modal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
+        onBeforeClose={handleBeforeClose}
         title="일정 추가"
       >
         <ScheduleForm
@@ -160,6 +188,7 @@ export default function SchedulesPage() {
           defaultDate={selectedDate ?? format(currentDate, 'yyyy-MM-dd')}
           onSubmit={handleCreate}
           onClose={() => setShowCreateModal(false)}
+          onDirtyChange={setFormDirty}
         />
       </Modal>
 
@@ -167,6 +196,7 @@ export default function SchedulesPage() {
       <Modal
         open={!!editingSchedule}
         onClose={() => setEditingSchedule(null)}
+        onBeforeClose={handleBeforeClose}
         title="일정 수정"
       >
         {editingSchedule && (
@@ -176,6 +206,7 @@ export default function SchedulesPage() {
             onSubmit={handleUpdate}
             onDelete={handleDelete}
             onClose={() => setEditingSchedule(null)}
+            onDirtyChange={setFormDirty}
           />
         )}
       </Modal>
