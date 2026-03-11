@@ -54,6 +54,20 @@ export const publishHomeView = async (
     text: { type: 'plain_text', text: `${formatDateShort(today)} 대시보드`, emoji: true },
   });
 
+  // 웹 대시보드 바로가기
+  const domain = process.env.DOMAIN;
+  if (domain) {
+    blocks.push({
+      type: 'actions',
+      elements: [{
+        type: 'button',
+        text: { type: 'plain_text', text: '웹 대시보드 열기', emoji: true },
+        url: `https://${domain}`,
+        style: 'primary',
+      }],
+    });
+  }
+
   // 일정 섹션
   blocks.push({ type: 'divider' });
   if (schedules.length > 0) {
