@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { reorderCategories } from '@/lib/queries';
+import { reorderCategories } from '@/features/schedule/lib/queries';
 
 export async function POST(request: Request) {
   if (!(await requireAuth())) {

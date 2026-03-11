@@ -14,8 +14,8 @@ import { ko } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { getCategoryStyle, compareByStatus } from '@/lib/types';
-import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/lib/calendar-utils';
-import { ScheduleCard } from '../schedule/schedule-card';
+import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedule/lib/calendar-utils';
+import { ScheduleCard } from './schedule-card';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
 

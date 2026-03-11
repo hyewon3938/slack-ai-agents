@@ -4,18 +4,18 @@ import { useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { startOfWeek, endOfWeek } from 'date-fns';
-import { WEEK_START } from '@/lib/calendar-utils';
-import { useSchedules } from '@/hooks/use-schedules';
+import { WEEK_START } from '@/features/schedule/lib/calendar-utils';
+import { useSchedules } from '@/features/schedule/hooks/use-schedules';
 import { AppShell } from '@/components/ui/app-shell';
-import { CalendarHeader } from '@/components/calendar/calendar-header';
-import { MonthView, DayDetailPanel } from '@/components/calendar/month-view';
-import { WeekView } from '@/components/calendar/week-view';
-import { DayView } from '@/components/calendar/day-view';
+import { CalendarHeader } from '@/features/schedule/components/calendar-header';
+import { MonthView, DayDetailPanel } from '@/features/schedule/components/month-view';
+import { WeekView } from '@/features/schedule/components/week-view';
+import { DayView } from '@/features/schedule/components/day-view';
 import { FilterBar } from '@/components/ui/filter-bar';
-import { DndCalendar } from '@/components/calendar/dnd-calendar';
+import { DndCalendar } from '@/features/schedule/components/dnd-calendar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Modal } from '@/components/ui/modal';
-import { ScheduleForm } from '@/components/schedule/schedule-form';
+import { ScheduleForm } from '@/features/schedule/components/schedule-form';
 
 function getTitle(view: string, currentDate: Date): string {
   switch (view) {

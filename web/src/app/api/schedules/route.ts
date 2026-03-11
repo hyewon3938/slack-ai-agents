@@ -5,7 +5,7 @@ import {
   queryBacklogSchedules,
   createSchedule,
   ensureCategoryExists,
-} from '@/lib/queries';
+} from '@/features/schedule/lib/queries';
 import { isValidStatus } from '@/lib/types';
 
 export async function GET(request: Request) {

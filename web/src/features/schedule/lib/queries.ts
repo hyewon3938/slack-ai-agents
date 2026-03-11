@@ -1,5 +1,5 @@
-import { query, queryOne } from './db';
-import type { ScheduleRow, CategoryRow } from './types';
+import { query, queryOne } from '@/lib/db';
+import type { ScheduleRow, CategoryRow } from '@/lib/types';
 
 // ─── 일정 조회 ──────────────────────────────────────────
 
