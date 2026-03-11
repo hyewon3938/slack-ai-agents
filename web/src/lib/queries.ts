@@ -12,8 +12,7 @@ export const querySchedulesByRange = async (
     await query<ScheduleRow>(
       `SELECT id, title, date::text, end_date::text, status, category, memo, important
        FROM schedules
-       WHERE status != 'cancelled'
-         AND ((date >= $1 AND date <= $2) OR (date <= $2 AND end_date >= $1))
+       WHERE (date >= $1 AND date <= $2) OR (date <= $2 AND end_date >= $1)
        ORDER BY date NULLS LAST,
          CASE status WHEN 'in-progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END,
          category NULLS LAST, title`,
@@ -27,7 +26,7 @@ export const queryBacklogSchedules = async (): Promise<ScheduleRow[]> =>
     await query<ScheduleRow>(
       `SELECT id, title, date::text, end_date::text, status, category, memo, important
        FROM schedules
-       WHERE date IS NULL AND status != 'cancelled'
+       WHERE date IS NULL
        ORDER BY
          CASE status WHEN 'in-progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END,
          category NULLS LAST, important DESC, title`,

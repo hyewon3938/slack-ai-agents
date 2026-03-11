@@ -7,6 +7,7 @@ const STATUS_FILTER_COLORS: Record<string, { active: string; inactive: string }>
   todo: { active: 'bg-gray-200 text-gray-700', inactive: 'bg-gray-100 text-gray-500 hover:bg-gray-200' },
   'in-progress': { active: 'bg-blue-100 text-blue-700', inactive: 'bg-gray-100 text-gray-500 hover:bg-gray-200' },
   done: { active: 'bg-green-100 text-green-700', inactive: 'bg-gray-100 text-gray-500 hover:bg-gray-200' },
+  cancelled: { active: 'bg-gray-200 text-gray-400', inactive: 'bg-gray-100 text-gray-500 hover:bg-gray-200' },
 };
 
 interface FilterBarProps {
@@ -34,7 +35,7 @@ export function FilterBar({
       <span className="text-xs text-gray-400">필터:</span>
 
       {/* 상태 필터 */}
-      {SCHEDULE_STATUSES.filter((s) => s !== 'cancelled').map((s) => {
+      {SCHEDULE_STATUSES.map((s) => {
         const colors = STATUS_FILTER_COLORS[s] ?? STATUS_FILTER_COLORS.todo!;
         return (
           <button
