@@ -42,18 +42,40 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-REDACTED_PASSWORD}@db:5432/${POSTGRES_DB:-slack_ai_agents}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
+      COOKIE_SECURE: 'true'
+      HOSTNAME: '0.0.0.0'
       NODE_ENV: production
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - '3000:3000'
+    expose:
+      - '3000'
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/auth').then(r => process.exit(r.ok || r.status === 401 ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/auth').then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: slack-ai-agents-caddy
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      web:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
