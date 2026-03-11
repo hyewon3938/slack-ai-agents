@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { updateCategory, deleteCategory } from '@/lib/queries';
+import { updateCategory, deleteCategory } from '@/features/schedule/lib/queries';
 
 export async function PATCH(
   request: Request,

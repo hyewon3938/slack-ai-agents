@@ -2,11 +2,11 @@
 
 import { useState, useCallback } from 'react';
 import { getCategoryStyle } from '@/lib/types';
-import { useBacklog } from '@/hooks/use-backlog';
+import { useBacklog } from '@/features/schedule/hooks/use-backlog';
 import { AppShell } from '@/components/ui/app-shell';
 import { Modal } from '@/components/ui/modal';
-import { ScheduleForm } from '@/components/schedule/schedule-form';
-import { StatusBadge } from '@/components/schedule/status-badge';
+import { ScheduleForm } from '@/features/schedule/components/schedule-form';
+import { StatusBadge } from '@/features/schedule/components/status-badge';
 
 export default function BacklogPage() {
   const {

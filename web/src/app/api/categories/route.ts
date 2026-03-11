@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { queryCategories, createCategory } from '@/lib/queries';
+import { queryCategories, createCategory } from '@/features/schedule/lib/queries';
 
 export async function GET() {
   if (!(await requireAuth())) {
