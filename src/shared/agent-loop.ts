@@ -184,6 +184,16 @@ export const runAgentLoop = async (
         // 직렬화 불가 시 무시
       }
 
+      // 크레딧 부족 (402 / billing / credit) — 재시도 불필요, 즉시 안내
+      const isCreditError = /\b(402|credit_balance|insufficient.credit|billing|prepaid)\b/i.test(errorMsg);
+      if (isCreditError) {
+        return {
+          text: 'API 크레딧이 부족해서 응답할 수 없어. 여기서 충전해줘: https://platform.claude.com/settings/billing',
+          toolNames: calledToolNames,
+          toolArgs: calledToolArgs,
+        };
+      }
+
       const isRateLimit = /\b(429|RESOURCE_EXHAUSTED|quota)\b/i.test(errorMsg);
       const isTransient = /\b(500|503|429|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|overloaded|high demand|fetch failed|timeout)\b/i.test(errorMsg);
       const maxRetries = isRateLimit ? MAX_RATE_LIMIT_RETRIES : MAX_RETRIES;
