@@ -385,8 +385,8 @@ Claude Code의 모든 확장 기능(Skills, Hooks, MCP, Scheduled Tasks, GitHub 
 
 **커스텀 스킬 (4개)**
 - `/init-project` (범용): 프로젝트 첫 세팅 — 컨벤션, 브랜치 전략, 라벨 체계, CLAUDE.md 전부 자동 생성
-- `/start-feature` (프로젝트): 이슈 생성 → 브랜치 → 설계 → 히스토리 기록까지 한번에
-- `/review-code` (프로젝트): 코드 리뷰 + 컨벤션 점검 + 컨벤션 자동 진화 제안
+- `/start-feature` (프로젝트): 이슈 생성 → 브랜치 → 설계(⛔ 보안 영향도 분석 포함) → 히스토리 기록까지 한번에
+- `/review-code` (프로젝트): ⛔ 보안 감사(최우선) + 코드 리뷰 + 컨벤션 점검 + 컨벤션 자동 진화 제안 (7단계)
 - `/review-me` (범용): 개발 성향/AI 협업 패턴/강점/개선점 분석
 
 **Scheduled Tasks (예약 작업, 2개)**
@@ -658,6 +658,66 @@ Phase 1 기본 구현 후 실사용 피드백 기반으로 UX를 대폭 개선.
 
 ---
 
+## 보안 체계 강화
+
+**날짜:** 2026-03-11
+
+### 배경
+
+웹 대시보드 배포 과정에서 다수의 보안 이슈를 경험 (HTTP 쿠키 문제, 포트 노출, 환경변수 누락 등).
+Public 저장소에 개인 라이프 데이터를 다루는 프로젝트 특성상, 코드 구조가 공개된 상태에서도 안전한 설계가 필수.
+매 코드 변경마다 보안을 자동으로 점검하는 다층 방어 체계를 구축.
+
+### 구현 — 4곳 다층 보안 지시사항
+
+| 위치 | 역할 | 트리거 시점 |
+|------|------|------------|
+| **CLAUDE.md** | 최상위 보안 규칙 (CRITICAL) | 모든 작업 시 자동 로드 |
+| **conventions.md** | 보안 체크리스트 (시크릿/API/인프라/의존성) | 코드 작성·리뷰 시 기준 |
+| **review-code** | 2단계 보안 감사 (최우선, 6→7단계 확장) | `/review-code` 실행 시 |
+| **start-feature** | 설계 시 보안 영향도 분석 + 커밋 전 점검 | `/start-feature` 실행 시 |
+
+### 점검 항목
+
+**인프라/배포**: 노출 포트, 환경변수 전달, 인증/세션 설정, HTTPS, CORS/보안 헤더, DB 접근
+**API/웹**: 라우트 인증, 입력 검증, SQL 인젝션 방지, 에러 응답 내부 정보 노출
+**시크릿**: 코드/커밋 민감정보 유입, .env.example 동기화, docker-compose 환경변수
+**의존성**: 패키지 취약점 확인 (yarn audit)
+
+### 핵심 규칙
+
+- 보안 이슈는 무조건 🔴 (필수 수정) — "나중에 고치자" 불가
+- 새 API 엔드포인트 추가 시 인증 없는 상태로 커밋 금지
+- 의심스러운 보안 설정 발견 시 작업 중단 → 사용자 알림
+
+---
+
+## 웹 대시보드 배포 + 보안 수정
+
+**날짜:** 2026-03-11
+
+### 배포 인프라
+
+- Docker multi-stage build (Next.js standalone output)
+- docker-compose에 web 서비스 추가 (포트 3000)
+- Oracle Cloud VCN Security List + iptables 포트 개방
+
+### 배포 중 발견·수정한 보안 이슈
+
+| 이슈 | 원인 | 수정 |
+|------|------|------|
+| 로그인 세션 튕김 | `Secure` 쿠키가 HTTP에서 전송 안 됨 | `COOKIE_SECURE` 환경변수로 분리 |
+| SESSION_SECRET 미전달 | docker-compose.yml에 env 누락 | `${SESSION_SECRET}` 추가 |
+| Docker COPY 실패 | `web/public/` 빈 디렉토리 git 미추적 | `.gitkeep` 추가 |
+
+### HTTPS 미적용 (현재 상태)
+
+- IP 직접 접속이라 Let's Encrypt 인증서 발급 불가 (도메인 필요)
+- 도메인 확보 후 Caddy/Nginx + Let's Encrypt 자동 HTTPS 적용 예정
+- 현재 `COOKIE_SECURE=false`로 HTTP 운영 중
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -675,3 +735,5 @@ Phase 1 기본 구현 후 실사용 피드백 기반으로 UX를 대폭 개선.
 | 2026-03-10 | 백로그/내일일정 fast path 추가 (LLM 없이 Block Kit 즉시 응답, Issue #68, PR #69) |
 | 2026-03-10 | 웹 대시보드 Phase 1 — 캘린더 뷰, 일정/카테고리 CRUD, 백로그, PWA (Issue #73) |
 | 2026-03-11 | 웹 대시보드 Phase 2 — DnD, 상태 정렬, 모바일 safe area, 로그인 버그 수정 (Issue #73) |
+| 2026-03-11 | 웹 대시보드 배포 (Docker + Oracle Cloud VM, 포트 3000) + 배포 보안 이슈 수정 |
+| 2026-03-11 | 보안 체계 강화 — CLAUDE.md/conventions/스킬 4곳 다층 보안 지시사항 구축 |
