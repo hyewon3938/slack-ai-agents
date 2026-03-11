@@ -71,7 +71,7 @@ export const publishHomeView = async (
   // 일정 섹션
   blocks.push({ type: 'divider' });
   if (schedules.length > 0) {
-    const { blocks: scheduleBlocks } = buildScheduleBlocks(schedules, today);
+    const { blocks: scheduleBlocks } = buildScheduleBlocks(schedules, today, undefined, { hideCompletedMemo: true });
     blocks.push(...scheduleBlocks);
   } else {
     blocks.push({
