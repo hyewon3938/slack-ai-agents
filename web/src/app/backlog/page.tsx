@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { getCategoryStyle } from '@/lib/types';
 import { useBacklog } from '@/hooks/use-backlog';
 import { AppShell } from '@/components/ui/app-shell';
@@ -25,6 +26,12 @@ export default function BacklogPage() {
     handleDelete,
     handleCreate,
   } = useBacklog();
+
+  const [formDirty, setFormDirty] = useState(false);
+  const handleBeforeClose = useCallback(
+    () => !formDirty || confirm('수정 중인 내용이 있어. 닫을까?'),
+    [formDirty],
+  );
 
   if (loading) {
     return (
@@ -52,7 +59,7 @@ export default function BacklogPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-3xl p-4">
+      <div className="mx-auto max-w-3xl overflow-hidden p-4">
         {schedules.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-gray-400">백로그 없음</p>
@@ -85,7 +92,7 @@ export default function BacklogPage() {
                     {items.map((s) => (
                       <div
                         key={s.id}
-                        className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
+                        className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 max-md:flex-wrap"
                       >
                         <div
                           className="min-w-0 flex-1 cursor-pointer"
@@ -103,14 +110,14 @@ export default function BacklogPage() {
 
                         {/* 날짜 지정 */}
                         {assigningDate?.id === s.id ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 max-md:w-full">
                             <input
                               type="date"
                               value={assigningDate.date}
                               onChange={(e) =>
                                 setAssigningDate({ id: s.id, date: e.target.value })
                               }
-                              className="rounded border border-gray-300 px-2 py-1 text-xs"
+                              className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-xs"
                               autoFocus
                             />
                             <button
@@ -151,12 +158,13 @@ export default function BacklogPage() {
       </div>
 
       {/* 생성 모달 */}
-      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} title="백로그 추가">
+      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} onBeforeClose={handleBeforeClose} title="백로그 추가">
         <ScheduleForm
           categories={categories}
           defaultDate={null}
           onSubmit={handleCreate}
           onClose={() => setShowCreateModal(false)}
+          onDirtyChange={setFormDirty}
         />
       </Modal>
 
@@ -164,6 +172,7 @@ export default function BacklogPage() {
       <Modal
         open={!!editingSchedule}
         onClose={() => setEditingSchedule(null)}
+        onBeforeClose={handleBeforeClose}
         title="일정 수정"
       >
         {editingSchedule && (
@@ -173,6 +182,7 @@ export default function BacklogPage() {
             onSubmit={handleUpdate}
             onDelete={handleDelete}
             onClose={() => setEditingSchedule(null)}
+            onDirtyChange={setFormDirty}
           />
         )}
       </Modal>
