@@ -45,11 +45,16 @@ export function ScheduleCard({
     }
   };
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick?.(schedule);
+  };
+
   if (compact) {
     if (catStyle.isPreset && catStyle.classes) {
       return (
         <div
-          onClick={() => onClick?.(schedule)}
+          onClick={handleCardClick}
           className={`cursor-pointer truncate rounded px-1.5 py-0.5 text-xs leading-tight ${catStyle.classes.bg} ${catStyle.classes.text} border-l-2 ${catStyle.classes.border} ${isDone ? 'line-through opacity-60' : ''}`}
         >
           {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
@@ -59,7 +64,7 @@ export function ScheduleCard({
     }
     return (
       <div
-        onClick={() => onClick?.(schedule)}
+        onClick={handleCardClick}
         className={`cursor-pointer truncate rounded border-l-2 px-1.5 py-0.5 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
         style={{ backgroundColor: catStyle.styles?.bg, color: catStyle.styles?.text, borderLeftColor: catStyle.styles?.border }}
       >
@@ -71,7 +76,7 @@ export function ScheduleCard({
 
   return (
     <div
-      onClick={() => onClick?.(schedule)}
+      onClick={handleCardClick}
       className={`cursor-pointer rounded-lg border p-3 transition hover:shadow-sm ${STATUS_BG[schedule.status] ?? 'bg-white'} ${
         !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') && schedule.status === 'todo'
           ? 'border-red-300'
@@ -101,17 +106,30 @@ export function ScheduleCard({
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <StatusBadge status={schedule.status} />
             {schedule.category && <CategoryBadge colorKey={colorKey} label={schedule.category} />}
+            {schedule.end_date && schedule.end_date !== schedule.date && (
+              <span className="text-xs text-gray-400">
+                {formatDateRange(schedule.date, schedule.end_date)}
+              </span>
+            )}
           </div>
 
           {schedule.memo && (
-            <p className={`mt-1.5 text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'}`}>
-              {schedule.memo.length > 80 ? schedule.memo.slice(0, 80) + '...' : schedule.memo}
+            <p className={`mt-1.5 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'}`}>
+              {schedule.memo}
             </p>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+function formatDateRange(date: string | null, endDate: string): string {
+  const fmt = (d: string) => {
+    const [, m, day] = d.split('-');
+    return `${Number(m)}/${Number(day)}`;
+  };
+  return date ? `${fmt(date)} - ${fmt(endDate)}` : fmt(endDate);
 }
 
 function CategoryBadge({ colorKey, label }: { colorKey: string; label: string }) {

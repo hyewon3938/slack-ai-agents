@@ -177,6 +177,15 @@ export const deleteCategory = async (id: number): Promise<boolean> => {
   return result.rowCount !== null && result.rowCount > 0;
 };
 
+/** 카테고리 순서 일괄 업데이트 */
+export const reorderCategories = async (
+  orders: { id: number; sort_order: number }[],
+): Promise<void> => {
+  for (const { id, sort_order } of orders) {
+    await query('UPDATE categories SET sort_order = $1 WHERE id = $2', [sort_order, id]);
+  }
+};
+
 /** 일정에서 사용 중인 카테고리가 categories 테이블에 없으면 자동 추가 */
 export const ensureCategoryExists = async (name: string): Promise<void> => {
   const existing = await queryOne<CategoryRow>(

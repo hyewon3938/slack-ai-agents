@@ -2,6 +2,9 @@ import { format } from 'date-fns';
 import type { ScheduleRow } from './types';
 import { compareByStatus } from './types';
 
+/** 주간 시작 요일: 1 = 월요일 */
+export const WEEK_START = 1 as const;
+
 export interface WeekSpan {
   schedule: ScheduleRow;
   startCol: number;

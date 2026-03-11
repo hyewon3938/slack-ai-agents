@@ -39,6 +39,13 @@ export function useBacklog() {
 
   useEffect(() => {
     fetchData();
+
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 15_000);
+    return () => clearInterval(id);
   }, [fetchData]);
 
   // 카테고리별 그룹핑
