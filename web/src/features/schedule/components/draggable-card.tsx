@@ -2,7 +2,7 @@
 
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { ScheduleCard } from '../schedule/schedule-card';
+import { ScheduleCard } from './schedule-card';
 
 interface DraggableCardProps {
   schedule: ScheduleRow;
