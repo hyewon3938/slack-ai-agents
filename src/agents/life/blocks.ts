@@ -364,10 +364,11 @@ export const buildScheduleBlocks = (
   items: ScheduleRow[],
   targetDate: string,
   headerText?: string,
-  options?: { compact?: boolean; backlog?: boolean },
+  options?: { compact?: boolean; backlog?: boolean; hideCompletedMemo?: boolean },
 ): { text: string; blocks: KnownBlock[] } => {
   const blocks: KnownBlock[] = [];
   const backlog = options?.backlog ?? false;
+  const hideCompletedMemo = options?.hideCompletedMemo ?? false;
   const formatted = backlog ? '' : formatDateShort(targetDate);
   const compact = options?.compact ?? false;
   const headerLabel = backlog
@@ -389,6 +390,7 @@ export const buildScheduleBlocks = (
 
     const addMemoContext = (memo: string | null, isDone: boolean): void => {
       if (!memo) return;
+      if (hideCompletedMemo && isDone) return;
       blocks.push({
         type: 'context',
         elements: [{ type: 'mrkdwn', text: formatMemoWithStrike(memo, isDone) }],
