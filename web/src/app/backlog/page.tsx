@@ -190,7 +190,8 @@ export default function BacklogPage() {
       {/* 모바일 FAB */}
       <button
         onClick={() => setShowCreateModal(true)}
-        className="fixed right-4 bottom-20 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-500 text-2xl text-white shadow-lg transition hover:bg-blue-600 md:hidden"
+        className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-500 text-2xl text-white shadow-lg transition hover:bg-blue-600 md:hidden"
+        style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
       >
         +
       </button>
