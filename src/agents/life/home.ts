@@ -20,6 +20,13 @@ import {
 } from '../../shared/life-queries.js';
 import { createTodayRecords } from '../../cron/life-cron.js';
 
+// ─── userId 캐시 (크론 능동 갱신용) ─────────────────
+
+let cachedUserId: string | null = null;
+
+/** 캐시된 userId 반환 (app_home_opened에서 저장) */
+export const getCachedHomeUserId = (): string | null => cachedUserId;
+
 // ─── Home 탭 빌드 ───────────────────────────────────
 
 /** Home 탭 뷰 발행 */
@@ -97,6 +104,7 @@ export const publishHomeView = async (
 export const registerHomeTab = (app: App): void => {
   app.event('app_home_opened', async ({ event, client }) => {
     if (event.tab !== 'home') return;
+    cachedUserId = event.user;
     try {
       await publishHomeView(client, event.user);
     } catch (error: unknown) {
