@@ -56,7 +56,7 @@ export function WeekView({
   useEffect(() => {
     const timer = setTimeout(() => {
       todayRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }, 100);
+    }, 300);
     return () => clearTimeout(timer);
   }, [currentDate]);
 
