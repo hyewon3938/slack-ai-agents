@@ -36,6 +36,7 @@ export const CONFIG = {
   },
   channels: {
     life: requireEnv('LIFE_CHANNEL_ID'),
+    project: process.env['PROJECT_CHANNEL_ID'] ?? '',
   },
   db: {
     url: requireEnv('DATABASE_URL'),
