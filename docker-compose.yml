@@ -43,6 +43,7 @@ services:
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
       COOKIE_SECURE: 'true'
+      HOSTNAME: '0.0.0.0'
       NODE_ENV: production
     depends_on:
       db:
