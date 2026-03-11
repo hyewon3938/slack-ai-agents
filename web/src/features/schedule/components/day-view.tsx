@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { compareByStatus } from '@/lib/types';
-import { ScheduleCard } from '../schedule/schedule-card';
+import { ScheduleCard } from './schedule-card';
 
 interface DayViewProps {
   currentDate: Date;

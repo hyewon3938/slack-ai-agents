@@ -48,16 +48,37 @@
 
 ---
 
-## React 컴포넌트 컨벤션 (web/)
+## 웹 대시보드 컨벤션 (web/)
+
+### 디렉토리 구조 — 도메인별 feature 폴더
+
+```
+web/src/
+├── app/                          # Next.js 라우팅 (얇게 유지)
+│   ├── api/{domain}/             # API 라우트 (도메인별)
+│   └── {domain}/page.tsx         # 페이지 = 훅 호출 + 컴포넌트 조합만
+├── features/                     # 도메인별 feature 폴더 (핵심)
+│   └── {domain}/
+│       ├── components/           # 도메인 전용 컴포넌트
+│       ├── hooks/                # 도메인 전용 훅
+│       └── lib/                  # 도메인 전용 유틸, 타입, 쿼리
+├── components/                   # 도메인 무관 공통 UI (modal, bottom-sheet 등)
+└── lib/                          # 앱 전역 유틸 (db, auth, kst, 공통 타입)
+```
+
+**핵심 원칙:**
+- **새 도메인 추가 = `features/` 안에 폴더 하나 생성** (기존 코드 수정 최소화)
+- `features/{domain}/` 안에 components, hooks, lib이 자기 완결적으로 존재
+- 도메인 간 공유가 필요한 것만 `components/` 또는 `lib/`로 올림
+- page.tsx는 훅 호출 + 레이아웃 조합만 (얇은 껍질)
 
 ### 컴포넌트 분류
 
 | 분류 | 위치 | 역할 | 예시 |
 |------|------|------|------|
-| Page | `app/**/page.tsx` | 데이터 페칭, 상태 관리, 레이아웃 조합 | `schedules/page.tsx` |
-| Feature | `components/{도메인}/` | 도메인 로직 + UI, 콜백으로 외부 통신 | `month-view.tsx`, `schedule-form.tsx` |
-| UI | `components/ui/` | 도메인 무관, 재사용 가능, 비즈니스 로직 없음 | `modal.tsx`, `filter-bar.tsx` |
-| Atom | `components/{도메인}/` | 단일 개념, 순수 표현 컴포넌트 | `status-badge.tsx` |
+| Page | `app/**/page.tsx` | 훅 호출 + 레이아웃 조합 (로직 최소화) | `schedules/page.tsx` |
+| Feature | `features/{domain}/components/` | 도메인 로직 + UI, 콜백으로 외부 통신 | `month-view.tsx`, `schedule-form.tsx` |
+| UI | `components/` | 도메인 무관, 재사용 가능, 비즈니스 로직 없음 | `modal.tsx`, `filter-bar.tsx` |
 
 ### 컴포넌트 구조 규칙
 
@@ -67,9 +88,34 @@
 - **한 파일 = 한 컴포넌트** 원칙. 내부 서브컴포넌트는 같은 파일에 허용하되 export 금지
 - 컴포넌트 파일 200줄 초과 시 서브컴포넌트나 유틸 분리 검토
 
+### 데이터 페칭 패턴
+
+- **도메인 훅**이 데이터 페칭 + 상태 + CRUD 핸들러를 캡슐화
+- page.tsx는 훅의 반환값만 컴포넌트에 전달
+- 폴링 간격: 15초 (브라우저 탭 비활성 시 중단)
+- 401 → `/login` 리다이렉트 패턴 통일
+- 새 도메인 추가 시 동일 패턴 복제 (과한 추상화 금지)
+
+### API 라우트 패턴
+
+도메인별 동일 구조 유지:
+```
+api/{domain}/route.ts       → GET (목록), POST (생성)
+api/{domain}/[id]/route.ts  → GET (단건), PATCH (수정), DELETE (삭제)
+```
+- 모든 라우트 `requireAuth()` 필수
+- 입력 검증 + 컬럼 화이트리스트 필수
+- 에러 응답: `{ error: string }` (내부 정보 노출 금지)
+
+### 타입 분리 규칙
+
+| 위치 | 내용 |
+|------|------|
+| `features/{domain}/lib/types.ts` | 도메인 전용 타입 |
+| `lib/types.ts` | 공통 타입 (CategoryRow, 색상 시스템, API 응답 등) |
+
 ### 상태 관리
 
-- **Server Components**: 데이터 조회가 주 목적인 경우 (현재는 사용 안 함, 필요 시 도입)
 - **Client 상태**: `useState`로 로컬 UI 상태 관리. 글로벌 상태 라이브러리 불필요
 - **URL 상태**: 뷰 전환, 필터 등 공유 가능한 상태는 URL 파라미터 활용
 - **폼 상태**: 필드 5~6개 수준은 `useState` 직접 관리. 라이브러리 불필요
@@ -98,7 +144,7 @@
 
 1. React / Next.js (`react`, `next/navigation` 등)
 2. 외부 패키지 (`@dnd-kit`, `date-fns` 등)
-3. 내부 라이브러리 (`@/lib/...`, `@/hooks/...`)
+3. 내부 라이브러리 (`@/lib/...`, `@/features/...`)
 4. 같은 디렉토리 컴포넌트 (`./schedule-card`)
 
 ---

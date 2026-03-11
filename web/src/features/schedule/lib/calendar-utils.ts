@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
-import type { ScheduleRow } from './types';
-import { compareByStatus } from './types';
+import type { ScheduleRow } from '@/lib/types';
+import { compareByStatus } from '@/lib/types';
 
 /** 주간 시작 요일: 1 = 월요일 */
 export const WEEK_START = 1 as const;
