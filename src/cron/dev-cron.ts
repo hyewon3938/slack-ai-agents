@@ -147,32 +147,6 @@ const buildCommitContext = (stats: CommitStats): string => {
     .join('\n');
 };
 
-/** LLM으로 개발자 리뷰 생성 */
-const generateDevReview = async (
-  llmClient: LLMClient,
-  stats: CommitStats,
-): Promise<string> => {
-  const today = getTodayISO();
-  const context = buildCommitContext(stats);
-
-  const messages: LLMMessage[] = [
-    {
-      role: 'system',
-      content: `너는 시니어 개발 멘토. 개발자의 작업 패턴을 분석하고 건설적인 피드백을 제공한다.
-한국어로 작성. Slack mrkdwn 형식.
-분석 항목: 작업 요약(1줄), 개발 성향(패턴/스타일), 강점, 개선점, AI 협업 팁.
-각 항목은 1~2문장으로 짧게. 구체적 커밋/파일명을 인용해서 설명.`,
-    },
-    {
-      role: 'user',
-      content: `${today} 작업 분석해줘.\n\n${context}`,
-    },
-  ];
-
-  const response = await llmClient.chat(messages);
-  return response.text ?? '분석 생성 실패';
-};
-
 /** LLM으로 작업 요약 생성 */
 const generateWorkSummary = async (
   llmClient: LLMClient,
@@ -228,7 +202,6 @@ const getProjectChannelId = (): string =>
 // ─── 크론 태스크 ────────────────────────────────────────
 
 export interface DevCronClients {
-  mainLLMClient: LLMClient;
   cronLLMClient: LLMClient;
 }
 
@@ -239,37 +212,19 @@ export const setDevCronClients = (clients: DevCronClients): void => {
   devCronClients = clients;
 };
 
-/** 개발자 리뷰 크론 태스크 — Opus 분석(DB) 우선, 없으면 Sonnet 자체 생성 */
+/** 개발자 리뷰 크론 태스크 — Opus 분석(DB) 있으면 전송, 없으면 스킵 */
 export const devReviewTask = async (app: App): Promise<void> => {
   const today = getTodayISO();
 
-  // 1. Opus 분석 결과가 DB에 있으면 우선 사용
   const opusAnalysis = await fetchOpusAnalysis();
-  if (opusAnalysis) {
-    const message = `📋 *Daily Dev Review — ${today}*\n\n${opusAnalysis}`;
-    await postToChannel(app.client, getProjectChannelId(), message);
-    console.warn('[Dev Cron] 개발자 리뷰 전송 완료 (Opus 분석)');
+  if (!opusAnalysis) {
+    console.warn('[Dev Cron] Opus 분석 없음 — devReview 스킵');
     return;
   }
 
-  // 2. Opus 분석 없으면 GitHub API + Sonnet으로 자체 생성
-  const stats = await fetchRecentCommits();
-  if (!stats) {
-    console.warn('[Dev Cron] 최근 24시간 커밋 없음 — devReview 스킵');
-    return;
-  }
-
-  const client = devCronClients?.mainLLMClient;
-  if (!client) {
-    console.error('[Dev Cron] mainLLMClient 미설정');
-    return;
-  }
-
-  const review = await generateDevReview(client, stats);
-  const message = `📋 *Daily Dev Review — ${today}*\n\n${review}`;
-
+  const message = `📋 *Daily Dev Review — ${today}*\n\n${opusAnalysis}`;
   await postToChannel(app.client, getProjectChannelId(), message);
-  console.warn('[Dev Cron] 개발자 리뷰 전송 완료 (Sonnet 자체 생성)');
+  console.warn('[Dev Cron] 개발자 리뷰 전송 완료 (Opus 분석)');
 };
 
 /** 작업 요약 크론 태스크 */

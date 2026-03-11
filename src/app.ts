@@ -34,8 +34,8 @@ const startApp = async (): Promise<void> => {
   registerLifeActions(app);
   registerHomeTab(app);
 
-  // 개발 크론 LLM 클라이언트 설정 (devReview: Sonnet, workSummary: Gemini Flash)
-  setDevCronClients({ mainLLMClient: llmClient, cronLLMClient });
+  // 개발 크론 LLM 클라이언트 설정 (workSummary: Gemini Flash)
+  setDevCronClients({ cronLLMClient });
 
   // 크론 스케줄러 (DB 기반 동적 스케줄) — Gemini Flash로 비용 절감
   const cronScheduler = new CronScheduler(app, {
