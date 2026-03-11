@@ -1,11 +1,12 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
 import { startOfWeek, addDays, format, isToday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { getCategoryStyle, compareByStatus } from '@/lib/types';
-import { computeWeekLayout, type WeekSpan } from '@/lib/calendar-utils';
+import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/lib/calendar-utils';
 import { StatusBadge } from '../schedule/status-badge';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
@@ -45,10 +46,19 @@ export function WeekView({
   onScheduleClick,
   onStatusChange,
 }: WeekViewProps) {
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
+  const todayRef = useRef<HTMLDivElement>(null);
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: WEEK_START });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const layout = computeWeekLayout(days, schedules);
   const spanAreaHeight = layout.laneCount * LANE_HEIGHT;
+
+  // 모바일: 오늘 날짜로 자동 스크롤 (뷰 진입, 오늘 버튼, 주 이동 시)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      todayRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [currentDate]);
 
   return (
     <div className="flex flex-col md:flex-1">
@@ -131,6 +141,7 @@ export function WeekView({
           return (
             <div
               key={dateStr}
+              ref={today ? todayRef : undefined}
               onClick={() => onSelectDate(dateStr)}
               className={`border-b border-gray-100 px-4 py-3 ${selected ? 'bg-blue-50/30' : ''}`}
             >
@@ -260,7 +271,7 @@ function WeekSpanBar({
           ref={resizeLRef}
           {...resizeLListeners}
           {...resizeLAttrs}
-          className="absolute top-0 left-0 z-20 h-full w-2 cursor-col-resize opacity-0 hover:opacity-100"
+          className="absolute top-0 left-0 z-20 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
@@ -311,7 +322,7 @@ function WeekSpanBar({
           ref={resizeRRef}
           {...resizeRListeners}
           {...resizeRAttrs}
-          className="absolute top-0 right-0 z-20 h-full w-2 cursor-col-resize opacity-0 hover:opacity-100"
+          className="absolute top-0 right-0 z-20 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
 const NAV_ITEMS = [
-  { href: '/schedules', label: '캘린더', icon: '📅' },
+  { href: '/schedules', label: '일정', icon: '📅' },
   { href: '/backlog', label: '백로그', icon: '📋' },
   { href: '/categories', label: '카테고리', icon: '🏷' },
 ] as const;
@@ -109,7 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             }`}
           >
             <span className="text-lg">📅</span>
-            <span>캘린더</span>
+            <span>일정</span>
           </a>
           <a
             href="/backlog"

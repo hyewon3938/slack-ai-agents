@@ -82,19 +82,41 @@ export function DraggableCard({
     );
   }
 
+  const faded = isDragging || isResizingL || isResizingR;
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className={isDragging ? 'opacity-30' : ''}
-    >
-      <ScheduleCard
-        schedule={schedule}
-        categories={categories}
-        onStatusChange={onStatusChange}
-        onClick={onClick}
-      />
+    <div className={`group relative ${faded ? 'opacity-30' : ''}`}>
+      {/* 리사이즈 핸들 (좌측) */}
+      <div
+        ref={resizeLRef}
+        {...resizeLListeners}
+        {...resizeLAttrs}
+        className="absolute top-0 left-0 z-10 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+      </div>
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+      >
+        <ScheduleCard
+          schedule={schedule}
+          categories={categories}
+          onStatusChange={onStatusChange}
+          onClick={onClick}
+        />
+      </div>
+      {/* 리사이즈 핸들 (우측) */}
+      <div
+        ref={resizeRRef}
+        {...resizeRListeners}
+        {...resizeRAttrs}
+        className="absolute top-0 right-0 z-10 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+      </div>
     </div>
   );
 }

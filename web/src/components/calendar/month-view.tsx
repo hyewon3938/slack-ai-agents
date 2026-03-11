@@ -14,7 +14,7 @@ import { ko } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { getCategoryStyle, compareByStatus } from '@/lib/types';
-import { computeWeekLayout, type WeekSpan } from '@/lib/calendar-utils';
+import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/lib/calendar-utils';
 import { ScheduleCard } from '../schedule/schedule-card';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
@@ -29,7 +29,7 @@ interface MonthViewProps {
   onStatusChange: (id: number, status: string) => void;
 }
 
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+const DAY_NAMES = ['월', '화', '수', '목', '금', '토', '일'];
 const MAX_VISIBLE = 3;
 const LANE_HEIGHT = 22;
 const DATE_ROW_HEIGHT = 34;
@@ -45,8 +45,8 @@ export function MonthView({
 }: MonthViewProps) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
-  const calStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const calStart = startOfWeek(monthStart, { weekStartsOn: WEEK_START });
+  const calEnd = endOfWeek(monthEnd, { weekStartsOn: WEEK_START });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
 
   // 주 단위로 분할
@@ -63,7 +63,7 @@ export function MonthView({
           <div
             key={name}
             className={`py-2 text-center text-xs font-medium ${
-              i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-500'
+              i === 6 ? 'text-red-400' : i === 5 ? 'text-blue-400' : 'text-gray-500'
             }`}
           >
             {name}
