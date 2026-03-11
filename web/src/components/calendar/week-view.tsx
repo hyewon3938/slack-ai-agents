@@ -55,7 +55,7 @@ export function WeekView({
   // 모바일: 오늘 날짜로 자동 스크롤 (뷰 진입, 오늘 버튼, 주 이동 시)
   useEffect(() => {
     const timer = setTimeout(() => {
-      todayRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      todayRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }, 100);
     return () => clearTimeout(timer);
   }, [currentDate]);
