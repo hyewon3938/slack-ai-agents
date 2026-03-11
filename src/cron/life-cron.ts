@@ -35,6 +35,7 @@ import {
 } from '../agents/life/blocks.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView, getCachedHomeUserId } from '../agents/life/home.js';
+import { devReviewTask, workSummaryTask } from './dev-cron.js';
 
 export interface LifeCronConfig {
   channelId: string;
@@ -340,6 +341,10 @@ export const timeToCron = (timeValue: string): string => {
 
 type CronTaskFn = (app: App, config: LifeCronConfig) => Promise<void>;
 
+/** dev-cron 태스크를 CronTaskFn 시그니처로 래핑 */
+const wrapDevTask = (fn: (app: App) => Promise<void>): CronTaskFn =>
+  (app: App, _config: LifeCronConfig) => fn(app);
+
 const SLOT_TASKS: Record<string, CronTaskFn> = {
   sleepCheck: sleepCheckTask,
   morningSchedule: morningScheduleTask,
@@ -348,6 +353,8 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   evening: eveningTask,
   night: nightTask,
   nightReview: nightReviewTask,
+  devReview: wrapDevTask(devReviewTask),
+  workSummary: wrapDevTask(workSummaryTask),
 };
 
 // ─── CronScheduler 클래스 ───────────────────────────────
