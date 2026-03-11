@@ -138,10 +138,13 @@ Slack App Home 탭에 오늘의 일정 + 루틴 + 수면 요약을 영구 표시
 | ---------- | ---------------------------------------------------- |
 | AI/LLM     | Claude Sonnet (Tool Use), Gemini Flash (크론 메시지) |
 | Backend    | Node.js + TypeScript (strict)                        |
+| Frontend   | Next.js 15 (App Router) + Tailwind CSS v4            |
 | Messaging  | Slack Bolt (Socket Mode)                             |
 | Database   | PostgreSQL                                           |
+| Auth       | iron-session (암호화 쿠키 세션)                      |
 | Scheduling | node-cron (timezone: Asia/Seoul)                     |
 | DevOps     | Docker + Oracle Cloud Free Tier ARM VM               |
+| Security   | 다층 보안 체계 (규칙 + 체크리스트 + 스킬 + Hooks)    |
 | Test       | vitest                                               |
 
 ---
@@ -204,11 +207,24 @@ Claude Sonnet 도입 후 비용 증가에 대응한 3-tier 전략:
 | 스킬             | 범위     | 용도                                                                                                             |
 | ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
 | `/init-project`  | 범용     | 프로젝트 첫 세팅 자동화 — 컨벤션, 브랜치 전략, 라벨 체계, CLAUDE.md 생성                                         |
-| `/start-feature` | 프로젝트 | 이슈 생성 → 브랜치 → 설계 → 구현 → 코드 리뷰 → PR까지 전체 워크플로우 자동화                                     |
-| `/review-code`   | 프로젝트 | 코드 리뷰 + 컨벤션 준수 점검 + 컨벤션 자동 진화 제안                                                             |
+| `/start-feature` | 프로젝트 | 이슈 생성 → 브랜치 → 설계(⛔ 보안 영향도 분석) → 구현 → 코드 리뷰 → PR까지 전체 워크플로우                        |
+| `/review-code`   | 프로젝트 | ⛔ 보안 감사(최우선) + 코드 리뷰 + 컨벤션 점검 + 컨벤션 자동 진화 (7단계)                                         |
 | `/review-me`     | 범용     | AI와 프롬프트로 협업하며 나타나는 개발 성향, 의사결정 패턴, 강점/개선점을 분석하여 `developer-profile.md`에 기록 |
 
 스킬 간 파일 기반 연결 구조: `/init-project`가 생성한 컨벤션을 `/start-feature`와 `/review-code`가 참조한다.
+
+### 다층 보안 체계 — Security-by-Design
+
+Public 저장소에서 개인 라이프 데이터를 다루는 특성상, "코드가 보여도 안전한" 설계를 위한 4곳 다층 방어 체계를 구축했다.
+
+| 위치 | 역할 | 트리거 |
+| ---- | ---- | ------ |
+| CLAUDE.md | 최상위 보안 규칙 (CRITICAL) | 모든 작업 시 자동 로드 |
+| conventions.md | 보안 체크리스트 (시크릿/API/인프라/의존성) | 코드 작성·리뷰 시 참조 |
+| `/review-code` | 2단계 보안 감사 (코드 리뷰 최우선) | 리뷰 실행 시 |
+| `/start-feature` | 설계 시 보안 영향도 분석 + 커밋 전 점검 | 기능 시작 시 |
+
+보안 이슈는 무조건 🔴(필수 수정) — "나중에 고치자" 원천 차단. Hooks(민감정보 스캔) + 스킬(보안 감사) + 규칙(CLAUDE.md) 3중 방어로 운영한다.
 
 ### Scheduled Tasks — AI 자율 모니터링 (2개)
 
@@ -243,7 +259,7 @@ AI가 관찰한 주요 패턴:
 
 ## 개발 히스토리
 
-5일간의 집중 개발로 v1 설계 → 운영 → 한계 인식 → v2 전환까지 진행했다.
+7일간의 집중 개발로 v1 설계 → 운영 → 한계 인식 → v2 전환 → 웹 대시보드 → 보안 체계까지 진행했다.
 
 | 날짜          | Phase                  | 내용                                                        |
 | ------------- | ---------------------- | ----------------------------------------------------------- |
@@ -252,6 +268,8 @@ AI가 관찰한 주요 패턴:
 | Day 3 (03-07) | 속도 최적화 + 안정성   | SDK 직접 조회(7~11초→~1초), 의도 분류 진화, 대화 히스토리   |
 | Day 4 (03-08) | v2 전환 + 인프라 개선  | PostgreSQL 전환, KST 수정, App Home, 스마트 메모리 설계     |
 | Day 5 (03-09) | AI 워크플로우 + 고도화 | Hooks/Skills/Scheduled Tasks, 비용 최적화, 생활 맥락 잔소리 |
+| Day 6 (03-10~11) | 웹 대시보드         | Next.js 15 캘린더, DnD, 백로그, 카테고리, PWA, Docker 배포  |
+| Day 7 (03-11) | 보안 체계 강화         | 4곳 다층 보안 지시사항, 코드 리뷰 보안 감사, 배포 보안 수정 |
 
 > 상세 기록: [docs/project-history.md](docs/project-history.md)
 
@@ -317,8 +335,9 @@ yarn deploy
 
 ## 관련 문서
 
-| 문서                                                   | 내용                                |
-| ------------------------------------------------------ | ----------------------------------- |
-| [docs/project-history.md](docs/project-history.md)     | 설계 변화와 의사결정 과정 상세 기록 |
-| [docs/conventions.md](docs/conventions.md)             | 코드 컨벤션 & 개발 가이드라인       |
-| [docs/developer-profile.md](docs/developer-profile.md) | AI가 분석한 개발자 성향 프로필      |
+| 문서                                                               | 내용                                |
+| ------------------------------------------------------------------ | ----------------------------------- |
+| [docs/project-history.md](docs/project-history.md)                 | 설계 변화와 의사결정 과정 상세 기록 |
+| [docs/conventions.md](docs/conventions.md)                         | 코드 컨벤션 & 보안 체크리스트       |
+| [docs/ai-workflow-portfolio.md](docs/ai-workflow-portfolio.md)     | AI 개발 워크플로우 포트폴리오       |
+| [docs/developer-profile.md](docs/developer-profile.md)             | AI가 분석한 개발자 성향 프로필      |
