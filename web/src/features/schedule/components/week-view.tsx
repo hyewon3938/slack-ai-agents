@@ -10,6 +10,7 @@ import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedul
 import { StatusBadge } from './status-badge';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
+import { ActionMenu } from './action-menu';
 
 interface WeekViewProps {
   currentDate: Date;
@@ -19,6 +20,9 @@ interface WeekViewProps {
   onSelectDate: (date: string) => void;
   onScheduleClick: (schedule: ScheduleRow) => void;
   onStatusChange: (id: number, status: string) => void;
+  onPostpone: (id: number) => void;
+  onMoveToBacklog: (id: number) => void;
+  onDelete: (id: number) => void;
 }
 
 const LANE_HEIGHT = 76;
@@ -45,6 +49,9 @@ export function WeekView({
   onSelectDate,
   onScheduleClick,
   onStatusChange,
+  onPostpone,
+  onMoveToBacklog,
+  onDelete,
 }: WeekViewProps) {
   const todayRef = useRef<HTMLDivElement>(null);
   const weekStart = startOfWeek(currentDate, { weekStartsOn: WEEK_START });
@@ -109,6 +116,14 @@ export function WeekView({
                     categories={categories}
                     onStatusChange={onStatusChange}
                     onClick={onScheduleClick}
+                    action={
+                      <ActionMenu
+                        scheduleId={s.id}
+                        onPostpone={onPostpone}
+                        onMoveToBacklog={onMoveToBacklog}
+                        onDelete={onDelete}
+                      />
+                    }
                   />
                 ))}
               </div>
@@ -126,6 +141,9 @@ export function WeekView({
             laneHeight={LANE_HEIGHT}
             onStatusChange={onStatusChange}
             onClick={() => onScheduleClick(span.schedule)}
+            onPostpone={onPostpone}
+            onMoveToBacklog={onMoveToBacklog}
+            onDelete={onDelete}
           />
         ))}
       </div>
@@ -173,6 +191,14 @@ export function WeekView({
                         categories={categories}
                         onStatusChange={onStatusChange}
                         onClick={onScheduleClick}
+                        action={
+                          <ActionMenu
+                            scheduleId={s.id}
+                            onPostpone={onPostpone}
+                            onMoveToBacklog={onMoveToBacklog}
+                            onDelete={onDelete}
+                          />
+                        }
                       />
                     ))}
                   </div>
@@ -205,6 +231,9 @@ function WeekSpanBar({
   laneHeight,
   onStatusChange,
   onClick,
+  onPostpone,
+  onMoveToBacklog,
+  onDelete,
 }: {
   span: WeekSpan;
   categories: CategoryRow[];
@@ -212,6 +241,9 @@ function WeekSpanBar({
   laneHeight: number;
   onStatusChange: (id: number, status: string) => void;
   onClick: () => void;
+  onPostpone: (id: number) => void;
+  onMoveToBacklog: (id: number) => void;
+  onDelete: (id: number) => void;
 }) {
   const {
     setNodeRef: moveRef,
@@ -312,6 +344,15 @@ function WeekSpanBar({
                 <CategoryBadge colorKey={colorKey} label={span.schedule.category} />
               )}
             </div>
+          </div>
+
+          <div className="shrink-0">
+            <ActionMenu
+              scheduleId={span.schedule.id}
+              onPostpone={onPostpone}
+              onMoveToBacklog={onMoveToBacklog}
+              onDelete={onDelete}
+            />
           </div>
         </div>
       </div>

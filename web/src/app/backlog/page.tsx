@@ -103,11 +103,11 @@ export default function BacklogPage() {
                         >
                           <div className="flex items-center gap-2">
                             {s.important && <span className="shrink-0 text-amber-500">★</span>}
-                            <span className="min-w-0 truncate text-sm font-medium text-gray-800">{s.title}</span>
+                            <span className="text-sm font-medium text-gray-800">{s.title}</span>
                             <StatusBadge status={s.status} />
                           </div>
                           {s.memo && (
-                            <p className="mt-1 truncate text-xs text-gray-500">{s.memo}</p>
+                            <p className="mt-1 whitespace-pre-wrap text-xs text-gray-500">{s.memo}</p>
                           )}
                         </div>
 
