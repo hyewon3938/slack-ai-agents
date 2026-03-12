@@ -8,7 +8,6 @@ export function useBacklog() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [assigningDate, setAssigningDate] = useState<{ id: number; date: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -71,7 +70,6 @@ export function useBacklog() {
         body: JSON.stringify({ date, status: 'todo' }),
       });
       if (res.ok) {
-        setAssigningDate(null);
         await fetchData();
       }
     } catch {
@@ -131,8 +129,6 @@ export function useBacklog() {
     setEditingSchedule,
     showCreateModal,
     setShowCreateModal,
-    assigningDate,
-    setAssigningDate,
     loading,
     grouped,
     sortedCategories,
