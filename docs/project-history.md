@@ -389,10 +389,13 @@ Claude Code의 모든 확장 기능(Skills, Hooks, MCP, Scheduled Tasks, GitHub 
 - `/review-code` (프로젝트): ⛔ 보안 감사(최우선) + 코드 리뷰 + 컨벤션 점검 + 컨벤션 자동 진화 제안 (7단계)
 - `/review-me` (범용): 개발 성향/AI 협업 패턴/강점/개선점 분석
 
-**~~Scheduled Tasks (예약 작업, 2개)~~ → node-cron으로 통합 (Issue #77)**
-- ~~Claude Code Scheduled Tasks로 운영~~
-- 매 실행 새 세션 생성 → 권한 승인 필요 + 데스크톱 앱 필수라는 구조적 한계
-- 기존 node-cron 시스템(life-cron.ts)에 통합하여 Docker에서 24시간 무인 자동화로 전환
+**Scheduled Tasks → node-cron 통합 시도 → 다시 Scheduled Task로 회귀 (Issue #77, #91)**
+- 처음: Claude Code Scheduled Tasks 2개 (daily-dev-review, daily-work-summary)
+- 1차 전환: node-cron 통합 시도 → 로컬 DB ↔ 운영 DB 불일치로 파이프라인 끊김
+- 최종: Scheduled Task `nightly-dev-report` 1개로 통합 (Opus 분석 + Slack 예약 메시지)
+  - 밤 22시 실행 → 다음 날 09:25 작업 요약 / 09:30 개발 성향 Slack 예약 전송
+  - 서버 dev-cron.ts 전체 삭제 (251줄), dev_analyses 테이블 DROP
+  - 교훈: 로컬 Scheduled Task ↔ 원격 서버 DB 간 데이터 공유는 구조적 문제. Slack 예약 메시지로 우회.
 
 **~~GitHub Actions (2개 워크플로우)~~ → 삭제됨**
 - ~~PR 코드 리뷰: PR 열릴 때 자동 AI 리뷰 + 컨벤션 괴리 감지~~
