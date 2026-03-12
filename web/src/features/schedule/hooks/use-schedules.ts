@@ -20,7 +20,7 @@ import { WEEK_START } from '@/features/schedule/lib/calendar-utils';
 
 function getInitialView(): CalendarView {
   if (typeof window === 'undefined') return 'day';
-  return window.innerWidth >= 768 ? 'month' : 'day';
+  return window.innerWidth >= 768 ? 'week' : 'day';
 }
 
 export function useSchedules() {
@@ -246,6 +246,45 @@ export function useSchedules() {
     }
   };
 
+  const handlePostpone = async (id: number) => {
+    const schedule = schedules.find((s) => s.id === id);
+    if (!schedule?.date) return;
+    const next = format(addDays(new Date(schedule.date + 'T12:00:00'), 1), 'yyyy-MM-dd');
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: next, end_date: null }),
+      });
+      if (res.ok) await fetchData();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleMoveToBacklog = async (id: number) => {
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: null, end_date: null }),
+      });
+      if (res.ok) await fetchData();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDeleteById = async (id: number) => {
+    if (!confirm('이 일정을 삭제할까?')) return;
+    try {
+      const res = await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
+      if (res.ok) await fetchData();
+    } catch {
+      alert('삭제에 실패했어');
+    }
+  };
+
   const handleSelectDate = (dateStr: string) => {
     setSelectedDate(dateStr === selectedDate ? null : dateStr);
   };
@@ -296,6 +335,9 @@ export function useSchedules() {
     handleCreate,
     handleUpdate,
     handleDelete,
+    handlePostpone,
+    handleMoveToBacklog,
+    handleDeleteById,
     handleSelectDate,
     toggleCategory,
     toggleStatus,
