@@ -28,11 +28,13 @@ import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
   buildNightSummaryBlocks,
+  buildNudgeBlock,
   buildScheduleText,
   buildNightScheduleText,
   buildSleepReminderText,
   buildSleepRecordedText,
 } from '../agents/life/blocks.js';
+import { pickMorningNudge, pickNightNudge } from '../shared/insights.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView, getCachedHomeUserId } from '../agents/life/home.js';
 
@@ -199,12 +201,17 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const todayRecords = await queryTodayRecords(today);
   const hasMorning = todayRecords.some((r) => r.time_slot === '아침');
 
+  // 3-1. 인사이트 넛지 (최고 우선순위 1개, 없으면 스킵)
+  const morningNudge = await pickMorningNudge(today);
+  const nudgeBlocks = morningNudge ? buildNudgeBlock(morningNudge) : [];
+
   if (hasMorning) {
     const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['아침']);
-    const fullBlocks = [...greetingBlocks, ...blocks];
+    const fullBlocks = [...greetingBlocks, ...blocks, ...nudgeBlocks];
     await postBlockMessage(app.client, config.channelId, text, fullBlocks);
   } else if (greetingBlocks.length > 0) {
-    await postBlockMessage(app.client, config.channelId, '아침 인사', greetingBlocks);
+    const fullBlocks = [...greetingBlocks, ...nudgeBlocks];
+    await postBlockMessage(app.client, config.channelId, '아침 인사', fullBlocks);
   }
 
   // 4. 앱홈 능동 갱신 (날짜 전환 반영)
@@ -280,7 +287,12 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   );
 
   const { text, blocks } = buildNightSummaryBlocks(records, today, summary);
-  await postBlockMessage(app.client, config.channelId, text, blocks);
+
+  // 인사이트 넛지 (최고 우선순위 1개, 없으면 스킵)
+  const nightNudge = await pickNightNudge(today);
+  const fullBlocks = nightNudge ? [...blocks, ...buildNudgeBlock(nightNudge)] : blocks;
+
+  await postBlockMessage(app.client, config.channelId, text, fullBlocks);
   console.warn(`[Life Cron] 밤 요약 전송 완료`);
 };
 
