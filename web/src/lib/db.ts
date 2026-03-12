@@ -11,11 +11,14 @@ let pool: pg.Pool | null = null;
 
 const getPool = (): pg.Pool => {
   if (!pool) {
+    const connectionString = process.env.DATABASE_URL;
+    const useSSL = connectionString?.includes('.neon.tech');
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       max: 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
+      ...(useSSL && { ssl: { rejectUnauthorized: false } }),
     });
   }
   return pool;

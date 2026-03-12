@@ -18,7 +18,7 @@ const SESSION_OPTIONS = {
   password: secret,
   cookieName: 'life-dashboard-session',
   cookieOptions: {
-    secure: process.env.COOKIE_SECURE === 'true',
+    secure: process.env.COOKIE_SECURE !== 'false',
     httpOnly: true,
     sameSite: 'lax' as const,
     maxAge: 60 * 60 * 24 * 7, // 7 days
