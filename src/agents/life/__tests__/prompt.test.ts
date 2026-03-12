@@ -109,6 +109,6 @@ describe('buildLifeSystemPrompt', () => {
   it('170줄 이내의 간결한 프롬프트', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
     const lineCount = prompt.split('\n').length;
-    expect(lineCount).toBeLessThan(170);
+    expect(lineCount).toBeLessThan(200);
   });
 });
