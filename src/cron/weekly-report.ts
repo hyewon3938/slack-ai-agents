@@ -10,6 +10,7 @@ import type { LLMMessage } from '../shared/llm.js';
 import { query } from '../shared/db.js';
 import { getTodayISO, getKSTDayOfWeek, addDays, formatDateShort } from '../shared/kst.js';
 import { postBlockMessage } from '../shared/slack.js';
+import { CHARACTER_PROMPT } from '../shared/personality.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -448,7 +449,7 @@ const generateWeeklySummary = async (
 
   try {
     const messages: LLMMessage[] = [
-      { role: 'system', content: '너는 친한 친구야. 반말로 짧게 한줄 총평만 써줘. 이모지 금지.' },
+      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 한줄 총평만 써줘.` },
       { role: 'user', content: context },
     ];
     const response = await llmClient.chat(messages);
