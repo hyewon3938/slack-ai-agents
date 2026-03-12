@@ -156,7 +156,7 @@ api/{domain}/[id]/route.ts  → GET (단건), PATCH (수정), DELETE (삭제)
 ### 시크릿 관리
 - [ ] 코드/커밋에 API 키, 비밀번호, 토큰, IP 주소 포함 여부 확인
 - [ ] 새 환경변수 추가 시 `.env.example` 동기화
-- [ ] docker-compose.yml에 `${ENV_VAR}` 형태로만 전달 (값 직접 기입 금지)
+- [ ] VM .env / Vercel 환경변수 / docker-compose.yml 간 시크릿 전달 확인
 
 ### API 엔드포인트
 - [ ] 모든 라우트에 인증(세션) 검증 미들웨어 적용
@@ -165,11 +165,11 @@ api/{domain}/[id]/route.ts  → GET (단건), PATCH (수정), DELETE (삭제)
 - [ ] 동적 컬럼명은 화이트리스트(Set) 기반 필터링
 - [ ] 에러 응답에 스택 트레이스, DB 구조 등 내부 정보 미포함
 
-### 인프라/Docker
-- [ ] 외부 노출 포트 최소화 (DB 포트 외부 노출 금지)
+### 인프라/배포
+- [ ] Neon DB 연결에 SSL(`sslmode=require`) 적용 확인
 - [ ] 쿠키: `HttpOnly`, `SameSite=lax` 필수 / `Secure`는 HTTPS 환경에서만
 - [ ] 보안 헤더 설정 (CSP, X-Frame-Options, X-Content-Type-Options)
-- [ ] HTTPS 적용 여부 확인 (HTTP 평문 통신 구간 최소화)
+- [ ] HTTPS 적용 여부 확인 (Vercel: 자동, VM: 외부 노출 최소화)
 
 ### 의존성
 - [ ] 새 패키지 추가 시 알려진 취약점 확인 (`yarn audit`)

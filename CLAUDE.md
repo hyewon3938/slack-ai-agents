@@ -49,11 +49,13 @@ src/
     ├── config.ts             # 환경변수 검증 + 설정
     ├── llm.ts                # LLM 추상화 (Anthropic/Gemini/Groq)
     ├── agent-loop.ts         # 에이전트 루프 (LLM ↔ 도구 반복)
-    ├── db.ts                 # PostgreSQL 연결 + 쿼리
+    ├── db.ts                 # Neon PostgreSQL 연결 + 쿼리
     ├── migrate.ts            # DB 마이그레이션 실행
     ├── sql-tools.ts          # SQL 도구 정의 (query_db, modify_db, get_schema)
     ├── life-queries.ts       # 크론용 SQL 조회 헬퍼
+    ├── life-context.ts       # 생활 맥락 빌더 (잔소리 시스템)
     ├── chat-history.ts       # 대화 히스토리 관리
+    ├── kst.ts                # KST 타임존 유틸리티
     ├── personality.ts        # 캐릭터 프롬프트 정의
     └── slack.ts              # Slack API 유틸리티
 db/
@@ -131,7 +133,7 @@ custom_instructions: id, instruction, category, source(user/auto), active, creat
 ## ⛔ 보안 규칙 (CRITICAL — 모든 코드 변경 시 반드시 준수)
 
 > **이 프로젝트는 Public 저장소이며, 개인 일정·수면·루틴 등 민감한 라이프 데이터를 다룬다.**
-> **코드 구조, Docker 설정, API 엔드포인트가 모두 공개되어 있으므로 "코드가 보여도 안전한" 설계를 해야 한다.**
+> **코드 구조, 배포 설정, API 엔드포인트가 모두 공개되어 있으므로 "코드가 보여도 안전한" 설계를 해야 한다.**
 
 ### 절대 금지
 - API 키, 비밀번호, 토큰, DB 접속 정보 → 코드/커밋에 절대 포함 금지
@@ -140,14 +142,13 @@ custom_instructions: id, instruction, category, source(user/auto), active, creat
 - 커밋 히스토리에 민감정보 유입 시 즉시 알림
 
 ### 인프라/배포 변경 시 필수 보안 체크
-코드가 인프라에 영향을 주는 변경(docker-compose, Dockerfile, nginx, 환경변수, 포트, 인증 등)이 있을 때 **반드시** 아래를 점검:
+코드가 인프라에 영향을 주는 변경(docker-compose, Dockerfile, Vercel 설정, 환경변수, 포트, 인증 등)이 있을 때 **반드시** 아래를 점검:
 
-1. **노출 포트**: 외부에 열리는 포트가 최소한인가? 불필요한 포트 노출 없는가?
-2. **환경변수**: 새 시크릿이 docker-compose.yml에 전달되는가? .env.example에 추가했는가?
-3. **인증/세션**: 쿠키 설정(Secure, HttpOnly, SameSite), 세션 만료, 비밀번호 해싱은 적절한가?
-4. **HTTPS**: 통신 암호화가 적용되어 있는가? HTTP 평문 전송 구간은 없는가?
-5. **CORS/헤더**: API 엔드포인트의 CORS 정책, 보안 헤더(CSP, X-Frame-Options 등)
-6. **DB 접근**: DB 포트가 외부에 노출되지 않는가? 연결은 내부 네트워크만 허용하는가?
+1. **환경변수**: VM .env / Vercel 환경변수 / .env.example 동기화 확인
+2. **인증/세션**: 쿠키 설정(Secure, HttpOnly, SameSite), 세션 만료, 비밀번호 해싱은 적절한가?
+3. **HTTPS**: 통신 암호화가 적용되어 있는가? HTTP 평문 전송 구간은 없는가?
+4. **CORS/헤더**: API 엔드포인트의 CORS 정책, 보안 헤더(CSP, X-Frame-Options 등)
+5. **DB 접근**: Neon 연결은 SSL(sslmode=require) 적용되어 있는가?
 
 ### API/웹 엔드포인트 변경 시 필수 보안 체크
 1. **인증 확인**: 모든 API 라우트에 세션/인증 검증이 있는가?
