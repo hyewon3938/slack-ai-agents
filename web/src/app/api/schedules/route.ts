@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
-import {
-  querySchedulesByRange,
-  queryBacklogSchedules,
-  createSchedule,
-  ensureCategoryExists,
-} from '@/features/schedule/lib/queries';
+import { createSchedule, ensureCategoryExists } from '@/features/schedule/lib/queries';
+import { getCachedSchedulesByRange, getCachedBacklogSchedules } from '@/lib/cache';
 import { isValidStatus } from '@/lib/types';
 
 export async function GET(request: Request) {
@@ -20,12 +17,12 @@ export async function GET(request: Request) {
     const to = searchParams.get('to');
 
     if (backlog === 'true') {
-      const data = await queryBacklogSchedules();
+      const data = await getCachedBacklogSchedules();
       return NextResponse.json({ data });
     }
 
     if (from && to) {
-      const data = await querySchedulesByRange(from, to);
+      const data = await getCachedSchedulesByRange(from, to);
       return NextResponse.json({ data });
     }
 
@@ -73,6 +70,8 @@ export async function POST(request: Request) {
       important: body.important,
     });
 
+    revalidateTag('schedules', 'seconds');
+    if (body.category) revalidateTag('categories', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
   } catch {
     return NextResponse.json({ error: '일정 생성 실패' }, { status: 500 });
