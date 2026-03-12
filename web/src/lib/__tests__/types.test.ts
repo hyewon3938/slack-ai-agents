@@ -77,22 +77,22 @@ describe('hexToStyles', () => {
 // ─── getCategoryStyle ───────────────────────────────────
 
 describe('getCategoryStyle', () => {
-  it('프리셋 색상을 인식한다', () => {
+  it('프리셋 색상에서 인라인 스타일을 반환한다', () => {
     const result = getCategoryStyle('violet');
-    expect(result.isPreset).toBe(true);
-    expect(result.classes).toBeDefined();
+    expect(result.bg).toContain('rgba(');
+    expect(result.text).toBeDefined();
+    expect(result.border).toBeDefined();
   });
 
-  it('hex 색상을 인식한다', () => {
+  it('hex 색상에서 인라인 스타일을 반환한다', () => {
     const result = getCategoryStyle('#ff5733');
-    expect(result.isPreset).toBe(false);
-    expect(result.styles).toBeDefined();
+    expect(result.bg).toContain('rgba(');
+    expect(result.text).toBeDefined();
   });
 
-  it('알 수 없는 색상은 gray 프리셋으로 폴백한다', () => {
+  it('알 수 없는 색상은 gray hex로 폴백한다', () => {
     const result = getCategoryStyle('unknown');
-    expect(result.isPreset).toBe(true);
-    expect(result.classes?.bg).toBe('bg-gray-100');
+    expect(result.bg).toContain('rgba(107');
   });
 });
 
@@ -100,8 +100,8 @@ describe('getCategoryStyle', () => {
 
 describe('colorToHex', () => {
   it('프리셋 이름을 hex로 변환한다', () => {
-    expect(colorToHex('violet')).toBe('#8b5cf6');
-    expect(colorToHex('amber')).toBe('#f59e0b');
+    expect(colorToHex('violet')).toBe('#ddd6fe');
+    expect(colorToHex('amber')).toBe('#fde68a');
   });
 
   it('hex 값은 그대로 반환한다', () => {

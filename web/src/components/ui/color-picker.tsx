@@ -40,7 +40,7 @@ function hexToHsl(hex: string): [number, number, number] {
   return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
 }
 
-const PRESET_LIST = Object.entries(PRESET_COLORS).filter(([k]) => k !== 'gray');
+const PRESET_LIST = Object.entries(PRESET_COLORS).filter(([k]) => k !== 'gray') as [string, string][];
 
 export function ColorPicker({ value, onChange, previewLabel }: ColorPickerProps) {
   const [open, setOpen] = useState(false);
@@ -81,7 +81,7 @@ export function ColorPicker({ value, onChange, previewLabel }: ColorPickerProps)
           <div className="mb-3">
             <div className="mb-1.5 text-[10px] font-medium text-gray-400">프리셋</div>
             <div className="flex flex-wrap gap-1.5">
-              {PRESET_LIST.map(([name, { hex: presetHex }]) => (
+              {PRESET_LIST.map(([name, presetHex]) => (
                 <button
                   key={name}
                   type="button"
@@ -118,17 +118,10 @@ export function ColorPicker({ value, onChange, previewLabel }: ColorPickerProps)
 
 function TagPreview({ label, colorKey }: { label: string; colorKey: string }) {
   const style = getCategoryStyle(colorKey);
-  if (style.isPreset && style.classes) {
-    return (
-      <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.classes.bg} ${style.classes.text}`}>
-        {label}
-      </span>
-    );
-  }
   return (
     <span
       className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
+      style={{ backgroundColor: style.bg, color: style.text }}
     >
       {label}
     </span>

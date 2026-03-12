@@ -55,22 +55,11 @@ export function ScheduleCard({
   };
 
   if (compact) {
-    if (catStyle.isPreset && catStyle.classes) {
-      return (
-        <div
-          onClick={handleCardClick}
-          className={`cursor-pointer truncate rounded px-1.5 py-0.5 text-xs leading-tight ${catStyle.classes.bg} ${catStyle.classes.text} border-l-2 ${catStyle.classes.border} ${isDone ? 'line-through opacity-60' : ''}`}
-        >
-          {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
-          {schedule.title}
-        </div>
-      );
-    }
     return (
       <div
         onClick={handleCardClick}
         className={`cursor-pointer truncate rounded border-l-2 px-1.5 py-0.5 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
-        style={{ backgroundColor: catStyle.styles?.bg, color: catStyle.styles?.text, borderLeftColor: catStyle.styles?.border }}
+        style={{ backgroundColor: catStyle.bg, color: catStyle.text, borderLeftColor: catStyle.border }}
       >
         {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
         {schedule.title}
@@ -150,17 +139,10 @@ function formatDateRange(date: string | null, endDate: string): string {
 
 function CategoryBadge({ colorKey, label }: { colorKey: string; label: string }) {
   const style = getCategoryStyle(colorKey);
-  if (style.isPreset && style.classes) {
-    return (
-      <span className={`rounded-full px-2 py-0.5 text-xs ${style.classes.bg} ${style.classes.text}`}>
-        {label}
-      </span>
-    );
-  }
   return (
     <span
       className="rounded-full px-2 py-0.5 text-xs"
-      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
+      style={{ backgroundColor: style.bg, color: style.text }}
     >
       {label}
     </span>
