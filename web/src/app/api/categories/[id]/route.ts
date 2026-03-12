@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { updateCategory, deleteCategory } from '@/features/schedule/lib/queries';
 
@@ -22,6 +23,7 @@ export async function PATCH(
     if (!data) {
       return NextResponse.json({ error: '카테고리를 찾을 수 없어' }, { status: 404 });
     }
+    revalidateTag('categories', 'seconds');
     return NextResponse.json({ data });
   } catch (err) {
     const message = err instanceof Error ? err.message : '카테고리 수정 실패';
@@ -47,6 +49,7 @@ export async function DELETE(
     if (!deleted) {
       return NextResponse.json({ error: '카테고리를 찾을 수 없어' }, { status: 404 });
     }
+    revalidateTag('categories', 'seconds');
     return NextResponse.json({ data: { id: Number(id) } });
   } catch {
     return NextResponse.json({ error: '카테고리 삭제 실패' }, { status: 500 });

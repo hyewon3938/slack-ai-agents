@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { reorderCategories } from '@/features/schedule/lib/queries';
 
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     }
 
     await reorderCategories(body.orders);
+    revalidateTag('categories', 'seconds');
     return NextResponse.json({ data: { ok: true } });
   } catch {
     return NextResponse.json({ error: '순서 변경 실패' }, { status: 500 });
