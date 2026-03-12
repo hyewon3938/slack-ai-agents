@@ -59,7 +59,7 @@ export function Modal({ open, onClose, title, children, onBeforeClose }: ModalPr
     <dialog
       ref={dialogRef}
       onClick={handleBackdropClick}
-      className="fixed inset-0 m-auto w-[calc(100vw-2rem)] max-w-lg rounded-xl border-0 bg-white p-0 shadow-xl backdrop:bg-black/40"
+      className="fixed inset-0 m-auto w-[calc(100vw-2rem)] max-w-lg overflow-hidden rounded-xl border-0 bg-white p-0 shadow-xl backdrop:bg-black/40"
     >
       <div onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
@@ -73,7 +73,7 @@ export function Modal({ open, onClose, title, children, onBeforeClose }: ModalPr
             </svg>
           </button>
         </div>
-        <div className="overflow-hidden p-5">{children}</div>
+        <div className="p-5">{children}</div>
       </div>
     </dialog>
   );

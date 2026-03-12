@@ -11,6 +11,7 @@ interface ScheduleCardProps {
   onStatusChange?: (id: number, status: string) => void;
   onClick?: (schedule: ScheduleRow) => void;
   compact?: boolean;
+  action?: React.ReactNode;
 }
 
 const NEXT_STATUS: Record<string, string> = {
@@ -32,6 +33,7 @@ export function ScheduleCard({
   onStatusChange,
   onClick,
   compact,
+  action,
 }: ScheduleCardProps) {
   const [memoExpanded, setMemoExpanded] = useState(false);
   const cat = categories.find((c) => c.name === schedule.category);
@@ -131,6 +133,8 @@ export function ScheduleCard({
             </div>
           )}
         </div>
+
+        {action && <div className="shrink-0">{action}</div>}
       </div>
     </div>
   );
