@@ -8,7 +8,6 @@ import { createLifeAgent } from './agents/life/index.js';
 import { registerLifeActions } from './agents/life/actions.js';
 import { registerHomeTab } from './agents/life/home.js';
 import { CronScheduler } from './cron/life-cron.js';
-import { setDevCronClients } from './cron/dev-cron.js';
 import { setPostModifyHook } from './shared/sql-tools.js';
 
 const app = new App({
@@ -33,9 +32,6 @@ const startApp = async (): Promise<void> => {
   registerAgent(CONFIG.channels.life, lifeAgent);
   registerLifeActions(app);
   registerHomeTab(app);
-
-  // 개발 크론 LLM 클라이언트 설정 (workSummary: Gemini Flash)
-  setDevCronClients({ cronLLMClient });
 
   // 크론 스케줄러 (DB 기반 동적 스케줄) — Gemini Flash로 비용 절감
   const cronScheduler = new CronScheduler(app, {
