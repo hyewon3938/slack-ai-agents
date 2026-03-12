@@ -50,7 +50,7 @@
 - **Claude Code 풀스택 활용** — Hooks(3) + Skills(4) + MCP(2) + Scheduled Tasks로 개발 파이프라인 자동화.
 - **UX 중심 의사결정** — 직접 사용하며 개선. 속도 불만→fast path, 체크리스트 밀림→App Home 도입.
 - **1인 풀스택** — Slack 에이전트 + Next.js 대시보드(DnD, PWA) + Docker/VM + Vercel + Neon.
-- **248개 테스트 + 다층 보안** — 인사이트 엔진 TDD. Public 저장소 4곳 보안 방어, CI/CD.
+- **개인 프로젝트에 팀 수준 품질 관리** — 245개 테스트(인사이트 엔진 TDD), GitHub Actions CI/CD, Public 저장소 4곳 보안 방어.
 
 ---
 
@@ -104,9 +104,9 @@
 
 5가지 SQL 패턴 감지(streak, sleepTrend, slotGap, weekComparison, overdueAlert) → 우선순위 기반 1개 선택 → 아침/밤 알림에 자동 삽입. LLM 호출 없이 Pure SQL로 동작. 주간 리포트(Gemini Flash)와 자연어 분석(Claude Sonnet)으로 3-tier 인사이트 제공.
 
-### 웹 대시보드 — Next.js 16, DnD, PWA
+### 웹 대시보드 — LLM 비용 절감과 UX 편의성을 하나의 설계로 해결
 
-Slack으로 쌓은 데이터를 캘린더·백로그·카테고리 뷰로 시각화. 드래그 앤 드롭(@dnd-kit)으로 일정 이동·리사이즈, 반응형 UI + PWA 지원.
+Slack 대화(LLM 호출) 없이 일정·루틴을 직접 관리할 수 있는 UI를 별도 제공해, API 비용 절감과 사용자 편의성을 동시에 확보했다. 캘린더·백로그·카테고리 뷰로 시각화하고, 드래그 앤 드롭(@dnd-kit)으로 일정 이동·리사이즈, 반응형 UI + PWA 지원.
 
 <p>
   <img src="docs/images/m-calendar.jpg" width="24%" />
@@ -143,7 +143,7 @@ Slack으로 쌓은 데이터를 캘린더·백로그·카테고리 뷰로 시각
 | Web Infra  | Vercel (자동 배포, HTTPS 내장)                                   |
 | CI/CD      | GitHub Actions + Vercel + yarn deploy                            |
 | Security   | 다층 보안 체계 (CLAUDE.md + 체크리스트 + Hooks + Skills)         |
-| Test       | vitest (248개 테스트)                                            |
+| Test       | vitest (245개 테스트)                                            |
 
 ---
 
@@ -169,7 +169,7 @@ LLM이 SQL을 직접 작성하다 보면 같은 유형의 실수를 반복한다
 
 ## AI 협업 시스템 — Claude Code 전체 기능 활용
 
-Claude Code의 Hooks, Custom Skills, MCP, Scheduled Tasks를 조합해 개발 프로세스 자체를 AI 파이프라인으로 구축했다.
+AI를 도구이자 협업 개발자로 인식하고, GitHub Issues·PR 단위로 AI 작업을 리뷰·검증하는 프로세스를 운영한다. 설계 판단과 품질 기준은 사람이 결정하고, Claude Code의 Hooks, Custom Skills, MCP, Scheduled Tasks를 조합해 개발 프로세스 자체를 AI 파이프라인으로 구축했다.
 
 ### Hooks (3개) — 자동 품질 게이트
 
