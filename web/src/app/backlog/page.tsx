@@ -16,8 +16,6 @@ export default function BacklogPage() {
     setEditingSchedule,
     showCreateModal,
     setShowCreateModal,
-    assigningDate,
-    setAssigningDate,
     loading,
     grouped,
     sortedCategories,
@@ -32,6 +30,11 @@ export default function BacklogPage() {
     () => !formDirty || confirm('수정 중인 내용이 있어. 닫을까?'),
     [formDirty],
   );
+
+  const handleAddToToday = (id: number) => {
+    const today = new Date().toISOString().slice(0, 10);
+    handleAssignDate(id, today);
+  };
 
   if (loading) {
     return (
@@ -108,45 +111,12 @@ export default function BacklogPage() {
                           )}
                         </div>
 
-                        {/* 날짜 지정 */}
-                        {assigningDate?.id === s.id ? (
-                          <div className="flex items-center gap-1 max-md:w-full">
-                            <input
-                              type="date"
-                              value={assigningDate.date}
-                              onChange={(e) =>
-                                setAssigningDate({ id: s.id, date: e.target.value })
-                              }
-                              className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-xs"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => handleAssignDate(s.id, assigningDate.date)}
-                              disabled={!assigningDate.date}
-                              className="rounded bg-blue-500 px-2 py-1 text-xs text-white disabled:opacity-50"
-                            >
-                              확인
-                            </button>
-                            <button
-                              onClick={() => setAssigningDate(null)}
-                              className="rounded px-2 py-1 text-xs text-gray-400"
-                            >
-                              취소
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() =>
-                              setAssigningDate({
-                                id: s.id,
-                                date: new Date().toISOString().slice(0, 10),
-                              })
-                            }
-                            className="shrink-0 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:bg-gray-100"
-                          >
-                            날짜 지정
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleAddToToday(s.id)}
+                          className="shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-100"
+                        >
+                          오늘 추가
+                        </button>
                       </div>
                     ))}
                   </div>

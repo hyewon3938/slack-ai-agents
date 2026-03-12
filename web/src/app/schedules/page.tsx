@@ -58,6 +58,9 @@ export default function SchedulesPage() {
     handleCreate,
     handleUpdate,
     handleDelete,
+    handlePostpone,
+    handleMoveToBacklog,
+    handleDeleteById,
     handleSelectDate,
     toggleCategory,
     toggleStatus,
@@ -139,6 +142,9 @@ export default function SchedulesPage() {
                   categories={categories}
                   onScheduleClick={setEditingSchedule}
                   onStatusChange={handleStatusChange}
+                  onPostpone={handlePostpone}
+                  onMoveToBacklog={handleMoveToBacklog}
+                  onDelete={handleDeleteById}
                 />
               )}
             </div>
