@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import {
   queryScheduleById,
@@ -60,6 +61,8 @@ export async function PATCH(
     if (!data) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
+    revalidateTag('schedules', 'seconds');
+    if (body.category) revalidateTag('categories', 'seconds');
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '일정 수정 실패' }, { status: 500 });
@@ -80,6 +83,7 @@ export async function DELETE(
     if (!deleted) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
+    revalidateTag('schedules', 'seconds');
     return NextResponse.json({ data: { id: Number(id) } });
   } catch {
     return NextResponse.json({ error: '일정 삭제 실패' }, { status: 500 });
