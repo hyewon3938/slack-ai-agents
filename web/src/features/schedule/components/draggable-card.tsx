@@ -55,7 +55,7 @@ export function DraggableCard({
           className="absolute top-0 left-0 z-10 h-full w-2 cursor-col-resize opacity-0 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
         <div
           ref={setNodeRef}
@@ -78,7 +78,7 @@ export function DraggableCard({
           className="absolute top-0 right-0 z-10 h-full w-2 cursor-col-resize opacity-0 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
       </div>
     );
@@ -95,7 +95,7 @@ export function DraggableCard({
         className="absolute top-0 left-0 z-10 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+        <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
       </div>
       <div
         ref={setNodeRef}
@@ -118,7 +118,7 @@ export function DraggableCard({
         className="absolute top-0 right-0 z-10 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+        <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
       </div>
     </div>
   );
