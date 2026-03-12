@@ -10,7 +10,6 @@ import type { LLMMessage } from '../shared/llm.js';
 import { query } from '../shared/db.js';
 import { getTodayISO, getKSTDayOfWeek, addDays, formatDateShort } from '../shared/kst.js';
 import { postBlockMessage } from '../shared/slack.js';
-import { buildWeeklyReportBlocks } from '../agents/life/blocks.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -330,6 +329,103 @@ export const aggregateWeeklyReport = async (
   ]);
 
   return { sleep, routine, schedule, correlation, weekStart, weekEnd };
+};
+
+// ─── Block Kit 빌드 ─────────────────────────────────────
+
+import type { KnownBlock } from '@slack/types';
+
+/** 분 → "N시간 M분" 포맷 */
+const formatDuration = (minutes: number): string => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+};
+
+/** 주간 리포트 Block Kit 빌드 */
+const buildWeeklyReportBlocks = (
+  data: WeeklyReportData,
+  summary: string,
+): KnownBlock[] => {
+  const { sleep, routine, schedule, correlation, weekStart, weekEnd } = data;
+  const blocks: KnownBlock[] = [];
+
+  blocks.push({
+    type: 'header',
+    text: {
+      type: 'plain_text',
+      text: `📊 주간 리포트 (${formatDateShort(weekStart)} ~ ${formatDateShort(weekEnd)})`,
+      emoji: true,
+    },
+  });
+
+  // ── 수면 ──
+  blocks.push({ type: 'divider' });
+  if (sleep.recordCount < 2) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*수면*\n데이터 부족 (2건 미만)' } });
+  } else {
+    const lines = [`*수면*`, `평균 ${formatDuration(sleep.avgDuration)} (${sleep.recordCount}일 기록)`];
+    if (sleep.bestDay && sleep.worstDay && sleep.bestDay.date !== sleep.worstDay.date) {
+      lines.push(
+        `가장 잘 잔 날: ${formatDateShort(sleep.bestDay.date)} ${formatDuration(sleep.bestDay.duration)} | 가장 못 잔 날: ${formatDateShort(sleep.worstDay.date)} ${formatDuration(sleep.worstDay.duration)}`,
+      );
+    }
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
+  }
+
+  // ── 루틴 ──
+  blocks.push({ type: 'divider' });
+  if (routine.thisWeekTotal < 2) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*루틴*\n데이터 부족 (2건 미만)' } });
+  } else {
+    const lastPart = routine.lastWeekRate != null ? ` — 지난주 ${routine.lastWeekRate}%` : '';
+    const lines = [
+      `*루틴*`,
+      `주간 달성률: ${routine.thisWeekRate}% (${routine.thisWeekCompleted}/${routine.thisWeekTotal})${lastPart}`,
+    ];
+    if (routine.slotBreakdown.length > 0) {
+      lines.push(`시간대별: ${routine.slotBreakdown.map((s) => `${s.slot} ${s.rate}%`).join(', ')}`);
+    }
+    if (routine.bestRoutine) {
+      const worstPart = routine.worstRoutine ? ` | 최저: ${routine.worstRoutine.name} ${routine.worstRoutine.rate}%` : '';
+      lines.push(`최고: ${routine.bestRoutine.name} ${routine.bestRoutine.rate}%${worstPart}`);
+    }
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
+  }
+
+  // ── 일정 ──
+  blocks.push({ type: 'divider' });
+  const total = schedule.completedCount + schedule.incompleteCount + schedule.cancelledCount;
+  if (total < 2) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*일정*\n데이터 부족 (2건 미만)' } });
+  } else {
+    const lines = [
+      `*일정*`,
+      `완료 ${schedule.completedCount}건 / 미완료 ${schedule.incompleteCount}건 / 취소 ${schedule.cancelledCount}건`,
+    ];
+    if (schedule.categories.length > 0) {
+      lines.push(`카테고리: ${schedule.categories.map((c) => `${c.category} ${c.count}건`).join(', ')}`);
+    }
+    if (schedule.overdueCount > 0) {
+      lines.push(`밀린 일정: ${schedule.overdueCount}건`);
+    }
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
+  }
+
+  // ── 수면 × 루틴 상관관계 ──
+  if (correlation.goodSleepRate != null && correlation.badSleepRate != null) {
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*🔗 수면 × 루틴 상관관계*\n7시간+ 잔 날 루틴 ${correlation.goodSleepRate}% vs 6시간 미만 ${correlation.badSleepRate}%` },
+    });
+  }
+
+  // ── 총평 ──
+  blocks.push({ type: 'divider' });
+  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: summary } });
+
+  return blocks;
 };
 
 // ─── LLM 한줄 총평 ─────────────────────────────────────
