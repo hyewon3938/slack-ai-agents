@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   ci:
     name: Lint / Test / Build
@@ -32,8 +36,31 @@ jobs:
     name: Deploy to Oracle VM
     needs: ci
     runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Notify deploy start
+        if: env.SLACK_WEBHOOK_URL != ''
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s' | jq -Rs '.[:-1]')
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an' | jq -Rs '.[:-1]')
+          COMMIT_SHA=$(git log -1 --pretty=format:'%h')
+          ACTIONS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          jq -n \
+            --arg sha "$COMMIT_SHA" \
+            --argjson msg "$COMMIT_MSG" \
+            --argjson author "$COMMIT_AUTHOR" \
+            --arg url "$ACTIONS_URL" \
+            '{blocks: [
+              {type: "section", text: {type: "mrkdwn", text: (":rocket: *배포 시작*\n`" + $sha + "` " + $msg + "\n_by " + $author + "_")}},
+              {type: "context", elements: [{type: "mrkdwn", text: ("<" + $url + "|Actions 로그>")}]}
+            ]}' | curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d @-
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -41,3 +68,46 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: bash ~/deploy.sh
+
+      - name: Notify deploy success
+        if: success() && env.SLACK_WEBHOOK_URL != ''
+        run: |
+          COMMIT_SHA=$(git log -1 --pretty=format:'%h')
+          jq -n --arg sha "$COMMIT_SHA" \
+            '{blocks: [{type: "section", text: {type: "mrkdwn", text: (":white_check_mark: *배포 완료* `" + $sha + "`")}}]}' \
+            | curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d @-
+
+      - name: Notify deploy failure
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        run: |
+          COMMIT_SHA=$(git log -1 --pretty=format:'%h')
+          ACTIONS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          jq -n --arg sha "$COMMIT_SHA" --arg url "$ACTIONS_URL" \
+            '{blocks: [{type: "section", text: {type: "mrkdwn", text: (":x: *배포 실패* `" + $sha + "`\n<" + $url + "|에러 로그 확인>")}}]}' \
+            | curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d @-
+
+  notify-ci-failure:
+    name: Notify CI Failure
+    needs: ci
+    if: failure()
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Notify CI failure
+        if: env.SLACK_WEBHOOK_URL != ''
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s' | jq -Rs '.[:-1]')
+          COMMIT_SHA=$(git log -1 --pretty=format:'%h')
+          ACTIONS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          jq -n \
+            --arg sha "$COMMIT_SHA" \
+            --argjson msg "$COMMIT_MSG" \
+            --arg url "$ACTIONS_URL" \
+            '{blocks: [{type: "section", text: {type: "mrkdwn", text: (":warning: *CI 실패* (배포 중단)\n`" + $sha + "` " + $msg + "\n<" + $url + "|에러 로그 확인>")}}]}' \
+            | curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d @-
