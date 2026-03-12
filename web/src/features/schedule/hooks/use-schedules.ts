@@ -152,17 +152,21 @@ export function useSchedules() {
 
   // CRUD
   const handleStatusChange = async (id: number, status: string) => {
+    const prev = schedules;
+    setSchedules((s) => s.map((item) => (item.id === id ? { ...item, status } : item)));
     try {
       const res = await fetch(`/api/schedules/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
-      if (res.ok) {
-        setSchedules((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
+      if (!res.ok) {
+        setSchedules(prev);
+        alert('상태 변경에 실패했어');
       }
     } catch {
-      // ignore
+      setSchedules(prev);
+      alert('상태 변경에 실패했어');
     }
   };
 

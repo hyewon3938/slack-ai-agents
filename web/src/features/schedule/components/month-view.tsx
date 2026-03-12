@@ -207,23 +207,13 @@ function SpanningBar({
 
   const textClasses = `h-full truncate rounded px-1.5 text-xs leading-5 ${isDone ? 'line-through opacity-60' : ''}`;
 
-  const inner = catStyle.isPreset && catStyle.classes ? (
-    <div
-      ref={moveRef}
-      {...moveListeners}
-      {...moveAttrs}
-      className={`${textClasses} ${catStyle.classes.bg} ${catStyle.classes.text}`}
-    >
-      {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
-      {span.schedule.title}
-    </div>
-  ) : (
+  const inner = (
     <div
       ref={moveRef}
       {...moveListeners}
       {...moveAttrs}
       className={textClasses}
-      style={{ backgroundColor: catStyle.styles?.bg, color: catStyle.styles?.text }}
+      style={{ backgroundColor: catStyle.bg, color: catStyle.text }}
     >
       {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
       {span.schedule.title}
@@ -244,7 +234,7 @@ function SpanningBar({
           className="absolute top-0 left-0 z-20 h-full w-2 cursor-col-resize opacity-0 hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
       )}
       {inner}
@@ -256,7 +246,7 @@ function SpanningBar({
           className="absolute top-0 right-0 z-20 h-full w-2 cursor-col-resize opacity-0 hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
       )}
     </div>

@@ -56,17 +56,14 @@ export function FilterBar({
       {categories.map((cat) => {
         const active = selectedCategories.has(cat.name);
         const style = getCategoryStyle(cat.color);
-        const isPreset = style.isPreset && style.classes;
         return (
           <button
             key={cat.id}
             onClick={() => onToggleCategory(cat.name)}
             className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-              active
-                ? isPreset ? `${style.classes!.bg} ${style.classes!.text}` : ''
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              active ? '' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
-            style={active && !isPreset ? { backgroundColor: style.styles?.bg, color: style.styles?.text } : undefined}
+            style={active ? { backgroundColor: style.bg, color: style.text } : undefined}
           >
             {cat.name}
           </button>

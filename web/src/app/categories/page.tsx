@@ -183,8 +183,11 @@ export default function CategoriesPage() {
   if (loading) {
     return (
       <AppShell>
-        <div className="flex h-[60vh] items-center justify-center">
-          <div className="text-gray-400">로딩중...</div>
+        <div className="mx-auto max-w-2xl p-4">
+          <div className="mb-6 h-20 animate-pulse rounded-lg bg-gray-100" />
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="mb-2 h-14 animate-pulse rounded-lg bg-gray-100" />
+          ))}
         </div>
       </AppShell>
     );
@@ -462,17 +465,10 @@ function SortableCategoryItem({
 
 function CategoryBadge({ name, colorKey }: { name: string; colorKey: string }) {
   const style = getCategoryStyle(colorKey);
-  if (style.isPreset && style.classes) {
-    return (
-      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.classes.bg} ${style.classes.text}`}>
-        {name}
-      </span>
-    );
-  }
   return (
     <span
       className="rounded-full px-3 py-1 text-xs font-semibold"
-      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
+      style={{ backgroundColor: style.bg, color: style.text }}
     >
       {name}
     </span>
