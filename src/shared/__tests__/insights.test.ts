@@ -21,6 +21,7 @@ vi.mock('../kst.js', () => ({
 }));
 
 import { connectDB } from '../db.js';
+import type { Insight } from '../insights.js';
 import {
   detectStreak,
   detectSleepTrend,
@@ -30,6 +31,12 @@ import {
   pickMorningNudge,
   pickNightNudge,
 } from '../insights.js';
+
+/** null이 아님을 보장하고 타입 좁히기 */
+const defined = (v: Insight | null): Insight => {
+  expect(v).not.toBeNull();
+  return v as Insight;
+};
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -75,12 +82,11 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '스트레칭하기', streak: '3' }],
     });
 
-    const result = await detectStreak('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.type).toBe('streak');
-    expect(result!.message).toContain('스트레칭하기');
-    expect(result!.message).toContain('3일');
-    expect(result!.priority).toBe(6); // 3 * 2
+    const result = defined(await detectStreak('2026-03-15'));
+    expect(result.type).toBe('streak');
+    expect(result.message).toContain('스트레칭하기');
+    expect(result.message).toContain('3일');
+    expect(result.priority).toBe(6); // 3 * 2
   });
 
   it('연속 7일 달성 시 높은 우선순위', async () => {
@@ -88,9 +94,8 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '유산균 먹기', streak: '7' }],
     });
 
-    const result = await detectStreak('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.priority).toBe(14); // 7 * 2
+    const result = defined(await detectStreak('2026-03-15'));
+    expect(result.priority).toBe(14); // 7 * 2
   });
 
   it('2일 연속은 임계값 미달 → null', async () => {
@@ -123,9 +128,8 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '스트레칭하기', streak: '5' }],
     });
 
-    const result = await detectStreak('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.message).toContain('5일');
+    const result = defined(await detectStreak('2026-03-15'));
+    expect(result.message).toContain('5일');
   });
 });
 
@@ -141,12 +145,11 @@ describe('detectSleepTrend', () => {
       ],
     });
 
-    const result = await detectSleepTrend('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.type).toBe('sleepTrend');
-    expect(result!.timing).toBe('night');
-    expect(result!.priority).toBe(8);
-    expect(result!.message).toContain('3일째 줄고');
+    const result = defined(await detectSleepTrend('2026-03-15'));
+    expect(result.type).toBe('sleepTrend');
+    expect(result.timing).toBe('night');
+    expect(result.priority).toBe(8);
+    expect(result.message).toContain('3일째 줄고');
   });
 
   it('3일 연속 증가면 긍정 인사이트', async () => {
@@ -158,10 +161,9 @@ describe('detectSleepTrend', () => {
       ],
     });
 
-    const result = await detectSleepTrend('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.priority).toBe(4); // 증가는 낮은 우선순위
-    expect(result!.message).toContain('늘고');
+    const result = defined(await detectSleepTrend('2026-03-15'));
+    expect(result.priority).toBe(4); // 증가는 낮은 우선순위
+    expect(result.message).toContain('늘고');
   });
 
   it('감소하지만 최신 ≥7시간이면 null (충분한 수면)', async () => {
@@ -215,14 +217,13 @@ describe('detectSlotGap', () => {
       ],
     });
 
-    const result = await detectSlotGap('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.type).toBe('slotGap');
-    expect(result!.timing).toBe('night');
-    expect(result!.message).toContain('아침');
-    expect(result!.message).toContain('밤');
-    expect(result!.message).toContain('93%');
-    expect(result!.message).toContain('42%');
+    const result = defined(await detectSlotGap('2026-03-15'));
+    expect(result.type).toBe('slotGap');
+    expect(result.timing).toBe('night');
+    expect(result.message).toContain('아침');
+    expect(result.message).toContain('밤');
+    expect(result.message).toContain('93%');
+    expect(result.message).toContain('42%');
   });
 
   it('격차 <30%이면 null', async () => {
@@ -257,13 +258,12 @@ describe('detectWeekComparison', () => {
       'this_week.*last_week': [{ this_rate: 82, last_rate: 65 }],
     });
 
-    const result = await detectWeekComparison('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.type).toBe('weekComparison');
-    expect(result!.timing).toBe('morning');
-    expect(result!.priority).toBe(6); // 차이 ≥10
-    expect(result!.message).toContain('82%');
-    expect(result!.message).toContain('65%');
+    const result = defined(await detectWeekComparison('2026-03-15'));
+    expect(result.type).toBe('weekComparison');
+    expect(result.timing).toBe('morning');
+    expect(result.priority).toBe(6); // 차이 ≥10
+    expect(result.message).toContain('82%');
+    expect(result.message).toContain('65%');
   });
 
   it('이번 주가 지난 주보다 낮으면 밤 타이밍', async () => {
@@ -271,11 +271,10 @@ describe('detectWeekComparison', () => {
       'this_week.*last_week': [{ this_rate: 55, last_rate: 72 }],
     });
 
-    const result = await detectWeekComparison('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.timing).toBe('night');
-    expect(result!.message).toContain('55%');
-    expect(result!.message).toContain('72%');
+    const result = defined(await detectWeekComparison('2026-03-15'));
+    expect(result.timing).toBe('night');
+    expect(result.message).toContain('55%');
+    expect(result.message).toContain('72%');
   });
 
   it('차이 <5%이면 null', async () => {
@@ -305,12 +304,11 @@ describe('detectOverdue', () => {
       "status = 'todo'.*date < ": [{ overdue_count: 5 }],
     });
 
-    const result = await detectOverdue('2026-03-15');
-    expect(result).not.toBeNull();
-    expect(result!.type).toBe('overdueAlert');
-    expect(result!.timing).toBe('morning');
-    expect(result!.priority).toBe(7);
-    expect(result!.message).toContain('5건');
+    const result = defined(await detectOverdue('2026-03-15'));
+    expect(result.type).toBe('overdueAlert');
+    expect(result.timing).toBe('morning');
+    expect(result.priority).toBe(7);
+    expect(result.message).toContain('5건');
   });
 
   it('밀린 일정 2건이면 null', async () => {
