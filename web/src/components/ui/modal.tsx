@@ -73,7 +73,7 @@ export function Modal({ open, onClose, title, children, onBeforeClose }: ModalPr
             </svg>
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="overflow-hidden p-5">{children}</div>
       </div>
     </dialog>
   );
