@@ -18,11 +18,13 @@ export const connectDB = async (databaseUrl: string): Promise<void> => {
     return;
   }
 
+  const useSSL = databaseUrl.includes('.neon.tech');
   pool = new Pool({
     connectionString: databaseUrl,
     max: 5,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
+    ...(useSSL && { ssl: { rejectUnauthorized: false } }),
   });
 
   const client = await pool.connect();
