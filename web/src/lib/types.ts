@@ -48,31 +48,20 @@ export const STATUS_LABELS: Record<ScheduleStatus, string> = {
   cancelled: '취소',
 };
 
-export interface CategoryColors {
-  bg: string;
-  border: string;
-  text: string;
-}
-
-/** 프리셋 Tailwind 색상 (기존 데이터 호환) */
-export const PRESET_COLORS: Record<string, { hex: string; colors: CategoryColors }> = {
-  violet: { hex: '#8b5cf6', colors: { bg: 'bg-violet-100', border: 'border-violet-300', text: 'text-violet-700' } },
-  amber: { hex: '#f59e0b', colors: { bg: 'bg-amber-100', border: 'border-amber-300', text: 'text-amber-700' } },
-  rose: { hex: '#f43f5e', colors: { bg: 'bg-rose-100', border: 'border-rose-300', text: 'text-rose-700' } },
-  emerald: { hex: '#10b981', colors: { bg: 'bg-emerald-100', border: 'border-emerald-300', text: 'text-emerald-700' } },
-  sky: { hex: '#0ea5e9', colors: { bg: 'bg-sky-100', border: 'border-sky-300', text: 'text-sky-700' } },
-  blue: { hex: '#3b82f6', colors: { bg: 'bg-blue-100', border: 'border-blue-300', text: 'text-blue-700' } },
-  orange: { hex: '#f97316', colors: { bg: 'bg-orange-100', border: 'border-orange-300', text: 'text-orange-700' } },
-  pink: { hex: '#ec4899', colors: { bg: 'bg-pink-100', border: 'border-pink-300', text: 'text-pink-700' } },
-  teal: { hex: '#14b8a6', colors: { bg: 'bg-teal-100', border: 'border-teal-300', text: 'text-teal-700' } },
-  indigo: { hex: '#6366f1', colors: { bg: 'bg-indigo-100', border: 'border-indigo-300', text: 'text-indigo-700' } },
-  gray: { hex: '#6b7280', colors: { bg: 'bg-gray-100', border: 'border-gray-300', text: 'text-gray-700' } },
+/** 프리셋 색상 (파스텔 hex) */
+export const PRESET_COLORS: Record<string, string> = {
+  violet: '#ddd6fe',
+  amber: '#fde68a',
+  rose: '#fecdd3',
+  emerald: '#a7f3d0',
+  sky: '#bae6fd',
+  blue: '#bfdbfe',
+  orange: '#fed7aa',
+  pink: '#fbcfe8',
+  teal: '#99f6e4',
+  indigo: '#c7d2fe',
+  gray: '#e5e7eb',
 };
-
-/** CATEGORY_COLORS — 프리셋 이름 또는 hex 값 모두 지원 */
-export const CATEGORY_COLORS: Record<string, CategoryColors> = Object.fromEntries(
-  Object.entries(PRESET_COLORS).map(([k, v]) => [k, v.colors]),
-);
 
 /** hex 색상의 상대 밝기 (0~1) */
 function luminance(hex: string): number {
@@ -95,24 +84,15 @@ export function hexToStyles(hex: string): { bg: string; border: string; text: st
   };
 }
 
-/** 색상 키(프리셋명 또는 hex)에서 표시용 색상 가져오기 */
-export function getCategoryStyle(colorKey: string): {
-  isPreset: boolean;
-  classes?: CategoryColors;
-  styles?: { bg: string; border: string; text: string };
-} {
-  if (PRESET_COLORS[colorKey]) {
-    return { isPreset: true, classes: PRESET_COLORS[colorKey].colors };
-  }
-  if (colorKey.startsWith('#')) {
-    return { isPreset: false, styles: hexToStyles(colorKey) };
-  }
-  return { isPreset: true, classes: PRESET_COLORS.gray.colors };
+/** 색상 키(프리셋명 또는 hex)에서 인라인 스타일 생성 */
+export function getCategoryStyle(colorKey: string): { bg: string; border: string; text: string } {
+  const hex = colorToHex(colorKey);
+  return hexToStyles(hex);
 }
 
 /** 색상 키에서 hex 값 가져오기 */
 export function colorToHex(colorKey: string): string {
-  return PRESET_COLORS[colorKey]?.hex ?? (colorKey.startsWith('#') ? colorKey : '#6b7280');
+  return PRESET_COLORS[colorKey] ?? (colorKey.startsWith('#') ? colorKey : '#6b7280');
 }
 
 export const COLOR_OPTIONS = Object.keys(PRESET_COLORS);

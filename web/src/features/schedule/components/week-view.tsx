@@ -306,7 +306,7 @@ function WeekSpanBar({
           className="absolute top-0 left-0 z-20 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
       )}
 
@@ -366,7 +366,7 @@ function WeekSpanBar({
           className="absolute top-0 right-0 z-20 h-full w-3 cursor-col-resize opacity-0 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mx-auto h-full w-0.5 rounded bg-gray-400" />
+          <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
       )}
     </div>
@@ -375,17 +375,10 @@ function WeekSpanBar({
 
 function CategoryBadge({ colorKey, label }: { colorKey: string; label: string }) {
   const style = getCategoryStyle(colorKey);
-  if (style.isPreset && style.classes) {
-    return (
-      <span className={`rounded-full px-2 py-0.5 text-xs ${style.classes.bg} ${style.classes.text}`}>
-        {label}
-      </span>
-    );
-  }
   return (
     <span
       className="rounded-full px-2 py-0.5 text-xs"
-      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
+      style={{ backgroundColor: style.bg, color: style.text }}
     >
       {label}
     </span>

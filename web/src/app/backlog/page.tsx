@@ -39,8 +39,15 @@ export default function BacklogPage() {
   if (loading) {
     return (
       <AppShell>
-        <div className="flex h-[60vh] items-center justify-center">
-          <div className="text-gray-400">로딩중...</div>
+        <div className="mx-auto w-full max-w-3xl p-4">
+          <div className="mb-4 h-8 w-32 animate-pulse rounded bg-gray-200" />
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="mb-4 space-y-2">
+              <div className="h-6 w-24 animate-pulse rounded-full bg-gray-200" />
+              <div className="h-16 animate-pulse rounded-lg bg-gray-100" />
+              <div className="h-16 animate-pulse rounded-lg bg-gray-100" />
+            </div>
+          ))}
         </div>
       </AppShell>
     );
@@ -78,18 +85,12 @@ export default function BacklogPage() {
 
               return (
                 <div key={cat}>
-                  {style.isPreset && style.classes ? (
-                    <h2 className={`mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${style.classes.bg} ${style.classes.text}`}>
-                      {cat} ({items.length})
-                    </h2>
-                  ) : (
-                    <h2
-                      className="mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold"
-                      style={{ backgroundColor: style.styles?.bg, color: style.styles?.text }}
-                    >
-                      {cat} ({items.length})
-                    </h2>
-                  )}
+                  <h2
+                    className="mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold"
+                    style={{ backgroundColor: style.bg, color: style.text }}
+                  >
+                    {cat} ({items.length})
+                  </h2>
 
                   <div className="space-y-2">
                     {items.map((s) => (
