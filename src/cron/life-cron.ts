@@ -35,6 +35,7 @@ import {
   buildSleepRecordedText,
 } from '../agents/life/blocks.js';
 import { pickMorningNudge, pickNightNudge } from '../shared/insights.js';
+import { weeklyReportTask } from './weekly-report.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView, getCachedHomeUserId } from '../agents/life/home.js';
 
@@ -360,6 +361,7 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   evening: eveningTask,
   night: nightTask,
   nightReview: nightReviewTask,
+  weeklyReport: weeklyReportTask,
 };
 
 // ─── CronScheduler 클래스 ───────────────────────────────
