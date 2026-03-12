@@ -163,6 +163,13 @@ custom_instructions: id, instruction, category, source(user/auto), active, creat
 - 새 API 엔드포인트 추가 시 인증 없는 상태로 커밋하지 않는다
 - 의심스러운 보안 설정 발견 시 작업을 멈추고 사용자에게 알린다
 
+## 문서 작성 규칙
+
+- 마크다운 문서에서 `~`(틸드)를 범위(`3~5개`)나 근사값(`~1초`)으로 사용할 때 반드시 `\~`로 이스케이프한다. GitHub Flavored Markdown이 `~`를 취소선으로 렌더링하는 것을 방지.
+  - 범위: `3\~5회`, `7\~11초`
+  - 근사값: `\~1초`, `\~500줄`
+  - 코드 블록(``` 또는 백틱) 안의 `~`는 이스케이프 불필요
+
 ## 코드 컨벤션 (요약)
 
 - 파일명: kebab-case / 변수·함수: camelCase / 타입·클래스: PascalCase / 상수: UPPER_SNAKE_CASE
@@ -181,6 +188,6 @@ custom_instructions: id, instruction, category, source(user/auto), active, creat
 
 ## Claude 작업 규칙
 
-- 커밋이 3~5개 쌓이거나, 주제가 바뀌는 시점에 "여기서 커밋 끊자", "새 브랜치 파자", "PR 만들자" 등을 먼저 제안할 것
+- 커밋이 3\~5개 쌓이거나, 주제가 바뀌는 시점에 "여기서 커밋 끊자", "새 브랜치 파자", "PR 만들자" 등을 먼저 제안할 것
 - 하나의 브랜치에서 서로 다른 기능이 섞이기 시작하면 PR 머지 → 새 브랜치 전환을 권유할 것
 - `docs/developer-profile.md` (gitignore 대상)에 개발자 작업 스타일, 의사결정 패턴, 성향 분석을 기록 중. 협업 중 눈에 띄는 포인트(강점, 개선점, 새로운 패턴)가 발견되면 해당 문서의 "관찰 메모" 섹션에 날짜와 함께 추가할 것
