@@ -28,7 +28,6 @@ import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
   buildNightSummaryBlocks,
-  buildNudgeBlock,
   buildScheduleText,
   buildNightScheduleText,
   buildSleepReminderText,
@@ -51,7 +50,9 @@ ${CHARACTER_PROMPT}
 
 지금 크론 알림 메시지를 생성해. 한두 문장으로 짧게.
 - 데이터 기반으로 구체적이고 따뜻하게
-- 시스템 설명 없이 친구처럼 자연스럽게`;
+- 시스템 설명 없이 친구처럼 자연스럽게
+- "핵심 포인트"가 있으면 그걸 중심으로 자연스럽게 녹여서 말해
+- 시간 관계 주의: "어젯밤 수면 N시간"은 어제 밤의 수면량이야. 오늘 취침 시간과 혼동하지 마`;
 
 /** LLM으로 크론 메시지 생성 (실패 시 fallback) */
 const generateCronMessage = async (
@@ -173,7 +174,10 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   // 1. 오늘 기록 생성
   const created = await createTodayRecords(today);
 
-  // 2. 생활 맥락 + 어제 통계 → LLM 인사
+  // 2. 인사이트 넛지 감지 (LLM 컨텍스트에 통합하기 위해 먼저 실행)
+  const morningNudge = await pickMorningNudge(today);
+
+  // 3. 생활 맥락 + 어제 통계 + 넛지 → LLM 통합 인사
   const yesterdayRecords = await queryTodayRecords(yesterday);
   const stats = calcRoutineStats(yesterdayRecords);
   const lifeContext = await buildLifeContext('morning');
@@ -187,7 +191,8 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
       ? `어제 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${stats.weakestSlot ? `\n가장 약한 시간대: ${stats.weakestSlot}` : ''}`
       : '어제 루틴 기록이 없어.';
 
-  const context = `아침 인사 생성해줘. 생활 맥락 기반으로 잔소리 포함해서.\n${baseContext}${lifeContext}`;
+  const nudgeContext = morningNudge ? `\n핵심 포인트: ${morningNudge}` : '';
+  const context = `아침 인사 생성해줘. 생활 맥락 기반으로 잔소리 포함해서.\n${baseContext}${lifeContext}${nudgeContext}`;
 
   const greeting = await generateCronMessage(
     config.llmClient,
@@ -198,21 +203,16 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   );
   const greetingBlocks = buildMorningGreetingBlocks(greeting);
 
-  // 3. 아침 루틴 체크리스트
+  // 4. 아침 루틴 체크리스트
   const todayRecords = await queryTodayRecords(today);
   const hasMorning = todayRecords.some((r) => r.time_slot === '아침');
 
-  // 3-1. 인사이트 넛지 (최고 우선순위 1개, 없으면 스킵)
-  const morningNudge = await pickMorningNudge(today);
-  const nudgeBlocks = morningNudge ? buildNudgeBlock(morningNudge) : [];
-
   if (hasMorning) {
     const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['아침']);
-    const fullBlocks = [...greetingBlocks, ...blocks, ...nudgeBlocks];
+    const fullBlocks = [...greetingBlocks, ...blocks];
     await postBlockMessage(app.client, config.channelId, text, fullBlocks);
   } else if (greetingBlocks.length > 0) {
-    const fullBlocks = [...greetingBlocks, ...nudgeBlocks];
-    await postBlockMessage(app.client, config.channelId, '아침 인사', fullBlocks);
+    await postBlockMessage(app.client, config.channelId, '아침 인사', greetingBlocks);
   }
 
   // 4. 앱홈 능동 갱신 (날짜 전환 반영)
@@ -271,13 +271,18 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
 
   if (records.length === 0) return;
 
+  // 1. 인사이트 넛지 감지 (LLM 컨텍스트에 통합하기 위해 먼저 실행)
+  const nightNudge = await pickNightNudge(today);
+
+  // 2. 루틴 통계 + 생활 맥락 + 넛지 → LLM 통합 마무리 메시지
   const stats = calcRoutineStats(records);
   const lifeContext = await buildLifeContext('night');
   const slotText = Object.entries(stats.slotBreakdown)
     .map(([s, d]) => `${s} ${d.rate}%`)
     .join(', ');
 
-  const context = `밤 마무리 메시지 생성해줘. 생활 맥락 기반으로 하루를 종합해서 잔소리 포함.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${lifeContext}`;
+  const nudgeContext = nightNudge ? `\n핵심 포인트: ${nightNudge}` : '';
+  const context = `밤 마무리 메시지 생성해줘. 생활 맥락 기반으로 하루를 종합해서 잔소리 포함.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${lifeContext}${nudgeContext}`;
 
   const summary = await generateCronMessage(
     config.llmClient,
@@ -289,11 +294,7 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
 
   const { text, blocks } = buildNightSummaryBlocks(records, today, summary);
 
-  // 인사이트 넛지 (최고 우선순위 1개, 없으면 스킵)
-  const nightNudge = await pickNightNudge(today);
-  const fullBlocks = nightNudge ? [...blocks, ...buildNudgeBlock(nightNudge)] : blocks;
-
-  await postBlockMessage(app.client, config.channelId, text, fullBlocks);
+  await postBlockMessage(app.client, config.channelId, text, blocks);
   console.warn(`[Life Cron] 밤 요약 전송 완료`);
 };
 
