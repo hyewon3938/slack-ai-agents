@@ -48,7 +48,7 @@
 
 - **대화**: 사용자가 Slack에 자연어로 메시지를 보내면, Claude Sonnet이 의도를 파악하고 SQL 도구를 직접 호출해 데이터를 조회/변경한다. 별도의 API 레이어 없이 LLM이 SQL을 작성하고, 결과를 해석하고, 추가 조회가 필요하면 스스로 도구를 다시 호출하는 **Agent Loop 패턴**으로 동작한다. 도구를 쓸지, 몇 번 호출할지, 어떤 SQL을 작성할지 모두 LLM이 자율 판단한다.
 - **알림**: 하루 4회 Cron이 Neon PostgreSQL에서 일정/루틴/수면 데이터를 직접 조회하고, 아침/밤 알림은 Gemini Flash로 자연어 메시지를 생성하여 Slack에 전송한다. 비용 최적화를 위해 크론 메시지 생성만 경량 모델로 분리했다.
-- **웹 대시보드**: Next.js 15 기반 캘린더 UI로 Slack 에이전트가 쌓은 데이터를 시각화하고 직접 조작한다. 동일 Neon PostgreSQL을 공유하며, Vercel에서 자동 배포된다.
+- **웹 대시보드**: Next.js 16 기반 캘린더 UI로 Slack 에이전트가 쌓은 데이터를 시각화하고 직접 조작한다. 동일 Neon PostgreSQL을 공유하며, Vercel에서 자동 배포된다.
 
 ### v1 → v2 → v3: 아키텍처 전환
 
@@ -130,7 +130,7 @@ v2에서 웹 대시보드를 추가하면서 Docker 서비스가 4개(app, db, w
 
 ### 웹 대시보드
 
-Slack 대화만으로 부족했던 **시각적 일정 관리**를 위해 Next.js 15 기반 웹 대시보드를 구축했다. Slack 에이전트가 쌓은 데이터를 캘린더·백로그·카테고리 뷰로 시각화하고, 드래그 앤 드롭으로 직접 조작할 수 있다. Vercel에 자동 배포되어 모바일에서도 접근 가능하고, PWA를 지원해 홈 화면에 추가할 수 있다.
+Slack 대화만으로 부족했던 **시각적 일정 관리**를 위해 Next.js 16 기반 웹 대시보드를 구축했다. Slack 에이전트가 쌓은 데이터를 캘린더·백로그·카테고리 뷰로 시각화하고, 드래그 앤 드롭으로 직접 조작할 수 있다. Vercel에 자동 배포되어 모바일에서도 접근 가능하고, PWA를 지원해 홈 화면에 추가할 수 있다.
 
 - **월간/주간/일간 캘린더** — 기간 일정 스패닝 바, 카테고리별 색상 분류, 상태 관리(todo → in-progress → done)
 - **드래그 앤 드롭** — 일정 이동, 양방향 리사이즈로 기간 조정 (@dnd-kit)
@@ -179,14 +179,14 @@ Slack App Home 탭에 오늘의 일정 + 루틴 + 수면 요약을 영구 표시
 | ---------- | ----------------------------------------------------------------- |
 | AI/LLM     | Claude Sonnet (Tool Use), Gemini Flash (크론 메시지)              |
 | Backend    | Node.js + TypeScript (strict)                                     |
-| Frontend   | Next.js 15 (App Router) + Tailwind CSS v4 + @dnd-kit              |
+| Frontend   | Next.js 16 (App Router) + Tailwind CSS v4 + @dnd-kit              |
 | Messaging  | Slack Bolt (Socket Mode)                                          |
 | Database   | Neon (managed PostgreSQL)                                         |
 | Auth       | iron-session (암호화 쿠키 세션)                                   |
 | Scheduling | node-cron (timezone: Asia/Seoul)                                  |
 | Bot Infra  | Docker + Oracle Cloud Free Tier ARM VM                            |
 | Web Infra  | Vercel (자동 배포, HTTPS 내장)                                    |
-| CI/CD      | GitHub Actions (PR 체크) + Vercel (웹 자동 배포) + yarn deploy (봇) |
+| CI/CD      | GitHub Actions (CI + 배포 알림) + Vercel (웹 자동 배포) + yarn deploy (봇) |
 | Security   | 다층 보안 체계 (규칙 + 체크리스트 + 스킬 + Hooks)                 |
 | Test       | vitest                                                            |
 
@@ -316,6 +316,7 @@ v1 설계 → 운영 → 한계 인식 → v2 전환 → 웹 대시보드 → v3
 | Day 7 (03-11)    | 보안 + HTTPS 배포      | 다층 보안 체계, Caddy 리버스 프록시, HTTPS 도메인 배포     |
 | Day 8 (03-12)    | 안정화 + 고도화        | 웹 대시보드 UX 개선, API 크레딧 안내, Opus 분석 DB 저장    |
 | Day 9 (03-12)    | v3 인프라 분리         | Vercel + Neon 전환, Docker 4→1 서비스, 배포 시간 8분→2분   |
+| Day 10 (03-12)   | CI/CD + 품질 강화      | GitHub Actions 배포 알림, Next.js 캐싱, 테스트 커버리지 205개 |
 
 > 상세 기록: [docs/project-history.md](docs/project-history.md)
 

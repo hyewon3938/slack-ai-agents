@@ -27,7 +27,7 @@
 - Slack: @slack/bolt (Socket Mode)
 - LLM: Claude Sonnet (메인) — 명리학 분석 전용: Gemini
 - DB: Neon (managed PostgreSQL)
-- Web: Next.js 15 (Vercel 배포)
+- Web: Next.js 16 (Vercel 배포)
 - Cron: node-cron (timezone: Asia/Seoul)
 - Test: vitest
 
