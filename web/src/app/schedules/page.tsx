@@ -133,6 +133,9 @@ export default function SchedulesPage() {
                   onSelectDate={handleSelectDate}
                   onScheduleClick={setEditingSchedule}
                   onStatusChange={handleStatusChange}
+                  onPostpone={handlePostpone}
+                  onMoveToBacklog={handleMoveToBacklog}
+                  onDelete={handleDeleteById}
                 />
               )}
               {view === 'day' && (

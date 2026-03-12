@@ -10,6 +10,7 @@ interface DraggableCardProps {
   onStatusChange?: (id: number, status: string) => void;
   onClick?: (schedule: ScheduleRow) => void;
   compact?: boolean;
+  action?: React.ReactNode;
 }
 
 export function DraggableCard({
@@ -18,6 +19,7 @@ export function DraggableCard({
   onStatusChange,
   onClick,
   compact,
+  action,
 }: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `move-${schedule.id}`,
@@ -105,6 +107,7 @@ export function DraggableCard({
           categories={categories}
           onStatusChange={onStatusChange}
           onClick={onClick}
+          action={action}
         />
       </div>
       {/* 리사이즈 핸들 (우측) */}

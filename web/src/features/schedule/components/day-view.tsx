@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { compareByStatus } from '@/lib/types';
 import { ScheduleCard } from './schedule-card';
+import { ActionMenu } from './action-menu';
 
 interface DayViewProps {
   currentDate: Date;
@@ -16,82 +16,6 @@ interface DayViewProps {
   onPostpone: (id: number) => void;
   onMoveToBacklog: (id: number) => void;
   onDelete: (id: number) => void;
-}
-
-function ActionMenu({
-  scheduleId,
-  onPostpone,
-  onMoveToBacklog,
-  onDelete,
-}: {
-  scheduleId: number;
-  onPostpone: (id: number) => void;
-  onMoveToBacklog: (id: number) => void;
-  onDelete: (id: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(!open);
-        }}
-        className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
-      >
-        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="absolute right-0 z-50 mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onPostpone(scheduleId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-          >
-            내일로 미루기
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onMoveToBacklog(scheduleId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-          >
-            백로그로 이동
-          </button>
-          <div className="my-1 border-t border-gray-100" />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onDelete(scheduleId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50"
-          >
-            삭제
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function DayView({
@@ -161,22 +85,21 @@ export function DayView({
                 </h3>
                 <div className="space-y-2">
                   {items.map((s) => (
-                    <div key={s.id} className="flex items-start gap-1">
-                      <div className="min-w-0 flex-1">
-                        <ScheduleCard
-                          schedule={s}
-                          categories={categories}
-                          onStatusChange={onStatusChange}
-                          onClick={onScheduleClick}
+                    <ScheduleCard
+                      key={s.id}
+                      schedule={s}
+                      categories={categories}
+                      onStatusChange={onStatusChange}
+                      onClick={onScheduleClick}
+                      action={
+                        <ActionMenu
+                          scheduleId={s.id}
+                          onPostpone={onPostpone}
+                          onMoveToBacklog={onMoveToBacklog}
+                          onDelete={onDelete}
                         />
-                      </div>
-                      <ActionMenu
-                        scheduleId={s.id}
-                        onPostpone={onPostpone}
-                        onMoveToBacklog={onMoveToBacklog}
-                        onDelete={onDelete}
-                      />
-                    </div>
+                      }
+                    />
                   ))}
                 </div>
               </div>
