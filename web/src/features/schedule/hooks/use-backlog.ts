@@ -59,7 +59,9 @@ export function useBacklog() {
   const sortedCategories = [...grouped.keys()].sort((a, b) => {
     if (a === '미분류') return 1;
     if (b === '미분류') return -1;
-    return a.localeCompare(b, 'ko');
+    const catA = categories.find((c) => c.name === a);
+    const catB = categories.find((c) => c.name === b);
+    return (catA?.sort_order ?? 999) - (catB?.sort_order ?? 999);
   });
 
   const handleAssignDate = async (id: number, date: string) => {
