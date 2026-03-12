@@ -179,6 +179,17 @@ export const buildNightSummaryBlocks = (
   return result;
 };
 
+// ─── 인사이트 넛지 ──────────────────────────────────────
+
+/** 인사이트 넛지를 divider + context block으로 렌더링 */
+export const buildNudgeBlock = (message: string): KnownBlock[] => [
+  { type: 'divider' },
+  {
+    type: 'context',
+    elements: [{ type: 'mrkdwn', text: `💡 ${message}` }],
+  },
+];
+
 // ─── 수면 리마인더 ──────────────────────────────────────
 
 const SLEEP_REMINDER_MORNING: readonly string[] = [
