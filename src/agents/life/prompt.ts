@@ -212,5 +212,32 @@ sleep_records.date는 **잠에서 깬 날짜**야. 잠든 날짜가 아님.
 
 ## 커스텀 지시사항
 - "앞으로/항상/매번/기억해" → INSERT(source='user'). 조회/삭제도 가능.
-- 지속적 선호 자동 감지 → INSERT(source='auto'). 겹치면 통합. user 지시는 보호.${customInstructions}`;
+- 지속적 선호 자동 감지 → INSERT(source='auto'). 겹치면 통합. user 지시는 보호.
+
+## 분석 가이드
+"분석", "패턴", "추세", "비교", "인사이트" 등의 키워드가 나오면 적극적으로 데이터 분석해.
+
+### 크로스 분석 SQL 패턴
+1. 수면 vs 루틴 상관:
+SELECT s.date, s.duration_minutes, ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / NULLIF(COUNT(*), 0) * 100)::int AS routine_rate
+FROM sleep_records s JOIN routine_records r ON s.date = r.date
+WHERE s.sleep_type = 'night' AND s.date BETWEEN $1 AND $2
+GROUP BY s.date, s.duration_minutes ORDER BY s.date
+
+2. 요일별 패턴:
+SELECT EXTRACT(DOW FROM date)::int AS dow, ROUND(AVG(CASE WHEN completed THEN 1 ELSE 0 END) * 100)::int AS rate
+FROM routine_records WHERE date BETWEEN $1 AND $2
+GROUP BY dow ORDER BY dow
+
+3. 시간대별 추세 (2주 비교):
+SELECT t.time_slot, ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 6) AND $2)::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 6) AND $2), 0) * 100)::int AS this_week,
+ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 13) AND ($2::date - 7))::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 13) AND ($2::date - 7)), 0) * 100)::int AS last_week
+FROM routine_records r JOIN routine_templates t ON r.template_id = t.id
+WHERE r.date BETWEEN ($2::date - 13) AND $2
+GROUP BY t.time_slot
+
+### 해석 규칙
+- 상관관계를 말할 때 "~할수록 ~하는 경향이 있다" 정도로. 인과관계 단정 금지.
+- 데이터가 7일 미만이면 "아직 데이터가 적어서 추세를 보기 어렵다"고 솔직하게.
+- 숫자는 반드시 SQL 결과 기반. 절대 추측하지 마.${customInstructions}`;
 };
