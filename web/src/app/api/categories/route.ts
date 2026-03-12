@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
-import { queryCategories, createCategory } from '@/features/schedule/lib/queries';
+import { createCategory } from '@/features/schedule/lib/queries';
+import { getCachedCategories } from '@/lib/cache';
 
 export async function GET() {
   if (!(await requireAuth())) {
@@ -8,7 +10,7 @@ export async function GET() {
   }
 
   try {
-    const data = await queryCategories();
+    const data = await getCachedCategories();
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '카테고리 조회 실패' }, { status: 500 });
@@ -31,6 +33,7 @@ export async function POST(request: Request) {
       name: body.name.trim(),
       color: body.color,
     });
+    revalidateTag('categories', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : '카테고리 생성 실패';
