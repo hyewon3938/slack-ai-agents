@@ -47,11 +47,13 @@ export function DayView({
     grouped.set(cat, list);
   }
 
-  // 카테고리 정렬 (미분류 맨 끝)
+  // 카테고리 정렬 (sort_order 기준, 미분류 맨 끝)
   const sortedCategories = [...grouped.keys()].sort((a, b) => {
     if (a === '미분류') return 1;
     if (b === '미분류') return -1;
-    return a.localeCompare(b, 'ko');
+    const catA = categories.find((c) => c.name === a);
+    const catB = categories.find((c) => c.name === b);
+    return (catA?.sort_order ?? 999) - (catB?.sort_order ?? 999);
   });
 
   const totalTasks = daySchedules.filter((s) => s.category !== '약속').length;

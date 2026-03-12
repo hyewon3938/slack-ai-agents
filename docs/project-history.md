@@ -928,3 +928,7 @@ Vercel + Neon으로 전환하면 배포 자동화 + 빌드 최적화 + 인프라
 | 2026-03-11 | 웹 대시보드 컨벤션 정립 + 확장성 리팩토링 — features/ 도메인 폴더 구조 전환 (Issue #87) |
 | 2026-03-12 | 수면 기록 date 판단 오류 수정 — "어제"의 두 가지 의미 구분 규칙 추가 (Issue #89) |
 | 2026-03-12 | **v3 아키텍처 전환** — Vercel + Neon, Docker 4→1 서비스, 배포 자동화 (Issue #94) |
+| 2026-03-12 | Next.js 캐싱 적용 — unstable_cache + revalidateTag (Issue #99) |
+| 2026-03-12 | 핵심 로직 테스트 커버리지 추가 — 166개 테스트 (Issue #101) |
+| 2026-03-12 | CI/CD Slack 알림 — GitHub Actions 배포 결과 자동 전송 (Issue #97) |
+| 2026-03-12 | 대시보드 UX 개선 — 색상 프리셋 파스텔 전환, 카테고리 정렬, Optimistic UI, 스켈레톤 (Issue #103, PR #104) |
