@@ -1,5 +1,35 @@
 # Work Log
 
+## 2026-03-12 (수)
+
+### 작업 요약
+- 프로액티브 인사이트 시스템 완성 → PR #106 머지 (5가지 패턴 감지 엔진 + 주간 리포트 + 크론 연동)
+- 대시보드 UX 개선 PR #104 머지 (색상 프리셋/정렬/Optimistic UI/스켈레톤)
+- 테스트 커버리지 PR #102 머지 (router, calendar-utils, kst, types)
+- Next.js 캐싱 PR #100 머지 (unstable_cache + revalidateTag)
+- CI/CD Slack 배포 알림 PR #98 머지
+- v3 아키텍처 전환 (Vercel + Neon), 개발 크론 Scheduled Task 통합
+- README 포트폴리오 전략 정비 + developer-profile 구조 개편
+
+### 변경 규모
+- 33개 커밋, 81개 파일, +4001 / -1055 lines
+
+### 주요 변경
+- `src/shared/insights.ts` — 신규: 인사이트 감지 엔진 (276줄, 5가지 패턴 감지)
+- `src/cron/weekly-report.ts` — 신규: 주간 리포트 (382줄, SQL 집계 + Gemini 총평)
+- `src/shared/__tests__/insights.test.ts` — 인사이트 테스트 (428줄)
+- `src/cron/life-cron.ts` — 아침/밤 크론에 인사이트 넛지 연동
+- `src/agents/life/prompt.ts` — 자연어 분석 가이드 추가 (크로스 분석 SQL 패턴)
+- `web/src/lib/cache.ts` — Next.js 캐싱 유틸리티 신규
+- `src/cron/dev-cron.ts` — 삭제 (Scheduled Task로 통합)
+
+### 미완료
+- Issues #7~#10 미착수 (fortune, diet, expense 등)
+
+### 다음 할 일
+- 인사이트 시스템 실제 운영 검증 (패턴 감지 정확도)
+- 주간 리포트 크론 슬롯 실제 동작 확인
+
 ## 2026-03-11 (화)
 
 ### 작업 요약

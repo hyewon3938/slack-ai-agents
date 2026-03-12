@@ -4,6 +4,8 @@ dist/
 *.log
 .DS_Store
 docs/ai-workflow-portfolio.md
+docs/interview-prep.md
+docs/my-strengths.md
 .env.production
 .mcp.json
 web/.next/
