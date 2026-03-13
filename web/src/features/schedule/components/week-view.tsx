@@ -346,6 +346,7 @@ function WeekSpanBar({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className={`truncate text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                {span.schedule.important && <span className="mr-1 text-amber-500">★</span>}
                 {span.schedule.title}
               </span>
             </div>

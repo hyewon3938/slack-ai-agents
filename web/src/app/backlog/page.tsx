@@ -103,6 +103,7 @@ export default function BacklogPage() {
                           onClick={() => setEditingSchedule(s)}
                         >
                           <div className="flex items-center gap-2">
+                            {s.important && <span className="shrink-0 text-amber-500">★</span>}
                             <span className="text-sm font-medium text-gray-800">{s.title}</span>
                             <StatusBadge status={s.status} />
                           </div>

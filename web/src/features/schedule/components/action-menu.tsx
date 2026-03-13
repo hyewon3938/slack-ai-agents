@@ -56,7 +56,7 @@ export function ActionMenu({
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
             >
-              {important ? '★ 중요 해제' : '☆ 중요 설정'}
+              {important ? '중요 해제' : '중요 설정'}
             </button>
           )}
           <button
