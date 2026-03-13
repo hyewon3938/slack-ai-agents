@@ -367,12 +367,18 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
 
 // ─── CronScheduler 클래스 ───────────────────────────────
 
+/** reload() debounce 대기 시간 (ms) */
+export const RELOAD_DEBOUNCE_MS = 500;
+
 interface CronTask {
   stop: () => void;
 }
 
 export class CronScheduler {
   private tasks = new Map<string, CronTask>();
+  private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  private reloading = false;
+  private reloadQueued = false;
 
   constructor(
     private readonly app: App,
@@ -385,20 +391,55 @@ export class CronScheduler {
     this.startReminderChecker();
   }
 
-  /** 기존 태스크 전체 파기 → DB 재로드 → 새 스케줄로 등록 */
-  async reload(): Promise<void> {
-    this.destroyAll();
-    await this.loadAndSchedule();
-    this.startReminderChecker();
-    console.warn('[Life Cron] 스케줄 리로드 완료');
+  /**
+   * 기존 태스크 전체 파기 → DB 재로드 → 새 스케줄로 등록.
+   * debounce 적용: 연속 호출 시 마지막 호출만 실행.
+   * mutex 적용: 실행 중 재호출 시 큐잉 후 완료 후 1회 재실행.
+   */
+  reload(): void {
+    if (this.reloadTimer) {
+      clearTimeout(this.reloadTimer);
+    }
+    this.reloadTimer = setTimeout(() => {
+      this.reloadTimer = null;
+      void this.executeReload();
+    }, RELOAD_DEBOUNCE_MS);
   }
 
-  /** 모든 태스크 정지 + 제거 */
+  /** 모든 태스크 정지 + 제거 (pending debounce 포함) */
   destroy(): void {
+    if (this.reloadTimer) {
+      clearTimeout(this.reloadTimer);
+      this.reloadTimer = null;
+    }
     this.destroyAll();
   }
 
   // ── 내부 메서드 ──
+
+  private async executeReload(): Promise<void> {
+    if (this.reloading) {
+      this.reloadQueued = true;
+      return;
+    }
+
+    this.reloading = true;
+    try {
+      this.destroyAll();
+      await this.loadAndSchedule();
+      this.startReminderChecker();
+      console.warn('[Life Cron] 스케줄 리로드 완료');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('[Life Cron] 리로드 실패:', msg);
+    } finally {
+      this.reloading = false;
+      if (this.reloadQueued) {
+        this.reloadQueued = false;
+        await this.executeReload();
+      }
+    }
+  }
 
   private async loadAndSchedule(): Promise<void> {
     const settings = await queryNotificationSettings();
@@ -415,6 +456,11 @@ export class CronScheduler {
       const task = cron.schedule(cronExpr, wrapTask(taskFn, this.app, this.config, setting.label), {
         timezone,
       });
+
+      // 안전장치: 기존 task가 있으면 먼저 정지 (좀비 방지)
+      const existing = this.tasks.get(setting.slot_name);
+      if (existing) existing.stop();
+
       this.tasks.set(setting.slot_name, task);
       registered.push(`${setting.label}(${setting.time_value})`);
     }
@@ -435,6 +481,10 @@ export class CronScheduler {
       },
       { timezone: 'Asia/Seoul' },
     );
+
+    // 안전장치: 기존 리마인더 체커가 있으면 먼저 정지
+    const existing = this.tasks.get('_reminderChecker');
+    if (existing) existing.stop();
 
     this.tasks.set('_reminderChecker', task);
   }

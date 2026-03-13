@@ -40,10 +40,10 @@ const startApp = async (): Promise<void> => {
   });
   await cronScheduler.init();
 
-  // SQL modify_db 후 알림 설정 변경 감지 → 크론 리스케줄
-  setPostModifyHook(async (sql: string) => {
+  // SQL modify_db 후 알림 설정 변경 감지 → 크론 리스케줄 (debounce 내장)
+  setPostModifyHook((sql: string) => {
     if (/\bnotification_settings\b/i.test(sql)) {
-      await cronScheduler.reload();
+      cronScheduler.reload();
     }
   });
 
