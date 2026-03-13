@@ -154,7 +154,7 @@ export function WeekView({
       </div>
 
       {/* 모바일: 세로 리스트 (DroppableDay 미사용 — 데스크탑과 ID 충돌 방지) */}
-      <div className="md:hidden">
+      <div className="pb-24 md:hidden md:pb-0">
         {days.map((day) => {
           const dateStr = format(day, 'yyyy-MM-dd');
           const daySchedules = getMobileSchedules(day, schedules, categories);

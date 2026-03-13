@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+/* Safari date input — 네이티브 피커가 컨테이너 밖으로 넓어지는 문제 수정 */
+input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 /* Hue slider thumb */
 .hue-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
