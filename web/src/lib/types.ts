@@ -121,16 +121,22 @@ export function compareSchedulePriority(
   const bMulti = isMultiDaySchedule(b);
   if (aMulti !== bMulti) return aMulti ? -1 : 1;
 
-  // 2. 중요 일정 우선
+  // 2. 활성(진행중/할일) vs 완료/취소 — 활성이 위
+  const aActive = a.status === 'in-progress' || a.status === 'todo';
+  const bActive = b.status === 'in-progress' || b.status === 'todo';
+  if (aActive !== bActive) return aActive ? -1 : 1;
+
+  // 3. 같은 그룹 내에서 중요 일정 우선
   if (a.important !== b.important) return a.important ? -1 : 1;
 
-  // 3. 카테고리 sort_order
+  // 4. 상태순 (진행중 > 할일, 완료 > 취소)
+  const statusDiff = compareByStatus(a, b);
+  if (statusDiff !== 0) return statusDiff;
+
+  // 5. 카테고리 sort_order
   const catA = categories.find((c) => c.name === a.category);
   const catB = categories.find((c) => c.name === b.category);
   const orderA = a.category ? (catA?.sort_order ?? 999) : 9999;
   const orderB = b.category ? (catB?.sort_order ?? 999) : 9999;
-  if (orderA !== orderB) return orderA - orderB;
-
-  // 4. 상태순
-  return compareByStatus(a, b);
+  return orderA - orderB;
 }
