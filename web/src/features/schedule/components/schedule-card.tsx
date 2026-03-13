@@ -62,7 +62,6 @@ export function ScheduleCard({
         className={`cursor-pointer truncate rounded border-l-2 px-1.5 py-0.5 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
         style={{ backgroundColor: catStyle.bg, color: catStyle.text, borderLeftColor: catStyle.border }}
       >
-        {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
         {schedule.title}
       </div>
     );
@@ -94,7 +93,6 @@ export function ScheduleCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className={`text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-              {schedule.important && <span className="mr-1 text-amber-500">★</span>}
               {schedule.title}
             </span>
           </div>
