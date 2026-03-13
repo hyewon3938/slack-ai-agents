@@ -13,13 +13,14 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { id } = await params;
-    const data = await queryScheduleById(Number(id));
+    const data = await queryScheduleById(userId, Number(id));
     if (!data) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
@@ -33,7 +34,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -54,10 +56,10 @@ export async function PATCH(
     }
 
     if (body.category) {
-      await ensureCategoryExists(body.category);
+      await ensureCategoryExists(userId, body.category);
     }
 
-    const data = await updateSchedule(Number(id), body);
+    const data = await updateSchedule(userId, Number(id), body);
     if (!data) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
@@ -73,13 +75,14 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { id } = await params;
-    const deleted = await deleteSchedule(Number(id));
+    const deleted = await deleteSchedule(userId, Number(id));
     if (!deleted) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
