@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
-import type { ScheduleRow } from '@/lib/types';
-import { compareByStatus } from '@/lib/types';
+import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import { compareSchedulePriority } from '@/lib/types';
 
 /** 주간 시작 요일: 1 = 월요일 */
 export const WEEK_START = 1 as const;
@@ -24,7 +24,7 @@ export interface WeekLayout {
  * 한 주의 일정을 스패닝(다일) / 단일 일정으로 분리하고
  * 스패닝 일정에 레인(세로 위치)을 배정한다.
  */
-export function computeWeekLayout(weekDays: Date[], schedules: ScheduleRow[]): WeekLayout {
+export function computeWeekLayout(weekDays: Date[], schedules: ScheduleRow[], categories: CategoryRow[] = []): WeekLayout {
   const weekDateStrs = weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const weekStart = weekDateStrs[0]!;
   const weekEnd = weekDateStrs[6]!;
@@ -87,9 +87,9 @@ export function computeWeekLayout(weekDays: Date[], schedules: ScheduleRow[]): W
     }
   }
 
-  // 단일 일정 상태순 정렬: 진행중 → 할일 → 완료
+  // 단일 일정 우선순위 정렬: 중요 → 카테고리순 → 상태순
   for (const [, items] of singleDay) {
-    items.sort(compareByStatus);
+    items.sort((a, b) => compareSchedulePriority(a, b, categories));
   }
 
   return { spans, singleDay, laneCount: lanes.length };

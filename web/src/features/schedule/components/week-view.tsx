@@ -58,7 +58,7 @@ export function WeekView({
   const todayRef = useRef<HTMLDivElement>(null);
   const weekStart = startOfWeek(currentDate, { weekStartsOn: WEEK_START });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const layout = computeWeekLayout(days, schedules);
+  const layout = computeWeekLayout(days, schedules, categories);
   const spanAreaHeight = layout.laneCount * LANE_HEIGHT;
 
   // 모바일: 오늘 날짜로 자동 스크롤 (뷰 진입, 오늘 버튼, 주 이동 시)
@@ -346,7 +346,6 @@ function WeekSpanBar({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className={`truncate text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-                {span.schedule.important && <span className="mr-1 text-amber-500">★</span>}
                 {span.schedule.title}
               </span>
             </div>
