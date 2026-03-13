@@ -9,7 +9,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -26,7 +27,7 @@ export async function PATCH(
       return NextResponse.json({ error: '유효하지 않은 카테고리 유형' }, { status: 400 });
     }
 
-    const data = await updateCategory(Number(id), body);
+    const data = await updateCategory(userId, Number(id), body);
     if (!data) {
       return NextResponse.json({ error: '카테고리를 찾을 수 없어' }, { status: 404 });
     }
@@ -46,13 +47,14 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { id } = await params;
-    const deleted = await deleteCategory(Number(id));
+    const deleted = await deleteCategory(userId, Number(id));
     if (!deleted) {
       return NextResponse.json({ error: '카테고리를 찾을 수 없어' }, { status: 404 });
     }
