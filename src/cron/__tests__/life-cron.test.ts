@@ -24,8 +24,7 @@ describe('calcRoutineStats', () => {
 // ── CronScheduler reload debounce/mutex 테스트 ──
 
 // vi.hoisted로 mock 함수 선언 (vi.mock 호이스팅 대응)
-const { mockStop, mockSchedule, mockQuery, mockConnect } = vi.hoisted(() => ({
-  mockStop: vi.fn(),
+const { mockSchedule, mockQuery, mockConnect } = vi.hoisted(() => ({
   mockSchedule: vi.fn(() => ({ stop: vi.fn() })),
   mockQuery: vi.fn(),
   mockConnect: vi.fn(),
