@@ -39,6 +39,7 @@ export function ScheduleCard({
   const cat = categories.find((c) => c.name === schedule.category);
   const colorKey = cat?.color ?? 'gray';
   const catStyle = getCategoryStyle(colorKey);
+  const isEvent = cat?.type === 'event';
   const isDone = schedule.status === 'done' || schedule.status === 'cancelled';
 
   const handleStatusClick = (e: React.MouseEvent) => {
@@ -77,27 +78,29 @@ export function ScheduleCard({
       }`}
     >
       <div className="flex items-start gap-2">
-        <button
-          onClick={handleStatusClick}
-          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
-            isDone
-              ? 'border-green-400 bg-green-100 text-green-600'
-              : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-          }`}
-        >
-          {isDone && '✓'}
-        </button>
+        {!isEvent && (
+          <button
+            onClick={handleStatusClick}
+            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
+              isDone
+                ? 'border-green-400 bg-green-100 text-green-600'
+                : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+            }`}
+          >
+            {isDone && '✓'}
+          </button>
+        )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+            <span className={`text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
               {schedule.important && <span className="mr-1 text-amber-500">★</span>}
               {schedule.title}
             </span>
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <StatusBadge status={schedule.status} />
+            {!isEvent && <StatusBadge status={schedule.status} />}
             {schedule.category && <CategoryBadge colorKey={colorKey} label={schedule.category} />}
             {schedule.end_date && schedule.end_date !== schedule.date && (
               <span className="text-xs text-gray-400">

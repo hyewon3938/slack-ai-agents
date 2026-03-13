@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 
 interface ActionMenuProps {
   scheduleId: number;
+  important?: boolean;
+  onToggleImportant?: (id: number) => void;
   onPostpone: (id: number) => void;
   onMoveToBacklog: (id: number) => void;
   onDelete: (id: number) => void;
@@ -11,6 +13,8 @@ interface ActionMenuProps {
 
 export function ActionMenu({
   scheduleId,
+  important,
+  onToggleImportant,
   onPostpone,
   onMoveToBacklog,
   onDelete,
@@ -43,6 +47,18 @@ export function ActionMenu({
 
       {open && (
         <div className="absolute right-0 z-50 mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          {onToggleImportant && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onToggleImportant(scheduleId);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+            >
+              {important ? '중요 해제' : '중요 설정'}
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
