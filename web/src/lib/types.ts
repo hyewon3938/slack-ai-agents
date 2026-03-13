@@ -10,10 +10,18 @@ export interface ScheduleRow {
   created_at?: string;
 }
 
+export type CategoryType = 'task' | 'event';
+
+export const CATEGORY_TYPES: { value: CategoryType; label: string }[] = [
+  { value: 'task', label: '할일' },
+  { value: 'event', label: '일정' },
+];
+
 export interface CategoryRow {
   id: number;
   name: string;
   color: string;
+  type: CategoryType;
   sort_order: number;
 }
 

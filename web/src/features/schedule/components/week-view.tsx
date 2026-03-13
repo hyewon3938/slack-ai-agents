@@ -276,6 +276,7 @@ function WeekSpanBar({
 
   const cat = categories.find((c) => c.name === span.schedule.category);
   const colorKey = cat?.color ?? 'gray';
+  const isEvent = cat?.type === 'event';
   const isDone = span.schedule.status === 'done' || span.schedule.status === 'cancelled';
   const isOverdue =
     !isDone &&
@@ -329,26 +330,28 @@ function WeekSpanBar({
         } ${isOverdue ? 'border-red-300' : 'border-gray-200'}`}
       >
         <div className="flex items-start gap-2">
-          <button
-            onClick={handleStatusClick}
-            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
-              isDone
-                ? 'border-green-400 bg-green-100 text-green-600'
-                : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-            }`}
-          >
-            {isDone && '✓'}
-          </button>
+          {!isEvent && (
+            <button
+              onClick={handleStatusClick}
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
+                isDone
+                  ? 'border-green-400 bg-green-100 text-green-600'
+                  : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+              }`}
+            >
+              {isDone && '✓'}
+            </button>
+          )}
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className={`truncate text-sm font-medium ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+              <span className={`truncate text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
                 {span.schedule.important && <span className="mr-1 text-amber-500">★</span>}
                 {span.schedule.title}
               </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <StatusBadge status={span.schedule.status} />
+              {!isEvent && <StatusBadge status={span.schedule.status} />}
               {span.schedule.category && (
                 <CategoryBadge colorKey={colorKey} label={span.schedule.category} />
               )}
