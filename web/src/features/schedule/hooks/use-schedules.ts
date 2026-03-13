@@ -250,6 +250,28 @@ export function useSchedules() {
     }
   };
 
+  const handleToggleImportant = async (id: number) => {
+    const schedule = schedules.find((s) => s.id === id);
+    if (!schedule) return;
+    const newImportant = !schedule.important;
+    const prev = schedules;
+    setSchedules((s) => s.map((item) => (item.id === id ? { ...item, important: newImportant } : item)));
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ important: newImportant }),
+      });
+      if (!res.ok) {
+        setSchedules(prev);
+        alert('중요 설정 변경에 실패했어');
+      }
+    } catch {
+      setSchedules(prev);
+      alert('중요 설정 변경에 실패했어');
+    }
+  };
+
   const handlePostpone = async (id: number) => {
     const schedule = schedules.find((s) => s.id === id);
     if (!schedule?.date) return;
@@ -334,6 +356,7 @@ export function useSchedules() {
     handleNext,
     handleToday,
     handleStatusChange,
+    handleToggleImportant,
     handleDateChange,
     handleEndDateChange,
     handleCreate,
