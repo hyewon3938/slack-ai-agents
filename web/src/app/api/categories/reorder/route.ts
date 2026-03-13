@@ -4,7 +4,8 @@ import { requireAuth } from '@/lib/auth';
 import { reorderCategories } from '@/features/schedule/lib/queries';
 
 export async function POST(request: Request) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
       }
     }
 
-    await reorderCategories(body.orders);
+    await reorderCategories(userId, body.orders);
     revalidateTag('categories', 'seconds');
     return NextResponse.json({ data: { ok: true } });
   } catch {

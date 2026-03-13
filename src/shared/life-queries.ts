@@ -101,7 +101,7 @@ export const frequencyBadge = (frequency: string): string => {
 export const queryActiveTemplates = async (): Promise<RoutineTemplateRow[]> =>
   (
     await query<RoutineTemplateRow>(
-      'SELECT id, name, time_slot, frequency FROM routine_templates WHERE active = true ORDER BY id',
+      'SELECT id, name, time_slot, frequency FROM routine_templates WHERE active = true AND user_id = 1 ORDER BY id',
     )
   ).rows;
 
@@ -113,7 +113,7 @@ export const queryTodayRecords = async (today: string): Promise<RoutineRecordRow
             t.name, t.time_slot, t.frequency
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
-     WHERE r.date = $1
+     WHERE r.date = $1 AND r.user_id = 1
      ORDER BY
        CASE t.time_slot
          WHEN '아침' THEN 1 WHEN '점심' THEN 2
@@ -127,7 +127,7 @@ export const queryTodayRecords = async (today: string): Promise<RoutineRecordRow
 export const queryExistingTemplateIds = async (today: string): Promise<Set<number>> => {
   const rows = (
     await query<{ template_id: number }>(
-      'SELECT template_id FROM routine_records WHERE date = $1',
+      'SELECT template_id FROM routine_records WHERE date = $1 AND user_id = 1',
       [today],
     )
   ).rows;
@@ -137,7 +137,7 @@ export const queryExistingTemplateIds = async (today: string): Promise<Set<numbe
 /** 특정 템플릿의 가장 최근 기록 날짜 */
 export const queryLastRecordDate = async (templateId: number): Promise<string | null> => {
   const result = await query<{ date: string }>(
-    'SELECT date::text FROM routine_records WHERE template_id = $1 ORDER BY date DESC LIMIT 1',
+    'SELECT date::text FROM routine_records WHERE template_id = $1 AND user_id = 1 ORDER BY date DESC LIMIT 1',
     [templateId],
   );
   return result.rows[0]?.date ?? null;
@@ -146,7 +146,7 @@ export const queryLastRecordDate = async (templateId: number): Promise<string | 
 /** 루틴 기록 생성 */
 export const createRecord = async (templateId: number, today: string): Promise<number> => {
   const result = await query<{ id: number }>(
-    'INSERT INTO routine_records (template_id, date, completed) VALUES ($1, $2, false) RETURNING id',
+    'INSERT INTO routine_records (template_id, date, completed, user_id) VALUES ($1, $2, false, 1) RETURNING id',
     [templateId, today],
   );
   const row = result.rows[0];
@@ -156,7 +156,7 @@ export const createRecord = async (templateId: number, today: string): Promise<n
 
 /** 루틴 완료 처리 (완료 시점 기록) */
 export const completeRecord = async (id: number): Promise<void> => {
-  await query('UPDATE routine_records SET completed = true, completed_at = NOW() WHERE id = $1', [
+  await query('UPDATE routine_records SET completed = true, completed_at = NOW() WHERE id = $1 AND user_id = 1', [
     id,
   ]);
 };
@@ -169,7 +169,7 @@ export const queryTodaySchedules = async (today: string): Promise<ScheduleRow[]>
     await query<ScheduleRow>(
       `SELECT id, title, date::text, end_date::text, status, category, memo, important
      FROM schedules
-     WHERE status != 'cancelled'
+     WHERE status != 'cancelled' AND user_id = 1
        AND (date = $1 OR (date <= $1 AND end_date >= $1))
      ORDER BY category NULLS LAST, status, title`,
       [today],
@@ -182,34 +182,34 @@ export const queryBacklogSchedules = async (): Promise<ScheduleRow[]> =>
     await query<ScheduleRow>(
       `SELECT id, title, date::text, end_date::text, status, category, memo, important
      FROM schedules
-     WHERE date IS NULL AND status != 'cancelled'
+     WHERE date IS NULL AND status != 'cancelled' AND user_id = 1
      ORDER BY category NULLS LAST, important DESC, title`,
     )
   ).rows;
 
 /** 일정을 특정 날짜로 이동 */
 export const moveScheduleToDate = async (id: number, date: string): Promise<void> => {
-  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2", [date, id]);
+  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2 AND user_id = 1", [date, id]);
 };
 
 /** 일정 상태 변경 */
 export const updateScheduleStatus = async (id: number, status: string): Promise<void> => {
-  await query('UPDATE schedules SET status = $1 WHERE id = $2', [status, id]);
+  await query('UPDATE schedules SET status = $1 WHERE id = $2 AND user_id = 1', [status, id]);
 };
 
 /** 일정 삭제 */
 export const deleteSchedule = async (id: number): Promise<void> => {
-  await query('DELETE FROM schedules WHERE id = $1', [id]);
+  await query('DELETE FROM schedules WHERE id = $1 AND user_id = 1', [id]);
 };
 
 /** 일정 중요 표시 토글 */
 export const toggleScheduleImportant = async (id: number): Promise<void> => {
-  await query('UPDATE schedules SET important = NOT important WHERE id = $1', [id]);
+  await query('UPDATE schedules SET important = NOT important WHERE id = $1 AND user_id = 1', [id]);
 };
 
 /** 일정 내일로 미루기 (date 변경 + status → todo) */
 export const postponeSchedule = async (id: number, newDate: string): Promise<void> => {
-  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2", [newDate, id]);
+  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2 AND user_id = 1", [newDate, id]);
 };
 
 // ─── 수면 쿼리 ──────────────────────────────────────
@@ -218,7 +218,7 @@ export const postponeSchedule = async (id: number, newDate: string): Promise<voi
 export const queryNightSleepExists = async (wakeDate: string): Promise<boolean> => {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*)::text as count FROM sleep_records
-     WHERE sleep_type = 'night' AND date = $1`,
+     WHERE sleep_type = 'night' AND date = $1 AND user_id = 1`,
     [wakeDate],
   );
   return Number(result.rows[0]?.count ?? 0) > 0;
@@ -294,12 +294,12 @@ export const querySleepForHome = async (today: string): Promise<SleepRecordRow[]
   const result = await query<SleepRecordRow>(
     `(SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
       FROM sleep_records
-      WHERE sleep_type = 'night' AND date = $1
+      WHERE sleep_type = 'night' AND date = $1 AND user_id = 1
       ORDER BY date DESC LIMIT 1)
      UNION ALL
      (SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
       FROM sleep_records
-      WHERE sleep_type = 'nap' AND date = $1
+      WHERE sleep_type = 'nap' AND date = $1 AND user_id = 1
       ORDER BY bedtime)`,
     [today],
   );

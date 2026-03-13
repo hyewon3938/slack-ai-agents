@@ -11,7 +11,7 @@ const loadCustomInstructions = async (): Promise<string> => {
   try {
     // 상한 초과 시 오래된 auto 지시사항 비활성화
     const countResult = await query<{ cnt: string }>(
-      `SELECT COUNT(*) as cnt FROM custom_instructions WHERE active = true`,
+      `SELECT COUNT(*) as cnt FROM custom_instructions WHERE active = true AND user_id = 1`,
     );
     const total = Number(countResult.rows[0]?.cnt ?? 0);
     if (total > MAX_CUSTOM_INSTRUCTIONS) {
@@ -20,7 +20,7 @@ const loadCustomInstructions = async (): Promise<string> => {
         `UPDATE custom_instructions SET active = false
          WHERE id IN (
            SELECT id FROM custom_instructions
-           WHERE active = true AND source = 'auto'
+           WHERE active = true AND source = 'auto' AND user_id = 1
            ORDER BY created_at ASC LIMIT $1
          )`,
         [excess],
@@ -29,7 +29,7 @@ const loadCustomInstructions = async (): Promise<string> => {
 
     const result = await query<{ instruction: string; category: string }>(
       `SELECT instruction, category FROM custom_instructions
-       WHERE active = true ORDER BY category, created_at`,
+       WHERE active = true AND user_id = 1 ORDER BY category, created_at`,
     );
     if (result.rows.length === 0) return '';
 
@@ -84,15 +84,22 @@ ${lifeContext}
 - 일정/루틴과 관련된 맥락이 느껴지면 자연스럽게 조회해서 반응해도 좋아.
 - 데이터를 언급하려면 반드시 도구로 조회해. 추측으로 데이터를 말하지 마.
 
-## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ 있음)
-- schedules: title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category, memo, important(bool)
-- routine_templates: name, time_slot(아침/점심/저녁/밤), frequency(매일/격일/3일마다/주1회), active
-- routine_records: template_id(FK), date, completed, completed_at(완료 시점), memo
-- sleep_records: date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo
+## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ, user_id INTEGER 있음)
+- schedules: user_id, title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category, memo, important(bool)
+- routine_templates: user_id, name, time_slot(아침/점심/저녁/밤), frequency(매일/격일/3일마다/주1회), active
+- routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo
+- sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo
 - sleep_events: date, event_time('HH:MM'), memo
-- custom_instructions: instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active
+- custom_instructions: user_id, instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active
 - notification_settings: slot_name(UNIQUE), label, time_value('HH:MM'), active
 - reminders: title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말', 반복), active
+
+## ⚠️ user_id 필터 (절대 규칙)
+모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = 1 조건을 포함해.
+- SELECT: WHERE user_id = 1 AND ...
+- INSERT: user_id 컬럼에 1 포함
+- UPDATE/DELETE: WHERE user_id = 1 AND ...
+이 규칙은 sleep_events, notification_settings, reminders를 제외한 모든 테이블에 적용.
 
 ## ⚠️ 절대 규칙: 완료 일정 메모 숨김
 status='done'인 일정의 memo는 어떤 상황에서든 표시하지 마. 사용자가 명시적으로 "완료된 일정 메모 보여줘"라고 요청할 때만 예외. 이 규칙은 매 응답마다 적용해.
