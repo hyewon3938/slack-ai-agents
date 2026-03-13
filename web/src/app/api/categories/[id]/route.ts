@@ -3,6 +3,8 @@ import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { updateCategory, deleteCategory } from '@/features/schedule/lib/queries';
 
+const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -16,8 +18,13 @@ export async function PATCH(
     const body = (await request.json()) as Partial<{
       name: string;
       color: string;
+      type: string;
       sort_order: number;
     }>;
+
+    if (body.type && !VALID_CATEGORY_TYPES.has(body.type)) {
+      return NextResponse.json({ error: '유효하지 않은 카테고리 유형' }, { status: 400 });
+    }
 
     const data = await updateCategory(Number(id), body);
     if (!data) {

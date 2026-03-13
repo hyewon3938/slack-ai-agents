@@ -47,9 +47,13 @@ export function DayView({
   // 3단 섹션 분리: 기간 일정 → 중요 → 카테고리별
   const sections = buildDaySections(daySchedules, categories);
 
-  const totalTasks = daySchedules.filter((s) => s.category !== '약속').length;
+  const isTask = (s: ScheduleRow) => {
+    const cat = categories.find((c) => c.name === s.category);
+    return cat?.type !== 'event';
+  };
+  const totalTasks = daySchedules.filter(isTask).length;
   const doneTasks = daySchedules.filter(
-    (s) => s.category !== '약속' && s.status === 'done',
+    (s) => isTask(s) && s.status === 'done',
   ).length;
 
   return (

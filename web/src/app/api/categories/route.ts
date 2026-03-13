@@ -4,6 +4,8 @@ import { requireAuth } from '@/lib/auth';
 import { createCategory } from '@/features/schedule/lib/queries';
 import { getCachedCategories } from '@/lib/cache';
 
+const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
+
 export async function GET() {
   if (!(await requireAuth())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -23,15 +25,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { name?: string; color?: string };
+    const body = (await request.json()) as { name?: string; color?: string; type?: string };
 
     if (!body.name?.trim()) {
       return NextResponse.json({ error: '이름을 입력해줘' }, { status: 400 });
+    }
+    if (body.type && !VALID_CATEGORY_TYPES.has(body.type)) {
+      return NextResponse.json({ error: '유효하지 않은 카테고리 유형' }, { status: 400 });
     }
 
     const data = await createCategory({
       name: body.name.trim(),
       color: body.color,
+      type: body.type,
     });
     revalidateTag('categories', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
