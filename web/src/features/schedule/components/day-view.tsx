@@ -57,7 +57,7 @@ export function DayView({
   ).length;
 
   return (
-    <div className="mx-auto w-full max-w-3xl p-4 md:flex-1">
+    <div className="mx-auto w-full max-w-3xl p-4 pb-24 md:flex-1 md:pb-4">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold text-gray-800">{formatted}</h2>
         {totalTasks > 0 && (
