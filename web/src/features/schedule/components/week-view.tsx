@@ -5,7 +5,7 @@ import { startOfWeek, addDays, format, isToday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { getCategoryStyle, compareByStatus } from '@/lib/types';
+import { getCategoryStyle, compareSchedulePriority } from '@/lib/types';
 import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedule/lib/calendar-utils';
 import { StatusBadge } from './status-badge';
 import { DroppableDay } from './droppable-day';
@@ -20,6 +20,7 @@ interface WeekViewProps {
   onSelectDate: (date: string) => void;
   onScheduleClick: (schedule: ScheduleRow) => void;
   onStatusChange: (id: number, status: string) => void;
+  onToggleImportant: (id: number) => void;
   onPostpone: (id: number) => void;
   onMoveToBacklog: (id: number) => void;
   onDelete: (id: number) => void;
@@ -49,6 +50,7 @@ export function WeekView({
   onSelectDate,
   onScheduleClick,
   onStatusChange,
+  onToggleImportant,
   onPostpone,
   onMoveToBacklog,
   onDelete,
@@ -119,6 +121,8 @@ export function WeekView({
                     action={
                       <ActionMenu
                         scheduleId={s.id}
+                        important={s.important}
+                        onToggleImportant={onToggleImportant}
                         onPostpone={onPostpone}
                         onMoveToBacklog={onMoveToBacklog}
                         onDelete={onDelete}
@@ -141,6 +145,7 @@ export function WeekView({
             laneHeight={LANE_HEIGHT}
             onStatusChange={onStatusChange}
             onClick={() => onScheduleClick(span.schedule)}
+            onToggleImportant={onToggleImportant}
             onPostpone={onPostpone}
             onMoveToBacklog={onMoveToBacklog}
             onDelete={onDelete}
@@ -152,7 +157,7 @@ export function WeekView({
       <div className="md:hidden">
         {days.map((day) => {
           const dateStr = format(day, 'yyyy-MM-dd');
-          const daySchedules = getMobileSchedules(day, schedules);
+          const daySchedules = getMobileSchedules(day, schedules, categories);
           const today = isToday(day);
           const selected = selectedDate === dateStr;
 
@@ -194,6 +199,8 @@ export function WeekView({
                         action={
                           <ActionMenu
                             scheduleId={s.id}
+                            important={s.important}
+                            onToggleImportant={onToggleImportant}
                             onPostpone={onPostpone}
                             onMoveToBacklog={onMoveToBacklog}
                             onDelete={onDelete}
@@ -212,8 +219,8 @@ export function WeekView({
   );
 }
 
-/** 모바일용: 해당 날짜의 모든 일정 (다일 포함) */
-function getMobileSchedules(date: Date, schedules: ScheduleRow[]): ScheduleRow[] {
+/** 모바일용: 해당 날짜의 모든 일정 (다일 포함, 우선순위 정렬) */
+function getMobileSchedules(date: Date, schedules: ScheduleRow[], categories: CategoryRow[]): ScheduleRow[] {
   const dateStr = format(date, 'yyyy-MM-dd');
   return schedules
     .filter((s) => {
@@ -221,7 +228,7 @@ function getMobileSchedules(date: Date, schedules: ScheduleRow[]): ScheduleRow[]
       if (s.date && s.end_date && s.date <= dateStr && s.end_date >= dateStr) return true;
       return false;
     })
-    .sort(compareByStatus);
+    .sort((a, b) => compareSchedulePriority(a, b, categories));
 }
 
 function WeekSpanBar({
@@ -231,6 +238,7 @@ function WeekSpanBar({
   laneHeight,
   onStatusChange,
   onClick,
+  onToggleImportant,
   onPostpone,
   onMoveToBacklog,
   onDelete,
@@ -241,6 +249,7 @@ function WeekSpanBar({
   laneHeight: number;
   onStatusChange: (id: number, status: string) => void;
   onClick: () => void;
+  onToggleImportant: (id: number) => void;
   onPostpone: (id: number) => void;
   onMoveToBacklog: (id: number) => void;
   onDelete: (id: number) => void;
@@ -349,6 +358,8 @@ function WeekSpanBar({
           <div className="shrink-0">
             <ActionMenu
               scheduleId={span.schedule.id}
+              important={span.schedule.important}
+              onToggleImportant={onToggleImportant}
               onPostpone={onPostpone}
               onMoveToBacklog={onMoveToBacklog}
               onDelete={onDelete}

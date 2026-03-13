@@ -3,7 +3,7 @@
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { compareByStatus } from '@/lib/types';
+import { compareSchedulePriority } from '@/lib/types';
 import { ScheduleCard } from './schedule-card';
 
 interface DayDetailPanelProps {
@@ -32,7 +32,7 @@ export function DayDetailPanel({
       if (s.date && s.end_date && s.date <= dateStr && s.end_date >= dateStr) return true;
       return false;
     })
-    .sort(compareByStatus);
+    .sort((a, b) => compareSchedulePriority(a, b, categories));
 
   return (
     <div className="min-h-full border-t border-b border-gray-200 bg-white p-4 md:border-l">
