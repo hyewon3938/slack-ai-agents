@@ -18,8 +18,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { CategoryRow } from '@/lib/types';
-import { getCategoryStyle } from '@/lib/types';
+import type { CategoryRow, CategoryType } from '@/lib/types';
+import { getCategoryStyle, CATEGORY_TYPES } from '@/lib/types';
 import { AppShell } from '@/components/ui/app-shell';
 import { ColorPicker } from '@/components/ui/color-picker';
 
@@ -28,9 +28,11 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('violet');
+  const [newType, setNewType] = useState<CategoryType>('task');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editType, setEditType] = useState<CategoryType>('task');
   const [activeId, setActiveId] = useState<number | null>(null);
 
   const sensors = useSensors(
@@ -123,11 +125,12 @@ export default function CategoriesPage() {
       const res = await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), color: newColor }),
+        body: JSON.stringify({ name: newName.trim(), color: newColor, type: newType }),
       });
       if (res.ok) {
         setNewName('');
         setNewColor('violet');
+        setNewType('task');
         await fetchCategories();
       } else {
         const data = (await res.json()) as { error?: string };
@@ -145,7 +148,7 @@ export default function CategoriesPage() {
       const res = await fetch(`/api/categories/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), color: editColor }),
+        body: JSON.stringify({ name: editName.trim(), color: editColor, type: editType }),
       });
       if (res.ok) {
         setEditingId(null);
@@ -176,6 +179,7 @@ export default function CategoriesPage() {
     setEditingId(cat.id);
     setEditName(cat.name);
     setEditColor(cat.color);
+    setEditType(cat.type);
   };
 
   const activeCat = activeId ? categories.find((c) => c.id === activeId) : null;
@@ -206,8 +210,8 @@ export default function CategoriesPage() {
         {/* 새 카테고리 추가 */}
         <form onSubmit={handleCreate} className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold text-gray-700">카테고리 추가</h2>
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-0 flex-1">
               <input
                 type="text"
                 value={newName}
@@ -216,6 +220,7 @@ export default function CategoriesPage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
+            <TypeSelector value={newType} onChange={setNewType} />
             <ColorPicker value={newColor} onChange={setNewColor} previewLabel={newName.trim() || '카테고리'} />
             <button
               type="submit"
@@ -247,8 +252,10 @@ export default function CategoriesPage() {
                     isEditing={editingId === cat.id}
                     editName={editName}
                     editColor={editColor}
+                    editType={editType}
                     onEditNameChange={setEditName}
                     onEditColorChange={setEditColor}
+                    onEditTypeChange={setEditType}
                     onStartEdit={startEdit}
                     onSaveEdit={handleUpdate}
                     onCancelEdit={() => setEditingId(null)}
@@ -310,6 +317,7 @@ export default function CategoriesPage() {
                       className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                       autoFocus
                     />
+                    <TypeSelector value={editType} onChange={setEditType} />
                     <ColorPicker value={editColor} onChange={setEditColor} previewLabel={editName.trim() || '카테고리'} />
                     <button
                       onClick={() => handleUpdate(cat.id)}
@@ -327,6 +335,7 @@ export default function CategoriesPage() {
                 ) : (
                   <>
                     <CategoryBadge name={cat.name} colorKey={cat.color} />
+                    <TypeBadge type={cat.type} />
                     <div className="flex-1" />
                     <button
                       onClick={() => startEdit(cat)}
@@ -358,8 +367,10 @@ interface SortableCategoryItemProps {
   isEditing: boolean;
   editName: string;
   editColor: string;
+  editType: CategoryType;
   onEditNameChange: (v: string) => void;
   onEditColorChange: (v: string) => void;
+  onEditTypeChange: (v: CategoryType) => void;
   onStartEdit: (cat: CategoryRow) => void;
   onSaveEdit: (id: number) => void;
   onCancelEdit: () => void;
@@ -371,8 +382,10 @@ function SortableCategoryItem({
   isEditing,
   editName,
   editColor,
+  editType,
   onEditNameChange,
   onEditColorChange,
+  onEditTypeChange,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
@@ -425,6 +438,7 @@ function SortableCategoryItem({
             className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
             autoFocus
           />
+          <TypeSelector value={editType} onChange={onEditTypeChange} />
           <ColorPicker value={editColor} onChange={onEditColorChange} previewLabel={editName.trim() || '카테고리'} />
           <button
             onClick={() => onSaveEdit(cat.id)}
@@ -442,6 +456,7 @@ function SortableCategoryItem({
       ) : (
         <>
           <CategoryBadge name={cat.name} colorKey={cat.color} />
+          <TypeBadge type={cat.type} />
           <div className="flex-1" />
           <button
             onClick={() => onStartEdit(cat)}
@@ -472,5 +487,47 @@ function CategoryBadge({ name, colorKey }: { name: string; colorKey: string }) {
     >
       {name}
     </span>
+  );
+}
+
+function TypeBadge({ type }: { type: CategoryType }) {
+  const label = CATEGORY_TYPES.find((t) => t.value === type)?.label ?? type;
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs ${
+        type === 'event'
+          ? 'bg-purple-100 text-purple-600'
+          : 'bg-gray-100 text-gray-500'
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function TypeSelector({
+  value,
+  onChange,
+}: {
+  value: CategoryType;
+  onChange: (v: CategoryType) => void;
+}) {
+  return (
+    <div className="flex gap-1 rounded-lg border border-gray-300 p-0.5">
+      {CATEGORY_TYPES.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          onClick={() => onChange(t.value)}
+          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+            value === t.value
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
   );
 }

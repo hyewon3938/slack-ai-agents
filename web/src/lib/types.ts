@@ -10,10 +10,18 @@ export interface ScheduleRow {
   created_at?: string;
 }
 
+export type CategoryType = 'task' | 'event';
+
+export const CATEGORY_TYPES: { value: CategoryType; label: string }[] = [
+  { value: 'task', label: '할일' },
+  { value: 'event', label: '일정' },
+];
+
 export interface CategoryRow {
   id: number;
   name: string;
   color: string;
+  type: CategoryType;
   sort_order: number;
 }
 
@@ -96,3 +104,33 @@ export function colorToHex(colorKey: string): string {
 }
 
 export const COLOR_OPTIONS = Object.keys(PRESET_COLORS);
+
+/** 기간 일정 여부 */
+export function isMultiDaySchedule(s: ScheduleRow): boolean {
+  return !!s.end_date && s.end_date !== s.date;
+}
+
+/** 일정 우선순위 정렬: 기간 일정 → 중요 → 카테고리순 → 상태순 */
+export function compareSchedulePriority(
+  a: ScheduleRow,
+  b: ScheduleRow,
+  categories: CategoryRow[],
+): number {
+  // 1. 기간 일정 최상위
+  const aMulti = isMultiDaySchedule(a);
+  const bMulti = isMultiDaySchedule(b);
+  if (aMulti !== bMulti) return aMulti ? -1 : 1;
+
+  // 2. 중요 일정 우선
+  if (a.important !== b.important) return a.important ? -1 : 1;
+
+  // 3. 카테고리 sort_order
+  const catA = categories.find((c) => c.name === a.category);
+  const catB = categories.find((c) => c.name === b.category);
+  const orderA = a.category ? (catA?.sort_order ?? 999) : 9999;
+  const orderB = b.category ? (catB?.sort_order ?? 999) : 9999;
+  if (orderA !== orderB) return orderA - orderB;
+
+  // 4. 상태순
+  return compareByStatus(a, b);
+}
