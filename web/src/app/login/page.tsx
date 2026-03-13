@@ -15,7 +15,7 @@ function LoginContent() {
   const error = searchParams.get('error');
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex h-dvh items-center justify-center px-4">
       <div className="w-full max-w-sm text-center">
         <h1 className="mb-2 text-2xl font-bold text-gray-800">Life Dashboard</h1>
         <p className="mb-8 text-sm text-gray-500">일정 관리 대시보드</p>
