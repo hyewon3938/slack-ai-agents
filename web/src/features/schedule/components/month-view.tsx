@@ -215,6 +215,7 @@ function SpanningBar({
       className={textClasses}
       style={{ backgroundColor: catStyle.bg, color: catStyle.text }}
     >
+      {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
       {span.schedule.title}
     </div>
   );

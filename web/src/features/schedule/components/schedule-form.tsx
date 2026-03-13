@@ -192,7 +192,7 @@ export function ScheduleForm({
           onChange={(e) => setImportant(e.target.checked)}
           className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-200"
         />
-        <span className="text-sm text-gray-700">중요 표시</span>
+        <span className="text-sm text-gray-700">중요 표시 ★</span>
       </label>
 
       {/* 메모 */}
