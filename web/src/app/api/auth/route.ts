@@ -1,26 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 
-export async function POST(request: Request) {
+/** GET: 현재 세션 정보 반환 */
+export async function GET() {
   try {
-    const body = (await request.json()) as { password?: string };
-    const password = body.password;
-
-    if (!password || password !== process.env.DASHBOARD_PASSWORD) {
-      return NextResponse.json({ error: '비밀번호가 틀렸어' }, { status: 401 });
-    }
-
     const session = await getSession();
-    session.authenticated = true;
-    await session.save();
-
-    return NextResponse.json({ data: { authenticated: true } });
-  } catch (err) {
-    console.error('[auth] login error:', err);
-    return NextResponse.json({ error: '로그인 실패' }, { status: 500 });
+    if (!session.userId) {
+      return NextResponse.json({ data: { authenticated: false } });
+    }
+    return NextResponse.json({
+      data: { authenticated: true, userId: session.userId, nickname: session.nickname },
+    });
+  } catch {
+    return NextResponse.json({ error: '세션 조회 실패' }, { status: 500 });
   }
 }
 
+/** DELETE: 로그아웃 */
 export async function DELETE() {
   try {
     const session = await getSession();
