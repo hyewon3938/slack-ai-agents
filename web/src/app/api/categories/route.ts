@@ -7,12 +7,13 @@ import { getCachedCategories } from '@/lib/cache';
 const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
 
 export async function GET() {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const data = await getCachedCategories();
+    const data = await getCachedCategories(userId);
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '카테고리 조회 실패' }, { status: 500 });
@@ -20,7 +21,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '유효하지 않은 카테고리 유형' }, { status: 400 });
     }
 
-    const data = await createCategory({
+    const data = await createCategory(userId, {
       name: body.name.trim(),
       color: body.color,
       type: body.type,

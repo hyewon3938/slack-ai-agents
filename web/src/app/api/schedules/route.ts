@@ -6,7 +6,8 @@ import { getCachedSchedulesByRange, getCachedBacklogSchedules } from '@/lib/cach
 import { isValidStatus } from '@/lib/types';
 
 export async function GET(request: Request) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -17,12 +18,12 @@ export async function GET(request: Request) {
     const to = searchParams.get('to');
 
     if (backlog === 'true') {
-      const data = await getCachedBacklogSchedules();
+      const data = await getCachedBacklogSchedules(userId);
       return NextResponse.json({ data });
     }
 
     if (from && to) {
-      const data = await getCachedSchedulesByRange(from, to);
+      const data = await getCachedSchedulesByRange(userId, from, to);
       return NextResponse.json({ data });
     }
 
@@ -33,7 +34,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!(await requireAuth())) {
+  const userId = await requireAuth();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -57,10 +59,10 @@ export async function POST(request: Request) {
     }
 
     if (body.category) {
-      await ensureCategoryExists(body.category);
+      await ensureCategoryExists(userId, body.category);
     }
 
-    const data = await createSchedule({
+    const data = await createSchedule(userId, {
       title: body.title.trim(),
       date: body.date,
       end_date: body.end_date,

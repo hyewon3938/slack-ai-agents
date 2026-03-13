@@ -56,7 +56,7 @@ const queryLastNight = async (
   const lastNight = await query<SleepRow>(
     `SELECT date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
      FROM sleep_records
-     WHERE sleep_type = 'night' AND date IN ($1, $2)
+     WHERE sleep_type = 'night' AND date IN ($1, $2) AND user_id = 1
      ORDER BY date DESC LIMIT 1`,
     [yesterday, today],
   );
@@ -87,7 +87,7 @@ const queryWeekAvg = async ({ today }: DateParams): Promise<string | null> => {
             ), 1)::text as avg_bedtime_hour,
             COUNT(*)::text as count
      FROM sleep_records
-     WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND duration_minutes IS NOT NULL`,
+     WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND duration_minutes IS NOT NULL AND user_id = 1`,
     [today],
   );
 
@@ -107,7 +107,7 @@ const queryLateNightPattern = async ({ today }: DateParams): Promise<string | nu
        SELECT date, bedtime,
               ROW_NUMBER() OVER (ORDER BY date DESC) as rn
        FROM sleep_records
-       WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND bedtime IS NOT NULL
+       WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND bedtime IS NOT NULL AND user_id = 1
      )
      SELECT COUNT(*)::text as cnt FROM ranked
      WHERE rn <= 3
@@ -124,7 +124,7 @@ const queryNaps = async ({ today }: DateParams): Promise<string | null> => {
   const naps = await query<{ nap_count: string }>(
     `SELECT COUNT(*)::text as nap_count
      FROM sleep_records
-     WHERE sleep_type = 'nap' AND date = $1`,
+     WHERE sleep_type = 'nap' AND date = $1 AND user_id = 1`,
     [today],
   );
 
@@ -170,7 +170,7 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
             COUNT(*) FILTER (WHERE r.completed)::text as completed
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
-     WHERE r.date = $1`,
+     WHERE r.date = $1 AND r.user_id = 1`,
     [targetDate],
   );
 
@@ -189,7 +189,7 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
        SELECT r.date,
               COUNT(*) FILTER (WHERE r.completed)::float / NULLIF(COUNT(*), 0) * 100 as daily_rate
        FROM routine_records r
-       WHERE r.date >= ($1::date - 7) AND r.date < $1
+       WHERE r.date >= ($1::date - 7) AND r.date < $1 AND r.user_id = 1
        GROUP BY r.date
      ) sub`,
     [dates.today],
@@ -214,7 +214,7 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
     `SELECT COUNT(*)::text as total,
             COUNT(*) FILTER (WHERE status = 'todo' OR status = 'in-progress')::text as incomplete
      FROM schedules
-     WHERE status != 'cancelled'
+     WHERE status != 'cancelled' AND user_id = 1
        AND (date = $1 OR (date <= $1 AND end_date >= $1))`,
     [today],
   );
@@ -236,7 +236,7 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   const tomorrowResult = await query<ScheduleCountRow>(
     `SELECT COUNT(*)::text as count
      FROM schedules
-     WHERE status != 'cancelled'
+     WHERE status != 'cancelled' AND user_id = 1
        AND (date = ($1::date + 1) OR (date <= ($1::date + 1) AND end_date >= ($1::date + 1)))`,
     [today],
   );
@@ -249,7 +249,7 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   const overdueResult = await query<ScheduleCountRow>(
     `SELECT COUNT(*)::text as count
      FROM schedules
-     WHERE status = 'todo' AND date < $1 AND date IS NOT NULL`,
+     WHERE status = 'todo' AND date < $1 AND date IS NOT NULL AND user_id = 1`,
     [today],
   );
   const overdueCount = Number(overdueResult.rows[0]?.count ?? 0);
@@ -261,7 +261,7 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   const backlogResult = await query<ScheduleCountRow>(
     `SELECT COUNT(*)::text as count
      FROM schedules
-     WHERE date IS NULL AND status = 'todo'`,
+     WHERE date IS NULL AND status = 'todo' AND user_id = 1`,
   );
   const backlogCount = Number(backlogResult.rows[0]?.count ?? 0);
   if (backlogCount > 0) {
