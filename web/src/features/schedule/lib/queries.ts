@@ -120,33 +120,34 @@ export const deleteSchedule = async (id: number): Promise<boolean> => {
 export const queryCategories = async (): Promise<CategoryRow[]> =>
   (
     await query<CategoryRow>(
-      'SELECT id, name, color, sort_order FROM categories ORDER BY sort_order, name',
+      "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order FROM categories ORDER BY sort_order, name",
     )
   ).rows;
 
 export const createCategory = async (data: {
   name: string;
   color?: string;
+  type?: string;
 }): Promise<CategoryRow> => {
   const maxOrder = await queryOne<{ max: number }>(
     'SELECT COALESCE(MAX(sort_order), 0) as max FROM categories',
   );
   const result = await query<CategoryRow>(
-    `INSERT INTO categories (name, color, sort_order)
-     VALUES ($1, $2, $3)
-     RETURNING id, name, color, sort_order`,
-    [data.name, data.color ?? 'gray', (maxOrder?.max ?? 0) + 1],
+    `INSERT INTO categories (name, color, type, sort_order)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order`,
+    [data.name, data.color ?? 'gray', data.type ?? 'task', (maxOrder?.max ?? 0) + 1],
   );
   const row = result.rows[0];
   if (!row) throw new Error('createCategory: INSERT returned no rows');
   return row;
 };
 
-const CATEGORY_COLUMNS = new Set(['name', 'color', 'sort_order']);
+const CATEGORY_COLUMNS = new Set(['name', 'color', 'type', 'sort_order']);
 
 export const updateCategory = async (
   id: number,
-  data: Partial<{ name: string; color: string; sort_order: number }>,
+  data: Partial<{ name: string; color: string; type: string; sort_order: number }>,
 ): Promise<CategoryRow | null> => {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -165,7 +166,7 @@ export const updateCategory = async (
   values.push(id);
   const result = await query<CategoryRow>(
     `UPDATE categories SET ${fields.join(', ')} WHERE id = $${idx}
-     RETURNING id, name, color, sort_order`,
+     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order`,
     values,
   );
   return result.rows[0] ?? null;
@@ -188,7 +189,7 @@ export const reorderCategories = async (
 /** 일정에서 사용 중인 카테고리가 categories 테이블에 없으면 자동 추가 */
 export const ensureCategoryExists = async (name: string): Promise<void> => {
   const existing = await queryOne<CategoryRow>(
-    'SELECT id, name, color, sort_order FROM categories WHERE name = $1',
+    "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order FROM categories WHERE name = $1",
     [name],
   );
   if (!existing) {

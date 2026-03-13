@@ -3,7 +3,7 @@
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { compareByStatus } from '@/lib/types';
+import { compareByStatus, isMultiDaySchedule } from '@/lib/types';
 import { ScheduleCard } from './schedule-card';
 import { ActionMenu } from './action-menu';
 
@@ -13,9 +13,15 @@ interface DayViewProps {
   categories: CategoryRow[];
   onScheduleClick: (schedule: ScheduleRow) => void;
   onStatusChange: (id: number, status: string) => void;
+  onToggleImportant: (id: number) => void;
   onPostpone: (id: number) => void;
   onMoveToBacklog: (id: number) => void;
   onDelete: (id: number) => void;
+}
+
+interface Section {
+  title: string;
+  items: ScheduleRow[];
 }
 
 export function DayView({
@@ -24,6 +30,7 @@ export function DayView({
   categories,
   onScheduleClick,
   onStatusChange,
+  onToggleImportant,
   onPostpone,
   onMoveToBacklog,
   onDelete,
@@ -37,28 +44,16 @@ export function DayView({
 
   const formatted = format(currentDate, 'yyyy년 M월 d일 (EEE)', { locale: ko });
 
-  // 카테고리별 그룹핑 (그룹 내 상태순 정렬)
-  const sorted = [...daySchedules].sort(compareByStatus);
-  const grouped = new Map<string, ScheduleRow[]>();
-  for (const s of sorted) {
-    const cat = s.category ?? '미분류';
-    const list = grouped.get(cat) ?? [];
-    list.push(s);
-    grouped.set(cat, list);
-  }
+  // 3단 섹션 분리: 기간 일정 → 중요 → 카테고리별
+  const sections = buildDaySections(daySchedules, categories);
 
-  // 카테고리 정렬 (sort_order 기준, 미분류 맨 끝)
-  const sortedCategories = [...grouped.keys()].sort((a, b) => {
-    if (a === '미분류') return 1;
-    if (b === '미분류') return -1;
-    const catA = categories.find((c) => c.name === a);
-    const catB = categories.find((c) => c.name === b);
-    return (catA?.sort_order ?? 999) - (catB?.sort_order ?? 999);
-  });
-
-  const totalTasks = daySchedules.filter((s) => s.category !== '약속').length;
+  const isTask = (s: ScheduleRow) => {
+    const cat = categories.find((c) => c.name === s.category);
+    return cat?.type !== 'event';
+  };
+  const totalTasks = daySchedules.filter(isTask).length;
   const doneTasks = daySchedules.filter(
-    (s) => s.category !== '약속' && s.status === 'done',
+    (s) => isTask(s) && s.status === 'done',
   ).length;
 
   return (
@@ -78,37 +73,86 @@ export function DayView({
         </div>
       ) : (
         <div className="space-y-4">
-          {sortedCategories.map((cat) => {
-            const items = grouped.get(cat) ?? [];
-            return (
-              <div key={cat}>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {cat}
-                </h3>
-                <div className="space-y-2">
-                  {items.map((s) => (
-                    <ScheduleCard
-                      key={s.id}
-                      schedule={s}
-                      categories={categories}
-                      onStatusChange={onStatusChange}
-                      onClick={onScheduleClick}
-                      action={
-                        <ActionMenu
-                          scheduleId={s.id}
-                          onPostpone={onPostpone}
-                          onMoveToBacklog={onMoveToBacklog}
-                          onDelete={onDelete}
-                        />
-                      }
-                    />
-                  ))}
-                </div>
+          {sections.map((section) => (
+            <div key={section.title}>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                {section.title}
+              </h3>
+              <div className="space-y-2">
+                {section.items.map((s) => (
+                  <ScheduleCard
+                    key={s.id}
+                    schedule={s}
+                    categories={categories}
+                    onStatusChange={onStatusChange}
+                    onClick={onScheduleClick}
+                    action={
+                      <ActionMenu
+                        scheduleId={s.id}
+                        important={s.important}
+                        onToggleImportant={onToggleImportant}
+                        onPostpone={onPostpone}
+                        onMoveToBacklog={onMoveToBacklog}
+                        onDelete={onDelete}
+                      />
+                    }
+                  />
+                ))}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
+}
+
+/** 일정을 기간 → 중요 → 카테고리별 섹션으로 분리 */
+function buildDaySections(schedules: ScheduleRow[], categories: CategoryRow[]): Section[] {
+  const byCatThenStatus = (a: ScheduleRow, b: ScheduleRow) => {
+    const catA = categories.find((c) => c.name === a.category);
+    const catB = categories.find((c) => c.name === b.category);
+    const orderA = a.category ? (catA?.sort_order ?? 999) : 9999;
+    const orderB = b.category ? (catB?.sort_order ?? 999) : 9999;
+    if (orderA !== orderB) return orderA - orderB;
+    return compareByStatus(a, b);
+  };
+
+  // 1. 기간 일정
+  const multiDay = schedules.filter(isMultiDaySchedule).sort(byCatThenStatus);
+
+  // 2. 중요 단일 일정 (기간 제외)
+  const importantSingle = schedules
+    .filter((s) => !isMultiDaySchedule(s) && s.important)
+    .sort(byCatThenStatus);
+
+  // 3. 나머지 → 카테고리별 그룹
+  const regular = schedules
+    .filter((s) => !isMultiDaySchedule(s) && !s.important)
+    .sort(compareByStatus);
+
+  const grouped = new Map<string, ScheduleRow[]>();
+  for (const s of regular) {
+    const cat = s.category ?? '미분류';
+    const list = grouped.get(cat) ?? [];
+    list.push(s);
+    grouped.set(cat, list);
+  }
+
+  const sortedCats = [...grouped.keys()].sort((a, b) => {
+    if (a === '미분류') return 1;
+    if (b === '미분류') return -1;
+    const catA = categories.find((c) => c.name === a);
+    const catB = categories.find((c) => c.name === b);
+    return (catA?.sort_order ?? 999) - (catB?.sort_order ?? 999);
+  });
+
+  const sections: Section[] = [];
+  if (multiDay.length > 0) sections.push({ title: '기간 일정', items: multiDay });
+  if (importantSingle.length > 0) sections.push({ title: '중요', items: importantSingle });
+  for (const cat of sortedCats) {
+    sections.push({ title: cat, items: grouped.get(cat) ?? [] });
+  }
+
+  return sections;
 }

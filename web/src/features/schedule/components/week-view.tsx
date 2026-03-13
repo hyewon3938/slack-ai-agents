@@ -5,7 +5,7 @@ import { startOfWeek, addDays, format, isToday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { getCategoryStyle, compareByStatus } from '@/lib/types';
+import { getCategoryStyle, compareSchedulePriority } from '@/lib/types';
 import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedule/lib/calendar-utils';
 import { StatusBadge } from './status-badge';
 import { DroppableDay } from './droppable-day';
@@ -20,6 +20,7 @@ interface WeekViewProps {
   onSelectDate: (date: string) => void;
   onScheduleClick: (schedule: ScheduleRow) => void;
   onStatusChange: (id: number, status: string) => void;
+  onToggleImportant: (id: number) => void;
   onPostpone: (id: number) => void;
   onMoveToBacklog: (id: number) => void;
   onDelete: (id: number) => void;
@@ -49,6 +50,7 @@ export function WeekView({
   onSelectDate,
   onScheduleClick,
   onStatusChange,
+  onToggleImportant,
   onPostpone,
   onMoveToBacklog,
   onDelete,
@@ -56,7 +58,7 @@ export function WeekView({
   const todayRef = useRef<HTMLDivElement>(null);
   const weekStart = startOfWeek(currentDate, { weekStartsOn: WEEK_START });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const layout = computeWeekLayout(days, schedules);
+  const layout = computeWeekLayout(days, schedules, categories);
   const spanAreaHeight = layout.laneCount * LANE_HEIGHT;
 
   // 모바일: 오늘 날짜로 자동 스크롤 (뷰 진입, 오늘 버튼, 주 이동 시)
@@ -119,6 +121,8 @@ export function WeekView({
                     action={
                       <ActionMenu
                         scheduleId={s.id}
+                        important={s.important}
+                        onToggleImportant={onToggleImportant}
                         onPostpone={onPostpone}
                         onMoveToBacklog={onMoveToBacklog}
                         onDelete={onDelete}
@@ -141,6 +145,7 @@ export function WeekView({
             laneHeight={LANE_HEIGHT}
             onStatusChange={onStatusChange}
             onClick={() => onScheduleClick(span.schedule)}
+            onToggleImportant={onToggleImportant}
             onPostpone={onPostpone}
             onMoveToBacklog={onMoveToBacklog}
             onDelete={onDelete}
@@ -152,7 +157,7 @@ export function WeekView({
       <div className="md:hidden">
         {days.map((day) => {
           const dateStr = format(day, 'yyyy-MM-dd');
-          const daySchedules = getMobileSchedules(day, schedules);
+          const daySchedules = getMobileSchedules(day, schedules, categories);
           const today = isToday(day);
           const selected = selectedDate === dateStr;
 
@@ -194,6 +199,8 @@ export function WeekView({
                         action={
                           <ActionMenu
                             scheduleId={s.id}
+                            important={s.important}
+                            onToggleImportant={onToggleImportant}
                             onPostpone={onPostpone}
                             onMoveToBacklog={onMoveToBacklog}
                             onDelete={onDelete}
@@ -212,8 +219,8 @@ export function WeekView({
   );
 }
 
-/** 모바일용: 해당 날짜의 모든 일정 (다일 포함) */
-function getMobileSchedules(date: Date, schedules: ScheduleRow[]): ScheduleRow[] {
+/** 모바일용: 해당 날짜의 모든 일정 (다일 포함, 우선순위 정렬) */
+function getMobileSchedules(date: Date, schedules: ScheduleRow[], categories: CategoryRow[]): ScheduleRow[] {
   const dateStr = format(date, 'yyyy-MM-dd');
   return schedules
     .filter((s) => {
@@ -221,7 +228,7 @@ function getMobileSchedules(date: Date, schedules: ScheduleRow[]): ScheduleRow[]
       if (s.date && s.end_date && s.date <= dateStr && s.end_date >= dateStr) return true;
       return false;
     })
-    .sort(compareByStatus);
+    .sort((a, b) => compareSchedulePriority(a, b, categories));
 }
 
 function WeekSpanBar({
@@ -231,6 +238,7 @@ function WeekSpanBar({
   laneHeight,
   onStatusChange,
   onClick,
+  onToggleImportant,
   onPostpone,
   onMoveToBacklog,
   onDelete,
@@ -241,6 +249,7 @@ function WeekSpanBar({
   laneHeight: number;
   onStatusChange: (id: number, status: string) => void;
   onClick: () => void;
+  onToggleImportant: (id: number) => void;
   onPostpone: (id: number) => void;
   onMoveToBacklog: (id: number) => void;
   onDelete: (id: number) => void;
@@ -267,6 +276,7 @@ function WeekSpanBar({
 
   const cat = categories.find((c) => c.name === span.schedule.category);
   const colorKey = cat?.color ?? 'gray';
+  const isEvent = cat?.type === 'event';
   const isDone = span.schedule.status === 'done' || span.schedule.status === 'cancelled';
   const isOverdue =
     !isDone &&
@@ -320,26 +330,28 @@ function WeekSpanBar({
         } ${isOverdue ? 'border-red-300' : 'border-gray-200'}`}
       >
         <div className="flex items-start gap-2">
-          <button
-            onClick={handleStatusClick}
-            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
-              isDone
-                ? 'border-green-400 bg-green-100 text-green-600'
-                : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-            }`}
-          >
-            {isDone && '✓'}
-          </button>
+          {!isEvent && (
+            <button
+              onClick={handleStatusClick}
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
+                isDone
+                  ? 'border-green-400 bg-green-100 text-green-600'
+                  : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+              }`}
+            >
+              {isDone && '✓'}
+            </button>
+          )}
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className={`truncate text-sm font-medium ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+              <span className={`truncate text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
                 {span.schedule.important && <span className="mr-1 text-amber-500">★</span>}
                 {span.schedule.title}
               </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <StatusBadge status={span.schedule.status} />
+              {!isEvent && <StatusBadge status={span.schedule.status} />}
               {span.schedule.category && (
                 <CategoryBadge colorKey={colorKey} label={span.schedule.category} />
               )}
@@ -349,6 +361,8 @@ function WeekSpanBar({
           <div className="shrink-0">
             <ActionMenu
               scheduleId={span.schedule.id}
+              important={span.schedule.important}
+              onToggleImportant={onToggleImportant}
               onPostpone={onPostpone}
               onMoveToBacklog={onMoveToBacklog}
               onDelete={onDelete}

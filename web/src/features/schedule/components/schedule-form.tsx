@@ -88,7 +88,7 @@ export function ScheduleForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 overflow-hidden">
       {/* 제목 */}
       <div>
         <input
@@ -109,7 +109,7 @@ export function ScheduleForm({
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="block w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
         />
       </div>
 
@@ -141,7 +141,7 @@ export function ScheduleForm({
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            className="block w-full min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
           />
         </div>
       )}

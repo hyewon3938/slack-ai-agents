@@ -72,7 +72,7 @@ export function MonthView({
 
       {/* 주 단위 렌더링 */}
       {weeks.map((weekDays, weekIdx) => {
-        const layout = computeWeekLayout(weekDays, schedules);
+        const layout = computeWeekLayout(weekDays, schedules, categories);
         const spanAreaHeight = layout.laneCount * LANE_HEIGHT;
 
         return (
