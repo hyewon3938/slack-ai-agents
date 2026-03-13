@@ -3,7 +3,9 @@ import { getIronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 
 export interface SessionData {
-  authenticated: boolean;
+  userId: number;
+  nickname: string;
+  oauthState?: string;
 }
 
 // iron-session은 32자 이상 필요. 미설정이거나 짧으면 자동 생성 (재시작 시 세션 무효화됨)
@@ -21,7 +23,7 @@ const SESSION_OPTIONS = {
     secure: process.env.COOKIE_SECURE !== 'false',
     httpOnly: true,
     sameSite: 'lax' as const,
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 30, // 30 days
   },
 };
 
@@ -30,7 +32,8 @@ export const getSession = async () => {
   return getIronSession<SessionData>(cookieStore, SESSION_OPTIONS);
 };
 
-export const requireAuth = async (): Promise<boolean> => {
+/** 인증 확인 + userId 반환. 미인증이면 null */
+export const requireAuth = async (): Promise<number | null> => {
   const session = await getSession();
-  return session.authenticated === true;
+  return session.userId ?? null;
 };

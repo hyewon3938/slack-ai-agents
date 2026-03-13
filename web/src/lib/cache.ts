@@ -7,20 +7,23 @@ import {
 
 const REVALIDATE_SECONDS = 30;
 
-export const getCachedSchedulesByRange = unstable_cache(
-  async (from: string, to: string) => querySchedulesByRange(from, to),
-  ['schedules-by-range'],
-  { revalidate: REVALIDATE_SECONDS, tags: ['schedules'] },
-);
+export const getCachedSchedulesByRange = (userId: number, from: string, to: string) =>
+  unstable_cache(
+    async () => querySchedulesByRange(userId, from, to),
+    ['schedules-by-range', String(userId), from, to],
+    { revalidate: REVALIDATE_SECONDS, tags: ['schedules'] },
+  )();
 
-export const getCachedBacklogSchedules = unstable_cache(
-  async () => queryBacklogSchedules(),
-  ['backlog-schedules'],
-  { revalidate: REVALIDATE_SECONDS, tags: ['schedules'] },
-);
+export const getCachedBacklogSchedules = (userId: number) =>
+  unstable_cache(
+    async () => queryBacklogSchedules(userId),
+    ['backlog-schedules', String(userId)],
+    { revalidate: REVALIDATE_SECONDS, tags: ['schedules'] },
+  )();
 
-export const getCachedCategories = unstable_cache(
-  async () => queryCategories(),
-  ['categories'],
-  { revalidate: REVALIDATE_SECONDS, tags: ['categories'] },
-);
+export const getCachedCategories = (userId: number) =>
+  unstable_cache(
+    async () => queryCategories(userId),
+    ['categories', String(userId)],
+    { revalidate: REVALIDATE_SECONDS, tags: ['categories'] },
+  )();
