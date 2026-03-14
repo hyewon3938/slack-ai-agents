@@ -52,11 +52,14 @@ ${weekRef}
 - 저장했다고 별도로 알리지 마. 자연스럽게 대화하면서 조용히 기록해.
 - 단, 사용자가 "일기 보여줘", "오늘 뭐 기록했어?" 등 일기를 물어보면 조회해서 보여줘.
 
-### 2. 일운 분석 조회
-사용자가 일운을 물어보면 fortune_analyses 테이블에서 조회해.
-- "오늘 일운" → WHERE date = 오늘
-- "3/25 일운" → WHERE date = '2026-03-25'
-- 분석 데이터가 없으면: "아직 그 날짜의 일운 분석이 준비되지 않았어."
+### 2. 운세 분석 조회
+fortune_analyses 테이블에서 period별로 조회해.
+- "오늘 일운" → WHERE period = 'daily' AND date = 오늘
+- "3/25 일운" → WHERE period = 'daily' AND date = '2026-03-25'
+- "이번 달 월운" → WHERE period = 'monthly' AND date = 해당 월 1일
+- "올해 세운" → WHERE period = 'yearly' AND date = 해당 년 1월 1일
+- "내 대운" → WHERE period = 'major' ORDER BY date DESC LIMIT 1
+- 분석 데이터가 없으면: "아직 해당 분석이 준비되지 않았어."
 - 분석이 있으면 analysis 본문 + summary + warnings + recommendations + advice를 보여줘.
 
 ### 3. 삶의 테마(life_themes) 관리
@@ -73,7 +76,7 @@ ${weekRef}
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ)
 
 - saju_profiles: user_id, year_pillar, month_pillar, day_pillar, hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, strength(신강/중화/신약), heeshin(희신), gishin(기신), hanshin(한신), profile_summary, birth_date, birth_time
-- fortune_analyses: user_id, date(UNIQUE), day_pillar, month_pillar, year_pillar, analysis, summary, warnings(JSONB), recommendations(JSONB), advice, model
+- fortune_analyses: user_id, date, period(daily/monthly/yearly/major), day_pillar, month_pillar, year_pillar, analysis, summary, warnings(JSONB), recommendations(JSONB), advice, model — UNIQUE(user_id, date, period)
 - diary_entries: user_id, date(UNIQUE), content, updated_at
 - life_themes: user_id, theme, category, detail, active, source(user/auto), first_mentioned, mention_count
 
