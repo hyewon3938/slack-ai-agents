@@ -119,6 +119,9 @@ diary_entries: id, user_id, date(UNIQUE), content, updated_at
 
 -- 삶의 테마/고민
 life_themes: id, user_id, theme, category, detail, active, source(user/auto), first_mentioned, mention_count
+
+-- 사주 패턴 (일기↔일운 상관 분석)
+saju_patterns: id, user_id, pattern_type(sipsin/ganji/relation/sibiunsung), trigger_element, description, evidence(JSONB), active, detection_count, first_detected, last_detected, activated_at, deactivated_at, source(auto/user), confidence(high/medium/low), updated_at
 ```
 
 ## 에이전트 도구
