@@ -35,6 +35,7 @@ const makeSchedule = (overrides: Partial<ScheduleRow> = {}): ScheduleRow => ({
   end_date: null,
   status: 'todo',
   category: '업무',
+  category_type: 'task',
   memo: null,
   important: false,
   ...overrides,
@@ -239,29 +240,53 @@ describe('buildScheduleBlocks', () => {
     expect(textContent).toContain('보고서');
   });
 
-  it('overflow 메뉴 포함 (약속 제외)', () => {
+  it('task 항목에 전체 overflow 메뉴 포함', () => {
     const items = [
       makeSchedule({ id: 1, title: '회의', category: '업무' }),
-      makeSchedule({ id: 2, title: '점심 약속', category: '약속' }),
     ];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
 
-    // overflow가 있는 블록 (업무 항목)
     const overflowBlocks = blocks.filter((b) => b.type === 'section' && 'accessory' in b);
     expect(overflowBlocks.length).toBe(1);
 
     if (overflowBlocks[0] && 'accessory' in overflowBlocks[0]) {
-      const accessory = overflowBlocks[0].accessory as { action_id: string };
+      const accessory = overflowBlocks[0].accessory as { action_id: string; options: Array<{ text: { text: string } }> };
       expect(accessory.action_id).toBe(SCHEDULE_ACTION_ID);
+      const labels = accessory.options.map((o) => o.text.text);
+      expect(labels).toContain('완료');
+      expect(labels).toContain('내일로 미루기');
     }
   });
 
-  it('완료 통계 (약속 제외)', () => {
+  it('event 타입은 📅 접두어 + 중요/삭제 overflow만', () => {
+    const items = [
+      makeSchedule({ id: 1, title: '팀 회의', category: '약속', category_type: 'event' }),
+    ];
+
+    const { blocks } = buildScheduleBlocks(items, '2026-03-08');
+
+    // 📅 접두어 확인
+    const sectionTexts = blocks
+      .filter((b) => b.type === 'section')
+      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''));
+    expect(sectionTexts.some((t) => t.includes('📅 팀 회의'))).toBe(true);
+
+    // overflow에 중요/삭제만 있어야 함
+    const overflowBlocks = blocks.filter((b) => b.type === 'section' && 'accessory' in b);
+    expect(overflowBlocks.length).toBe(1);
+    if (overflowBlocks[0] && 'accessory' in overflowBlocks[0]) {
+      const accessory = overflowBlocks[0].accessory as { options: Array<{ text: { text: string } }> };
+      const labels = accessory.options.map((o) => o.text.text);
+      expect(labels).toEqual(['중요 표시', '삭제하기']);
+    }
+  });
+
+  it('완료 통계 (event 타입 제외)', () => {
     const items = [
       makeSchedule({ id: 1, status: 'done' }),
       makeSchedule({ id: 2, title: '보고서', status: 'todo' }),
-      makeSchedule({ id: 3, title: '점심', category: '약속' }),
+      makeSchedule({ id: 3, title: '점심', category: '약속', category_type: 'event' }),
     ];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
@@ -274,22 +299,16 @@ describe('buildScheduleBlocks', () => {
     }
   });
 
-  it('메모가 있으면 context 블록으로 표시', () => {
+  it('메모가 있어도 표시하지 않음', () => {
     const items = [makeSchedule({ id: 1, title: '회의', memo: '자료 준비 필요' })];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
-
-    const sectionText = blocks
-      .filter((b) => b.type === 'section')
-      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
-      .join(' ');
-    expect(sectionText).toContain('회의');
 
     const contextTexts = blocks
       .filter((b) => b.type === 'context')
       .map((b) => ('elements' in b ? (b.elements as Array<{ text: string }>)[0]?.text : ''))
       .join(' ');
-    expect(contextTexts).toContain('자료 준비 필요');
+    expect(contextTexts).not.toContain('자료 준비 필요');
   });
 
   it('compact 모드: overflow 메뉴 없이 렌더링', () => {
@@ -299,30 +318,6 @@ describe('buildScheduleBlocks', () => {
 
     const overflowBlocks = blocks.filter((b) => b.type === 'section' && 'accessory' in b);
     expect(overflowBlocks).toHaveLength(0);
-  });
-
-  it('완료 일정 메모에 취소선 적용', () => {
-    const items = [makeSchedule({ id: 1, title: '발송', status: 'done', memo: '택배 3건' })];
-
-    const { blocks } = buildScheduleBlocks(items, '2026-03-08');
-    const contextTexts = blocks
-      .filter((b) => b.type === 'context')
-      .map((b) => ('elements' in b ? (b.elements as Array<{ text: string }>)[0]?.text : ''));
-
-    expect(contextTexts.some((t) => t.includes('~택배 3건~'))).toBe(true);
-  });
-
-  it('메모가 없으면 └ 미표시', () => {
-    const items = [makeSchedule({ id: 1, title: '회의', memo: null })];
-
-    const { blocks } = buildScheduleBlocks(items, '2026-03-08');
-    const textContent = blocks
-      .filter((b) => b.type === 'section')
-      .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
-      .join(' ');
-
-    expect(textContent).toContain('회의');
-    expect(textContent).not.toContain('└');
   });
 
   it('미분류 카테고리 맨 끝', () => {
