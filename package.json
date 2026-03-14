@@ -13,7 +13,13 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "dev:web": "yarn --cwd web dev",
-    "deploy": "ssh -i ~/.ssh/slack-ai-agents.key ubuntu@140.245.69.231 'bash ~/deploy.sh'"
+    "deploy": "ssh -i ~/.ssh/slack-ai-agents.key ubuntu@140.245.69.231 'bash ~/deploy.sh'",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint"
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -31,6 +37,8 @@
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.18.0",
     "eslint": "^10.0.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
