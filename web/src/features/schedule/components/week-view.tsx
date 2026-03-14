@@ -59,7 +59,6 @@ export function WeekView({
   const weekStart = startOfWeek(currentDate, { weekStartsOn: WEEK_START });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const layout = computeWeekLayout(days, schedules, categories);
-  const spanAreaHeight = layout.laneCount * LANE_HEIGHT;
 
   // 모바일: 오늘 날짜로 자동 스크롤 (뷰 진입, 오늘 버튼, 주 이동 시)
   useEffect(() => {
@@ -73,12 +72,13 @@ export function WeekView({
     <div className="flex flex-col md:flex-1">
       {/* 데스크탑: 가로 7열 + 스패닝 바 */}
       <div className="relative hidden bg-white md:grid md:flex-1 md:grid-cols-7">
-        {days.map((day) => {
+        {days.map((day, colIndex) => {
           const dateStr = format(day, 'yyyy-MM-dd');
           const daySingles = layout.singleDay.get(dateStr) ?? [];
           const today = isToday(day);
           const selected = selectedDate === dateStr;
           const dayOfWeek = day.getDay();
+          const daySpanHeight = layout.laneCountPerDay[colIndex]! * LANE_HEIGHT;
 
           return (
             <DroppableDay
@@ -106,8 +106,8 @@ export function WeekView({
                 </div>
               </div>
 
-              {/* 스패닝 바 공간 확보 */}
-              {spanAreaHeight > 0 && <div style={{ height: `${spanAreaHeight}px` }} />}
+              {/* 스패닝 바 공간 확보 — 해당 요일을 지나는 기간일정 레인 수만큼만 */}
+              {daySpanHeight > 0 && <div style={{ height: `${daySpanHeight}px` }} />}
 
               {/* 단일 일정 */}
               <div className="space-y-1.5">
@@ -325,7 +325,7 @@ function WeekSpanBar({
         ref={moveRef}
         {...moveListeners}
         {...moveAttrs}
-        className={`h-full overflow-hidden rounded-lg border p-3 transition hover:shadow-sm ${
+        className={`h-full overflow-visible rounded-lg border p-3 transition hover:shadow-sm ${
           STATUS_BG[span.schedule.status] ?? 'bg-white'
         } ${isOverdue ? 'border-red-300' : 'border-gray-200'}`}
       >
