@@ -18,6 +18,8 @@ export interface WeekLayout {
   spans: WeekSpan[];
   singleDay: Map<string, ScheduleRow[]>;
   laneCount: number;
+  /** 요일별(0~6) 해당 열을 지나는 기간일정의 최대 레인 수 */
+  laneCountPerDay: number[];
 }
 
 /**
@@ -92,5 +94,14 @@ export function computeWeekLayout(weekDays: Date[], schedules: ScheduleRow[], ca
     items.sort((a, b) => compareSchedulePriority(a, b, categories));
   }
 
-  return { spans, singleDay, laneCount: lanes.length };
+  // 요일별 실제 사용된 레인 수 계산
+  const laneCountPerDay = Array.from({ length: 7 }, (_, col) => {
+    let maxLane = -1;
+    for (let l = 0; l < lanes.length; l++) {
+      if (lanes[l]![col]) maxLane = l;
+    }
+    return maxLane + 1;
+  });
+
+  return { spans, singleDay, laneCount: lanes.length, laneCountPerDay };
 }
