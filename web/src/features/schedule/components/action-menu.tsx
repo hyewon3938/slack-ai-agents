@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ActionMenuProps {
   scheduleId: number;
@@ -20,20 +21,44 @@ export function ActionMenu({
   onDelete,
 }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 4,
+      left: rect.right - 160, // w-40 = 160px, 오른쪽 정렬
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    updatePosition();
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        buttonRef.current && !buttonRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', () => setOpen(false), true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', () => setOpen(false), true);
+    };
+  }, [open, updatePosition]);
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
+        ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation();
           setOpen(!open);
@@ -45,53 +70,59 @@ export function ActionMenu({
         </svg>
       </button>
 
-      {open && (
-        <div className="absolute right-0 z-50 mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-          {onToggleImportant && (
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[9999] w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+            style={{ top: menuPos.top, left: menuPos.left }}
+          >
+            {onToggleImportant && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(false);
+                  onToggleImportant(scheduleId);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                {important ? '중요 해제' : '중요 설정'}
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setOpen(false);
-                onToggleImportant(scheduleId);
+                onPostpone(scheduleId);
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
             >
-              {important ? '중요 해제' : '중요 설정'}
+              내일로 미루기
             </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onPostpone(scheduleId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-          >
-            내일로 미루기
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onMoveToBacklog(scheduleId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-          >
-            백로그로 이동
-          </button>
-          <div className="my-1 border-t border-gray-100" />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onDelete(scheduleId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50"
-          >
-            삭제
-          </button>
-        </div>
-      )}
-    </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onMoveToBacklog(scheduleId);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+            >
+              백로그로 이동
+            </button>
+            <div className="my-1 border-t border-gray-100" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onDelete(scheduleId);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50"
+            >
+              삭제
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
