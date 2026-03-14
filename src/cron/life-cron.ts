@@ -28,7 +28,7 @@ import { CHARACTER_PROMPT } from '../shared/personality.js';
 import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
-  buildNightSummaryBlocks,
+  buildRoutineBlocks,
   buildScheduleText,
   buildNightScheduleText,
   buildSleepReminderText,
@@ -240,11 +240,12 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const todayRecords = await queryTodayRecords(today);
   const hasMorning = todayRecords.some((r) => r.time_slot === '아침');
 
+  // 체크리스트 먼저, 인사 메시지는 별도 전송 (체크리스트 업데이트 시 인사가 사라지는 문제 방지)
   if (hasMorning) {
     const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['아침']);
-    const fullBlocks = [...greetingBlocks, ...blocks];
-    await postBlockMessage(app.client, config.channelId, text, fullBlocks);
-  } else if (greetingBlocks.length > 0) {
+    await postBlockMessage(app.client, config.channelId, text, blocks);
+  }
+  if (greetingBlocks.length > 0) {
     await postBlockMessage(app.client, config.channelId, '아침 인사', greetingBlocks);
   }
 
@@ -322,9 +323,12 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
       : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`,
   );
 
-  const { text, blocks } = buildNightSummaryBlocks(records, today, summary);
-
+  // 체크리스트 먼저, 마무리 메시지는 별도 전송 (체크리스트 업데이트 시 메시지가 사라지는 문제 방지)
+  const { text, blocks } = buildRoutineBlocks(records, today);
   await postBlockMessage(app.client, config.channelId, text, blocks);
+
+  const summaryBlocks = buildMorningGreetingBlocks(summary);
+  await postBlockMessage(app.client, config.channelId, '밤 마무리', summaryBlocks);
   console.warn(`[Life Cron] 밤 요약 전송 완료`);
 };
 
