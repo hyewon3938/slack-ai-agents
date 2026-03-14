@@ -19,11 +19,41 @@ const loadLifeThemes = async (): Promise<string> => {
   }
 };
 
+/** DB에서 활성 saju_patterns 조회 */
+const loadSajuPatterns = async (): Promise<string> => {
+  try {
+    const result = await query<{
+      pattern_type: string;
+      trigger_element: string;
+      description: string;
+      confidence: string | null;
+      detection_count: number;
+    }>(
+      `SELECT pattern_type, trigger_element, description, confidence, detection_count
+       FROM saju_patterns
+       WHERE active = true AND user_id = 1
+       ORDER BY detection_count DESC, created_at`,
+    );
+    if (result.rows.length === 0) return '';
+
+    const lines = result.rows
+      .map(
+        (r) =>
+          `- [${r.pattern_type}] ${r.trigger_element}: ${r.description} (${r.detection_count}회 감지, ${r.confidence ?? '미평가'})`,
+      )
+      .join('\n');
+    return `\n\n## 확인된 개인 패턴 (saju_patterns)\n${lines}`;
+  } catch {
+    return '';
+  }
+};
+
 /** insight 에이전트 시스템 프롬프트 */
 export const buildInsightSystemPrompt = async (): Promise<string> => {
   const today = getTodayString();
   const weekRef = getWeekReference();
   const lifeThemes = await loadLifeThemes();
+  const sajuPatterns = await loadSajuPatterns();
 
   return `너는 명리학 전문가이자 개인 일기 관리자야.
 사용자의 사주를 기반으로 일운을 분석하고, 일기와 고민을 기록하는 역할이야.
@@ -73,14 +103,23 @@ fortune_analyses 테이블에서 period별로 조회해.
 사용자가 사주 관련 질문을 하면 saju_profiles에서 조회해.
 - "내 사주 보여줘" → 원국, 격국, 용신, 대운 정보 표시
 
+### 5. 사주 패턴(saju_patterns) 조회/관리
+일기와 일운 비교에서 감지된 구조적 반응 패턴. life_themes(상황적)와 구분되는 사주 고유 패턴.
+- "내 패턴 보여줘" → saju_patterns에서 active=true 조회
+- "이 패턴 맞아" / 사용자가 직접 패턴 추가 → INSERT (source='user', active=true, detection_count=2)
+- "이 패턴 아닌 것 같아" → UPDATE active = false, deactivated_at = NOW()
+- pattern_type 값: sipsin(십신) / ganji(특정 글자) / relation(합/형/충) / sibiunsung(십이운성)
+- 패턴은 월간 자동 분석(Opus)으로 감지되며, 사용자가 수동으로도 관리 가능
+
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ)
 
 - saju_profiles: user_id, year_pillar, month_pillar, day_pillar, hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, strength(신강/중화/신약), heeshin(희신), gishin(기신), hanshin(한신), profile_summary, birth_date, birth_time
 - fortune_analyses: user_id, date, period(daily/monthly/yearly/major), day_pillar, month_pillar, year_pillar, analysis, summary, warnings(JSONB), recommendations(JSONB), advice, model — UNIQUE(user_id, date, period)
 - diary_entries: user_id, date(UNIQUE), content, updated_at
 - life_themes: user_id, theme, category, detail, active, source(user/auto), first_mentioned, mention_count
+- saju_patterns: user_id, pattern_type(sipsin/ganji/relation/sibiunsung), trigger_element, description, evidence(JSONB), active, detection_count, first_detected, last_detected, activated_at, deactivated_at, source(auto/user), confidence(high/medium/low), updated_at
 
 ## ⚠️ user_id 필터 (절대 규칙)
 모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = 1 조건을 포함해.
-${lifeThemes}`;
+${lifeThemes}${sajuPatterns}`;
 };
