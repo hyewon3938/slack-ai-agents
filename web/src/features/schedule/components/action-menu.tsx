@@ -114,7 +114,7 @@ export function ActionMenu({
               onClick={(e) => {
                 e.stopPropagation();
                 setOpen(false);
-                onDelete(scheduleId);
+                if (confirm('이 일정을 삭제할까?')) onDelete(scheduleId);
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50"
             >
