@@ -105,6 +105,9 @@ sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/
 -- 커스텀 지시사항 (스마트 메모리: 카테고리 분류 + 자동 감지 + soft-delete)
 custom_instructions: id, instruction, category, source(user/auto), active, created_at
 
+-- 리마인더
+reminders: id, title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[]), days_of_month(INTEGER[]), repeat_interval(기본1, 격주/격월=2), reference_date, active
+
 -- 사주 프로필
 saju_profiles: id, user_id, year/month/day/hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, strength(신강/중화/신약), heeshin(희신), gishin(기신), hanshin(한신), profile_summary, birth_date, birth_time
 
