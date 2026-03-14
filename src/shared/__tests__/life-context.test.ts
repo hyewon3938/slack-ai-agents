@@ -42,7 +42,7 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
     // sleep
     'sleep_type.*night.*date IN': [],
     'AVG.*duration_minutes': [],
-    'rn <= 3.*bedtime': [{ cnt: '0' }],
+    'AS is_late': [],
     'sleep_type.*nap.*date =': [{ nap_count: '0' }],
     // routine
     'routine_records.*routine_templates.*date =': [],
@@ -52,6 +52,12 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
     'date.*\\+ 1.*end_date': [{ count: '0' }],
     "status = 'todo'.*date < ": [{ count: '0' }],
     "date IS NULL.*status = 'todo'": [{ count: '0' }],
+    // diary
+    'diary_entries.*date IN': [],
+    // life_themes
+    'life_themes.*active': [],
+    // fortune
+    'fortune_analyses.*daily': [],
   };
 
   const responses = { ...defaultResponses, ...overrides };
@@ -83,7 +89,11 @@ describe('buildLifeContext', () => {
         { date: '2026-03-09', bedtime: '01:30', wake_time: '07:00', duration_minutes: 330, sleep_type: 'night' },
       ],
       'AVG.*duration_minutes': [{ avg_duration: '360', avg_bedtime_hour: '25.5', count: '5' }],
-      'rn <= 3.*bedtime': [{ cnt: '3' }],
+      'AS is_late': [
+        { date: '2026-03-09', is_late: true },
+        { date: '2026-03-08', is_late: true },
+        { date: '2026-03-07', is_late: true },
+      ],
       'sleep_type.*nap.*date =': [{ nap_count: '1' }],
       'routine_records.*routine_templates.*date =': [{ total: '8', completed: '3' }],
       'AVG.*daily_rate': [{ avg_rate: '72' }],
@@ -120,7 +130,7 @@ describe('buildLifeContext', () => {
         { date: '2026-03-08', bedtime: '23:30', wake_time: '07:00', duration_minutes: 450, sleep_type: 'night' },
       ],
       'AVG.*duration_minutes': [{ avg_duration: '420', avg_bedtime_hour: '23.5', count: '3' }],
-      'rn <= 3.*bedtime': [{ cnt: '0' }],
+      'AS is_late': [{ date: '2026-03-08', is_late: false }],
       'routine_records.*routine_templates.*date =': [{ total: '10', completed: '8' }],
       'AVG.*daily_rate': [{ avg_rate: '75' }],
       "status != 'cancelled'.*end_date.*\\$1\\)": [{ total: '3', incomplete: '3' }],
@@ -163,6 +173,96 @@ describe('buildLifeContext', () => {
 
     const result = await buildLifeContext('conversation');
     expect(result).toContain('백로그 7건');
+  });
+
+  // ─── 연속 자정 이후 취침 패턴 ─────────────────────────
+
+  it('연속 자정 이후 취침: 실제 연속일 때만 표시', async () => {
+    setupQueryMock({
+      'AS is_late': [
+        { date: '2026-03-09', is_late: true },
+        { date: '2026-03-08', is_late: true },
+        { date: '2026-03-07', is_late: false },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation');
+    expect(result).toContain('2일 연속 자정 이후 취침');
+  });
+
+  it('연속 자정 이후 취침: 첫 기록이 늦지 않으면 미표시', async () => {
+    setupQueryMock({
+      'AS is_late': [
+        { date: '2026-03-09', is_late: false },
+        { date: '2026-03-08', is_late: true },
+        { date: '2026-03-07', is_late: true },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation');
+    expect(result).not.toContain('자정 이후');
+  });
+
+  it('연속 자정 이후 취침: 1일만이면 미표시', async () => {
+    setupQueryMock({
+      'AS is_late': [
+        { date: '2026-03-09', is_late: true },
+        { date: '2026-03-08', is_late: false },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation');
+    expect(result).not.toContain('자정 이후');
+  });
+
+  // ─── 일기/테마/운세 맥락 ──────────────────────────────
+
+  it('일기 데이터가 있으면 일기 맥락 포함', async () => {
+    setupQueryMock({
+      'diary_entries.*date IN': [
+        { date: '2026-03-09', content: '오늘 면접 봤는데 긴장했다.' },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation');
+    expect(result).toContain('일기:');
+    expect(result).toContain('오늘: 오늘 면접 봤는데 긴장했다.');
+  });
+
+  it('일기 200자 초과 시 잘림', async () => {
+    setupQueryMock({
+      'diary_entries.*date IN': [
+        { date: '2026-03-09', content: 'A'.repeat(250) },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation');
+    expect(result).toContain('...');
+  });
+
+  it('테마 데이터가 있으면 삶의 테마 맥락 포함', async () => {
+    setupQueryMock({
+      'life_themes.*active': [
+        { theme: '이직 준비', category: 'career', detail: '기술 면접 준비 중' },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation');
+    expect(result).toContain('삶의 테마:');
+    expect(result).toContain('[career] 이직 준비: 기술 면접 준비 중');
+  });
+
+  it('운세 데이터가 있으면 운세 맥락 포함', async () => {
+    setupQueryMock({
+      'fortune_analyses.*daily': [
+        { summary: '편관 운이 들어오는 날', advice: '무리하지 마' },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation');
+    expect(result).toContain('오늘 운세:');
+    expect(result).toContain('편관 운이 들어오는 날');
+    expect(result).toContain('조언: 무리하지 마');
   });
 
   it('DB 오류 시 빈 문자열 반환', async () => {

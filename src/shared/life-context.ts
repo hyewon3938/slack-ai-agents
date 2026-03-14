@@ -100,23 +100,24 @@ const queryWeekAvg = async ({ today }: DateParams): Promise<string | null> => {
   return `7일 평균 ${avgM > 0 ? `${avgH}시간 ${avgM}분` : `${avgH}시간`}`;
 };
 
-/** 최근 연속 자정 이후 취침 패턴 */
+/** 최근 연속 자정 이후 취침 패턴 (실제 연속 일수만 카운트) */
 const queryLateNightPattern = async ({ today }: DateParams): Promise<string | null> => {
-  const recentLate = await query<{ cnt: string }>(
-    `WITH ranked AS (
-       SELECT date, bedtime,
-              ROW_NUMBER() OVER (ORDER BY date DESC) as rn
-       FROM sleep_records
-       WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND bedtime IS NOT NULL AND user_id = 1
-     )
-     SELECT COUNT(*)::text as cnt FROM ranked
-     WHERE rn <= 3
-       AND bedtime::time >= '00:00' AND bedtime::time < '06:00'`,
+  const result = await query<{ date: string; is_late: boolean }>(
+    `SELECT date::text,
+            (bedtime::time >= '00:00' AND bedtime::time < '06:00') AS is_late
+     FROM sleep_records
+     WHERE sleep_type = 'night' AND date >= ($1::date - 14) AND bedtime IS NOT NULL AND user_id = 1
+     ORDER BY date DESC
+     LIMIT 10`,
     [today],
   );
 
-  const lateDays = Number(recentLate.rows[0]?.cnt ?? 0);
-  return lateDays >= 2 ? `최근 ${lateDays}일 연속 자정 이후 취침` : null;
+  let consecutive = 0;
+  for (const row of result.rows) {
+    if (row.is_late) consecutive++;
+    else break;
+  }
+  return consecutive >= 2 ? `최근 ${consecutive}일 연속 자정 이후 취침` : null;
 };
 
 /** 오늘 낮잠 횟수 (morning 제외) */
@@ -271,6 +272,63 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   return parts.length > 0 ? `일정: ${parts.join(', ')}.` : '';
 };
 
+// ─── 일기 맥락 ──────────────────────────────────────────
+
+/** 최근 일기 (오늘 + 어제, 각 200자 제한) */
+const queryDiaryContext = async ({ today, yesterday }: DateParams): Promise<string> => {
+  const result = await query<{ date: string; content: string }>(
+    `SELECT date::text, content FROM diary_entries
+     WHERE user_id = 1 AND date IN ($1, $2) ORDER BY date DESC`,
+    [today, yesterday],
+  );
+
+  if (result.rows.length === 0) return '';
+
+  const lines = result.rows.map((r) => {
+    const label = r.date === today ? '오늘' : '어제';
+    const content = r.content.length > 200 ? r.content.slice(0, 200) + '...' : r.content;
+    return `${label}: ${content}`;
+  });
+  return `일기: ${lines.join(' | ')}`;
+};
+
+// ─── 삶의 테마 맥락 ─────────────────────────────────────
+
+/** 활성 삶의 테마 (상위 5개, detail 80자 제한) */
+const queryLifeThemesContext = async (): Promise<string> => {
+  const result = await query<{ theme: string; category: string; detail: string | null }>(
+    `SELECT theme, category, detail FROM life_themes
+     WHERE active = true AND user_id = 1 ORDER BY mention_count DESC LIMIT 5`,
+  );
+
+  if (result.rows.length === 0) return '';
+
+  const lines = result.rows.map(
+    (r) => `[${r.category}] ${r.theme}${r.detail ? `: ${r.detail.slice(0, 80)}` : ''}`,
+  );
+  return `삶의 테마: ${lines.join('. ')}`;
+};
+
+// ─── 운세 맥락 ──────────────────────────────────────────
+
+/** 오늘 일운 요약 (summary + advice만) */
+const queryFortuneContext = async ({ today }: DateParams): Promise<string> => {
+  const result = await query<{ summary: string | null; advice: string | null }>(
+    `SELECT summary, advice FROM fortune_analyses
+     WHERE user_id = 1 AND date = $1 AND period = 'daily'
+     ORDER BY created_at DESC LIMIT 1`,
+    [today],
+  );
+
+  const row = result.rows[0];
+  if (!row) return '';
+
+  const parts: string[] = [];
+  if (row.summary) parts.push(row.summary);
+  if (row.advice) parts.push(`조언: ${row.advice}`);
+  return parts.length > 0 ? `오늘 운세: ${parts.join('. ')}` : '';
+};
+
 // ─── 통합 빌더 ──────────────────────────────────────────
 
 /**
@@ -285,13 +343,16 @@ export const buildLifeContext = async (timing: ContextTiming = 'conversation'): 
       yesterday: getYesterdayISO(),
     };
 
-    const [sleep, routine, schedule] = await Promise.all([
+    const [sleep, routine, schedule, diary, themes, fortune] = await Promise.all([
       querySleepContext(dates, timing),
       queryRoutineContext(dates, timing),
       queryScheduleContext(dates),
+      queryDiaryContext(dates),
+      queryLifeThemesContext(),
+      queryFortuneContext(dates),
     ]);
 
-    const lines = [sleep, routine, schedule].filter(Boolean);
+    const lines = [sleep, routine, schedule, diary, themes, fortune].filter(Boolean);
     if (lines.length === 0) return '';
 
     return `\n\n## 현재 생활 맥락\n${lines.join('\n')}`;
