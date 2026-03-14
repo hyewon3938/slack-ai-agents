@@ -8,6 +8,7 @@ import cron from 'node-cron';
 import type { App } from '@slack/bolt';
 import type { LLMClient, LLMMessage } from '../shared/llm.js';
 import type { RoutineRecordRow } from '../shared/life-queries.js';
+import { query } from '../shared/db.js';
 import {
   queryActiveTemplates,
   queryTodayRecords,
@@ -317,6 +318,58 @@ const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> 
   console.warn(`[Life Cron] 밤 리뷰 전송 완료 (수면기록: ${hasRecord ? '있음' : '없음'})`);
 };
 
+// ─── Insight 크론 태스크 ─────────────────────────────────
+
+/** 아침 일운 분석 알림 → #insight 채널 */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
+  const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
+  if (!insightChannel) return;
+
+  const today = getTodayISO();
+  const result = await query(
+    `SELECT analysis, summary FROM fortune_analyses WHERE user_id = 1 AND date = $1 AND period = 'daily' ORDER BY created_at DESC LIMIT 1`,
+    [today],
+  );
+
+  if (result.rows.length > 0) {
+    const fortune = result.rows[0] as { analysis: string; summary: string | null };
+    const text = fortune.summary
+      ? `${fortune.summary}\n\n${fortune.analysis}`
+      : fortune.analysis;
+    await postToChannel(app.client, insightChannel, text);
+    console.warn('[Life Cron] 일운 분석 알림 전송 완료');
+  } else {
+    await postToChannel(
+      app.client,
+      insightChannel,
+      '오늘의 일운 분석이 아직 준비되지 않았어. 곧 업데이트될 거야.',
+    );
+    console.warn('[Life Cron] 일운 분석 없음 — 대기 메시지 전송');
+  }
+};
+
+/** 밤 일기 리마인더 → #insight 채널 */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
+  const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
+  if (!insightChannel) return;
+
+  const today = getTodayISO();
+  const result = await query(
+    `SELECT 1 FROM diary_entries WHERE user_id = 1 AND date = $1 LIMIT 1`,
+    [today],
+  );
+
+  const hasDiary = result.rows.length > 0;
+  const text = hasDiary
+    ? '오늘 이미 일기를 남겼네. 혹시 더 추가하고 싶은 이야기가 있으면 편하게 남겨.'
+    : '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
+
+  await postToChannel(app.client, insightChannel, text);
+  console.warn(`[Life Cron] 일기 리마인더 전송 (기존 기록: ${hasDiary ? '있음' : '없음'})`);
+};
+
 // ─── 유틸리티 ──────────────────────────────────────────
 
 const wrapTask = (
@@ -363,6 +416,8 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   night: nightTask,
   nightReview: nightReviewTask,
   weeklyReport: weeklyReportTask,
+  insightMorning: insightMorningTask,
+  insightNight: insightNightTask,
 };
 
 // ─── CronScheduler 클래스 ───────────────────────────────

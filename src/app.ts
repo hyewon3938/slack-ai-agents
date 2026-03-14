@@ -7,6 +7,7 @@ import { createLLMClient, createCronLLMClient } from './shared/llm.js';
 import { createLifeAgent } from './agents/life/index.js';
 import { registerLifeActions } from './agents/life/actions.js';
 import { registerHomeTab } from './agents/life/home.js';
+import { createInsightAgent } from './agents/insight/index.js';
 import { CronScheduler } from './cron/life-cron.js';
 import { setPostModifyHook } from './shared/sql-tools.js';
 
@@ -32,6 +33,12 @@ const startApp = async (): Promise<void> => {
   registerAgent(CONFIG.channels.life, lifeAgent);
   registerLifeActions(app);
   registerHomeTab(app);
+
+  // Insight Agent (#insight 채널 — 명리학 일운 + 일기/고민)
+  if (CONFIG.channels.insight) {
+    const insightAgent = createInsightAgent(llmClient);
+    registerAgent(CONFIG.channels.insight, insightAgent);
+  }
 
   // 크론 스케줄러 (DB 기반 동적 스케줄) — Gemini Flash로 비용 절감
   const cronScheduler = new CronScheduler(app, {
