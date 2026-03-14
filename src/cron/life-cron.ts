@@ -328,7 +328,7 @@ const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<vo
 
   const today = getTodayISO();
   const result = await query(
-    `SELECT analysis, summary FROM fortune_analyses WHERE date = $1 ORDER BY created_at DESC LIMIT 1`,
+    `SELECT analysis, summary FROM fortune_analyses WHERE user_id = 1 AND date = $1 ORDER BY created_at DESC LIMIT 1`,
     [today],
   );
 
@@ -356,7 +356,7 @@ const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void
 
   const today = getTodayISO();
   const result = await query(
-    `SELECT 1 FROM diary_entries WHERE date = $1 LIMIT 1`,
+    `SELECT 1 FROM diary_entries WHERE user_id = 1 AND date = $1 LIMIT 1`,
     [today],
   );
 
