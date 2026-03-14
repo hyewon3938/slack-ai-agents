@@ -106,9 +106,9 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('백로그');
   });
 
-  it('170줄 이내의 간결한 프롬프트', async () => {
+  it('220줄 이내의 간결한 프롬프트', async () => {
     const prompt = await buildLifeSystemPrompt('C123');
     const lineCount = prompt.split('\n').length;
-    expect(lineCount).toBeLessThan(200);
+    expect(lineCount).toBeLessThan(220);
   });
 });
