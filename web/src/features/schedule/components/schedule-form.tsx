@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { SCHEDULE_STATUSES, STATUS_LABELS } from '@/lib/types';
+import { SCHEDULE_STATUSES, STATUS_LABELS, getCategoryStyle } from '@/lib/types';
+
+const TAG_LIMIT = 8;
 
 interface ScheduleFormProps {
   schedule?: ScheduleRow | null;
@@ -170,18 +172,61 @@ export function ScheduleForm({
       {/* 카테고리 */}
       <div>
         <label className="mb-1 block text-xs text-gray-500">카테고리</label>
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        >
-          <option value="">없음</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.name}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap gap-1.5">
+          {/* 없음 버튼 */}
+          <button
+            type="button"
+            onClick={() => setCategory('')}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+              category === ''
+                ? 'bg-gray-200 ring-2 ring-gray-400 ring-offset-1'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            없음
+          </button>
+          {/* 태그 버튼 (최대 TAG_LIMIT개) */}
+          {categories.slice(0, TAG_LIMIT).map((c) => {
+            const style = getCategoryStyle(c.color);
+            const selected = category === c.name;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategory(c.name)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  selected ? '' : 'opacity-60 hover:opacity-100'
+                }`}
+                style={{
+                  backgroundColor: style.bg,
+                  color: style.text,
+                  ...(selected
+                    ? { outline: `2px solid ${style.border}`, outlineOffset: '2px' }
+                    : {}),
+                }}
+              >
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
+        {/* 초과분은 셀렉트 */}
+        {categories.length > TAG_LIMIT && (
+          <select
+            value={categories.slice(TAG_LIMIT).some((c) => c.name === category) ? category : ''}
+            onChange={(e) => {
+              if (e.target.value) setCategory(e.target.value);
+            }}
+            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          >
+            <option value="">더보기...</option>
+            {categories.slice(TAG_LIMIT).map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* 중요 */}
@@ -214,8 +259,8 @@ export function ScheduleForm({
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
             placeholder="메모 (선택)"
-            rows={3}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none md:min-h-[140px]"
+            rows={6}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none md:min-h-[200px]"
           />
         ) : (
           <div className="max-h-[120px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 md:max-h-[200px]">

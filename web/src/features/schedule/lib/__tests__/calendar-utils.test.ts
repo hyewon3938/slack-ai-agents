@@ -43,6 +43,7 @@ describe('computeWeekLayout', () => {
     expect(result.spans).toHaveLength(0);
     expect(result.singleDay.size).toBe(0);
     expect(result.laneCount).toBe(0);
+    expect(result.laneCountPerDay).toEqual([0, 0, 0, 0, 0, 0, 0]);
   });
 
   // ─── 단일 일정 ─────────────────────────────────────
@@ -191,5 +192,42 @@ describe('computeWeekLayout', () => {
 
     expect(result.spans).toHaveLength(0);
     expect(result.singleDay.has('2026-03-10')).toBe(true);
+  });
+
+  // ─── laneCountPerDay ────────────────────────────────
+
+  it('기간일정이 지나는 요일만 레인 수를 가진다', () => {
+    // 화~수(col 1~2) 기간일정
+    const schedules = [
+      makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-11' }),
+    ];
+    const result = computeWeekLayout(weekDays, schedules);
+
+    // 월(0)=0, 화(1)=1, 수(2)=1, 목~일(3~6)=0
+    expect(result.laneCountPerDay).toEqual([0, 1, 1, 0, 0, 0, 0]);
+  });
+
+  it('겹치는 기간일정이 있는 요일은 더 높은 레인 수를 가진다', () => {
+    // 화~수(col 1~2) + 목~토(col 3~5) + 금~토(col 4~5)
+    const schedules = [
+      makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-11' }),
+      makeSchedule({ id: 2, date: '2026-03-12', end_date: '2026-03-14' }),
+      makeSchedule({ id: 3, date: '2026-03-13', end_date: '2026-03-14' }),
+    ];
+    const result = computeWeekLayout(weekDays, schedules);
+
+    // 월(0)=0, 화(1)=1, 수(2)=1, 목(3)=1, 금(4)=2, 토(5)=2, 일(6)=0
+    expect(result.laneCountPerDay).toEqual([0, 1, 1, 1, 2, 2, 0]);
+  });
+
+  it('겹치지 않는 기간일정이 같은 레인을 공유하면 각 요일 레인 수는 1이다', () => {
+    // 월~화(col 0~1) + 목~금(col 3~4) — 같은 레인 0
+    const schedules = [
+      makeSchedule({ id: 1, date: '2026-03-09', end_date: '2026-03-10' }),
+      makeSchedule({ id: 2, date: '2026-03-12', end_date: '2026-03-13' }),
+    ];
+    const result = computeWeekLayout(weekDays, schedules);
+
+    expect(result.laneCountPerDay).toEqual([1, 1, 0, 1, 1, 0, 0]);
   });
 });
