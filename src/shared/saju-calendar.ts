@@ -7,6 +7,7 @@
  * 모듈: import { getDayPillar, calculateDailyFortune } from './saju-calendar.js'
  */
 
+import { fileURLToPath } from 'node:url';
 import { addDays, getTodayISO } from './kst.js';
 
 // ─── 타입 ───────────────────────────────────────────────
@@ -391,7 +392,6 @@ export const getRelations = (
 ): Relations => {
   const tStemIdx = cheonganIndex(targetStem);
   const tBranchIdx = jijiIndex(targetBranch);
-  const names = ['년주', '월주', '일주', '시주'];
 
   const result: Relations = {
     cheonganHap: [],
@@ -417,11 +417,11 @@ export const getRelations = (
   // 지지 관계 탐지
   for (let i = 0; i < wonkukBranches.length; i++) {
     const wIdx = jijiIndex(wonkukBranches[i]);
-    checkJijiRelation(tBranchIdx, wIdx, names[i], JIJI_CHUNG, result.jijiChung, '충');
-    checkJijiYukhap(tBranchIdx, wIdx, names[i], result.jijiHap);
-    checkJijiRelation(tBranchIdx, wIdx, names[i], JIJI_HYUNG, result.jijiHyung, '형');
-    checkJijiRelation(tBranchIdx, wIdx, names[i], JIJI_PA, result.jijipa, '파');
-    checkJijiRelation(tBranchIdx, wIdx, names[i], JIJI_HAE, result.jijiHae, '해');
+    checkJijiRelation(tBranchIdx, wIdx, JIJI_CHUNG, result.jijiChung, '충');
+    checkJijiYukhap(tBranchIdx, wIdx, result.jijiHap);
+    checkJijiRelation(tBranchIdx, wIdx, JIJI_HYUNG, result.jijiHyung, '형');
+    checkJijiRelation(tBranchIdx, wIdx, JIJI_PA, result.jijipa, '파');
+    checkJijiRelation(tBranchIdx, wIdx, JIJI_HAE, result.jijiHae, '해');
   }
 
   // 삼합 부분 체크 (일운 지지 + 원국 지지 2개 이상이면 삼합 성립)
@@ -432,7 +432,7 @@ export const getRelations = (
 
 /** 지지 관계 체크 (충/형/파/해) */
 const checkJijiRelation = (
-  a: number, b: number, pillarName: string,
+  a: number, b: number,
   table: readonly (readonly [number, number])[],
   results: string[], label: string,
 ): void => {
@@ -446,7 +446,7 @@ const checkJijiRelation = (
 
 /** 지지 육합 체크 */
 const checkJijiYukhap = (
-  a: number, b: number, pillarName: string, results: string[],
+  a: number, b: number, results: string[],
 ): void => {
   for (const [x, y, element] of JIJI_YUKHAP) {
     if ((a === x && b === y) || (a === y && b === x)) {
@@ -568,8 +568,8 @@ const runCLI = async (): Promise<void> => {
 };
 
 // CLI 진입점
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/.*\//, ''));
-if (isCLI) {
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMainModule) {
   runCLI().catch((err: unknown) => {
     console.error('[saju-calendar] 오류:', err instanceof Error ? err.message : err);
     process.exit(1);
