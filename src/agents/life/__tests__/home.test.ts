@@ -98,6 +98,7 @@ describe('publishHomeView', () => {
         end_date: null,
         status: 'todo',
         category: '업무',
+        category_type: 'task',
         memo: null,
         important: false,
       },
