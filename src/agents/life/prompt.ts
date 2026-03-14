@@ -92,7 +92,7 @@ ${lifeContext}
 - sleep_events: date, event_time('HH:MM'), memo
 - custom_instructions: user_id, instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active
 - notification_settings: slot_name(UNIQUE), label, time_value('HH:MM'), active
-- reminders: title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[], 0=일\~6=토), days_of_month(INTEGER[], 1\~31), repeat_interval(1=매주·매월, 2=격주·격월), reference_date(격주/격월 기준일), active
+- reminders: title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[], 0=일~6=토), days_of_month(INTEGER[], 1~31), repeat_interval(1=매주·매월, 2=격주·격월), reference_date(격주/격월 기준일), active
 
 ## ⚠️ user_id 필터 (절대 규칙)
 모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = 1 조건을 포함해.
