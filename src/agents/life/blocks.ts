@@ -254,10 +254,17 @@ const groupByCategory = (items: ScheduleRow[]): CategoryGroup[] => {
   }
 
   const result: CategoryGroup[] = [];
-  // 알파벳순, 미분류 맨 끝
+  // event 카테고리 상단 → 알파벳순 → 미분류 맨 끝
+  const isEventCategory = (cat: string): boolean => {
+    const first = categoryMap.get(cat)?.[0];
+    return first?.category_type === 'event';
+  };
   const categories = [...categoryMap.keys()].sort((a, b) => {
     if (a === '미분류') return 1;
     if (b === '미분류') return -1;
+    const aEvent = isEventCategory(a) ? 0 : 1;
+    const bEvent = isEventCategory(b) ? 0 : 1;
+    if (aEvent !== bEvent) return aEvent - bEvent;
     return a.localeCompare(b, 'ko');
   });
 
@@ -274,10 +281,12 @@ const groupByCategory = (items: ScheduleRow[]): CategoryGroup[] => {
   return result;
 };
 
+/** event 타입 판별 (categories.type = 'event') */
+const isEventType = (item: ScheduleRow): boolean =>
+  item.category_type === 'event';
+
 /** 일정 항목 제목 포맷 (메모 제외) */
 const formatScheduleTitle = (item: ScheduleRow): string => {
-  const isAppointment = item.category === '약속';
-
   // 기간 일정 표시
   let rangePart = '';
   if (item.date && item.end_date) {
@@ -287,7 +296,7 @@ const formatScheduleTitle = (item: ScheduleRow): string => {
   // 중요 표시 (제목 뒤)
   const star = item.important ? ' ★' : '';
 
-  if (isAppointment) return `${item.title}${rangePart}${star}`;
+  if (isEventType(item)) return `📅 ${item.title}${rangePart}${star}`;
   if (item.status === 'done') return `~${item.title}~${rangePart}${star}`;
   if (item.status === 'in-progress') return `► ${item.title}${rangePart}${star}`;
   return `${item.title}${rangePart}${star}`;
@@ -347,14 +356,20 @@ const buildOverflowOptions = (
   return options;
 };
 
-/** 메모 텍스트에 취소선 적용 (완료 일정용) */
-const formatMemoWithStrike = (memo: string, isDone: boolean): string =>
-  isDone
-    ? memo
-        .split('\n')
-        .map((l) => `~${l}~`)
-        .join('\n')
-    : memo;
+/** event 전용 overflow: 중요 표시 + 삭제만 */
+const buildEventOverflowOptions = (
+  item: ScheduleRow,
+  targetDate: string,
+): Array<{ text: { type: 'plain_text'; text: string }; value: string }> => [
+  {
+    text: { type: 'plain_text' as const, text: item.important ? '중요 해제' : '중요 표시' },
+    value: encodeOverflowValue(item.id, TOGGLE_IMPORTANT_ACTION, targetDate),
+  },
+  {
+    text: { type: 'plain_text' as const, text: '삭제하기' },
+    value: encodeOverflowValue(item.id, DELETE_ACTION, targetDate),
+  },
+];
 
 /** backlog 전용 overflow: "오늘로 이동" + "삭제" */
 const buildBacklogOverflowOptions = (
@@ -375,11 +390,10 @@ export const buildScheduleBlocks = (
   items: ScheduleRow[],
   targetDate: string,
   headerText?: string,
-  options?: { compact?: boolean; backlog?: boolean; hideCompletedMemo?: boolean },
+  options?: { compact?: boolean; backlog?: boolean },
 ): { text: string; blocks: KnownBlock[] } => {
   const blocks: KnownBlock[] = [];
   const backlog = options?.backlog ?? false;
-  const hideCompletedMemo = options?.hideCompletedMemo ?? false;
   const formatted = backlog ? '' : formatDateShort(targetDate);
   const compact = options?.compact ?? false;
   const headerLabel = backlog
@@ -399,17 +413,8 @@ export const buildScheduleBlocks = (
       text: { type: 'mrkdwn', text: `*[${group.category}]*` },
     });
 
-    const addMemoContext = (memo: string | null, isDone: boolean): void => {
-      if (!memo) return;
-      if (hideCompletedMemo && isDone) return;
-      blocks.push({
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: formatMemoWithStrike(memo, isDone) }],
-      });
-    };
-
     if (compact) {
-      // compact: overflow 없이, 메모 있는 항목은 개별 섹션+context
+      // compact: overflow 없이
       const batch: string[] = [];
       const flushBatch = (): void => {
         if (batch.length === 0) return;
@@ -421,35 +426,23 @@ export const buildScheduleBlocks = (
       };
 
       for (const item of group.items) {
-        const titleText = formatScheduleTitle(item);
-        if (item.memo) {
-          flushBatch();
-          blocks.push({
-            type: 'section',
-            text: { type: 'mrkdwn', text: titleText },
-          });
-          addMemoContext(item.memo, item.status === 'done');
-        } else {
-          batch.push(titleText);
-        }
+        batch.push(formatScheduleTitle(item));
       }
       flushBatch();
     } else {
       // full: overflow 메뉴 포함
-      const noOverflowLines: { title: string; memo: string | null; isDone: boolean }[] = [];
+      const noOverflowLines: string[] = [];
 
       const flushNoOverflow = (): void => {
         if (noOverflowLines.length === 0) return;
         blocks.push({
           type: 'section',
-          text: { type: 'mrkdwn', text: noOverflowLines.map((l) => l.title).join('\n') },
+          text: { type: 'mrkdwn', text: noOverflowLines.join('\n') },
         });
-        for (const l of noOverflowLines) addMemoContext(l.memo, l.isDone);
         noOverflowLines.length = 0;
       };
 
       for (const item of group.items) {
-        const isAppointment = item.category === '약속';
         const titleText = formatScheduleTitle(item);
 
         if (backlog) {
@@ -464,14 +457,22 @@ export const buildScheduleBlocks = (
               options: buildBacklogOverflowOptions(item),
             },
           });
-          addMemoContext(item.memo, item.status === 'done');
-        } else if (isAppointment || !item.status) {
-          noOverflowLines.push({
-            title: titleText,
-            memo: item.memo,
-            isDone: item.status === 'done',
+        } else if (isEventType(item)) {
+          // event: 중요/삭제만
+          flushNoOverflow();
+          blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: titleText },
+            accessory: {
+              type: 'overflow',
+              action_id: SCHEDULE_ACTION_ID,
+              options: buildEventOverflowOptions(item, targetDate),
+            },
           });
+        } else if (!item.status) {
+          noOverflowLines.push(titleText);
         } else {
+          // task: 전체 상태변경
           flushNoOverflow();
           blocks.push({
             type: 'section',
@@ -482,7 +483,6 @@ export const buildScheduleBlocks = (
               options: buildOverflowOptions(item, targetDate),
             },
           });
-          addMemoContext(item.memo, item.status === 'done');
         }
       }
 
@@ -490,8 +490,8 @@ export const buildScheduleBlocks = (
     }
   }
 
-  // 하단 통계 — 약속 제외
-  const tasks = items.filter((i) => i.category !== '약속');
+  // 하단 통계 — event 타입 제외
+  const tasks = items.filter((i) => !isEventType(i));
   const done = tasks.filter((i) => i.status === 'done').length;
 
   blocks.push({
@@ -522,17 +522,6 @@ export const buildScheduleText = (
     lines.push(`[${group.category}]`);
     for (const item of group.items) {
       lines.push(formatScheduleTitle(item));
-      if (item.memo) {
-        const isDone = item.status === 'done';
-        const memoLines = item.memo.split('\n');
-        if (isDone) {
-          lines.push(`~└ ${memoLines[0]}~`);
-          for (let i = 1; i < memoLines.length; i++) lines.push(`~  ${memoLines[i]}~`);
-        } else {
-          lines.push(`└ ${memoLines[0]}`);
-          for (let i = 1; i < memoLines.length; i++) lines.push(`  ${memoLines[i]}`);
-        }
-      }
     }
     lines.push('');
   }
@@ -540,10 +529,10 @@ export const buildScheduleText = (
   return lines.join('\n').trimEnd();
 };
 
-/** 밤 미완료 일정 텍스트 (없으면 null) */
+/** 밤 미완료 일정 텍스트 (없으면 null) — event 타입 제외 */
 export const buildNightScheduleText = (items: ScheduleRow[], targetDate: string): string | null => {
   const incomplete = items.filter(
-    (s) => s.category !== '약속' && s.status !== 'done' && s.status !== 'cancelled',
+    (s) => !isEventType(s) && s.status !== 'done' && s.status !== 'cancelled',
   );
   if (incomplete.length === 0) return null;
   return buildScheduleText(
