@@ -38,7 +38,8 @@ src/
 ├── app.ts                    # 서버 진입점
 ├── router.ts                 # 채널별 에이전트 라우팅
 ├── agents/
-│   └── life/                 # 통합 라이프 에이전트
+│   ├── life/                 # 통합 라이프 에이전트
+│   └── insight/              # 명리학 일운 + 일기/고민 에이전트
 │       ├── index.ts          # 에이전트 생성 (SQL 도구 기반)
 │       ├── prompt.ts         # 시스템 프롬프트 (DB 스키마 + 캐릭터)
 │       ├── actions.ts        # 인터랙티브 버튼 핸들러 (루틴 완료 등)
@@ -84,6 +85,7 @@ db/
 | 채널 | 용도 |
 |------|------|
 | #life | 메인. 모든 자연어 대화, 기록, 분석 |
+| #insight | 명리학 일운 분석 + 일기/고민 기록 |
 
 ## DB 스키마 (PostgreSQL)
 
@@ -103,7 +105,17 @@ sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/
 -- 커스텀 지시사항 (스마트 메모리: 카테고리 분류 + 자동 감지 + soft-delete)
 custom_instructions: id, instruction, category, source(user/auto), active, created_at
 
--- 확장 예정: diary, expenses, fortune
+-- 사주 프로필
+saju_profiles: id, user_id, year/month/day/hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, strength(신강/중화/신약), heeshin(희신), gishin(기신), hanshin(한신), profile_summary, birth_date, birth_time
+
+-- 운세 분석 (일운/월운/세운/대운)
+fortune_analyses: id, user_id, date, period(daily/monthly/yearly/major), day/month/year_pillar, analysis, summary, warnings(JSONB), recommendations(JSONB), advice, model — UNIQUE(user_id, date, period)
+
+-- 일기 (날짜별 누적)
+diary_entries: id, user_id, date(UNIQUE), content, updated_at
+
+-- 삶의 테마/고민
+life_themes: id, user_id, theme, category, detail, active, source(user/auto), first_mentioned, mention_count
 ```
 
 ## 에이전트 도구
