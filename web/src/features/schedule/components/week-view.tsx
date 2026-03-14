@@ -109,8 +109,8 @@ export function WeekView({
               {/* 스패닝 바 공간 확보 — 해당 요일을 지나는 기간일정 레인 수만큼만 */}
               {daySpanHeight > 0 && <div style={{ height: `${daySpanHeight}px` }} />}
 
-              {/* 단일 일정 */}
-              <div className="space-y-1.5">
+              {/* 단일 일정 — z-[20]로 span bar(z-10) 위에 표시 */}
+              <div className="relative z-[20] space-y-1.5">
                 {daySingles.map((s) => (
                   <DraggableCard
                     key={s.id}
