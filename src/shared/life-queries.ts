@@ -34,6 +34,7 @@ export interface ScheduleRow {
   end_date: string | null;
   status: string;
   category: string | null;
+  category_type: string | null;
   memo: string | null;
   important: boolean;
 }
@@ -163,27 +164,33 @@ export const completeRecord = async (id: number): Promise<void> => {
 
 // ─── 일정 쿼리 ──────────────────────────────────────────
 
-/** 특정 날짜의 일정 조회 (당일 + 기간 일정 포함) */
+/** 특정 날짜의 일정 조회 (당일 + 기간 일정 포함, categories JOIN) */
 export const queryTodaySchedules = async (today: string): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
-      `SELECT id, title, date::text, end_date::text, status, category, memo, important
-     FROM schedules
-     WHERE status != 'cancelled' AND user_id = 1
-       AND (date = $1 OR (date <= $1 AND end_date >= $1))
-     ORDER BY category NULLS LAST, status, title`,
+      `SELECT s.id, s.title, s.date::text, s.end_date::text, s.status,
+              s.category, c.type AS category_type, s.memo, s.important
+     FROM schedules s
+     LEFT JOIN categories c ON c.name = s.category
+     WHERE s.status != 'cancelled' AND s.user_id = 1
+       AND (s.date = $1 OR (s.date <= $1 AND s.end_date >= $1))
+     ORDER BY
+       CASE WHEN c.type = 'event' THEN 0 ELSE 1 END,
+       s.category NULLS LAST, s.status, s.title`,
       [today],
     )
   ).rows;
 
-/** 백로그 일정 조회 (날짜 미지정 항목) */
+/** 백로그 일정 조회 (날짜 미지정 항목, categories JOIN) */
 export const queryBacklogSchedules = async (): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
-      `SELECT id, title, date::text, end_date::text, status, category, memo, important
-     FROM schedules
-     WHERE date IS NULL AND status != 'cancelled' AND user_id = 1
-     ORDER BY category NULLS LAST, important DESC, title`,
+      `SELECT s.id, s.title, s.date::text, s.end_date::text, s.status,
+              s.category, c.type AS category_type, s.memo, s.important
+     FROM schedules s
+     LEFT JOIN categories c ON c.name = s.category
+     WHERE s.date IS NULL AND s.status != 'cancelled' AND s.user_id = 1
+     ORDER BY s.category NULLS LAST, s.important DESC, s.title`,
     )
   ).rows;
 
