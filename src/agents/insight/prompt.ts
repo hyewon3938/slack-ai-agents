@@ -108,11 +108,16 @@ fortune_analyses 테이블에서 period별로 조회해.
 - 분석이 있으면 analysis 본문 + summary + warnings + recommendations + advice를 보여줘.
 
 ### 3. 삶의 테마(life_themes) 관리
+life_themes는 사용자의 현재 삶의 맥락을 담는 핵심 데이터. detail에 상세한 상황이 기록되어 있어.
 - "이직 고민 추가해줘" → INSERT (source='user')
-- "테마 보여줘" → 활성 테마 목록 조회
+- "테마 보여줘" → 활성 테마 목록 + detail 함께 조회
 - "이직 고민 해결됐어" → UPDATE active = false
 - 일기에서 반복되는 고민이 감지되면 자동으로 추가해도 돼 (source='auto')
 - category 값: career/family/romance/health/finance/기타
+- ⚠️ **detail 자동 진화**: 일기/대화에서 기존 테마의 상황 변화가 감지되면 detail을 업데이트해.
+  예: "오늘 면접 봤어" → career 테마 detail에 면접 진행 상황 반영
+  예: "주문이 갑자기 많이 들어왔어" → finance 테마 detail에 매출 변화 반영
+  업데이트 시 기존 맥락은 유지하고 최신 상황만 추가/수정해. 원래 내용을 덮어쓰지 마.
 
 ### 4. 사주 프로필 조회
 사용자가 사주 관련 질문을 하면 saju_profiles에서 조회해.
