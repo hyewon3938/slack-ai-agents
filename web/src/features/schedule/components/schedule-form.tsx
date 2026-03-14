@@ -34,7 +34,6 @@ export function ScheduleForm({
   const [memo, setMemo] = useState(schedule?.memo ?? '');
   const [important, setImportant] = useState(schedule?.important ?? false);
   const [saving, setSaving] = useState(false);
-  const [editingMemo, setEditingMemo] = useState(!schedule?.memo);
 
   const isDirty = useCallback(() => {
     if (!schedule) {
@@ -90,7 +89,7 @@ export function ScheduleForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 overflow-hidden">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {/* 제목 */}
       <div>
         <input
@@ -242,33 +241,14 @@ export function ScheduleForm({
 
       {/* 메모 */}
       <div>
-        <div className="mb-1 flex items-center justify-between">
-          <label className="text-xs text-gray-500">메모</label>
-          {!editingMemo && (
-            <button
-              type="button"
-              onClick={() => setEditingMemo(true)}
-              className="text-xs text-blue-500 hover:text-blue-600"
-            >
-              메모 수정
-            </button>
-          )}
-        </div>
-        {editingMemo ? (
-          <textarea
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-            placeholder="메모 (선택)"
-            rows={6}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none md:min-h-[200px]"
-          />
-        ) : (
-          <div className="max-h-[120px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 md:max-h-[200px]">
-            <p className="whitespace-pre-wrap text-sm text-gray-700">
-              {memo || <span className="text-gray-400">메모 없음</span>}
-            </p>
-          </div>
-        )}
+        <label className="mb-1 block text-xs text-gray-500">메모</label>
+        <textarea
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="메모 (선택)"
+          rows={5}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none md:min-h-[180px]"
+        />
       </div>
 
       {/* 버튼 */}
