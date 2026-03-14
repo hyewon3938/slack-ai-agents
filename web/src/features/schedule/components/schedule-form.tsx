@@ -256,7 +256,9 @@ export function ScheduleForm({
         {onDelete && schedule && (
           <button
             type="button"
-            onClick={onDelete}
+            onClick={() => {
+              if (confirm('이 일정을 삭제할까?')) onDelete();
+            }}
             className="rounded-lg px-4 py-2.5 text-sm font-medium text-red-500 transition hover:bg-red-50"
           >
             삭제
