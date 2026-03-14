@@ -322,6 +322,7 @@ const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> 
 // ─── Insight 크론 태스크 ─────────────────────────────────
 
 /** 아침 일운 분석 알림 → #insight 채널 */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
   const insightChannel = CONFIG.channels.insight;
   if (!insightChannel) return;
@@ -350,6 +351,7 @@ const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<vo
 };
 
 /** 밤 일기 리마인더 → #insight 채널 */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
   const insightChannel = CONFIG.channels.insight;
   if (!insightChannel) return;
