@@ -475,7 +475,8 @@ const checkSamhap = (
     if (matchCount >= 2) {
       results.push(`${JIJI_LIST[a]}${JIJI_LIST[b]}${JIJI_LIST[c]} 삼합(${element})`);
     } else if (matchCount === 1) {
-      const matched = others.find(t => wIdxSet.has(t))!;
+      const matched = others.find(t => wIdxSet.has(t));
+      if (matched === undefined) return;
       results.push(`${JIJI_LIST[targetBranch]}-${JIJI_LIST[matched]} 반삼합(${element})`);
     }
   }
