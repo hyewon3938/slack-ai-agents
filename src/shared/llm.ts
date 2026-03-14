@@ -166,21 +166,21 @@ export const createLLMClient = async (): Promise<LLMClient> => {
 
 /**
  * 크론 전용 LLM 클라이언트 생성.
- * Gemini Flash로 비용 절감 (단순 인사/요약 메시지 생성용).
- * GEMINI_API_KEY 미설정 시 메인 클라이언트로 폴백.
+ * Sonnet 사용 — 맥락 이해 + 시제 정확도가 크론 메시지 품질에 중요.
+ * Gemini Flash 복원 시: new GeminiLLMClient(CONFIG.llm.geminiApiKey, 'gemini-2.5-flash')
  */
 export const createCronLLMClient = async (): Promise<LLMClient> => {
   const { CONFIG } = await import('./config.js');
 
-  if (CONFIG.llm.geminiApiKey) {
+  if (CONFIG.llm.anthropicApiKey) {
     // eslint-disable-next-line no-console
-    console.log('[LLM] 크론용 Gemini Flash 클라이언트 생성');
-    return new GeminiLLMClient(CONFIG.llm.geminiApiKey, 'gemini-2.5-flash');
+    console.log('[LLM] 크론용 Sonnet 클라이언트 생성');
+    return new ClaudeLLMClient(CONFIG.llm.anthropicApiKey);
   }
 
-  // Gemini API 키 없으면 메인 클라이언트로 폴백
+  // Anthropic 키 없으면 메인 클라이언트로 폴백
   // eslint-disable-next-line no-console
-  console.log('[LLM] GEMINI_API_KEY 미설정 — 크론도 메인 LLM 사용');
+  console.log('[LLM] ANTHROPIC_API_KEY 미설정 — 크론도 메인 LLM 사용');
   return createLLMClient();
 };
 

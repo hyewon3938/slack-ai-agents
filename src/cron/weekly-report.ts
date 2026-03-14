@@ -438,7 +438,7 @@ const generateWeeklySummary = async (
   const { sleep, routine, schedule, correlation } = data;
 
   const context = [
-    `주간 리포트 데이터를 보고 한줄 총평을 생성해줘. 반말로, 따뜻하게.`,
+    `주간 리포트 데이터를 보고 총평을 써줘. 잘한 점은 칭찬하고, 개선할 점은 잔소리해. 반말로, 따뜻하게.`,
     `수면: 평균 ${Math.floor(sleep.avgDuration / 60)}시간 ${sleep.avgDuration % 60}분 (${sleep.recordCount}일)`,
     `루틴: ${routine.thisWeekRate}% (${routine.thisWeekCompleted}/${routine.thisWeekTotal})${routine.lastWeekRate != null ? `, 지난주 ${routine.lastWeekRate}%` : ''}`,
     `일정: 완료 ${schedule.completedCount}, 미완료 ${schedule.incompleteCount}`,
@@ -449,7 +449,7 @@ const generateWeeklySummary = async (
 
   try {
     const messages: LLMMessage[] = [
-      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 한줄 총평만 써줘.` },
+      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로.` },
       { role: 'user', content: context },
     ];
     const response = await llmClient.chat(messages);
