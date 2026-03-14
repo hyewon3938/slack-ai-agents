@@ -72,7 +72,7 @@ ${weekRef}
 
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ)
 
-- saju_profiles: user_id, year_pillar, month_pillar, day_pillar, hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, profile_summary, birth_date, birth_time
+- saju_profiles: user_id, year_pillar, month_pillar, day_pillar, hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, strength(신강/중화/신약), heeshin(희신), gishin(기신), hanshin(한신), profile_summary, birth_date, birth_time
 - fortune_analyses: user_id, date(UNIQUE), day_pillar, month_pillar, year_pillar, analysis, summary, warnings(JSONB), recommendations(JSONB), advice, model
 - diary_entries: user_id, date(UNIQUE), content, updated_at
 - life_themes: user_id, theme, category, detail, active, source(user/auto), first_mentioned, mention_count

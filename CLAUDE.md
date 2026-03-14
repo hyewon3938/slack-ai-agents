@@ -106,7 +106,7 @@ sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/
 custom_instructions: id, instruction, category, source(user/auto), active, created_at
 
 -- 사주 프로필
-saju_profiles: id, user_id, year/month/day/hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, profile_summary, birth_date, birth_time
+saju_profiles: id, user_id, year/month/day/hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, strength(신강/중화/신약), heeshin(희신), gishin(기신), hanshin(한신), profile_summary, birth_date, birth_time
 
 -- 일운 분석 결과
 fortune_analyses: id, user_id, date(UNIQUE), day/month/year_pillar, analysis, summary, warnings(JSONB), recommendations(JSONB), advice, model
