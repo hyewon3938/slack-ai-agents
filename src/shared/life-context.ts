@@ -210,13 +210,17 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
 const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   const parts: string[] = [];
 
-  // 오늘 일정 (전체 + 미완료)
+  // 오늘 일정 (전체 + 미완료 — event 타입은 미완료에서 제외)
   const todayResult = await query<{ total: string; incomplete: string }>(
     `SELECT COUNT(*)::text as total,
-            COUNT(*) FILTER (WHERE status = 'todo' OR status = 'in-progress')::text as incomplete
-     FROM schedules
-     WHERE status != 'cancelled' AND user_id = 1
-       AND (date = $1 OR (date <= $1 AND end_date >= $1))`,
+            COUNT(*) FILTER (
+              WHERE (s.status = 'todo' OR s.status = 'in-progress')
+                AND COALESCE(c.type, 'task') = 'task'
+            )::text as incomplete
+     FROM schedules s
+     LEFT JOIN categories c ON c.name = s.category
+     WHERE s.status != 'cancelled' AND s.user_id = 1
+       AND (s.date = $1 OR (s.date <= $1 AND s.end_date >= $1))`,
     [today],
   );
 

@@ -86,6 +86,7 @@ ${lifeContext}
 
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ, user_id INTEGER 있음)
 - schedules: user_id, title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category, memo, important(bool)
+- categories: name(UNIQUE), type('task'/'event'), color, sort_order
 - routine_templates: user_id, name, time_slot(아침/점심/저녁/밤), frequency(매일/격일/3일마다/주1회), active
 - routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo
 - sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo
@@ -100,9 +101,6 @@ ${lifeContext}
 - INSERT: user_id 컬럼에 1 포함
 - UPDATE/DELETE: WHERE user_id = 1 AND ...
 이 규칙은 sleep_events, notification_settings, reminders를 제외한 모든 테이블에 적용.
-
-## ⚠️ 절대 규칙: 완료 일정 메모 숨김
-status='done'인 일정의 memo는 어떤 상황에서든 표시하지 마. 사용자가 명시적으로 "완료된 일정 메모 보여줘"라고 요청할 때만 예외. 이 규칙은 매 응답마다 적용해.
 
 ## 일정 조회 SQL — 3대 필수 규칙
 
@@ -119,8 +117,8 @@ SELECT *, EXTRACT(DOW FROM date) as dow FROM schedules WHERE ...
 위의 날짜 참조표에 있는 날짜는 참조해도 돼. 그 외 날짜는 반드시 SQL.
 
 ### 3. 정렬 순서
-카테고리 내에서 완료 → 진행중 → 할일 순서. 반드시 이 ORDER BY 사용:
-ORDER BY category NULLS LAST, CASE status WHEN 'done' THEN 1 WHEN 'in-progress' THEN 2 WHEN 'todo' THEN 3 END, title
+event 타입 상단 + 카테고리 내에서 완료 → 진행중 → 할일 순서. 반드시 이 ORDER BY 사용:
+ORDER BY CASE WHEN c.type = 'event' THEN 0 ELSE 1 END, s.category NULLS LAST, CASE s.status WHEN 'done' THEN 1 WHEN 'in-progress' THEN 2 WHEN 'todo' THEN 3 END, s.title
 
 ### 일정 등록 시 날짜 계산
 - "다음 월요일", "이번 주 금요일" 등 요일 기반 날짜는 절대 직접 계산하지 마.
@@ -132,23 +130,24 @@ ORDER BY category NULLS LAST, CASE status WHEN 'done' THEN 1 WHEN 'in-progress' 
 일정 목록을 보여줄 때 아래 포맷을 따라 (Slack mrkdwn):
 - 카테고리별로 그룹화. 카테고리 헤더: *[카테고리명]*
 - SQL 결과 순서 그대로 표시해 (위 ORDER BY가 정렬을 보장).
-- 상태 표시: ► 진행중(in-progress), ~취소선~ 완료(done).
+- 할일(task) 타입: ► 진행중(in-progress), ~취소선~ 완료(done).
+- 일정(event) 타입: 📅 접두어. 상태 표시 안 함. 달성률/완료 통계에서 제외.
+- categories.type = 'event'인 카테고리가 일정 타입이야. 조회할 때 LEFT JOIN categories c ON c.name = s.category 해서 c.type으로 확인해.
 - 중요 표시: 제목 뒤에 ★ (important=true일 때만).
 - 기간 일정(end_date 있음): 제목 옆에 M/D(요일)~M/D(요일).
-- 메모: 제목 아래 └ 접두어. **완료(done) 일정의 메모는 절대 표시하지 마. status='done'이면 memo 무조건 생략.**
+- 메모 표시 안 함 (웹 대시보드에서 확인).
 - 카테고리 사이는 빈 줄.
 예시:
-*[개인]*
-분리수거
-└ 오전에 하기
+*[약속]*
+📅 팀 회의
+📅 치과 예약 ★
 *[사업]*
 ~발송 완료~
-► 제품 포장 3/7(토)~3/8(일)
+► 제품 포장
 포장카드 주문하기 ★
-└ 디자인 시안 3개 중 선택
 
 ## 일정/백로그 규칙
-- 메모: schedules.memo. "메모 추가" → UPDATE, "메모 삭제" → NULL. 원문 그대로 저장.
+- 메모: schedules.memo. "메모 추가" → UPDATE, "메모 삭제" → NULL. 원문 그대로 저장. 단, 응답에 메모 내용은 표시하지 마.
 - 변경 후: 해당 날짜 전체 일정을 3대 필수 규칙으로 조회해서 보여줘. 잔소리 한 문장.
 - 백로그: date IS NULL인 일정. 표시 포맷 동일, 날짜 범위 없음.
 
