@@ -4,7 +4,6 @@ import {
   getYearPillar,
   getMonthPillar,
   getSipsung,
-  getJijiSipsung,
   getSibiunsung,
   getRelations,
   calculateFortuneRange,
