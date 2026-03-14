@@ -207,8 +207,8 @@ describe('computeWeekLayout', () => {
     expect(result.laneCountPerDay).toEqual([0, 1, 1, 0, 0, 0, 0]);
   });
 
-  it('기간일정이 있는 요일은 전체 laneCount를 사용한다', () => {
-    // 화~수(col 1~2) + 목~토(col 3~5) + 금~토(col 4~5) → laneCount=2
+  it('겹치는 기간일정이 있는 요일만 높은 레인 수를 가진다', () => {
+    // 화~수(col 1~2) lane0 + 목~토(col 3~5) lane0 + 금~토(col 4~5) lane1
     const schedules = [
       makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-11' }),
       makeSchedule({ id: 2, date: '2026-03-12', end_date: '2026-03-14' }),
@@ -216,8 +216,8 @@ describe('computeWeekLayout', () => {
     ];
     const result = computeWeekLayout(weekDays, schedules);
 
-    // 기간일정이 지나는 열은 전부 laneCount(2), 없는 열은 0
-    expect(result.laneCountPerDay).toEqual([0, 2, 2, 2, 2, 2, 0]);
+    // 월(0)=0, 화(1)=1, 수(2)=1, 목(3)=1, 금(4)=2, 토(5)=2, 일(6)=0
+    expect(result.laneCountPerDay).toEqual([0, 1, 1, 1, 2, 2, 0]);
   });
 
   it('겹치지 않는 기간일정이 같은 레인을 공유하면 각 요일 레인 수는 1이다', () => {
