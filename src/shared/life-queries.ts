@@ -270,6 +270,17 @@ export const queryDueReminders = async (
          OR (date IS NULL AND frequency = '매일')
          OR (date IS NULL AND frequency = '평일' AND $3 BETWEEN 1 AND 5)
          OR (date IS NULL AND frequency = '주말' AND $3 IN (0, 6))
+         OR (date IS NULL AND frequency = '매주'
+             AND $3 = ANY(days_of_week)
+             AND (($2::date - COALESCE(reference_date, $2::date)) / 7)
+                 % COALESCE(repeat_interval, 1) = 0)
+         OR (date IS NULL AND frequency = '매월'
+             AND EXTRACT(DAY FROM $2::date)::int = ANY(days_of_month)
+             AND ((EXTRACT(YEAR FROM $2::date)::int * 12
+                   + EXTRACT(MONTH FROM $2::date)::int)
+                  - (EXTRACT(YEAR FROM COALESCE(reference_date, $2::date))::int * 12
+                     + EXTRACT(MONTH FROM COALESCE(reference_date, $2::date))::int))
+                 % COALESCE(repeat_interval, 1) = 0)
        )`,
       [currentTime, today, dow],
     )

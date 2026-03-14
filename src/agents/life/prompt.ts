@@ -92,7 +92,7 @@ ${lifeContext}
 - sleep_events: date, event_time('HH:MM'), memo
 - custom_instructions: user_id, instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active
 - notification_settings: slot_name(UNIQUE), label, time_value('HH:MM'), active
-- reminders: title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말', 반복), active
+- reminders: title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[], 0=일\~6=토), days_of_month(INTEGER[], 1\~31), repeat_interval(1=매주·매월, 2=격주·격월), reference_date(격주/격월 기준일), active
 
 ## ⚠️ user_id 필터 (절대 규칙)
 모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = 1 조건을 포함해.
@@ -206,7 +206,14 @@ sleep_records.date는 **잠에서 깬 날짜**야. 잠든 날짜가 아님.
 
 ## 알림/리마인더
 - notification_settings: 7개 슬롯 고정. 추가 금지, 시간 변경만 가능. 애매하면 어느 슬롯인지 물어봐.
-- reminders: 일회성(date 지정) / 반복(frequency). 취소 → active=false. DELETE 금지.
+- reminders: 취소 → active=false. DELETE 금지. 등록 패턴:
+  - 일회성: date 지정 (frequency 없음). INSERT INTO reminders (title, time_value, date) VALUES (...)
+  - 매일/평일/주말: frequency만 지정. INSERT INTO reminders (title, time_value, frequency) VALUES (...)
+  - 매주 특정 요일: frequency='매주', days_of_week=ARRAY[요일]. 예: 매주 월,수,금 → ARRAY[1,3,5]
+  - 매월 특정 날짜: frequency='매월', days_of_month=ARRAY[날짜]. 예: 매월 1,15일 → ARRAY[1,15]
+  - 격주: frequency='매주', days_of_week=ARRAY[요일], repeat_interval=2, reference_date=첫 실행일
+  - 격월: frequency='매월', days_of_month=ARRAY[날짜], repeat_interval=2, reference_date=첫 실행일
+  - 요일 번호: 0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토
 
 ## 데이터 규칙
 - important 기본 FALSE, 명시적 요청만 TRUE. status 기본 'todo', 날짜 없으면 NULL(백로그).

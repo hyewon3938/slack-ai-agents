@@ -103,7 +103,10 @@ sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/
 -- 커스텀 지시사항 (스마트 메모리: 카테고리 분류 + 자동 감지 + soft-delete)
 custom_instructions: id, instruction, category, source(user/auto), active, created_at
 
--- 확장 예정: diary, expenses, fortune
+-- 리마인더
+reminders: id, title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[]), days_of_month(INTEGER[]), repeat_interval(기본1, 격주/격월=2), reference_date, active
+
+-- 확장 예정: expenses
 ```
 
 ## 에이전트 도구
