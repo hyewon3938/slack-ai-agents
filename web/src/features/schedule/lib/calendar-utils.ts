@@ -94,10 +94,13 @@ export function computeWeekLayout(weekDays: Date[], schedules: ScheduleRow[], ca
     items.sort((a, b) => compareSchedulePriority(a, b, categories));
   }
 
-  // 요일별 스페이서: 기간일정이 지나는 열은 전체 laneCount, 없는 열은 0
+  // 요일별 스페이서: 해당 열을 실제로 점유하는 최대 레인 수
   const laneCountPerDay = Array.from({ length: 7 }, (_, col) => {
-    const hasSpan = lanes.some((lane) => lane[col]);
-    return hasSpan ? lanes.length : 0;
+    let maxLane = -1;
+    for (let l = 0; l < lanes.length; l++) {
+      if (lanes[l]![col]) maxLane = l;
+    }
+    return maxLane + 1;
   });
 
   return { spans, singleDay, laneCount: lanes.length, laneCountPerDay };
