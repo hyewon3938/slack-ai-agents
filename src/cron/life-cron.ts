@@ -8,7 +8,6 @@ import cron from 'node-cron';
 import type { App } from '@slack/bolt';
 import type { LLMClient, LLMMessage } from '../shared/llm.js';
 import type { RoutineRecordRow } from '../shared/life-queries.js';
-import { CONFIG } from '../shared/config.js';
 import { query } from '../shared/db.js';
 import {
   queryActiveTemplates,
@@ -324,7 +323,7 @@ const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> 
 /** 아침 일운 분석 알림 → #insight 채널 */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
-  const insightChannel = CONFIG.channels.insight;
+  const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
   if (!insightChannel) return;
 
   const today = getTodayISO();
@@ -353,7 +352,7 @@ const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<vo
 /** 밤 일기 리마인더 → #insight 채널 */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
-  const insightChannel = CONFIG.channels.insight;
+  const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
   if (!insightChannel) return;
 
   const today = getTodayISO();
