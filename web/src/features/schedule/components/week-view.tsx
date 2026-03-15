@@ -279,6 +279,7 @@ function WeekSpanBar({
   const isEvent = cat?.type === 'event';
   const isDone = span.schedule.status === 'done' || span.schedule.status === 'cancelled';
   const isOverdue =
+    !isEvent &&
     !isDone &&
     span.schedule.date &&
     new Date(span.schedule.date + 'T12:00:00+09:00') <
