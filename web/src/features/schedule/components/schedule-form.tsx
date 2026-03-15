@@ -147,26 +147,28 @@ export function ScheduleForm({
         </div>
       )}
 
-      {/* 상태 */}
-      <div>
-        <label className="mb-1 block text-xs text-gray-500">상태</label>
-        <div className="flex gap-1">
-          {SCHEDULE_STATUSES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatus(s)}
-              className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition ${
-                status === s
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {STATUS_LABELS[s]}
-            </button>
-          ))}
+      {/* 상태 — event 타입 카테고리는 상태 변경 불필요 */}
+      {categories.find((c) => c.name === category)?.type !== 'event' && (
+        <div>
+          <label className="mb-1 block text-xs text-gray-500">상태</label>
+          <div className="flex gap-1">
+            {SCHEDULE_STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition ${
+                  status === s
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 카테고리 */}
       <div>
