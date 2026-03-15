@@ -97,12 +97,13 @@ export function WeekView({
                 >
                   {format(day, 'EEE', { locale: ko })}
                 </div>
-                <div
-                  className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
-                    today ? 'bg-blue-500 text-white' : 'text-gray-700'
-                  }`}
-                >
-                  {format(day, 'd')}
+                <div className="relative mt-1 inline-flex items-center justify-center">
+                  {today && (
+                    <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500" />
+                  )}
+                  <span className={`relative text-sm font-medium ${today ? 'text-white' : 'text-gray-700'}`}>
+                    {format(day, 'd')}
+                  </span>
                 </div>
               </div>
 
