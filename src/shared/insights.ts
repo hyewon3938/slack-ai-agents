@@ -146,6 +146,7 @@ export const detectSlotGap = async (today: string): Promise<Insight | null> => {
        FROM routine_records r
        JOIN routine_templates t ON r.template_id = t.id
        WHERE r.date BETWEEN ($1::date - 6) AND $1
+         AND r.date >= t.created_at::date
        GROUP BY t.time_slot
        HAVING COUNT(*) >= 3
        ORDER BY rate`,
@@ -182,14 +183,18 @@ export const detectWeekComparison = async (today: string): Promise<Insight | nul
   try {
     const result = await query<WeekCompRow>(
       `WITH this_week AS (
-        SELECT ROUND(COUNT(*) FILTER (WHERE completed)::numeric
+        SELECT ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
           / NULLIF(COUNT(*), 0) * 100)::int AS rate
-        FROM routine_records WHERE date BETWEEN ($1::date - 6) AND $1
+        FROM routine_records r
+        JOIN routine_templates t ON r.template_id = t.id
+        WHERE r.date BETWEEN ($1::date - 6) AND $1 AND r.date >= t.created_at::date
       ),
       last_week AS (
-        SELECT ROUND(COUNT(*) FILTER (WHERE completed)::numeric
+        SELECT ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
           / NULLIF(COUNT(*), 0) * 100)::int AS rate
-        FROM routine_records WHERE date BETWEEN ($1::date - 13) AND ($1::date - 7)
+        FROM routine_records r
+        JOIN routine_templates t ON r.template_id = t.id
+        WHERE r.date BETWEEN ($1::date - 13) AND ($1::date - 7) AND r.date >= t.created_at::date
       )
       SELECT this_week.rate AS this_rate, last_week.rate AS last_rate
       FROM this_week, last_week`,
