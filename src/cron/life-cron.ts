@@ -378,25 +378,28 @@ const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<vo
   }
 };
 
-/** 밤 일기 리마인더 → #insight 채널 */
+/** 밤 일기 리마인더 → #insight 채널 (기존 기록 있으면 내용 표시) */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
   const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
   if (!insightChannel) return;
 
   const today = getTodayISO();
-  const result = await query(
-    `SELECT 1 FROM diary_entries WHERE user_id = 1 AND date = $1 LIMIT 1`,
+  const result = await query<{ content: string }>(
+    `SELECT content FROM diary_entries WHERE user_id = 1 AND date = $1 LIMIT 1`,
     [today],
   );
 
-  const hasDiary = result.rows.length > 0;
-  const text = hasDiary
-    ? '오늘 이미 일기를 남겼네. 혹시 더 추가하고 싶은 이야기가 있으면 편하게 남겨.'
-    : '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
+  const diary = result.rows[0];
+  let text: string;
+  if (diary) {
+    text = `오늘 기록된 일기야:\n\n${diary.content}\n\n더 추가하고 싶은 이야기가 있으면 편하게 남겨.`;
+  } else {
+    text = '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
+  }
 
   await postToChannel(app.client, insightChannel, text);
-  console.warn(`[Life Cron] 일기 리마인더 전송 (기존 기록: ${hasDiary ? '있음' : '없음'})`);
+  console.warn(`[Life Cron] 일기 리마인더 전송 (기존 기록: ${diary ? '있음' : '없음'})`);
 };
 
 // ─── 유틸리티 ──────────────────────────────────────────

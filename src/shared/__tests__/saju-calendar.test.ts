@@ -4,8 +4,10 @@ import {
   getYearPillar,
   getMonthPillar,
   getSipsung,
+  getJijiSipsung,
   getSibiunsung,
   getRelations,
+  getJijanggan,
   calculateFortuneRange,
 } from '../saju-calendar.js';
 import type { Cheongan, Jiji } from '../saju-calendar.js';
@@ -237,6 +239,105 @@ describe('getRelations', () => {
     // 일운 지지=술이면 원국 묘와 합
     const relations = getRelations(wonkukStems, wonkukBranches, '갑', '술');
     expect(relations.jijiHap.some(s => s.includes('묘') && s.includes('술'))).toBe(true);
+  });
+});
+
+// ─── getJijanggan ───────────────────────────────────────
+
+describe('getJijanggan', () => {
+  it('자(子): 임(여) + 계(정) — 중기 없음', () => {
+    const result = getJijanggan('자');
+    expect(result.yeogi).toBe('임');
+    expect(result.junggi).toBeUndefined();
+    expect(result.jeonggi).toBe('계');
+  });
+
+  it('축(丑): 계(여) + 신(중) + 기(정)', () => {
+    const result = getJijanggan('축');
+    expect(result.yeogi).toBe('계');
+    expect(result.junggi).toBe('신');
+    expect(result.jeonggi).toBe('기');
+  });
+
+  it('인(寅): 무(여) + 병(중) + 갑(정)', () => {
+    const result = getJijanggan('인');
+    expect(result.yeogi).toBe('무');
+    expect(result.junggi).toBe('병');
+    expect(result.jeonggi).toBe('갑');
+  });
+
+  it('묘(卯): 갑(여) + 을(정) — 중기 없음', () => {
+    const result = getJijanggan('묘');
+    expect(result.yeogi).toBe('갑');
+    expect(result.junggi).toBeUndefined();
+    expect(result.jeonggi).toBe('을');
+  });
+
+  it('유(酉): 경(여) + 신(정) — 중기 없음', () => {
+    const result = getJijanggan('유');
+    expect(result.yeogi).toBe('경');
+    expect(result.junggi).toBeUndefined();
+    expect(result.jeonggi).toBe('신');
+  });
+
+  it('해(亥): 무(여) + 갑(중) + 임(정)', () => {
+    const result = getJijanggan('해');
+    expect(result.yeogi).toBe('무');
+    expect(result.junggi).toBe('갑');
+    expect(result.jeonggi).toBe('임');
+  });
+
+  it('지장간 정기와 본기(JIJI_BONGI) 십성 교차검증 — 경금 기준', () => {
+    const jijis: Jiji[] = ['자', '축', '인', '묘', '진', '사', '오', '미', '신', '유', '술', '해'];
+    for (const jiji of jijis) {
+      const jijanggan = getJijanggan(jiji);
+      const bongiSipsung = getJijiSipsung('경', jiji);
+      const jijangganSipsung = getSipsung('경', jijanggan.jeonggi);
+      expect(jijangganSipsung).toBe(bongiSipsung);
+    }
+  });
+});
+
+// ─── 암합 (amhap) in getRelations ──────────────────────
+
+describe('암합 탐지', () => {
+  const wonkukStems: readonly Cheongan[] = ['갑', '정', '경', '정'];
+
+  it('인축 암합(토) 감지 — 인의 정기 갑 + 축의 정기 기 = 갑기합', () => {
+    const wonkukBranches: readonly Jiji[] = ['술', '묘', '술', '축'];
+    const relations = getRelations(wonkukStems, wonkukBranches, '병', '인');
+    expect(relations.amhap.some(s => s.includes('인-축') && s.includes('토') && s.includes('갑-기'))).toBe(true);
+  });
+
+  it('묘신 암합(금) 감지 — 묘의 정기 을 + 신의 정기 경 = 을경합', () => {
+    const wonkukBranches: readonly Jiji[] = ['술', '신', '술', '해'];
+    const relations = getRelations(wonkukStems, wonkukBranches, '갑', '묘');
+    expect(relations.amhap.some(s => s.includes('묘-신') && s.includes('금') && s.includes('을-경'))).toBe(true);
+  });
+
+  it('사유 암합(수) 감지 — 사의 정기 병 + 유의 정기 신 = 병신합', () => {
+    const wonkukBranches: readonly Jiji[] = ['술', '유', '술', '해'];
+    const relations = getRelations(wonkukStems, wonkukBranches, '무', '사');
+    expect(relations.amhap.some(s => s.includes('사-유') && s.includes('수') && s.includes('병-신'))).toBe(true);
+  });
+
+  it('오해 암합(목) 감지 — 오의 정기 정 + 해의 정기 임 = 정임합', () => {
+    const wonkukBranches: readonly Jiji[] = ['술', '묘', '술', '해'];
+    const relations = getRelations(wonkukStems, wonkukBranches, '갑', '오');
+    expect(relations.amhap.some(s => s.includes('오-해') && s.includes('목') && s.includes('정-임'))).toBe(true);
+  });
+
+  it('암합 없는 조합 — 빈 배열', () => {
+    // 오(정기=정3, 중기=기5) vs 축(정기=기5, 중기=신7)
+    // 정기-정기: 정(3)-기(5) → 합 아님. 중기 조합도 합 없음.
+    const relations = getRelations(wonkukStems, ['축', '축', '축', '축'], '갑', '오');
+    expect(relations.amhap).toHaveLength(0);
+  });
+
+  it('Relations 인터페이스에 amhap 필드 존재', () => {
+    const wonkukBranches: readonly Jiji[] = ['술', '묘', '술', '해'];
+    const relations = getRelations(wonkukStems, wonkukBranches, '임', '자');
+    expect(Array.isArray(relations.amhap)).toBe(true);
   });
 });
 

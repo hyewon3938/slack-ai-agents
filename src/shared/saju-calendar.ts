@@ -34,6 +34,12 @@ export interface SipsungResult {
   yearJiji: Sipsung;
 }
 
+export interface JijangganEntry {
+  yeogi: number;      // 여기 (잔기) — cheongan index
+  junggi?: number;    // 중기 — 자/묘/유는 없음
+  jeonggi: number;    // 정기 (본기) — cheongan index
+}
+
 export interface Relations {
   cheonganHap: string[];
   jijiChung: string[];
@@ -41,6 +47,7 @@ export interface Relations {
   jijiHyung: string[];
   jijipa: string[];
   jijiHae: string[];
+  amhap: string[];
 }
 
 export interface DailyFortuneData {
@@ -51,6 +58,9 @@ export interface DailyFortuneData {
   sipsung: SipsungResult;
   sibiunsung: Sibiunsung;
   relations: Relations;
+  jijanggan: {
+    day: { yeogi: string; junggi?: string; jeonggi: string };
+  };
 }
 
 // ─── 상수: 천간/지지 ────────────────────────────────────
@@ -73,6 +83,22 @@ const JIJI_BONGI: readonly number[] = [
   // 자=계(9), 축=기(5), 인=갑(0), 묘=을(1), 진=무(4), 사=병(2)
   // 오=정(3), 미=기(5), 신=경(6), 유=신(7), 술=무(4), 해=임(8)
   9, 5, 0, 1, 4, 2, 3, 5, 6, 7, 4, 8,
+];
+
+/** 지지 → 지장간 (여기/중기/정기) — 천간 index로 표현 */
+const JIJANGGAN: readonly JijangganEntry[] = [
+  { yeogi: 8, jeonggi: 9 },                   // 자(子): 임(여), 계(정)
+  { yeogi: 9, junggi: 7, jeonggi: 5 },        // 축(丑): 계(여), 신(중), 기(정)
+  { yeogi: 4, junggi: 2, jeonggi: 0 },        // 인(寅): 무(여), 병(중), 갑(정)
+  { yeogi: 0, jeonggi: 1 },                   // 묘(卯): 갑(여), 을(정)
+  { yeogi: 1, junggi: 9, jeonggi: 4 },        // 진(辰): 을(여), 계(중), 무(정)
+  { yeogi: 4, junggi: 6, jeonggi: 2 },        // 사(巳): 무(여), 경(중), 병(정)
+  { yeogi: 2, junggi: 5, jeonggi: 3 },        // 오(午): 병(여), 기(중), 정(정)
+  { yeogi: 3, junggi: 1, jeonggi: 5 },        // 미(未): 정(여), 을(중), 기(정)
+  { yeogi: 4, junggi: 8, jeonggi: 6 },        // 신(申): 무(여), 임(중), 경(정)
+  { yeogi: 6, jeonggi: 7 },                   // 유(酉): 경(여), 신(정)
+  { yeogi: 7, junggi: 3, jeonggi: 4 },        // 술(戌): 신(여), 정(중), 무(정)
+  { yeogi: 4, junggi: 0, jeonggi: 8 },        // 해(亥): 무(여), 갑(중), 임(정)
 ];
 
 // ─── 상수: 십이운성 ──────────────────────────────────────
@@ -381,6 +407,20 @@ export const getSibiunsung = (dayMaster: Cheongan, jiji: Jiji): Sibiunsung => {
   return SIBIUNSUNG_CYCLE[offset];
 };
 
+// ─── 지장간 조회 ─────────────────────────────────────────
+
+/** 지지의 지장간 정보를 한글(천간)로 반환 */
+export const getJijanggan = (jiji: Jiji): {
+  yeogi: Cheongan; junggi?: Cheongan; jeonggi: Cheongan;
+} => {
+  const entry = JIJANGGAN[jijiIndex(jiji)];
+  return {
+    yeogi: CHEONGAN_LIST[entry.yeogi],
+    junggi: entry.junggi !== undefined ? CHEONGAN_LIST[entry.junggi] : undefined,
+    jeonggi: CHEONGAN_LIST[entry.jeonggi],
+  };
+};
+
 // ─── 합충형파해 분석 ────────────────────────────────────
 
 /** 원국과 일운 간 합충형파해 관계 탐지 */
@@ -400,6 +440,7 @@ export const getRelations = (
     jijiHyung: [],
     jijipa: [],
     jijiHae: [],
+    amhap: [],
   };
 
   // 천간합 탐지
@@ -426,6 +467,9 @@ export const getRelations = (
 
   // 삼합 부분 체크 (일운 지지 + 원국 지지 2개 이상이면 삼합 성립)
   checkSamhap(tBranchIdx, wonkukBranches, result.jijiHap);
+
+  // 암합 탐지 (지장간 간 천간합)
+  checkAmhap(tBranchIdx, wonkukBranches, result.amhap);
 
   return result;
 };
@@ -482,6 +526,57 @@ const checkSamhap = (
   }
 };
 
+/**
+ * 암합 탐지: 두 지지의 지장간 간 천간합 여부.
+ * 정기-정기 합 (주요 암합): 인축(갑기합토), 묘신(을경합금), 사유(병신합수), 오해(정임합목)
+ * 중기-정기 합 (부차적 암합): 추가 감지
+ */
+const checkAmhap = (
+  targetBranch: number,
+  wonkukBranches: readonly Jiji[],
+  results: string[],
+): void => {
+  const tEntry = JIJANGGAN[targetBranch];
+
+  for (const wonkukBranch of wonkukBranches) {
+    const wIdx = jijiIndex(wonkukBranch);
+    if (wIdx === targetBranch) continue;
+
+    const wEntry = JIJANGGAN[wIdx];
+    const found = new Set<string>();
+
+    // 정기-정기 천간합 체크 (주요 암합)
+    for (const [a, b, element] of CHEONGAN_HAP) {
+      if (
+        (tEntry.jeonggi === a && wEntry.jeonggi === b) ||
+        (tEntry.jeonggi === b && wEntry.jeonggi === a)
+      ) {
+        const label = `${JIJI_LIST[targetBranch]}-${JIJI_LIST[wIdx]} 암합(${element}) [${CHEONGAN_LIST[tEntry.jeonggi]}-${CHEONGAN_LIST[wEntry.jeonggi]}]`;
+        found.add(label);
+      }
+    }
+
+    // 중기-정기 천간합 체크 (부차적 암합)
+    const pairs: [number | undefined, number | undefined][] = [
+      [tEntry.junggi, wEntry.jeonggi],
+      [tEntry.jeonggi, wEntry.junggi],
+      [tEntry.junggi, wEntry.junggi],
+    ];
+
+    for (const [stemA, stemB] of pairs) {
+      if (stemA === undefined || stemB === undefined) continue;
+      for (const [a, b, element] of CHEONGAN_HAP) {
+        if ((stemA === a && stemB === b) || (stemA === b && stemB === a)) {
+          const label = `${JIJI_LIST[targetBranch]}-${JIJI_LIST[wIdx]} 암합(${element}) [${CHEONGAN_LIST[stemA]}-${CHEONGAN_LIST[stemB]}]`;
+          if (!found.has(label)) found.add(label);
+        }
+      }
+    }
+
+    found.forEach(label => results.push(label));
+  }
+};
+
 // ─── 통합 진입점 ────────────────────────────────────────
 
 /** 단일 날짜 전체 사주 데이터 계산 */
@@ -495,6 +590,8 @@ export const calculateDailyFortune = (
   const monthPillar = getMonthPillar(dateStr);
   const yearPillar = getYearPillar(dateStr);
 
+  const dayJijanggan = getJijanggan(dayPillar.jiji);
+
   return {
     date: dateStr,
     dayPillar,
@@ -503,6 +600,13 @@ export const calculateDailyFortune = (
     sipsung: getSipsungResult(dayMaster, dayPillar, monthPillar, yearPillar),
     sibiunsung: getSibiunsung(dayMaster, dayPillar.jiji),
     relations: getRelations(wonkukStems, wonkukBranches, dayPillar.cheongan, dayPillar.jiji),
+    jijanggan: {
+      day: {
+        yeogi: dayJijanggan.yeogi,
+        junggi: dayJijanggan.junggi,
+        jeonggi: dayJijanggan.jeonggi,
+      },
+    },
   };
 };
 
