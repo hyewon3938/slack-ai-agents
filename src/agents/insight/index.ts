@@ -6,7 +6,7 @@ import { SQL_TOOLS, executeSQLTool } from '../../shared/sql-tools.js';
 import { ChatHistory } from '../../shared/chat-history.js';
 import { buildInsightSystemPrompt } from './prompt.js';
 import { queryOne } from '../../shared/db.js';
-import { getTodayISO } from '../../shared/kst.js';
+import { getTodayISO, addDays } from '../../shared/kst.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
@@ -16,6 +16,8 @@ const DAILY_FORTUNE_RE = /^(오늘\s*)?일운(\s*(보여줘|보여|알려줘|뭐
 const MONTHLY_FORTUNE_RE = /^(이번\s*달?\s*)?월운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
 /** 세운 조회 */
 const YEARLY_FORTUNE_RE = /^(올해\s*)?세운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
+/** 내일 일운 조회: "내일 일운", "내일 일운 보여줘" 등 */
+const TOMORROW_FORTUNE_RE = /^내일\s*일운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
 /** 대운 조회 */
 const MAJOR_FORTUNE_RE = /^(내\s*)?대운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
 
@@ -52,6 +54,12 @@ const tryFortuneFastPath = async (
            FROM fortune_analyses WHERE user_id = 1 AND period = 'daily' AND date = $1`;
     params = [today];
     label = '오늘 일운';
+  } else if (TOMORROW_FORTUNE_RE.test(trimmed)) {
+    const tomorrow = addDays(getTodayISO(), 1);
+    sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
+           FROM fortune_analyses WHERE user_id = 1 AND period = 'daily' AND date = $1`;
+    params = [tomorrow];
+    label = '내일 일운';
   } else if (MONTHLY_FORTUNE_RE.test(trimmed)) {
     const today = getTodayISO();
     const monthFirst = today.slice(0, 7) + '-01';
