@@ -89,7 +89,7 @@ export function WeekView({
                 selected ? 'bg-blue-50/50' : 'bg-white hover:bg-gray-50/50'
               }`}
             >
-              <div className="mb-3 text-center">
+              <div className="text-center">
                 <div
                   className={`text-xs ${
                     dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-gray-500'
@@ -97,7 +97,7 @@ export function WeekView({
                 >
                   {format(day, 'EEE', { locale: ko })}
                 </div>
-                <div className="relative mt-1 inline-flex items-center justify-center">
+                <div className="relative my-3 flex items-center justify-center">
                   {today && (
                     <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500" />
                   )}
