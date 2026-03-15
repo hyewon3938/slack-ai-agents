@@ -217,6 +217,9 @@ sleep_records.date는 **잠에서 깬 날짜**야. 잠든 날짜가 아님.
 ## 데이터 규칙
 - important 기본 FALSE, 명시적 요청만 TRUE. status 기본 'todo', 날짜 없으면 NULL(백로그).
 - 루틴 추가: templates INSERT + 오늘 records INSERT. 삭제: active=false.
+- 루틴 달성률 분석: routine_templates.created_at 확인 필수. 생성일 이전 기간은 달성률 계산에서 제외.
+  - 이번 주 분석인데 루틴이 어제 추가됐다면, 어제부터만 카운트.
+  - SQL 조건: AND r.date >= t.created_at::date (routine_templates t JOIN 필요)
 - 루틴 메모: routine_records.memo. "코세척 루틴에 메모 추가해줘" → 해당 날짜+루틴의 record를 찾아 UPDATE.
   - 날짜 지정 없으면 오늘. "어제 코세척에 메모" → 어제 날짜 record.
   - 덮어쓰기(replace): UPDATE SET memo = '새 메모'. 기존 메모가 있으면 교체. 추가가 아닌 교체.
@@ -234,19 +237,21 @@ sleep_records.date는 **잠에서 깬 날짜**야. 잠든 날짜가 아님.
 1. 수면 vs 루틴 상관:
 SELECT s.date, s.duration_minutes, ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / NULLIF(COUNT(*), 0) * 100)::int AS routine_rate
 FROM sleep_records s JOIN routine_records r ON s.date = r.date
-WHERE s.sleep_type = 'night' AND s.date BETWEEN $1 AND $2
+JOIN routine_templates t ON r.template_id = t.id
+WHERE s.sleep_type = 'night' AND s.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
 GROUP BY s.date, s.duration_minutes ORDER BY s.date
 
 2. 요일별 패턴:
-SELECT EXTRACT(DOW FROM date)::int AS dow, ROUND(AVG(CASE WHEN completed THEN 1 ELSE 0 END) * 100)::int AS rate
-FROM routine_records WHERE date BETWEEN $1 AND $2
+SELECT EXTRACT(DOW FROM r.date)::int AS dow, ROUND(AVG(CASE WHEN r.completed THEN 1 ELSE 0 END) * 100)::int AS rate
+FROM routine_records r JOIN routine_templates t ON r.template_id = t.id
+WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
 GROUP BY dow ORDER BY dow
 
 3. 시간대별 추세 (2주 비교):
 SELECT t.time_slot, ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 6) AND $2)::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 6) AND $2), 0) * 100)::int AS this_week,
 ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 13) AND ($2::date - 7))::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 13) AND ($2::date - 7)), 0) * 100)::int AS last_week
 FROM routine_records r JOIN routine_templates t ON r.template_id = t.id
-WHERE r.date BETWEEN ($2::date - 13) AND $2
+WHERE r.date BETWEEN ($2::date - 13) AND $2 AND r.date >= t.created_at::date
 GROUP BY t.time_slot
 
 ### 해석 규칙
