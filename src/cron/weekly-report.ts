@@ -133,20 +133,24 @@ export const aggregateWeeklyRoutine = async (
   };
 
   try {
-    // 이번주 달성률 + 지난주 비교
+    // 이번주 달성률 + 지난주 비교 (각 루틴의 created_at 이후 기록만 집계)
     const rateResult = await query<RoutineRateRow>(
       `WITH this_week AS (
         SELECT
           COUNT(*)::int AS this_week_total,
-          COUNT(*) FILTER (WHERE completed)::int AS this_week_done,
-          ROUND(COUNT(*) FILTER (WHERE completed)::numeric
+          COUNT(*) FILTER (WHERE r.completed)::int AS this_week_done,
+          ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
             / NULLIF(COUNT(*), 0) * 100)::int AS this_week_rate
-        FROM routine_records WHERE date BETWEEN $1 AND $2
+        FROM routine_records r
+        JOIN routine_templates t ON r.template_id = t.id
+        WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
       ),
       last_week AS (
-        SELECT ROUND(COUNT(*) FILTER (WHERE completed)::numeric
+        SELECT ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
           / NULLIF(COUNT(*), 0) * 100)::int AS last_week_rate
-        FROM routine_records WHERE date BETWEEN ($1::date - 7) AND ($1::date - 1)
+        FROM routine_records r
+        JOIN routine_templates t ON r.template_id = t.id
+        WHERE r.date BETWEEN ($1::date - 7) AND ($1::date - 1) AND r.date >= t.created_at::date
       )
       SELECT this_week_total, this_week_done, this_week_rate, last_week_rate
       FROM this_week, last_week`,
@@ -156,20 +160,20 @@ export const aggregateWeeklyRoutine = async (
     const rate = rateResult.rows[0];
     if (!rate || rate.this_week_total === 0) return empty;
 
-    // 시간대별 달성률
+    // 시간대별 달성률 (각 루틴의 created_at 이후 기록만 집계)
     const slotResult = await query<SlotBreakdownRow>(
       `SELECT t.time_slot AS slot,
         ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
           / NULLIF(COUNT(*), 0) * 100)::int AS rate
       FROM routine_records r
       JOIN routine_templates t ON r.template_id = t.id
-      WHERE r.date BETWEEN $1 AND $2
+      WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
       GROUP BY t.time_slot
       ORDER BY rate DESC`,
       [weekStart, weekEnd],
     );
 
-    // 루틴별 달성률 (best/worst)
+    // 루틴별 달성률 (best/worst) — 주간 시작일 이전에 생성된 루틴만 포함
     const routineResult = await query<RoutineNameRow>(
       `SELECT t.name,
         ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
@@ -177,6 +181,7 @@ export const aggregateWeeklyRoutine = async (
       FROM routine_records r
       JOIN routine_templates t ON r.template_id = t.id
       WHERE r.date BETWEEN $1 AND $2
+        AND t.created_at::date < $1::date
       GROUP BY t.id, t.name
       HAVING COUNT(*) >= 2
       ORDER BY rate DESC`,
@@ -289,12 +294,13 @@ export const aggregateSleepRoutineCorrelation = async (
           AND duration_minutes IS NOT NULL
       ),
       daily_routine AS (
-        SELECT date,
-          ROUND(COUNT(*) FILTER (WHERE completed)::numeric
+        SELECT r.date,
+          ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
             / NULLIF(COUNT(*), 0) * 100)::int AS rate
-        FROM routine_records
-        WHERE date BETWEEN $1 AND $2
-        GROUP BY date
+        FROM routine_records r
+        JOIN routine_templates t ON r.template_id = t.id
+        WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
+        GROUP BY r.date
       )
       SELECT
         (SELECT ROUND(AVG(r.rate))::int FROM daily_routine r
