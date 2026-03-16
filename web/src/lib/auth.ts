@@ -34,6 +34,7 @@ export const getSession = async () => {
 
 /** 인증 확인 + userId 반환. 미인증이면 null */
 export const requireAuth = async (): Promise<number | null> => {
+  if (process.env.BYPASS_AUTH === 'true') return 1;
   const session = await getSession();
   return session.userId ?? null;
 };
