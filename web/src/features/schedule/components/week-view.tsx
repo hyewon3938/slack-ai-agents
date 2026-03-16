@@ -78,7 +78,7 @@ export function WeekView({
           const today = isToday(day);
           const selected = selectedDate === dateStr;
           const dayOfWeek = day.getDay();
-          const daySpanHeight = layout.laneCount * LANE_HEIGHT;
+          const daySpanHeight = (layout.laneCountPerDay[colIndex] ?? 0) * LANE_HEIGHT;
 
           return (
             <DroppableDay
@@ -107,7 +107,7 @@ export function WeekView({
                 </div>
               </div>
 
-              {/* 스패닝 바 공간 확보 — 전체 레인 수 기준 (열별 카드 시작 위치 통일) */}
+              {/* 스패닝 바 공간 확보 — 열별 실제 레인 수 기준 */}
               {daySpanHeight > 0 && <div style={{ height: `${daySpanHeight}px` }} />}
 
               {/* 단일 일정 */}
