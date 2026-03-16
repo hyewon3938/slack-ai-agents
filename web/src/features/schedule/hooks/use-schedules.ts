@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   format,
   addMonths,
@@ -34,6 +34,7 @@ export function useSchedules() {
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const mutatingRef = useRef(0);
 
   const getDateRange = useCallback((): { from: string; to: string } => {
     let start: Date;
@@ -74,7 +75,7 @@ export function useSchedules() {
       }
       if (schedulesRes.ok) {
         const data = (await schedulesRes.json()) as { data: ScheduleRow[] };
-        setSchedules(data.data);
+        if (mutatingRef.current === 0) setSchedules(data.data);
       }
       if (categoriesRes.ok) {
         const data = (await categoriesRes.json()) as { data: CategoryRow[] };
@@ -154,6 +155,7 @@ export function useSchedules() {
   const handleStatusChange = async (id: number, status: string) => {
     const prev = schedules;
     setSchedules((s) => s.map((item) => (item.id === id ? { ...item, status } : item)));
+    mutatingRef.current++;
     try {
       const res = await fetch(`/api/schedules/${id}`, {
         method: 'PATCH',
@@ -167,6 +169,8 @@ export function useSchedules() {
     } catch {
       setSchedules(prev);
       alert('상태 변경에 실패했어');
+    } finally {
+      mutatingRef.current--;
     }
   };
 
@@ -256,6 +260,7 @@ export function useSchedules() {
     const newImportant = !schedule.important;
     const prev = schedules;
     setSchedules((s) => s.map((item) => (item.id === id ? { ...item, important: newImportant } : item)));
+    mutatingRef.current++;
     try {
       const res = await fetch(`/api/schedules/${id}`, {
         method: 'PATCH',
@@ -269,6 +274,8 @@ export function useSchedules() {
     } catch {
       setSchedules(prev);
       alert('중요 설정 변경에 실패했어');
+    } finally {
+      mutatingRef.current--;
     }
   };
 
