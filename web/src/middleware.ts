@@ -4,6 +4,11 @@ import type { NextRequest } from 'next/server';
 const PUBLIC_PATHS = ['/login', '/api/auth'];
 
 export function middleware(request: NextRequest) {
+  // 로컬 개발용 인증 바이패스
+  if (process.env.BYPASS_AUTH === 'true') {
+    return NextResponse.next();
+  }
+
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
