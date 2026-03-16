@@ -78,7 +78,7 @@ export function WeekView({
           const today = isToday(day);
           const selected = selectedDate === dateStr;
           const dayOfWeek = day.getDay();
-          const daySpanHeight = layout.laneCountPerDay[colIndex]! * LANE_HEIGHT;
+          const daySpanHeight = layout.laneCount * LANE_HEIGHT;
 
           return (
             <DroppableDay
@@ -89,7 +89,7 @@ export function WeekView({
                 selected ? 'bg-blue-50/50' : 'bg-white hover:bg-gray-50/50'
               }`}
             >
-              <div className="text-center">
+              <div className="relative z-20 text-center">
                 <div
                   className={`text-xs ${
                     dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-gray-500'
