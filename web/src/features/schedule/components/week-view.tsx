@@ -27,7 +27,7 @@ interface WeekViewProps {
 }
 
 const LANE_HEIGHT = 76;
-const DATE_ROW_HEIGHT = 60;
+const DATE_ROW_HEIGHT = 72;
 
 const NEXT_STATUS: Record<string, string> = {
   todo: 'in-progress',
@@ -89,7 +89,7 @@ export function WeekView({
                 selected ? 'bg-blue-50/50' : 'bg-white hover:bg-gray-50/50'
               }`}
             >
-              <div className="relative z-20 text-center">
+              <div className="relative z-20 mb-3 text-center">
                 <div
                   className={`text-xs ${
                     dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-gray-500'
