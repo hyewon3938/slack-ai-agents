@@ -108,7 +108,7 @@ export function WeekView({
               </div>
 
               {/* 스패닝 바 공간 확보 — 열별 실제 레인 수 기준 */}
-              {daySpanHeight > 0 && <div style={{ height: `${daySpanHeight}px` }} />}
+              {daySpanHeight > 0 && <div className="mb-1.5" style={{ height: `${daySpanHeight}px` }} />}
 
               {/* 단일 일정 */}
               <div className="space-y-1.5">
