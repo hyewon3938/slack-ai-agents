@@ -250,11 +250,13 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
     parts.push(`내일 ${tomorrowCount}건`);
   }
 
-  // 밀린 일정 (어제 이전 + todo 상태)
+  // 밀린 일정 (어제 이전 + todo 상태 + task 타입만)
   const overdueResult = await query<ScheduleCountRow>(
     `SELECT COUNT(*)::text as count
-     FROM schedules
-     WHERE status = 'todo' AND date < $1 AND date IS NOT NULL AND user_id = 1`,
+     FROM schedules s
+     LEFT JOIN categories c ON c.name = s.category
+     WHERE s.status = 'todo' AND s.date < $1 AND s.date IS NOT NULL AND s.user_id = 1
+       AND COALESCE(c.type, 'task') = 'task'`,
     [today],
   );
   const overdueCount = Number(overdueResult.rows[0]?.count ?? 0);
