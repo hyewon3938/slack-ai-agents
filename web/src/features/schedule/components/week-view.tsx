@@ -107,7 +107,7 @@ export function WeekView({
                 </div>
               </div>
 
-              {/* 스패닝 바 공간 확보 — 해당 요일을 지나는 기간일정 레인 수만큼만 */}
+              {/* 스패닝 바 공간 확보 — 전체 레인 수 기준 (열별 카드 시작 위치 통일) */}
               {daySpanHeight > 0 && <div style={{ height: `${daySpanHeight}px` }} />}
 
               {/* 단일 일정 */}
