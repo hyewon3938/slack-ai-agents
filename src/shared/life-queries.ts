@@ -59,6 +59,13 @@ const daysBetween = (from: string, to: string): number => {
   return Math.round((toDate.getTime() - fromDate.getTime()) / msPerDay);
 };
 
+/** N일마다 패턴에서 일수 추출 (예: '3일마다' → 3, '격일' → 2) */
+const parseIntervalDays = (frequency: string): number | null => {
+  if (frequency === '격일') return 2;
+  const match = /^(\d+)일마다$/.exec(frequency);
+  return match ? Number(match[1]) : null;
+};
+
 /** 빈도에 따라 오늘 기록을 생성해야 하는지 판별 */
 export const shouldCreateToday = (
   frequency: string,
@@ -70,30 +77,20 @@ export const shouldCreateToday = (
 
   const gap = daysBetween(lastDate, today);
 
-  switch (frequency) {
-    case '격일':
-      return gap >= 2;
-    case '3일마다':
-      return gap >= 3;
-    case '주1회':
-      return gap >= 7;
-    default:
-      return true;
-  }
+  if (frequency === '주1회') return gap >= 7;
+
+  const intervalDays = parseIntervalDays(frequency);
+  if (intervalDays) return gap >= intervalDays;
+
+  return true;
 };
 
 /** 빈도 → 표시용 배지 텍스트 (매일은 빈 문자열) */
 export const frequencyBadge = (frequency: string): string => {
-  switch (frequency) {
-    case '격일':
-      return '_(2일 마다)_';
-    case '3일마다':
-      return '_(3일 마다)_';
-    case '주1회':
-      return '_(1주 마다)_';
-    default:
-      return '';
-  }
+  if (frequency === '주1회') return '_(1주 마다)_';
+  const intervalDays = parseIntervalDays(frequency);
+  if (intervalDays) return `_(${intervalDays}일 마다)_`;
+  return '';
 };
 
 // ─── 루틴 쿼리 ──────────────────────────────────────────
