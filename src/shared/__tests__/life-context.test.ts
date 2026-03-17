@@ -40,7 +40,7 @@ type MockRow = Record<string, unknown>;
 const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
   const defaultResponses: Record<string, MockRow[]> = {
     // sleep
-    'sleep_type.*night.*date IN': [],
+    'sleep_type.*night.*date =': [],
     'AVG.*duration_minutes': [],
     'AS is_late': [],
     'sleep_type.*nap.*date =': [{ nap_count: '0' }],
@@ -75,17 +75,16 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
 // ─── buildLifeContext ────────────────────────────────────
 
 describe('buildLifeContext', () => {
-  it('데이터가 전혀 없으면 수면 미기록만 포함', async () => {
+  it('수면 데이터 없으면 수면 항목 생략 (conversation)', async () => {
     setupQueryMock();
 
     const result = await buildLifeContext('conversation');
-    expect(result).toContain('현재 생활 맥락');
-    expect(result).toContain('수면: 어젯밤 수면 기록 없음');
+    expect(result).not.toContain('수면:');
   });
 
   it('수면 데이터가 있으면 시간/취침시각 표시', async () => {
     setupQueryMock({
-      'sleep_type.*night.*date IN': [
+      'sleep_type.*night.*date =': [
         { date: '2026-03-09', bedtime: '01:30', wake_time: '07:00', duration_minutes: 330, sleep_type: 'night' },
       ],
       'AVG.*duration_minutes': [{ avg_duration: '360', avg_bedtime_hour: '25.5', count: '5' }],
@@ -126,7 +125,7 @@ describe('buildLifeContext', () => {
 
   it('morning 타이밍에는 루틴이 어제 기준, 낮잠 생략', async () => {
     setupQueryMock({
-      'sleep_type.*night.*date IN': [
+      'sleep_type.*night.*date =': [
         { date: '2026-03-08', bedtime: '23:30', wake_time: '07:00', duration_minutes: 450, sleep_type: 'night' },
       ],
       'AVG.*duration_minutes': [{ avg_duration: '420', avg_bedtime_hour: '23.5', count: '3' }],
