@@ -48,17 +48,17 @@ interface ScheduleCountRow {
 
 // ─── 수면 서브 쿼리 ─────────────────────────────────────
 
-/** 어젯밤 수면 시간 + 취침/기상 */
+/** 오늘 날짜의 밤잠 기록 (= 어젯밤 수면) */
 const queryLastNight = async (
-  { today, yesterday }: DateParams,
+  { today }: DateParams,
   timing: ContextTiming,
 ): Promise<string | null> => {
   const lastNight = await query<SleepRow>(
     `SELECT date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
      FROM sleep_records
-     WHERE sleep_type = 'night' AND date IN ($1, $2) AND user_id = 1
-     ORDER BY date DESC LIMIT 1`,
-    [yesterday, today],
+     WHERE sleep_type = 'night' AND date = $1 AND user_id = 1
+     LIMIT 1`,
+    [today],
   );
 
   const s = lastNight.rows[0];
@@ -72,7 +72,7 @@ const queryLastNight = async (
     return `어젯밤 ${durationText} (${s.bedtime}~${s.wake_time})`;
   }
 
-  return timing === 'morning' ? '어젯밤 수면 미기록' : '어젯밤 수면 기록 없음';
+  return timing === 'morning' ? '어젯밤 수면 미기록' : null;
 };
 
 /** 7일 평균 수면 시간 (데이터 2건 이상일 때만) */
