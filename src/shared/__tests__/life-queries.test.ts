@@ -65,6 +65,11 @@ describe('shouldCreateToday', () => {
     expect(shouldCreateToday('주1회', '2026-03-03', '2026-03-08')).toBe(false);
   });
 
+  it('4일마다: 4일 이상 경과 시 true', () => {
+    expect(shouldCreateToday('4일마다', '2026-03-04', '2026-03-08')).toBe(true);
+    expect(shouldCreateToday('4일마다', '2026-03-05', '2026-03-08')).toBe(false);
+  });
+
   it('알 수 없는 빈도는 true', () => {
     expect(shouldCreateToday('unknown', '2026-03-07', '2026-03-08')).toBe(true);
   });
@@ -87,6 +92,10 @@ describe('frequencyBadge', () => {
 
   it('주1회면 배지 반환', () => {
     expect(frequencyBadge('주1회')).toContain('1주');
+  });
+
+  it('4일마다면 배지 반환', () => {
+    expect(frequencyBadge('4일마다')).toContain('4일');
   });
 });
 
