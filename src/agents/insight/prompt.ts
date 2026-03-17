@@ -1,5 +1,6 @@
 import { query } from '../../shared/db.js';
-import { getTodayString, getWeekReference, getTodayISO } from '../../shared/kst.js';
+import { getTodayString, getWeekReference, getTodayISO, addDays } from '../../shared/kst.js';
+import { getDayPillar } from '../../shared/saju-calendar.js';
 
 /** DB에서 활성 life_themes 조회 */
 const loadLifeThemes = async (): Promise<string> => {
@@ -48,10 +49,12 @@ const loadSajuPatterns = async (): Promise<string> => {
   }
 };
 
-/** DB에서 오늘 일운 조회 → 프롬프트 주입용 */
-const loadTodayFortune = async (today: string): Promise<string> => {
+/** DB에서 오늘+내일 일운 조회 → 프롬프트 주입용 */
+const loadFortuneContext = async (today: string): Promise<string> => {
   try {
+    const tomorrow = addDays(today, 1);
     const result = await query<{
+      date: string;
       day_pillar: string | null;
       analysis: string;
       summary: string | null;
@@ -59,19 +62,45 @@ const loadTodayFortune = async (today: string): Promise<string> => {
       recommendations: unknown;
       advice: string | null;
     }>(
-      `SELECT day_pillar, analysis, summary, warnings, recommendations, advice
+      `SELECT date::text, day_pillar, analysis, summary, warnings, recommendations, advice
        FROM fortune_analyses
-       WHERE user_id = 1 AND period = 'daily' AND date = $1`,
-      [today],
+       WHERE user_id = 1 AND period = 'daily' AND date IN ($1, $2)
+       ORDER BY date`,
+      [today, tomorrow],
     );
-    const f = result.rows[0];
-    if (!f) return '\n\n## 오늘 일운\n아직 오늘 일운 분석이 준비되지 않았어.';
-    const parts: string[] = [];
-    if (f.day_pillar) parts.push(`오늘의 일주: ${f.day_pillar}`);
-    if (f.summary) parts.push(`요약: ${f.summary}`);
-    if (f.analysis) parts.push(`\n${f.analysis}`);
-    if (f.advice) parts.push(`\n조언: ${f.advice}`);
-    return `\n\n## 오늘 일운 (Opus 분석 — 이 데이터를 기반으로 말해)\n${parts.join('\n')}`;
+
+    const todayRow = result.rows.find((r) => r.date === today);
+    const tomorrowRow = result.rows.find((r) => r.date === tomorrow);
+
+    const sections: string[] = [];
+
+    // 오늘 일운
+    if (todayRow) {
+      const parts: string[] = [];
+      if (todayRow.day_pillar) parts.push(`오늘의 일주: ${todayRow.day_pillar}`);
+      if (todayRow.summary) parts.push(`요약: ${todayRow.summary}`);
+      if (todayRow.analysis) parts.push(`\n${todayRow.analysis}`);
+      if (todayRow.advice) parts.push(`\n조언: ${todayRow.advice}`);
+      sections.push(`\n\n## 오늘 일운 (Opus 분석 — 이 데이터를 기반으로 말해)\n${parts.join('\n')}`);
+    } else {
+      sections.push('\n\n## 오늘 일운\n아직 오늘 일운 분석이 준비되지 않았어.');
+    }
+
+    // 내일 일주 (getDayPillar로 정확한 값 계산)
+    const tomorrowPillar = getDayPillar(tomorrow);
+    const tomorrowPillarStr = `${tomorrowPillar.cheongan}${tomorrowPillar.jiji}(${tomorrowPillar.hanja})`;
+    if (tomorrowRow) {
+      const parts: string[] = [];
+      parts.push(`내일의 일주: ${tomorrowPillarStr}`);
+      if (tomorrowRow.summary) parts.push(`요약: ${tomorrowRow.summary}`);
+      if (tomorrowRow.analysis) parts.push(`\n${tomorrowRow.analysis}`);
+      if (tomorrowRow.advice) parts.push(`\n조언: ${tomorrowRow.advice}`);
+      sections.push(`\n\n## 내일(${tomorrow}) 일운\n${parts.join('\n')}`);
+    } else {
+      sections.push(`\n\n## 내일(${tomorrow}) 일주\n${tomorrowPillarStr} — 일운 분석은 아직 준비되지 않았어.`);
+    }
+
+    return sections.join('');
   } catch {
     return '';
   }
@@ -82,10 +111,10 @@ export const buildInsightSystemPrompt = async (): Promise<string> => {
   const today = getTodayString();
   const todayISO = getTodayISO();
   const weekRef = getWeekReference();
-  const [lifeThemes, sajuPatterns, todayFortune] = await Promise.all([
+  const [lifeThemes, sajuPatterns, fortuneContext] = await Promise.all([
     loadLifeThemes(),
     loadSajuPatterns(),
-    loadTodayFortune(todayISO),
+    loadFortuneContext(todayISO),
   ]);
 
   return `너는 개인 일기 관리자이자 명리학 운세 전달자야.
@@ -170,7 +199,7 @@ ${weekRef}
 1. 시스템 프롬프트 하단의 "오늘 일운" 섹션에 Opus 분석이 포함되어 있어. 이 데이터를 기반으로 사주 코멘트를 해.
 2. 일운 데이터가 "준비되지 않았어"로 표시되면: 사주 해석 없이 공감 위주로 응답해.
 3. ⛔ 프롬프트에 제공된 일운 외에 독립적으로 오행/십성 작용을 분석하지 마.
-4. ⛔ 특히 오늘의 일주(천간+지지)를 직접 계산하거나 추론하지 마 — 프롬프트에 명시된 일주만 사용해.
+4. ⛔ 특히 오늘/내일의 일주(천간+지지)를 직접 계산하거나 추론하지 마 — 프롬프트 하단에 명시된 일주만 사용해.
 
 ### 2. 운세 분석 조회
 fortune_analyses 테이블에서 period별로 조회해.
@@ -216,5 +245,5 @@ life_themes는 사용자의 현재 삶의 맥락을 담는 핵심 데이터. det
 
 ## ⚠️ user_id 필터 (절대 규칙)
 모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = 1 조건을 포함해.
-${lifeThemes}${sajuPatterns}${todayFortune}`;
+${lifeThemes}${sajuPatterns}${fortuneContext}`;
 };
