@@ -97,7 +97,22 @@ export function useSchedules() {
         fetchData();
       }
     }, 15_000);
-    return () => clearInterval(id);
+
+    // 탭 복귀 시 날짜가 바뀌었으면 currentDate 갱신
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = new Date();
+      if (format(now, 'yyyy-MM-dd') !== format(currentDate, 'yyyy-MM-dd')) {
+        setCurrentDate(now);
+        setSelectedDate(null);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [fetchData]);
 
   // 필터링
