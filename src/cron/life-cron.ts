@@ -28,7 +28,7 @@ import { CHARACTER_PROMPT } from '../shared/personality.js';
 import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
-  buildNightSummaryBlocks,
+  buildRoutineBlocks,
   buildScheduleText,
   buildNightScheduleText,
   buildSleepReminderText,
@@ -323,9 +323,13 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
       : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`,
   );
 
-  const { text, blocks } = buildNightSummaryBlocks(records, today, summary);
-
+  // 루틴 체크리스트 (chat.update 대상) — 마무리 메시지와 분리
+  const { text, blocks } = buildRoutineBlocks(records, today);
   await postBlockMessage(app.client, config.channelId, text, blocks);
+
+  // LLM 마무리 메시지 (별도 메시지로 보존)
+  const summaryBlocks = buildMorningGreetingBlocks(summary);
+  await postBlockMessage(app.client, config.channelId, '밤 마무리', summaryBlocks);
   console.warn(`[Life Cron] 밤 요약 전송 완료`);
 };
 
