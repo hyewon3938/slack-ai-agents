@@ -5,7 +5,6 @@ import {
   buildRoutineBlocks,
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
-  buildNightSummaryBlocks,
   buildScheduleBlocks,
   parseButtonValue,
   parseOverflowValue,
@@ -192,33 +191,6 @@ describe('buildMorningGreetingBlocks', () => {
   });
 });
 
-// ─── buildNightSummaryBlocks ───────────────────────────
-
-describe('buildNightSummaryBlocks', () => {
-  it('전체 체크리스트 + 마무리 메시지', () => {
-    const records = [
-      makeRecord({ completed: true }),
-      makeRecord({ id: 2, completed: false, name: '독서' }),
-    ];
-
-    const summaryText = '오늘도 수고했어! 내일은 독서도 챙기자.';
-    const { text, blocks } = buildNightSummaryBlocks(records, '2026-03-08', summaryText);
-    expect(text).toContain('1/2');
-    // 마무리 메시지 블록이 추가됨
-    expect(blocks.length).toBeGreaterThan(3);
-  });
-
-  it('전부 완료 시 LLM 마무리 메시지 포함', () => {
-    const records = [makeRecord({ completed: true })];
-
-    const summaryText = '오늘 루틴 다 챙겼네! 수고했어, 푹 쉬어.';
-    const { blocks } = buildNightSummaryBlocks(records, '2026-03-08', summaryText);
-    const lastSection = blocks.filter((b) => b.type === 'section').pop();
-    const text =
-      lastSection && 'text' in lastSection ? (lastSection.text as { text: string }).text : '';
-    expect(text).toContain('수고했어');
-  });
-});
 
 // ─── buildScheduleBlocks ───────────────────────────────
 

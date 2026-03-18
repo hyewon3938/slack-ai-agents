@@ -163,21 +163,6 @@ export const buildMorningGreetingBlocks = (greetingText: string): KnownBlock[] =
   { type: 'section', text: { type: 'mrkdwn', text: greetingText } },
 ];
 
-/** 밤 요약 블록 (전체 체크리스트 + LLM 마무리 메시지) */
-export const buildNightSummaryBlocks = (
-  records: RoutineRecordRow[],
-  today: string,
-  summaryText: string,
-): { text: string; blocks: KnownBlock[] } => {
-  const result = buildRoutineBlocks(records, today);
-
-  result.blocks.push({
-    type: 'section',
-    text: { type: 'mrkdwn', text: `\n${summaryText}` },
-  });
-
-  return result;
-};
 
 // ─── 인사이트 넛지 ──────────────────────────────────────
 
