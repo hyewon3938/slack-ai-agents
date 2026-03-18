@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect } from 'react';
 import type { ScheduleRow, CategoryRow } from '@/lib/types';
 import { SCHEDULE_STATUSES, STATUS_LABELS, getCategoryStyle } from '@/lib/types';
 
-const TAG_LIMIT = 8;
 
 interface ScheduleFormProps {
   schedule?: ScheduleRow | null;
@@ -187,7 +186,7 @@ export function ScheduleForm({
             없음
           </button>
           {/* 태그 버튼 (최대 TAG_LIMIT개) */}
-          {categories.slice(0, TAG_LIMIT).map((c) => {
+          {categories.map((c) => {
             const style = getCategoryStyle(c.color);
             const selected = category === c.name;
             return (
@@ -211,23 +210,6 @@ export function ScheduleForm({
             );
           })}
         </div>
-        {/* 초과분은 셀렉트 */}
-        {categories.length > TAG_LIMIT && (
-          <select
-            value={categories.slice(TAG_LIMIT).some((c) => c.name === category) ? category : ''}
-            onChange={(e) => {
-              if (e.target.value) setCategory(e.target.value);
-            }}
-            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          >
-            <option value="">더보기...</option>
-            {categories.slice(TAG_LIMIT).map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
 
       {/* 중요 */}
