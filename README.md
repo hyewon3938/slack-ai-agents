@@ -58,15 +58,9 @@
 
 ## 어떻게 동작하나
 
-```
-                        [Claude Sonnet API (Tool Use)]
-                                   ↕
-[대화]  [Slack] ←→ [Oracle VM: Node.js + Docker] ↔ SQL ↔ [Neon PostgreSQL]
-                                                               ↕
-                    [Gemini Flash]                    [Vercel: Next.js 웹 대시보드]
-                         ↕                            (캘린더·백로그·카테고리)
-[알림]  [Slack] ←── [Cron] ─── SQL 조회 ─────────→ [Neon PostgreSQL]
-```
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="아키텍처" width="100%" />
+</p>
 
 핵심은 **LLM이 DB 전체에 자유 접근**할 수 있는 구조다. Claude Sonnet이 SQL을 직접 작성·분석·반복 실행하며(Agent Loop), 도구를 쓸지, 몇 번 호출할지 모두 자율 판단한다. 테이블만 추가하면 별도 코드 없이 크로스 분석이 가능하다.
 

@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" font-family="'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.12"/>
+    </filter>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0f4f8"/>
+      <stop offset="100%" stop-color="#dbe4ee"/>
+    </linearGradient>
+    <linearGradient id="vmGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f7f9fc"/>
+    </linearGradient>
+    <linearGradient id="svcGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f5f7fa"/>
+    </linearGradient>
+    <marker id="arrowR" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#6366f1"/>
+    </marker>
+    <marker id="arrowL" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
+      <path d="M8,0 L0,3 L8,6" fill="#6366f1"/>
+    </marker>
+    <marker id="arrowRGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="520" rx="16" fill="url(#bgGrad)"/>
+
+  <!-- ===== Slack (왼쪽) ===== -->
+  <rect x="24" y="80" width="160" height="360" rx="14" fill="url(#vmGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="24" y="80" width="160" height="44" rx="14" fill="#611f69"/>
+  <rect x="24" y="110" width="160" height="14" fill="#611f69"/>
+  <text x="42" y="108" fill="#fff" font-size="15" font-weight="700">💬  Slack</text>
+
+  <rect x="40" y="140" width="128" height="44" rx="8" fill="#f3e8ff" stroke="#c084fc" stroke-width="1"/>
+  <text x="56" y="167" fill="#6b21a8" font-size="12" font-weight="600">자연어 대화</text>
+
+  <rect x="40" y="198" width="128" height="44" rx="8" fill="#ecfdf5" stroke="#86efac" stroke-width="1"/>
+  <text x="56" y="225" fill="#166534" font-size="12" font-weight="600">크론 알림 (4회)</text>
+
+  <rect x="40" y="256" width="128" height="44" rx="8" fill="#fefce8" stroke="#fbbf24" stroke-width="1"/>
+  <text x="56" y="278" fill="#92400e" font-size="11" font-weight="600">루틴 체크리스트</text>
+  <text x="56" y="292" fill="#78716c" font-size="10">(Block Kit 버튼)</text>
+
+  <rect x="40" y="314" width="128" height="44" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="56" y="341" fill="#1e40af" font-size="12" font-weight="600">App Home 탭</text>
+
+  <rect x="40" y="372" width="128" height="44" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="56" y="394" fill="#991b1b" font-size="11" font-weight="600">인사이트 넛지</text>
+  <text x="56" y="408" fill="#78716c" font-size="10">(Pure SQL 감지)</text>
+
+  <!-- ===== Slack → VM 화살표 ===== -->
+  <line x1="188" y1="200" x2="238" y2="200" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
+  <line x1="238" y1="220" x2="188" y2="220" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowL)"/>
+  <text x="192" y="195" fill="#4338ca" font-size="9" font-weight="600">Socket Mode</text>
+
+  <!-- ===== Oracle Cloud VM (중앙) ===== -->
+  <rect x="244" y="30" width="330" height="460" rx="14" fill="url(#vmGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="244" y="30" width="330" height="44" rx="14" fill="#7c3aed"/>
+  <rect x="244" y="60" width="330" height="14" fill="#7c3aed"/>
+  <text x="262" y="58" fill="#fff" font-size="14" font-weight="700">☁️  Oracle Cloud VM (Docker)</text>
+
+  <!-- Node.js + Slack Bolt -->
+  <rect x="262" y="90" width="294" height="36" rx="8" fill="#e8f4fd" stroke="#93c5fd" stroke-width="1"/>
+  <text x="280" y="113" fill="#1e40af" font-size="13" font-weight="600">⚡ Node.js + Slack Bolt (TypeScript)</text>
+
+  <!-- Agent Loop -->
+  <rect x="262" y="140" width="294" height="90" rx="10" fill="#fefce8" stroke="#fbbf24" stroke-width="1"/>
+  <text x="280" y="164" fill="#92400e" font-size="13" font-weight="700">🔄 Agent Loop</text>
+  <text x="280" y="184" fill="#78716c" font-size="11">LLM ↔ SQL 도구 자율 반복 (tool use)</text>
+  <text x="280" y="202" fill="#78716c" font-size="11">query_db · modify_db · get_schema</text>
+  <text x="280" y="220" fill="#78716c" font-size="11">대화 히스토리 10쌍 슬라이딩 윈도우</text>
+
+  <!-- Cron -->
+  <rect x="262" y="244" width="294" height="72" rx="10" fill="#ecfdf5" stroke="#86efac" stroke-width="1"/>
+  <text x="280" y="268" fill="#166534" font-size="13" font-weight="700">⏰ node-cron (Asia/Seoul)</text>
+  <text x="280" y="288" fill="#78716c" font-size="11">09:00 아침 · 13:00 점심 · 18:00 저녁 · 22:00 밤</text>
+  <text x="280" y="306" fill="#78716c" font-size="11">프로액티브 인사이트 (5 SQL 패턴 감지)</text>
+
+  <!-- Smart Memory -->
+  <rect x="262" y="330" width="140" height="60" rx="8" fill="#f3e8ff" stroke="#c084fc" stroke-width="1"/>
+  <text x="276" y="354" fill="#6b21a8" font-size="11" font-weight="700">🧠 스마트 메모리</text>
+  <text x="276" y="370" fill="#78716c" font-size="10">사용자 선호 학습</text>
+  <text x="276" y="382" fill="#78716c" font-size="10">auto/user 분류</text>
+
+  <!-- Personality -->
+  <rect x="416" y="330" width="140" height="60" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="430" y="354" fill="#991b1b" font-size="11" font-weight="700">🗣 캐릭터 시스템</text>
+  <text x="430" y="370" fill="#78716c" font-size="10">잔소리꾼 친구 말투</text>
+  <text x="430" y="382" fill="#78716c" font-size="10">생활 맥락 잔소리</text>
+
+  <!-- 배포 정보 -->
+  <rect x="262" y="404" width="294" height="68" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="280" y="426" fill="#1e40af" font-size="11" font-weight="600">🚀 배포</text>
+  <text x="280" y="444" fill="#64748b" font-size="10.5">yarn deploy → SSH → git pull → docker compose build</text>
+  <text x="280" y="460" fill="#64748b" font-size="10.5">GitHub Actions CI (lint + type-check + test)</text>
+
+  <!-- ===== VM → AI 화살표 ===== -->
+  <line x1="578" y1="150" x2="622" y2="110" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
+  <text x="580" y="142" fill="#4338ca" font-size="9" font-weight="600">Tool Use</text>
+
+  <line x1="578" y1="270" x2="622" y2="230" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRGreen)"/>
+  <text x="584" y="262" fill="#166534" font-size="9">크론 메시지</text>
+
+  <!-- ===== VM → Neon 화살표 ===== -->
+  <line x1="578" y1="200" x2="622" y2="310" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
+  <text x="583" y="248" fill="#4338ca" font-size="9" font-weight="600">SQL</text>
+
+  <!-- ===== 외부 서비스 (오른쪽) ===== -->
+
+  <!-- Claude Sonnet -->
+  <rect x="628" y="50" width="304" height="80" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="628" y="50" width="304" height="36" rx="12" fill="#d97706"/>
+  <rect x="628" y="74" width="304" height="12" fill="#d97706"/>
+  <text x="646" y="74" fill="#fff" font-size="13" font-weight="700">🤖 Claude Sonnet (메인 LLM)</text>
+  <text x="646" y="110" fill="#78716c" font-size="11">자연어 이해 · SQL 생성 · 크로스 분석 · 인사이트</text>
+
+  <!-- Gemini Flash -->
+  <rect x="628" y="146" width="304" height="80" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="628" y="146" width="304" height="36" rx="12" fill="#0d9488"/>
+  <rect x="628" y="170" width="304" height="12" fill="#0d9488"/>
+  <text x="646" y="170" fill="#fff" font-size="13" font-weight="700">✨ Gemini Flash (크론 전용)</text>
+  <text x="646" y="206" fill="#78716c" font-size="11">크론 메시지 생성 · 주간 리포트 · 비용 절감</text>
+
+  <!-- Neon PostgreSQL -->
+  <rect x="628" y="252" width="304" height="130" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="628" y="252" width="304" height="36" rx="12" fill="#2563eb"/>
+  <rect x="628" y="276" width="304" height="12" fill="#2563eb"/>
+  <text x="646" y="276" fill="#fff" font-size="13" font-weight="700">🗄 Neon PostgreSQL (managed)</text>
+  <text x="646" y="308" fill="#78716c" font-size="11">일정 · 루틴 · 수면 · 리마인더 · 메모리</text>
+  <text x="646" y="326" fill="#78716c" font-size="11">SSL 필수 · LLM이 SQL로 자유 접근</text>
+  <text x="646" y="344" fill="#78716c" font-size="11">모든 라이프 데이터 → JOIN으로 크로스 분석</text>
+  <text x="646" y="362" fill="#64748b" font-size="10">VM: direct endpoint · Vercel: pooled endpoint</text>
+
+  <!-- Neon → Vercel 화살표 -->
+  <line x1="780" y1="386" x2="780" y2="404" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)" marker-start="url(#arrowL)"/>
+
+  <!-- Vercel -->
+  <rect x="628" y="408" width="304" height="82" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="628" y="408" width="304" height="36" rx="12" fill="#171717"/>
+  <rect x="628" y="432" width="304" height="12" fill="#171717"/>
+  <text x="646" y="432" fill="#fff" font-size="13" font-weight="700">▲ Vercel (Next.js 웹 대시보드)</text>
+  <text x="646" y="464" fill="#78716c" font-size="11">캘린더 · 백로그 · 카테고리 뷰 · DnD</text>
+  <text x="646" y="480" fill="#78716c" font-size="11">반응형 UI + PWA · GitHub push 자동 배포</text>
+
+  <!-- 타이틀 -->
+  <text x="480" y="18" fill="#334155" font-size="11" font-weight="600" text-anchor="middle">Slack AI Agent — 개인 라이프 데이터 에이전트 아키텍처</text>
+</svg>
