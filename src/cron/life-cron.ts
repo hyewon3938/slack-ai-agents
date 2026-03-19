@@ -331,22 +331,36 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
 
   const context = `밤 마무리 메시지 생성해줘.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${lifeContext}`;
 
+  const fallback =
+    stats.completed === stats.total
+      ? '오늘 루틴 다 했어! 수고했어, 푹 쉬어.'
+      : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`;
+
   const summary = await generateCronMessage(
     config.llmClient,
     NIGHT_SYSTEM_PROMPT,
     context,
-    stats.completed === stats.total
-      ? '오늘 루틴 다 했어! 수고했어, 푹 쉬어.'
-      : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`,
+    fallback,
   );
 
   // 루틴 체크리스트 (chat.update 대상) — 마무리 메시지와 분리
-  const { text, blocks } = buildRoutineBlocks(records, today);
-  await postBlockMessage(app.client, config.channelId, text, blocks);
+  try {
+    const { text, blocks } = buildRoutineBlocks(records, today);
+    await postBlockMessage(app.client, config.channelId, text, blocks);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[Life Cron] 밤 루틴 체크리스트 전송 실패: ${msg}`);
+  }
 
   // LLM 마무리 메시지 (별도 메시지로 보존)
-  const summaryBlocks = buildMorningGreetingBlocks(summary);
-  await postBlockMessage(app.client, config.channelId, '밤 마무리', summaryBlocks);
+  try {
+    const summaryText = summary || fallback;
+    await postToChannel(app.client, config.channelId, summaryText);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[Life Cron] 밤 마무리 메시지 전송 실패: ${msg}`);
+  }
+
   console.warn(`[Life Cron] 밤 요약 전송 완료`);
 };
 
