@@ -44,7 +44,7 @@
 > LLM을 프로덕션에 적용하면서 마주한 비용, 정확도, 아키텍처 문제를 실제로 풀어간 과정이다.
 
 - **LLM Agent Loop** — LLM이 SQL 도구 호출·분석·반복을 자율 판단. 테이블만 추가하면 새 도메인 즉시 분석.
-- **3-tier 비용 최적화** — Claude Sonnet(대화) + Gemini Flash(크론) + Pure SQL(넛지). 용도별 모델 분리.
+- **LLM + Pure SQL 2-tier 비용 최적화** — Claude Sonnet(대화/크론/주간 리포트) + Pure SQL(넛지). LLM 호출이 불필요한 패턴은 SQL로 직접 처리.
 - **아키텍처 3회 전환** — 운영 중 한계 인식 → 코어 교체. [전체 의사결정 과정](docs/project-history.md) 문서화.
 - **프롬프트 엔지니어링** — LLM 반복 실수 분석→규칙화. 의도 분류 3단계 진화→최종 삭제.
 - **Claude Code 풀스택 활용** — Hooks(3) + Skills(4) + MCP(2) + Scheduled Tasks로 개발 파이프라인 자동화.
@@ -96,7 +96,7 @@
 
 ### 프로액티브 인사이트 — 물어보지 않아도 패턴을 감지
 
-5가지 SQL 패턴 감지(streak, sleepTrend, slotGap, weekComparison, overdueAlert) → 우선순위 기반 1개 선택 → 아침/밤 알림에 자동 삽입. LLM 호출 없이 Pure SQL로 동작. 주간 리포트(Gemini Flash)와 자연어 분석(Claude Sonnet)으로 3-tier 인사이트 제공.
+5가지 SQL 패턴 감지(streak, sleepTrend, slotGap, weekComparison, overdueAlert) → 우선순위 기반 1개 선택 → 아침/밤 알림에 자동 삽입. LLM 호출 없이 Pure SQL로 동작. 주간 리포트와 자연어 분석은 Claude Sonnet이 담당.
 
 ### 웹 대시보드 — LLM 비용 절감과 UX 편의성을 하나의 설계로 해결
 
@@ -125,7 +125,7 @@ Slack 대화(LLM 호출) 없이 일정·루틴을 직접 관리할 수 있는 UI
 
 | 영역       | 기술                                                             |
 | ---------- | ---------------------------------------------------------------- |
-| AI/LLM     | Claude Sonnet (Tool Use), Gemini Flash (크론 메시지/주간 리포트) |
+| AI/LLM     | Claude Sonnet (Tool Use) — 대화, 크론 메시지, 주간 리포트 |
 | AI 개발    | Claude Code (Hooks, Custom Skills, MCP, Scheduled Tasks)         |
 | Backend    | Node.js + TypeScript (strict)                                    |
 | Frontend   | Next.js 16 (App Router) + Tailwind CSS v4 + @dnd-kit             |
@@ -244,10 +244,10 @@ src/                              # Slack 에이전트 (Oracle VM + Docker)
 │       └── blocks.ts             # Slack Block Kit 메시지 빌더
 ├── cron/
 │   ├── life-cron.ts              # 통합 크론 알림 (아침/점심/저녁/밤 + 한줄 인사이트)
-│   └── weekly-report.ts          # 주간 리포트 (SQL 집계 + Gemini 총평)
+│   └── weekly-report.ts          # 주간 리포트 (SQL 집계 + Claude Sonnet 총평)
 └── shared/
     ├── config.ts                 # 환경변수 검증 + 설정
-    ├── llm.ts                    # LLM 추상화 (Anthropic/Gemini/Groq)
+    ├── llm.ts                    # LLM 추상화 (Anthropic)
     ├── agent-loop.ts             # 에이전트 루프 (LLM ↔ 도구 반복)
     ├── db.ts                     # Neon PostgreSQL 연결 + 쿼리
     ├── sql-tools.ts              # SQL 도구 정의 (query_db, modify_db, get_schema)
