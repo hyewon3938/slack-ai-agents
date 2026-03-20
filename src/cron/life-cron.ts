@@ -27,7 +27,6 @@ import { getTodayISO, getYesterdayISO, getKSTTimeString, getKSTDayOfWeek } from 
 // personality.ts의 CHARACTER_PROMPT는 에이전트용, 크론은 자체 톤 사용
 import {
   buildFilteredRoutineBlocks,
-  buildMorningGreetingBlocks,
   buildRoutineBlocks,
   buildScheduleText,
   buildNightScheduleText,
@@ -252,21 +251,25 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
       ? `어제 루틴 ${stats.rate}%. 오늘도 힘내자!`
       : '좋은 아침! 오늘도 같이 힘내보자.',
   );
-  const greetingBlocks = buildMorningGreetingBlocks(greeting);
 
-  // 3. 아침 루틴 체크리스트
+  // 3. 인사 메시지 (별도 메시지로 보존 — chat.update 대상 아님)
+  try {
+    await postToChannel(app.client, config.channelId, greeting);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[Life Cron] 아침 인사 메시지 전송 실패: ${msg}`);
+  }
+
+  // 4. 아침 루틴 체크리스트 (chat.update 대상 — 인사와 분리)
   const todayRecords = await queryTodayRecords(today);
   const hasMorning = todayRecords.some((r) => r.time_slot === '아침');
 
   if (hasMorning) {
     const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['아침']);
-    const fullBlocks = [...greetingBlocks, ...blocks];
-    await postBlockMessage(app.client, config.channelId, text, fullBlocks);
-  } else if (greetingBlocks.length > 0) {
-    await postBlockMessage(app.client, config.channelId, '아침 인사', greetingBlocks);
+    await postBlockMessage(app.client, config.channelId, text, blocks);
   }
 
-  // 4. 앱홈 갱신 (날짜 전환 반영)
+  // 5. 앱홈 갱신 (날짜 전환 반영)
   const userId = getCachedHomeUserId();
   if (userId) {
     try {
