@@ -21,9 +21,6 @@
     <marker id="arrowL" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
       <path d="M8,0 L0,3 L8,6" fill="#6366f1"/>
     </marker>
-    <marker id="arrowRGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6" fill="#16a34a"/>
-    </marker>
   </defs>
 
   <!-- Background -->
@@ -102,49 +99,40 @@
   <line x1="578" y1="150" x2="622" y2="110" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
   <text x="580" y="142" fill="#4338ca" font-size="9" font-weight="600">Tool Use</text>
 
-  <line x1="578" y1="270" x2="622" y2="230" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRGreen)"/>
-  <text x="584" y="262" fill="#166534" font-size="9">크론 메시지</text>
-
   <!-- ===== VM → Neon 화살표 ===== -->
-  <line x1="578" y1="200" x2="622" y2="310" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
-  <text x="583" y="248" fill="#4338ca" font-size="9" font-weight="600">SQL</text>
+  <line x1="578" y1="200" x2="622" y2="224" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
+  <text x="583" y="206" fill="#4338ca" font-size="9" font-weight="600">SQL</text>
 
   <!-- ===== 외부 서비스 (오른쪽) ===== -->
 
   <!-- Claude Sonnet -->
-  <rect x="628" y="50" width="304" height="80" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="628" y="50" width="304" height="100" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
   <rect x="628" y="50" width="304" height="36" rx="12" fill="#d97706"/>
   <rect x="628" y="74" width="304" height="12" fill="#d97706"/>
-  <text x="646" y="74" fill="#fff" font-size="13" font-weight="700">🤖 Claude Sonnet (메인 LLM)</text>
+  <text x="646" y="74" fill="#fff" font-size="13" font-weight="700">🤖 Claude Sonnet (단일 LLM)</text>
   <text x="646" y="110" fill="#78716c" font-size="11">자연어 이해 · SQL 생성 · 크로스 분석 · 인사이트</text>
-
-  <!-- Gemini Flash -->
-  <rect x="628" y="146" width="304" height="80" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
-  <rect x="628" y="146" width="304" height="36" rx="12" fill="#0d9488"/>
-  <rect x="628" y="170" width="304" height="12" fill="#0d9488"/>
-  <text x="646" y="170" fill="#fff" font-size="13" font-weight="700">✨ Gemini Flash (크론 전용)</text>
-  <text x="646" y="206" fill="#78716c" font-size="11">크론 메시지 생성 · 주간 리포트 · 비용 절감</text>
+  <text x="646" y="128" fill="#78716c" font-size="11">크론 메시지 생성 · 주간 리포트 · Pure SQL 비용 최적화</text>
 
   <!-- Neon PostgreSQL -->
-  <rect x="628" y="252" width="304" height="130" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
-  <rect x="628" y="252" width="304" height="36" rx="12" fill="#2563eb"/>
-  <rect x="628" y="276" width="304" height="12" fill="#2563eb"/>
-  <text x="646" y="276" fill="#fff" font-size="13" font-weight="700">🗄 Neon PostgreSQL (managed)</text>
-  <text x="646" y="308" fill="#78716c" font-size="11">일정 · 루틴 · 수면 · 리마인더 · 메모리</text>
-  <text x="646" y="326" fill="#78716c" font-size="11">SSL 필수 · LLM이 SQL로 자유 접근</text>
-  <text x="646" y="344" fill="#78716c" font-size="11">모든 라이프 데이터 → JOIN으로 크로스 분석</text>
-  <text x="646" y="362" fill="#64748b" font-size="10">VM: direct endpoint · Vercel: pooled endpoint</text>
+  <rect x="628" y="166" width="304" height="130" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="628" y="166" width="304" height="36" rx="12" fill="#2563eb"/>
+  <rect x="628" y="190" width="304" height="12" fill="#2563eb"/>
+  <text x="646" y="190" fill="#fff" font-size="13" font-weight="700">🗄 Neon PostgreSQL (managed)</text>
+  <text x="646" y="222" fill="#78716c" font-size="11">일정 · 루틴 · 수면 · 리마인더 · 메모리</text>
+  <text x="646" y="240" fill="#78716c" font-size="11">SSL 필수 · LLM이 SQL로 자유 접근</text>
+  <text x="646" y="258" fill="#78716c" font-size="11">모든 라이프 데이터 → JOIN으로 크로스 분석</text>
+  <text x="646" y="276" fill="#64748b" font-size="10">VM: direct endpoint · Vercel: pooled endpoint</text>
 
   <!-- Neon → Vercel 화살표 -->
-  <line x1="780" y1="386" x2="780" y2="404" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)" marker-start="url(#arrowL)"/>
+  <line x1="780" y1="300" x2="780" y2="318" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)" marker-start="url(#arrowL)"/>
 
   <!-- Vercel -->
-  <rect x="628" y="408" width="304" height="82" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
-  <rect x="628" y="408" width="304" height="36" rx="12" fill="#171717"/>
-  <rect x="628" y="432" width="304" height="12" fill="#171717"/>
-  <text x="646" y="432" fill="#fff" font-size="13" font-weight="700">▲ Vercel (Next.js 웹 대시보드)</text>
-  <text x="646" y="464" fill="#78716c" font-size="11">캘린더 · 백로그 · 카테고리 뷰 · DnD</text>
-  <text x="646" y="480" fill="#78716c" font-size="11">반응형 UI + PWA · GitHub push 자동 배포</text>
+  <rect x="628" y="322" width="304" height="82" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="628" y="322" width="304" height="36" rx="12" fill="#171717"/>
+  <rect x="628" y="346" width="304" height="12" fill="#171717"/>
+  <text x="646" y="346" fill="#fff" font-size="13" font-weight="700">▲ Vercel (Next.js 웹 대시보드)</text>
+  <text x="646" y="378" fill="#78716c" font-size="11">캘린더 · 백로그 · 카테고리 뷰 · DnD</text>
+  <text x="646" y="394" fill="#78716c" font-size="11">반응형 UI + PWA · GitHub push 자동 배포</text>
 
   <!-- 타이틀 -->
   <text x="480" y="18" fill="#334155" font-size="11" font-weight="600" text-anchor="middle">Slack AI Agent — 개인 라이프 데이터 에이전트 아키텍처</text>
