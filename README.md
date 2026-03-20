@@ -47,7 +47,7 @@
 - **LLM + Pure SQL 2-tier 비용 최적화** — Claude Sonnet(대화/크론/주간 리포트) + Pure SQL(넛지). LLM 호출이 불필요한 패턴은 SQL로 직접 처리.
 - **아키텍처 3회 전환** — 운영 중 한계 인식 → 코어 교체. [전체 의사결정 과정](docs/project-history.md) 문서화.
 - **프롬프트 엔지니어링** — LLM 반복 실수 분석→규칙화. 의도 분류 3단계 진화→최종 삭제.
-- **Claude Code 풀스택 활용** — Hooks(3) + Skills(4) + MCP(2) + Scheduled Tasks로 개발 파이프라인 자동화.
+- **Claude Code 풀스택 활용** — Hooks(3) + Skills(3, Opus/Sonnet 분리 파이프라인) + MCP(2) + Scheduled Tasks로 개발 파이프라인 자동화.
 - **UX 중심 의사결정** — 직접 사용하며 개선. 속도 불만→fast path, 체크리스트 밀림→App Home 도입.
 - **1인 풀스택** — Slack 에이전트 + Next.js 대시보드(DnD, PWA) + Docker/VM + Vercel + Neon.
 - **개인 프로젝트에 팀 수준 품질 관리** — 245개 테스트(인사이트 엔진 TDD), GitHub Actions CI/CD, Public 저장소 4곳 보안 방어.
@@ -173,14 +173,20 @@ AI를 도구이자 협업 개발자로 인식하고, GitHub Issues·PR 단위로
 | 커밋 전      | yarn lint + tsc 타입 체크                     |
 | 커밋 전      | 민감정보 유출 스캔 (scripts/check-secrets.sh) |
 
-### Custom Skills (4개) — 워크플로우 자동화
+### Custom Skills (3개) — 설계/구현 모델 분리 파이프라인
 
-| 스킬             | 용도                                                    |
-| ---------------- | ------------------------------------------------------- |
-| `/init-project`  | 프로젝트 첫 세팅 (컨벤션, 브랜치 전략, CLAUDE.md 생성)  |
-| `/start-feature` | 이슈 → 브랜치 → 설계 → 구현 → 코드 리뷰 → PR 전체 흐름 |
-| `/review-code`   | 보안 감사(최우선) + 코드 리뷰 + 컨벤션 점검 (7단계)     |
-| `/review-me`     | 개발 성향·의사결정 패턴 분석                             |
+Opus가 설계, Sonnet이 구현을 담당하는 분리 파이프라인으로 토큰 비용을 최적화했다. 설계 결과를 `.claude/plans/` 파일로 핸드오프하여 컨텍스트를 최소화한다.
+
+```
+/design (Opus) → .claude/plans/ → /compact → /build (Sonnet)
+설계(아키텍트)    계획서 파일       컨텍스트 정리    구현+리뷰+PR
+```
+
+| 스킬             | 모델   | 용도                                                         |
+| ---------------- | ------ | ------------------------------------------------------------ |
+| `/init-project`  | Opus   | 프로젝트 첫 세팅 (인터뷰 → 컨벤션 → 브랜치 전략 → CLAUDE.md) |
+| `/design`        | Opus   | 기능 인터뷰 → 이슈/브랜치 → 디테일 구현 계획서 작성          |
+| `/build`         | Sonnet | 계획서 로드 → 구현 → 테스트 → 코드 리뷰 → PR                |
 
 ### 다층 보안 — Public 저장소 + 개인 데이터
 
