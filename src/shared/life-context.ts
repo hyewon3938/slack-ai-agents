@@ -280,12 +280,19 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
 
 // ─── 일기 맥락 ──────────────────────────────────────────
 
-/** 최근 일기 (오늘 + 어제, 각 200자 제한) */
-const queryDiaryContext = async ({ today, yesterday }: DateParams): Promise<string> => {
+/** 최근 일기 (morning/conversation: 오늘+어제, night: 오늘만, 각 200자 제한) */
+const queryDiaryContext = async (
+  { today, yesterday }: DateParams,
+  timing: ContextTiming,
+): Promise<string> => {
+  // 밤 리뷰에서 어제 일기를 포함하면 LLM이 어제 활동을 오늘로 혼동함
+  const dates = timing === 'night' ? [today] : [today, yesterday];
+  const placeholders = dates.map((_, i) => `$${i + 1}`).join(', ');
+
   const result = await query<{ date: string; content: string }>(
     `SELECT date::text, content FROM diary_entries
-     WHERE user_id = 1 AND date IN ($1, $2) ORDER BY date DESC`,
-    [today, yesterday],
+     WHERE user_id = 1 AND date IN (${placeholders}) ORDER BY date DESC`,
+    dates,
   );
 
   if (result.rows.length === 0) return '';
@@ -353,7 +360,7 @@ export const buildLifeContext = async (timing: ContextTiming = 'conversation'): 
       querySleepContext(dates, timing),
       queryRoutineContext(dates, timing),
       queryScheduleContext(dates),
-      queryDiaryContext(dates),
+      queryDiaryContext(dates, timing),
       queryLifeThemesContext(),
       queryFortuneContext(dates),
     ]);
