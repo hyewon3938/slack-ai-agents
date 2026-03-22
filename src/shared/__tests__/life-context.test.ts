@@ -39,11 +39,11 @@ type MockRow = Record<string, unknown>;
 /** SQL 내용에 따라 적절한 응답을 반환하는 헬퍼 */
 const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
   const defaultResponses: Record<string, MockRow[]> = {
-    // sleep
-    'sleep_type.*night.*date =': [],
+    // sleep (night + morning naps)
+    "sleep_type = 'night' OR": [],
     'AVG.*duration_minutes': [],
     'AS is_late': [],
-    'sleep_type.*nap.*date =': [{ nap_count: '0' }],
+    'bedtime.*>= \'12:00\'': [{ nap_count: '0' }],
     // routine
     'routine_records.*routine_templates.*date =': [],
     'AVG.*daily_rate': [],
@@ -84,7 +84,7 @@ describe('buildLifeContext', () => {
 
   it('수면 데이터가 있으면 시간/취침시각 표시', async () => {
     setupQueryMock({
-      'sleep_type.*night.*date =': [
+      "sleep_type = 'night' OR": [
         { date: '2026-03-09', bedtime: '01:30', wake_time: '07:00', duration_minutes: 330, sleep_type: 'night' },
       ],
       'AVG.*duration_minutes': [{ avg_duration: '360', avg_bedtime_hour: '25.5', count: '5' }],
@@ -93,7 +93,7 @@ describe('buildLifeContext', () => {
         { date: '2026-03-08', is_late: true },
         { date: '2026-03-07', is_late: true },
       ],
-      'sleep_type.*nap.*date =': [{ nap_count: '1' }],
+      'bedtime.*>= \'12:00\'': [{ nap_count: '1' }],
       'routine_records.*routine_templates.*date =': [{ total: '8', completed: '3' }],
       'AVG.*daily_rate': [{ avg_rate: '72' }],
       "status != 'cancelled'.*end_date.*\\$1\\)": [{ total: '5', incomplete: '3' }],
@@ -125,7 +125,7 @@ describe('buildLifeContext', () => {
 
   it('morning 타이밍에는 루틴이 어제 기준, 낮잠 생략', async () => {
     setupQueryMock({
-      'sleep_type.*night.*date =': [
+      "sleep_type = 'night' OR": [
         { date: '2026-03-08', bedtime: '23:30', wake_time: '07:00', duration_minutes: 450, sleep_type: 'night' },
       ],
       'AVG.*duration_minutes': [{ avg_duration: '420', avg_bedtime_hour: '23.5', count: '3' }],
