@@ -235,29 +235,35 @@ export const aggregateWeeklySchedule = async (
   try {
     const summaryResult = await query<ScheduleSummaryRow>(
       `SELECT
-        COUNT(*) FILTER (WHERE status = 'done')::int AS completed_count,
-        COUNT(*) FILTER (WHERE status IN ('todo', 'in-progress'))::int AS incomplete_count,
-        COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled_count
-      FROM schedules
-      WHERE date BETWEEN $1 AND $2`,
+        COUNT(*) FILTER (WHERE s.status = 'done')::int AS completed_count,
+        COUNT(*) FILTER (WHERE s.status IN ('todo', 'in-progress'))::int AS incomplete_count,
+        COUNT(*) FILTER (WHERE s.status = 'cancelled')::int AS cancelled_count
+      FROM schedules s
+      LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
+      WHERE s.date BETWEEN $1 AND $2
+        AND COALESCE(c.type, 'task') = 'task'`,
       [weekStart, weekEnd],
     );
 
     const summary = summaryResult.rows[0] ?? empty;
 
     const catResult = await query<CategoryRow>(
-      `SELECT COALESCE(category, '미분류') AS category, COUNT(*)::int AS count
-      FROM schedules
-      WHERE date BETWEEN $1 AND $2
-      GROUP BY category
+      `SELECT COALESCE(s.category, '미분류') AS category, COUNT(*)::int AS count
+      FROM schedules s
+      LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
+      WHERE s.date BETWEEN $1 AND $2
+        AND COALESCE(c.type, 'task') = 'task'
+      GROUP BY s.category
       ORDER BY count DESC`,
       [weekStart, weekEnd],
     );
 
     const overdueResult = await query<OverdueRow>(
       `SELECT COUNT(*)::int AS overdue_count
-      FROM schedules
-      WHERE status = 'todo' AND date < $1 AND date IS NOT NULL`,
+      FROM schedules s
+      LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
+      WHERE s.status = 'todo' AND s.date < $1 AND s.date IS NOT NULL
+        AND COALESCE(c.type, 'task') = 'task'`,
       [weekEnd],
     );
 
@@ -455,7 +461,7 @@ const generateWeeklySummary = async (
 
   try {
     const messages: LLMMessage[] = [
-      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로. 구체적인 숫자를 직접 언급하지 마. 데이터는 이미 표시되어 있으니까, 전체적인 흐름과 느낌 위주로 총평해.` },
+      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로.` },
       { role: 'user', content: context },
     ];
     const response = await llmClient.chat(messages);
