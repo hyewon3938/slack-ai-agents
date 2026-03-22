@@ -104,7 +104,7 @@ describe('frequencyBadge', () => {
 describe('queryActiveTemplates', () => {
   it('활성 템플릿 조회 SQL 실행', async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, name: '운동', time_slot: '아침', frequency: '매일' }],
+      rows: [{ id: 1, name: '운동', time_slot: '낮', frequency: '매일' }],
     });
 
     const result = await queryActiveTemplates();
@@ -124,7 +124,7 @@ describe('queryTodayRecords', () => {
           date: '2026-03-08',
           completed: false,
           name: '운동',
-          time_slot: '아침',
+          time_slot: '낮',
           frequency: '매일',
         },
       ],

@@ -114,8 +114,7 @@ export const queryTodayRecords = async (today: string): Promise<RoutineRecordRow
      WHERE r.date = $1 AND r.user_id = 1
      ORDER BY
        CASE t.time_slot
-         WHEN '아침' THEN 1 WHEN '점심' THEN 2
-         WHEN '저녁' THEN 3 WHEN '밤' THEN 4
+         WHEN '낮' THEN 1 WHEN '밤' THEN 2
        END, t.name`,
       [today],
     )

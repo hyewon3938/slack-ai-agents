@@ -260,12 +260,12 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
     console.error(`[Life Cron] 아침 인사 메시지 전송 실패: ${msg}`);
   }
 
-  // 4. 아침 루틴 체크리스트 (chat.update 대상 — 인사와 분리)
+  // 4. 낮 루틴 체크리스트 (chat.update 대상 — 인사와 분리)
   const todayRecords = await queryTodayRecords(today);
-  const hasMorning = todayRecords.some((r) => r.time_slot === '아침');
+  const hasDay = todayRecords.some((r) => r.time_slot === '낮');
 
-  if (hasMorning) {
-    const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['아침']);
+  if (hasDay) {
+    const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['낮']);
     await postBlockMessage(app.client, config.channelId, text, blocks);
   }
 
@@ -282,40 +282,6 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   }
 
   console.warn(`[Life Cron] 아침 알림 완료 (기록 ${created}개 생성)`);
-};
-
-/** 점심: 미완료 아침 + 점심 체크리스트 */
-const lunchTask = async (app: App, config: LifeCronConfig): Promise<void> => {
-  const today = getTodayISO();
-  const records = await queryTodayRecords(today);
-
-  const hasItems = records.some(
-    (r) => r.time_slot === '점심' || (r.time_slot === '아침' && !r.completed),
-  );
-
-  if (hasItems) {
-    const { text, blocks } = buildFilteredRoutineBlocks(records, today, ['점심'], ['아침']);
-    await postBlockMessage(app.client, config.channelId, text, blocks);
-    console.warn(`[Life Cron] 점심 알림 전송 완료`);
-  }
-};
-
-/** 저녁: 미완료 아침/점심 + 저녁 체크리스트 */
-const eveningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
-  const today = getTodayISO();
-  const records = await queryTodayRecords(today);
-
-  const hasItems = records.some(
-    (r) =>
-      r.time_slot === '저녁' ||
-      ((r.time_slot === '아침' || r.time_slot === '점심') && !r.completed),
-  );
-
-  if (hasItems) {
-    const { text, blocks } = buildFilteredRoutineBlocks(records, today, ['저녁'], ['아침', '점심']);
-    await postBlockMessage(app.client, config.channelId, text, blocks);
-    console.warn(`[Life Cron] 저녁 알림 전송 완료`);
-  }
 };
 
 /** 밤: 전체 루틴 요약 + LLM 마무리 */
@@ -482,8 +448,6 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   sleepCheck: sleepCheckTask,
   morningSchedule: morningScheduleTask,
   morning: morningTask,
-  lunch: lunchTask,
-  evening: eveningTask,
   night: nightTask,
   nightReview: nightReviewTask,
   weeklyReport: weeklyReportTask,

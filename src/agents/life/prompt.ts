@@ -87,7 +87,7 @@ ${lifeContext}
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ, user_id INTEGER 있음)
 - schedules: user_id, title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category, memo, important(bool)
 - categories: name(UNIQUE), type('task'/'event'), color, sort_order
-- routine_templates: user_id, name, time_slot(아침/점심/저녁/밤), frequency(매일/격일/3일마다/주1회), active
+- routine_templates: user_id, name, time_slot(낮/밤), frequency(매일/격일/3일마다/주1회), active
 - routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo
 - sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo
 - sleep_events: date, event_time('HH:MM'), memo

@@ -22,7 +22,7 @@ export const DELETE_ACTION = 'delete';
 export const TOGGLE_IMPORTANT_ACTION = 'toggle_important';
 export const MOVE_TO_TODAY_ACTION = 'move_today';
 
-const TIME_SLOT_ORDER = ['아침', '점심', '저녁', '밤'] as const;
+const TIME_SLOT_ORDER = ['낮', '밤'] as const;
 
 const pick = <T>(arr: readonly T[]): T => {
   const item = arr[Math.floor(Math.random() * arr.length)];
