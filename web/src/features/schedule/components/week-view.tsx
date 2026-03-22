@@ -330,7 +330,7 @@ function WeekSpanBar({
         {...moveAttrs}
         className={`h-full overflow-visible rounded-lg border p-3 transition hover:shadow-sm ${
           STATUS_BG[span.schedule.status] ?? 'bg-white'
-        } ${isEvent ? 'border-l-[3px]' : isOverdue ? 'border-red-300' : 'border-gray-200'}`}
+        } ${isEvent ? 'border-gray-200 border-l-[3px]' : isOverdue ? 'border-red-300' : 'border-gray-200'}`}
         style={isEvent ? { borderLeftColor: catStyle.border } : undefined}
       >
         <div className="flex items-start gap-2">

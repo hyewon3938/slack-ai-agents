@@ -73,7 +73,7 @@ export function ScheduleCard({
       onClick={handleCardClick}
       className={`cursor-pointer rounded-lg border p-3 transition hover:shadow-sm ${STATUS_BG[schedule.status] ?? 'bg-white'} ${
         isEvent
-          ? 'border-l-[3px]'
+          ? 'border-gray-200 border-l-[3px]'
           : !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') && schedule.status === 'todo'
             ? 'border-red-300'
             : 'border-gray-200'
