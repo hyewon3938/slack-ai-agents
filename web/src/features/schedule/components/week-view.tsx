@@ -357,7 +357,7 @@ function WeekSpanBar({
               {span.schedule.category && (
                 <CategoryBadge colorKey={colorKey} label={span.schedule.category} />
               )}
-              {span.schedule.subcategory && (() => {
+              {span.schedule.subcategory && span.endCol - span.startCol >= 2 && (() => {
                 const sub = categories.find((c) => c.name === span.schedule.subcategory && c.parent_id !== null);
                 const subColor = sub?.color ?? 'gray';
                 return <CategoryBadge colorKey={subColor} label={span.schedule.subcategory} />;
