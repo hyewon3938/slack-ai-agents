@@ -277,6 +277,7 @@ function WeekSpanBar({
 
   const cat = categories.find((c) => c.name === span.schedule.category);
   const colorKey = cat?.color ?? 'gray';
+  const catStyle = getCategoryStyle(colorKey);
   const isEvent = cat?.type === 'event';
   const isDone = span.schedule.status === 'done' || span.schedule.status === 'cancelled';
   const isOverdue =
@@ -329,10 +330,13 @@ function WeekSpanBar({
         {...moveAttrs}
         className={`h-full overflow-visible rounded-lg border p-3 transition hover:shadow-sm ${
           STATUS_BG[span.schedule.status] ?? 'bg-white'
-        } ${isOverdue ? 'border-red-300' : 'border-gray-200'}`}
+        } ${isEvent ? 'border-l-[3px]' : isOverdue ? 'border-red-300' : 'border-gray-200'}`}
+        style={isEvent ? { borderLeftColor: catStyle.border } : undefined}
       >
         <div className="flex items-start gap-2">
-          {!isEvent && (
+          {isEvent ? (
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-sm">📅</span>
+          ) : (
             <button
               onClick={handleStatusClick}
               className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${

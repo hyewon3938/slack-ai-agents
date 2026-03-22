@@ -72,13 +72,18 @@ export function ScheduleCard({
     <div
       onClick={handleCardClick}
       className={`cursor-pointer rounded-lg border p-3 transition hover:shadow-sm ${STATUS_BG[schedule.status] ?? 'bg-white'} ${
-        !isEvent && !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') && schedule.status === 'todo'
-          ? 'border-red-300'
-          : 'border-gray-200'
+        isEvent
+          ? 'border-l-[3px]'
+          : !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') && schedule.status === 'todo'
+            ? 'border-red-300'
+            : 'border-gray-200'
       }`}
+      style={isEvent ? { borderLeftColor: catStyle.border } : undefined}
     >
       <div className="flex items-start gap-2">
-        {!isEvent && (
+        {isEvent ? (
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-sm">📅</span>
+        ) : (
           <button
             onClick={handleStatusClick}
             className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
