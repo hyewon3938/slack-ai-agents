@@ -11,6 +11,7 @@ const makeSchedule = (overrides: Partial<ScheduleRow> = {}): ScheduleRow => ({
   end_date: null,
   status: 'todo',
   category: null,
+  subcategory: null,
   memo: null,
   important: false,
   ...overrides,

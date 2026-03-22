@@ -34,6 +34,13 @@ export default function CategoriesPage() {
   const [editColor, setEditColor] = useState('');
   const [editType, setEditType] = useState<CategoryType>('task');
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubColor, setNewSubColor] = useState('gray');
+
+  const parentCategories = categories.filter((c) => c.parent_id === null);
+  const getChildren = (parentId: number) =>
+    categories.filter((c) => c.parent_id === parentId).sort((a, b) => a.sort_order - b.sort_order);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -81,37 +88,51 @@ export default function CategoriesPage() {
       if (!over || active.id === over.id) return;
 
       setCategories((prev) => {
-        const oldIndex = prev.findIndex((c) => c.id === Number(active.id));
-        const newIndex = prev.findIndex((c) => c.id === Number(over.id));
-        const updated = arrayMove(prev, oldIndex, newIndex);
-        saveOrder(updated);
-        return updated;
+        const parents = prev.filter((c) => c.parent_id === null);
+        const children = prev.filter((c) => c.parent_id !== null);
+        const oldIndex = parents.findIndex((c) => c.id === Number(active.id));
+        const newIndex = parents.findIndex((c) => c.id === Number(over.id));
+        const updatedParents = arrayMove(parents, oldIndex, newIndex);
+        saveOrder(updatedParents);
+        return [...updatedParents, ...children];
       });
     },
     [saveOrder],
   );
 
   const handleMoveUp = useCallback(
-    (id: number) => {
+    (id: number, parentId: number | null = null) => {
       setCategories((prev) => {
-        const idx = prev.findIndex((c) => c.id === id);
+        const siblings = prev.filter((c) => c.parent_id === parentId);
+        const others = prev.filter((c) => c.parent_id !== parentId);
+        const idx = siblings.findIndex((c) => c.id === id);
         if (idx <= 0) return prev;
-        const updated = arrayMove(prev, idx, idx - 1);
+        const updated = arrayMove(siblings, idx, idx - 1);
         saveOrder(updated);
-        return updated;
+        return [...others, ...updated].sort((a, b) => {
+          if (a.parent_id === null && b.parent_id !== null) return -1;
+          if (a.parent_id !== null && b.parent_id === null) return 1;
+          return 0;
+        });
       });
     },
     [saveOrder],
   );
 
   const handleMoveDown = useCallback(
-    (id: number) => {
+    (id: number, parentId: number | null = null) => {
       setCategories((prev) => {
-        const idx = prev.findIndex((c) => c.id === id);
-        if (idx < 0 || idx >= prev.length - 1) return prev;
-        const updated = arrayMove(prev, idx, idx + 1);
+        const siblings = prev.filter((c) => c.parent_id === parentId);
+        const others = prev.filter((c) => c.parent_id !== parentId);
+        const idx = siblings.findIndex((c) => c.id === id);
+        if (idx < 0 || idx >= siblings.length - 1) return prev;
+        const updated = arrayMove(siblings, idx, idx + 1);
         saveOrder(updated);
-        return updated;
+        return [...others, ...updated].sort((a, b) => {
+          if (a.parent_id === null && b.parent_id !== null) return -1;
+          if (a.parent_id !== null && b.parent_id === null) return 1;
+          return 0;
+        });
       });
     },
     [saveOrder],
@@ -172,6 +193,27 @@ export default function CategoriesPage() {
       }
     } catch {
       alert('카테고리 삭제에 실패했어');
+    }
+  };
+
+  const handleCreateSub = async (parentId: number) => {
+    if (!newSubName.trim()) return;
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newSubName.trim(), color: newSubColor, parent_id: parentId }),
+      });
+      if (res.ok) {
+        setNewSubName('');
+        setNewSubColor('gray');
+        await fetchCategories();
+      } else {
+        const data = (await res.json()) as { error?: string };
+        alert(data.error ?? '하위 카테고리 추가 실패');
+      }
+    } catch {
+      alert('하위 카테고리 추가에 실패했어');
     }
   };
 
@@ -241,27 +283,57 @@ export default function CategoriesPage() {
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={categories.map((c) => c.id)}
+              items={parentCategories.map((c) => c.id)}
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-2">
-                {categories.map((cat) => (
-                  <SortableCategoryItem
-                    key={cat.id}
-                    cat={cat}
-                    isEditing={editingId === cat.id}
-                    editName={editName}
-                    editColor={editColor}
-                    editType={editType}
-                    onEditNameChange={setEditName}
-                    onEditColorChange={setEditColor}
-                    onEditTypeChange={setEditType}
-                    onStartEdit={startEdit}
-                    onSaveEdit={handleUpdate}
-                    onCancelEdit={() => setEditingId(null)}
-                    onDelete={handleDelete}
-                  />
-                ))}
+                {parentCategories.map((cat) => {
+                  const children = getChildren(cat.id);
+                  const isExpanded = expandedId === cat.id;
+                  return (
+                    <div key={cat.id}>
+                      <SortableCategoryItem
+                        cat={cat}
+                        isEditing={editingId === cat.id}
+                        editName={editName}
+                        editColor={editColor}
+                        editType={editType}
+                        onEditNameChange={setEditName}
+                        onEditColorChange={setEditColor}
+                        onEditTypeChange={setEditType}
+                        onStartEdit={startEdit}
+                        onSaveEdit={handleUpdate}
+                        onCancelEdit={() => setEditingId(null)}
+                        onDelete={handleDelete}
+                        childCount={children.length}
+                        isExpanded={isExpanded}
+                        onToggleExpand={() => setExpandedId(isExpanded ? null : cat.id)}
+                      />
+                      {isExpanded && (
+                        <SubcategoryPanel
+                          parentId={cat.id}
+                          children={children}
+                          editingId={editingId}
+                          editName={editName}
+                          editColor={editColor}
+                          onEditNameChange={setEditName}
+                          onEditColorChange={setEditColor}
+                          onStartEdit={startEdit}
+                          onSaveEdit={handleUpdate}
+                          onCancelEdit={() => setEditingId(null)}
+                          onDelete={handleDelete}
+                          onMoveUp={(id) => handleMoveUp(id, cat.id)}
+                          onMoveDown={(id) => handleMoveDown(id, cat.id)}
+                          newSubName={newSubName}
+                          newSubColor={newSubColor}
+                          onNewSubNameChange={setNewSubName}
+                          onNewSubColorChange={setNewSubColor}
+                          onCreateSub={handleCreateSub}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </SortableContext>
             <DragOverlay>
@@ -276,80 +348,112 @@ export default function CategoriesPage() {
 
         {/* 카테고리 목록 — 모바일 (화살표 버튼) */}
         <div className="space-y-2 md:hidden">
-          {categories.map((cat, idx) => {
+          {parentCategories.map((cat, idx) => {
             const isEditing = editingId === cat.id;
+            const children = getChildren(cat.id);
+            const isExpanded = expandedId === cat.id;
 
             return (
-              <div
-                key={cat.id}
-                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-3"
-              >
-                {/* 순서 변경 버튼 */}
-                <div className="flex shrink-0 flex-col gap-0.5">
-                  <button
-                    onClick={() => handleMoveUp(cat.id)}
-                    disabled={idx === 0}
-                    className="rounded p-0.5 text-gray-400 transition hover:bg-gray-100 disabled:opacity-20"
-                    aria-label="위로 이동"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => handleMoveDown(cat.id)}
-                    disabled={idx === categories.length - 1}
-                    className="rounded p-0.5 text-gray-400 transition hover:bg-gray-100 disabled:opacity-20"
-                    aria-label="아래로 이동"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </div>
-
-                {isEditing ? (
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                      autoFocus
-                    />
-                    <TypeSelector value={editType} onChange={setEditType} />
-                    <ColorPicker value={editColor} onChange={setEditColor} previewLabel={editName.trim() || '카테고리'} />
+              <div key={cat.id}>
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-3">
+                  {/* 순서 변경 버튼 */}
+                  <div className="flex shrink-0 flex-col gap-0.5">
                     <button
-                      onClick={() => handleUpdate(cat.id)}
-                      className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600"
+                      onClick={() => handleMoveUp(cat.id)}
+                      disabled={idx === 0}
+                      className="rounded p-0.5 text-gray-400 transition hover:bg-gray-100 disabled:opacity-20"
+                      aria-label="위로 이동"
                     >
-                      저장
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
                     </button>
                     <button
-                      onClick={() => setEditingId(null)}
-                      className="rounded-lg px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-100"
+                      onClick={() => handleMoveDown(cat.id)}
+                      disabled={idx === parentCategories.length - 1}
+                      className="rounded p-0.5 text-gray-400 transition hover:bg-gray-100 disabled:opacity-20"
+                      aria-label="아래로 이동"
                     >
-                      취소
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
                     </button>
                   </div>
-                ) : (
-                  <>
-                    <CategoryBadge name={cat.name} colorKey={cat.color} />
-                    <TypeBadge type={cat.type} />
-                    <div className="flex-1" />
-                    <button
-                      onClick={() => startEdit(cat)}
-                      className="rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
-                    >
-                      수정
-                    </button>
-                    <button
-                      onClick={() => handleDelete(cat.id)}
-                      className="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-50"
-                    >
-                      삭제
-                    </button>
-                  </>
+
+                  {isEditing ? (
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                        autoFocus
+                      />
+                      <TypeSelector value={editType} onChange={setEditType} />
+                      <ColorPicker value={editColor} onChange={setEditColor} previewLabel={editName.trim() || '카테고리'} />
+                      <button
+                        onClick={() => handleUpdate(cat.id)}
+                        className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600"
+                      >
+                        저장
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="rounded-lg px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-100"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <CategoryBadge name={cat.name} colorKey={cat.color} />
+                      <TypeBadge type={cat.type} />
+                      {children.length > 0 && (
+                        <span className="text-xs text-gray-400">{children.length}</span>
+                      )}
+                      <div className="flex-1" />
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : cat.id)}
+                        className="rounded-lg px-2 py-1.5 text-xs text-gray-400 hover:bg-gray-100"
+                      >
+                        {isExpanded ? '접기' : '펼치기'}
+                      </button>
+                      <button
+                        onClick={() => startEdit(cat)}
+                        className="rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
+                      >
+                        수정
+                      </button>
+                      <button
+                        onClick={() => handleDelete(cat.id)}
+                        className="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-50"
+                      >
+                        삭제
+                      </button>
+                    </>
+                  )}
+                </div>
+                {isExpanded && (
+                  <SubcategoryPanel
+                    parentId={cat.id}
+                    children={children}
+                    editingId={editingId}
+                    editName={editName}
+                    editColor={editColor}
+                    onEditNameChange={setEditName}
+                    onEditColorChange={setEditColor}
+                    onStartEdit={startEdit}
+                    onSaveEdit={handleUpdate}
+                    onCancelEdit={() => setEditingId(null)}
+                    onDelete={handleDelete}
+                    onMoveUp={(id) => handleMoveUp(id, cat.id)}
+                    onMoveDown={(id) => handleMoveDown(id, cat.id)}
+                    newSubName={newSubName}
+                    newSubColor={newSubColor}
+                    onNewSubNameChange={setNewSubName}
+                    onNewSubColorChange={setNewSubColor}
+                    onCreateSub={handleCreateSub}
+                  />
                 )}
               </div>
             );
@@ -375,6 +479,9 @@ interface SortableCategoryItemProps {
   onSaveEdit: (id: number) => void;
   onCancelEdit: () => void;
   onDelete: (id: number) => void;
+  childCount?: number;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 function SortableCategoryItem({
@@ -390,6 +497,9 @@ function SortableCategoryItem({
   onSaveEdit,
   onCancelEdit,
   onDelete,
+  childCount = 0,
+  isExpanded = false,
+  onToggleExpand,
 }: SortableCategoryItemProps) {
   const {
     attributes,
@@ -457,7 +567,16 @@ function SortableCategoryItem({
         <>
           <CategoryBadge name={cat.name} colorKey={cat.color} />
           <TypeBadge type={cat.type} />
+          {childCount > 0 && (
+            <span className="text-xs text-gray-400">{childCount}</span>
+          )}
           <div className="flex-1" />
+          <button
+            onClick={onToggleExpand}
+            className="rounded-lg px-2 py-1.5 text-xs text-gray-400 hover:bg-gray-100"
+          >
+            {isExpanded ? '접기' : '펼치기'}
+          </button>
           <button
             onClick={() => onStartEdit(cat)}
             className="rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
@@ -471,6 +590,148 @@ function SortableCategoryItem({
             삭제
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+// ─── 하위 카테고리 패널 ─────────────────────────────────────
+
+interface SubcategoryPanelProps {
+  parentId: number;
+  children: CategoryRow[];
+  editingId: number | null;
+  editName: string;
+  editColor: string;
+  onEditNameChange: (v: string) => void;
+  onEditColorChange: (v: string) => void;
+  onStartEdit: (cat: CategoryRow) => void;
+  onSaveEdit: (id: number) => void;
+  onCancelEdit: () => void;
+  onDelete: (id: number) => void;
+  onMoveUp: (id: number) => void;
+  onMoveDown: (id: number) => void;
+  newSubName: string;
+  newSubColor: string;
+  onNewSubNameChange: (v: string) => void;
+  onNewSubColorChange: (v: string) => void;
+  onCreateSub: (parentId: number) => void;
+}
+
+function SubcategoryPanel({
+  parentId,
+  children,
+  editingId,
+  editName,
+  editColor,
+  onEditNameChange,
+  onEditColorChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  newSubName,
+  newSubColor,
+  onNewSubNameChange,
+  onNewSubColorChange,
+  onCreateSub,
+}: SubcategoryPanelProps) {
+  return (
+    <div className="ml-6 mt-1 space-y-1 rounded-lg border border-gray-100 bg-gray-50 p-3">
+      {/* 하위 카테고리 추가 폼 */}
+      <div className="mb-2 flex items-center gap-2">
+        <input
+          type="text"
+          value={newSubName}
+          onChange={(e) => onNewSubNameChange(e.target.value)}
+          placeholder="하위 카테고리 이름"
+          className="min-w-0 flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+        />
+        <ColorPicker value={newSubColor} onChange={onNewSubColorChange} previewLabel={newSubName.trim() || '하위'} />
+        <button
+          onClick={() => onCreateSub(parentId)}
+          disabled={!newSubName.trim()}
+          className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-600 disabled:opacity-50"
+        >
+          추가
+        </button>
+      </div>
+
+      {/* 하위 카테고리 목록 */}
+      {children.map((sub, idx) => {
+        const isEditing = editingId === sub.id;
+        return (
+          <div key={sub.id} className="flex items-center gap-2 rounded-lg bg-white p-2">
+            <div className="flex shrink-0 flex-col gap-0.5">
+              <button
+                onClick={() => onMoveUp(sub.id)}
+                disabled={idx === 0}
+                className="rounded p-0.5 text-gray-400 transition hover:bg-gray-100 disabled:opacity-20"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => onMoveDown(sub.id)}
+                disabled={idx === children.length - 1}
+                className="rounded p-0.5 text-gray-400 transition hover:bg-gray-100 disabled:opacity-20"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+
+            {isEditing ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => onEditNameChange(e.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs focus:border-blue-500 focus:outline-none"
+                  autoFocus
+                />
+                <ColorPicker value={editColor} onChange={onEditColorChange} previewLabel={editName.trim() || '하위'} />
+                <button
+                  onClick={() => onSaveEdit(sub.id)}
+                  className="rounded-lg bg-blue-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-600"
+                >
+                  저장
+                </button>
+                <button
+                  onClick={onCancelEdit}
+                  className="rounded-lg px-2.5 py-1 text-xs text-gray-400 hover:bg-gray-100"
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <>
+                <CategoryBadge name={sub.name} colorKey={sub.color} />
+                <div className="flex-1" />
+                <button
+                  onClick={() => onStartEdit(sub)}
+                  className="rounded-lg px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                >
+                  수정
+                </button>
+                <button
+                  onClick={() => onDelete(sub.id)}
+                  className="rounded-lg px-2.5 py-1 text-xs text-red-400 hover:bg-red-50"
+                >
+                  삭제
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
+
+      {children.length === 0 && (
+        <p className="py-1 text-center text-xs text-gray-400">하위 카테고리가 없어</p>
       )}
     </div>
   );

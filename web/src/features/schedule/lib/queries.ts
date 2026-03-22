@@ -11,7 +11,7 @@ export const querySchedulesByRange = async (
 ): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
-      `SELECT id, title, date::text, end_date::text, status, category, memo, important
+      `SELECT id, title, date::text, end_date::text, status, category, subcategory, memo, important
        FROM schedules
        WHERE user_id = $1 AND ((date >= $2 AND date <= $3) OR (date <= $3 AND end_date >= $2))
        ORDER BY date NULLS LAST,
@@ -25,7 +25,7 @@ export const querySchedulesByRange = async (
 export const queryBacklogSchedules = async (userId: number): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
-      `SELECT id, title, date::text, end_date::text, status, category, memo, important
+      `SELECT id, title, date::text, end_date::text, status, category, subcategory, memo, important
        FROM schedules
        WHERE user_id = $1 AND date IS NULL
        ORDER BY
@@ -38,7 +38,7 @@ export const queryBacklogSchedules = async (userId: number): Promise<ScheduleRow
 /** 단건 조회 (userId로 소유권 확인) */
 export const queryScheduleById = async (userId: number, id: number): Promise<ScheduleRow | null> =>
   queryOne<ScheduleRow>(
-    `SELECT id, title, date::text, end_date::text, status, category, memo, important
+    `SELECT id, title, date::text, end_date::text, status, category, subcategory, memo, important
      FROM schedules WHERE user_id = $1 AND id = $2`,
     [userId, id],
   );
@@ -53,14 +53,15 @@ export const createSchedule = async (
     end_date?: string | null;
     status?: string;
     category?: string | null;
+    subcategory?: string | null;
     memo?: string | null;
     important?: boolean;
   },
 ): Promise<ScheduleRow> => {
   const result = await query<ScheduleRow>(
-    `INSERT INTO schedules (user_id, title, date, end_date, status, category, memo, important)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, title, date::text, end_date::text, status, category, memo, important`,
+    `INSERT INTO schedules (user_id, title, date, end_date, status, category, subcategory, memo, important)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, title, date::text, end_date::text, status, category, subcategory, memo, important`,
     [
       userId,
       data.title,
@@ -68,6 +69,7 @@ export const createSchedule = async (
       data.end_date ?? null,
       data.status ?? 'todo',
       data.category ?? null,
+      data.subcategory ?? null,
       data.memo ?? null,
       data.important ?? false,
     ],
@@ -78,7 +80,7 @@ export const createSchedule = async (
 };
 
 const SCHEDULE_COLUMNS = new Set([
-  'title', 'date', 'end_date', 'status', 'category', 'memo', 'important',
+  'title', 'date', 'end_date', 'status', 'category', 'subcategory', 'memo', 'important',
 ]);
 
 export const updateSchedule = async (
@@ -90,6 +92,7 @@ export const updateSchedule = async (
     end_date: string | null;
     status: string;
     category: string | null;
+    subcategory: string | null;
     memo: string | null;
     important: boolean;
   }>,
@@ -111,7 +114,7 @@ export const updateSchedule = async (
   values.push(id);
   const result = await query<ScheduleRow>(
     `UPDATE schedules SET ${fields.join(', ')} WHERE user_id = $1 AND id = $${idx}
-     RETURNING id, title, date::text, end_date::text, status, category, memo, important`,
+     RETURNING id, title, date::text, end_date::text, status, category, subcategory, memo, important`,
     values,
   );
   return result.rows[0] ?? null;
@@ -127,7 +130,7 @@ export const deleteSchedule = async (userId: number, id: number): Promise<boolea
 export const queryCategories = async (userId: number): Promise<CategoryRow[]> =>
   (
     await query<CategoryRow>(
-      "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order FROM categories WHERE user_id = $1 ORDER BY sort_order, name",
+      "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id FROM categories WHERE user_id = $1 ORDER BY parent_id NULLS FIRST, sort_order, name",
       [userId],
     )
   ).rows;
@@ -138,17 +141,21 @@ export const createCategory = async (
     name: string;
     color?: string;
     type?: string;
+    parent_id?: number | null;
   },
 ): Promise<CategoryRow> => {
+  const parentId = data.parent_id ?? null;
   const maxOrder = await queryOne<{ max: number }>(
-    'SELECT COALESCE(MAX(sort_order), 0) as max FROM categories WHERE user_id = $1',
-    [userId],
+    parentId
+      ? 'SELECT COALESCE(MAX(sort_order), 0) as max FROM categories WHERE user_id = $1 AND parent_id = $2'
+      : 'SELECT COALESCE(MAX(sort_order), 0) as max FROM categories WHERE user_id = $1 AND parent_id IS NULL',
+    parentId ? [userId, parentId] : [userId],
   );
   const result = await query<CategoryRow>(
-    `INSERT INTO categories (user_id, name, color, type, sort_order)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order`,
-    [userId, data.name, data.color ?? 'gray', data.type ?? 'task', (maxOrder?.max ?? 0) + 1],
+    `INSERT INTO categories (user_id, name, color, type, sort_order, parent_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id`,
+    [userId, data.name, data.color ?? 'gray', data.type ?? 'task', (maxOrder?.max ?? 0) + 1, parentId],
   );
   const row = result.rows[0];
   if (!row) throw new Error('createCategory: INSERT returned no rows');
@@ -179,7 +186,7 @@ export const updateCategory = async (
   values.push(id);
   const result = await query<CategoryRow>(
     `UPDATE categories SET ${fields.join(', ')} WHERE user_id = $1 AND id = $${idx}
-     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order`,
+     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id`,
     values,
   );
   return result.rows[0] ?? null;
@@ -203,7 +210,7 @@ export const reorderCategories = async (
 /** 일정에서 사용 중인 카테고리가 categories 테이블에 없으면 자동 추가 */
 export const ensureCategoryExists = async (userId: number, name: string): Promise<void> => {
   const existing = await queryOne<CategoryRow>(
-    "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order FROM categories WHERE user_id = $1 AND name = $2",
+    "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id FROM categories WHERE user_id = $1 AND name = $2 AND parent_id IS NULL",
     [userId, name],
   );
   if (!existing) {

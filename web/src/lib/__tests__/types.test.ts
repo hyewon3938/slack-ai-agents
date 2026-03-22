@@ -37,6 +37,7 @@ describe('compareByStatus', () => {
     end_date: null,
     status,
     category: null,
+    subcategory: null,
     memo: null,
     important: false,
   });
