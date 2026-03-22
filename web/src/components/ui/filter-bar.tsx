@@ -52,8 +52,8 @@ export function FilterBar({
 
       <span className="text-gray-300">|</span>
 
-      {/* 카테고리 필터 */}
-      {categories.map((cat) => {
+      {/* 카테고리 필터 (상위만) */}
+      {categories.filter((c) => c.parent_id === null).map((cat) => {
         const active = selectedCategories.has(cat.name);
         const style = getCategoryStyle(cat.color);
         return (
