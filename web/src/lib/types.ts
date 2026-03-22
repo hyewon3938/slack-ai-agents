@@ -5,6 +5,7 @@ export interface ScheduleRow {
   end_date: string | null;
   status: string;
   category: string | null;
+  subcategory: string | null;
   memo: string | null;
   important: boolean;
   created_at?: string;
@@ -23,6 +24,7 @@ export interface CategoryRow {
   color: string;
   type: CategoryType;
   sort_order: number;
+  parent_id: number | null;
 }
 
 export type ScheduleStatus = 'todo' | 'in-progress' | 'done' | 'cancelled';

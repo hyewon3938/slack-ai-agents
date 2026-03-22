@@ -102,6 +102,11 @@ export function ScheduleCard({
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {!isEvent && <StatusBadge status={schedule.status} />}
             {schedule.category && <CategoryBadge colorKey={colorKey} label={schedule.category} />}
+            {schedule.subcategory && (() => {
+              const sub = categories.find((c) => c.name === schedule.subcategory && c.parent_id !== null);
+              const subColor = sub?.color ?? 'gray';
+              return <CategoryBadge colorKey={subColor} label={schedule.subcategory} />;
+            })()}
             {schedule.end_date && schedule.end_date !== schedule.date && (
               <span className="text-xs text-gray-400">
                 {formatDateRange(schedule.date, schedule.end_date)}

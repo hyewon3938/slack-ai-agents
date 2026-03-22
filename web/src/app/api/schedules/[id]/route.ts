@@ -47,6 +47,7 @@ export async function PATCH(
       end_date: string | null;
       status: string;
       category: string | null;
+      subcategory: string | null;
       memo: string | null;
       important: boolean;
     }>;
