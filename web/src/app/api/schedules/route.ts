@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       end_date?: string | null;
       status?: string;
       category?: string | null;
+      subcategory?: string | null;
       memo?: string | null;
       important?: boolean;
     };
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
       end_date: body.end_date,
       status: body.status,
       category: body.category,
+      subcategory: body.subcategory,
       memo: body.memo,
       important: body.important,
     });

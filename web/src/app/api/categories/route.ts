@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { name?: string; color?: string; type?: string };
+    const body = (await request.json()) as { name?: string; color?: string; type?: string; parent_id?: number };
 
     if (!body.name?.trim()) {
       return NextResponse.json({ error: '이름을 입력해줘' }, { status: 400 });
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       name: body.name.trim(),
       color: body.color,
       type: body.type,
+      parent_id: body.parent_id ?? null,
     });
     revalidateTag('categories', 'seconds');
     return NextResponse.json({ data }, { status: 201 });

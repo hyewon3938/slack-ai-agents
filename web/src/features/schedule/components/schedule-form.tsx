@@ -30,13 +30,23 @@ export function ScheduleForm({
   const [showEndDate, setShowEndDate] = useState(!!schedule?.end_date);
   const [status, setStatus] = useState(schedule?.status ?? 'todo');
   const [category, setCategory] = useState(schedule?.category ?? '');
+  const [subcategory, setSubcategory] = useState(schedule?.subcategory ?? '');
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(
+    schedule?.subcategory && schedule?.category ? schedule.category : null,
+  );
   const [memo, setMemo] = useState(schedule?.memo ?? '');
   const [important, setImportant] = useState(schedule?.important ?? false);
   const [saving, setSaving] = useState(false);
 
+  const parentCategories = categories.filter((c) => c.parent_id === null);
+  const getChildren = (parentName: string) => {
+    const parent = categories.find((c) => c.name === parentName && c.parent_id === null);
+    return parent ? categories.filter((c) => c.parent_id === parent.id) : [];
+  };
+
   const isDirty = useCallback(() => {
     if (!schedule) {
-      return !!(title || date || endDate || memo || category || important);
+      return !!(title || date || endDate || memo || category || subcategory || important);
     }
     return (
       title !== (schedule.title ?? '') ||
@@ -44,10 +54,11 @@ export function ScheduleForm({
       endDate !== (schedule.end_date ?? '') ||
       status !== schedule.status ||
       category !== (schedule.category ?? '') ||
+      subcategory !== (schedule.subcategory ?? '') ||
       memo !== (schedule.memo ?? '') ||
       important !== (schedule.important ?? false)
     );
-  }, [title, date, endDate, status, category, memo, important, schedule]);
+  }, [title, date, endDate, status, category, subcategory, memo, important, schedule]);
 
   useEffect(() => {
     onDirtyChange?.(isDirty());
@@ -76,6 +87,7 @@ export function ScheduleForm({
         end_date: showEndDate && endDate ? endDate : null,
         status,
         category: category || null,
+        subcategory: subcategory || null,
         memo: memo || null,
         important,
       });
@@ -173,43 +185,110 @@ export function ScheduleForm({
       <div>
         <label className="mb-1 block text-xs text-gray-500">카테고리</label>
         <div className="flex flex-wrap gap-1.5">
-          {/* 없음 버튼 */}
-          <button
-            type="button"
-            onClick={() => setCategory('')}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-              category === ''
-                ? 'bg-gray-200 ring-2 ring-gray-400 ring-offset-1'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            }`}
-          >
-            없음
-          </button>
-          {/* 태그 버튼 (최대 TAG_LIMIT개) */}
-          {categories.map((c) => {
-            const style = getCategoryStyle(c.color);
-            const selected = category === c.name;
-            return (
+          {expandedCategory ? (
+            <>
+              {/* 펼쳐진 상위 카테고리 */}
+              {(() => {
+                const parent = parentCategories.find((c) => c.name === expandedCategory);
+                if (!parent) return null;
+                const style = getCategoryStyle(parent.color);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCategory(null)}
+                    className="rounded-full px-3 py-1.5 text-xs font-medium"
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      outline: `2px solid ${style.border}`,
+                      outlineOffset: '2px',
+                    }}
+                  >
+                    {parent.name} ▾
+                  </button>
+                );
+              })()}
+            </>
+          ) : (
+            <>
+              {/* 없음 버튼 */}
               <button
-                key={c.id}
                 type="button"
-                onClick={() => setCategory(c.name)}
+                onClick={() => { setCategory(''); setSubcategory(''); setExpandedCategory(null); }}
                 className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  selected ? '' : 'opacity-60 hover:opacity-100'
+                  category === ''
+                    ? 'bg-gray-200 ring-2 ring-gray-400 ring-offset-1'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
-                style={{
-                  backgroundColor: style.bg,
-                  color: style.text,
-                  ...(selected
-                    ? { outline: `2px solid ${style.border}`, outlineOffset: '2px' }
-                    : {}),
-                }}
               >
-                {c.name}
+                없음
               </button>
-            );
-          })}
+              {/* 상위 카테고리 버튼들 */}
+              {parentCategories.map((c) => {
+                const style = getCategoryStyle(c.color);
+                const selected = category === c.name;
+                const children = getChildren(c.name);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      if (children.length > 0) {
+                        setCategory(c.name);
+                        setSubcategory('');
+                        setExpandedCategory(c.name);
+                      } else {
+                        setCategory(c.name);
+                        setSubcategory('');
+                        setExpandedCategory(null);
+                      }
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                      selected ? '' : 'opacity-60 hover:opacity-100'
+                    }`}
+                    style={{
+                      backgroundColor: style.bg,
+                      color: style.text,
+                      ...(selected
+                        ? { outline: `2px solid ${style.border}`, outlineOffset: '2px' }
+                        : {}),
+                    }}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
+        {/* 하위 카테고리 목록 */}
+        {expandedCategory && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {getChildren(expandedCategory).map((sub) => {
+              const style = getCategoryStyle(sub.color);
+              const selected = subcategory === sub.name;
+              return (
+                <button
+                  key={sub.id}
+                  type="button"
+                  onClick={() => setSubcategory(selected ? '' : sub.name)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    selected ? '' : 'opacity-60 hover:opacity-100'
+                  }`}
+                  style={{
+                    backgroundColor: style.bg,
+                    color: style.text,
+                    ...(selected
+                      ? { outline: `2px solid ${style.border}`, outlineOffset: '2px' }
+                      : {}),
+                  }}
+                >
+                  {sub.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 중요 */}
