@@ -536,7 +536,11 @@ const formatDuration = (minutes: number): string => {
   return mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
 };
 
-/** 수면 요약 Block Kit (밤잠 + 낮잠 + 메모 + 중간 기상) */
+/** 낮잠 라벨 판별: bedtime < 12:00이면 아침잠 (밤잠 연장) */
+const napLabel = (bedtime: string | null): string =>
+  bedtime != null && bedtime < '12:00' ? '아침잠' : '낮잠';
+
+/** 수면 요약 Block Kit (밤잠 + 아침잠/낮잠 + 메모 + 중간 기상 + 총합) */
 export const buildSleepBlocks = (
   records: SleepRecordRow[],
   events?: SleepEventRow[],
@@ -546,13 +550,19 @@ export const buildSleepBlocks = (
   }
 
   const lines = records.map((r) => {
-    const label = r.sleep_type === 'night' ? '밤잠' : '낮잠';
+    const label = r.sleep_type === 'night' ? '밤잠' : napLabel(r.bedtime);
     if (r.bedtime == null || r.wake_time == null || r.duration_minutes == null) {
       return `${label}  (시간 미기록)`;
     }
     const duration = formatDuration(r.duration_minutes);
     return `${label}  ${r.bedtime} → ${r.wake_time} (${duration})`;
   });
+
+  // 총 수면시간 (2건 이상일 때만)
+  const totalMinutes = records.reduce((sum, r) => sum + (r.duration_minutes ?? 0), 0);
+  if (records.length > 1 && totalMinutes > 0) {
+    lines.push(`*총 ${formatDuration(totalMinutes)}*`);
+  }
 
   const blocks: KnownBlock[] = [
     {

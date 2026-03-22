@@ -48,31 +48,52 @@ interface ScheduleCountRow {
 
 // ─── 수면 서브 쿼리 ─────────────────────────────────────
 
-/** 오늘 날짜의 밤잠 기록 (= 어젯밤 수면) */
+/** 분 → "N시간 M분" 포맷 */
+const fmtDuration = (minutes: number): string => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+};
+
+/** 오늘 날짜의 밤잠 + 아침잠(bedtime < 12:00 낮잠) 합산 */
 const queryLastNight = async (
   { today }: DateParams,
   timing: ContextTiming,
 ): Promise<string | null> => {
-  const lastNight = await query<SleepRow>(
+  const result = await query<SleepRow>(
     `SELECT date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
      FROM sleep_records
-     WHERE sleep_type = 'night' AND date = $1 AND user_id = 1
-     LIMIT 1`,
+     WHERE date = $1 AND user_id = 1
+       AND (sleep_type = 'night' OR (sleep_type = 'nap' AND bedtime::time < '12:00'))
+     ORDER BY CASE sleep_type WHEN 'night' THEN 0 ELSE 1 END`,
     [today],
   );
 
-  const s = lastNight.rows[0];
-  if (s) {
-    if (s.duration_minutes == null || s.bedtime == null || s.wake_time == null) {
-      return s.memo ? `어젯밤 수면 (시간 미기록, 메모 있음)` : `어젯밤 수면 (시간 미기록)`;
-    }
-    const hours = Math.floor(s.duration_minutes / 60);
-    const mins = s.duration_minutes % 60;
-    const durationText = mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
-    return `어젯밤 ${durationText} (${s.bedtime}~${s.wake_time})`;
+  if (result.rows.length === 0) {
+    return timing === 'morning' ? '어젯밤 수면 미기록' : null;
   }
 
-  return timing === 'morning' ? '어젯밤 수면 미기록' : null;
+  const night = result.rows.find((r) => r.sleep_type === 'night');
+  const morningNaps = result.rows.filter((r) => r.sleep_type === 'nap');
+
+  if (!night) {
+    return timing === 'morning' ? '어젯밤 수면 미기록' : null;
+  }
+
+  if (night.duration_minutes == null || night.bedtime == null || night.wake_time == null) {
+    return night.memo ? `어젯밤 수면 (시간 미기록, 메모 있음)` : `어젯밤 수면 (시간 미기록)`;
+  }
+
+  const nightText = `어젯밤 ${fmtDuration(night.duration_minutes)} (${night.bedtime}~${night.wake_time})`;
+
+  // 아침잠이 있으면 합산 총합 표시
+  const morningTotal = morningNaps.reduce((sum, r) => sum + (r.duration_minutes ?? 0), 0);
+  if (morningTotal > 0) {
+    const total = night.duration_minutes + morningTotal;
+    return `${nightText} + 아침잠 ${fmtDuration(morningTotal)} = 총 ${fmtDuration(total)}`;
+  }
+
+  return nightText;
 };
 
 /** 7일 평균 수면 시간 (데이터 2건 이상일 때만) */
@@ -120,12 +141,13 @@ const queryLateNightPattern = async ({ today }: DateParams): Promise<string | nu
   return consecutive >= 2 ? `최근 ${consecutive}일 연속 자정 이후 취침` : null;
 };
 
-/** 오늘 낮잠 횟수 (morning 제외) */
+/** 오늘 낮잠 횟수 (아침잠 bedtime < 12:00 제외) */
 const queryNaps = async ({ today }: DateParams): Promise<string | null> => {
   const naps = await query<{ nap_count: string }>(
     `SELECT COUNT(*)::text as nap_count
      FROM sleep_records
-     WHERE sleep_type = 'nap' AND date = $1 AND user_id = 1`,
+     WHERE sleep_type = 'nap' AND date = $1 AND user_id = 1
+       AND (bedtime IS NULL OR bedtime::time >= '12:00')`,
     [today],
   );
 
