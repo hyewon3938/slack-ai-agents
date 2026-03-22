@@ -22,7 +22,7 @@ const makeRecord = (overrides: Partial<RoutineRecordRow> = {}): RoutineRecordRow
   completed_at: null,
   memo: null,
   name: '운동',
-  time_slot: '아침',
+  time_slot: '낮',
   frequency: '매일',
   ...overrides,
 });
@@ -59,11 +59,11 @@ describe('parseButtonValue', () => {
   });
 
   it('recordId + 필터 컨텍스트 파싱', () => {
-    const { recordId, filter } = parseButtonValue('42|아침,점심|아침');
+    const { recordId, filter } = parseButtonValue('42|낮,밤|낮');
     expect(recordId).toBe(42);
     expect(filter).not.toBeNull();
-    expect(filter?.targetSlots).toEqual(['아침', '점심']);
-    expect(filter?.incompleteFrom).toEqual(['아침']);
+    expect(filter?.targetSlots).toEqual(['낮', '밤']);
+    expect(filter?.incompleteFrom).toEqual(['낮']);
   });
 });
 
@@ -83,7 +83,7 @@ describe('parseOverflowValue', () => {
 describe('buildRoutineBlocks', () => {
   it('시간대별 그룹핑 + 완료 버튼', () => {
     const records = [
-      makeRecord({ id: 1, name: '운동', time_slot: '아침' }),
+      makeRecord({ id: 1, name: '운동', time_slot: '낮' }),
       makeRecord({ id: 2, name: '독서', time_slot: '밤' }),
     ];
 
@@ -139,41 +139,39 @@ describe('buildRoutineBlocks', () => {
 describe('buildFilteredRoutineBlocks', () => {
   it('target 시간대만 필터링', () => {
     const records = [
-      makeRecord({ id: 1, time_slot: '아침' }),
-      makeRecord({ id: 2, time_slot: '점심', name: '점심약' }),
-      makeRecord({ id: 3, time_slot: '저녁', name: '저녁운동' }),
+      makeRecord({ id: 1, time_slot: '낮' }),
+      makeRecord({ id: 2, time_slot: '밤', name: '밤루틴' }),
     ];
 
-    const { blocks } = buildFilteredRoutineBlocks(records, '2026-03-08', ['점심']);
+    const { blocks } = buildFilteredRoutineBlocks(records, '2026-03-08', ['낮']);
 
-    // 점심 항목만 포함되어야 함
     const textContent = blocks
       .filter((b) => b.type === 'section')
       .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
       .join(' ');
 
-    expect(textContent).toContain('점심약');
-    expect(textContent).not.toContain('저녁운동');
+    expect(textContent).toContain('운동');
+    expect(textContent).not.toContain('밤루틴');
   });
 
   it('미완료 이전 시간대 포함', () => {
     const records = [
-      makeRecord({ id: 1, time_slot: '아침', completed: false }),
-      makeRecord({ id: 2, time_slot: '아침', name: '아침운동', completed: true }),
-      makeRecord({ id: 3, time_slot: '점심', name: '점심약' }),
+      makeRecord({ id: 1, time_slot: '낮', completed: false }),
+      makeRecord({ id: 2, time_slot: '낮', name: '낮운동', completed: true }),
+      makeRecord({ id: 3, time_slot: '밤', name: '밤루틴' }),
     ];
 
-    const { blocks } = buildFilteredRoutineBlocks(records, '2026-03-08', ['점심'], ['아침']);
+    const { blocks } = buildFilteredRoutineBlocks(records, '2026-03-08', ['밤'], ['낮']);
 
     const textContent = blocks
       .filter((b) => b.type === 'section')
       .map((b) => ('text' in b ? (b.text as { text: string }).text : ''))
       .join(' ');
 
-    // 미완료 아침 + 점심 포함, 완료된 아침운동은 제외
+    // 미완료 낮 + 밤 포함, 완료된 낮운동은 제외
     expect(textContent).toContain('운동');
-    expect(textContent).toContain('점심약');
-    expect(textContent).not.toContain('아침운동');
+    expect(textContent).toContain('밤루틴');
+    expect(textContent).not.toContain('낮운동');
   });
 });
 
