@@ -183,7 +183,7 @@ export function ScheduleForm({
 
       {/* 카테고리 */}
       <div>
-        <label className="mb-1 block text-xs text-gray-500">카테고리</label>
+        <label className="mb-2 block text-xs text-gray-500">카테고리</label>
         <div className="flex flex-wrap gap-1.5">
           {expandedCategory ? (
             <>

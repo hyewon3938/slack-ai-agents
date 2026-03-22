@@ -455,7 +455,7 @@ const generateWeeklySummary = async (
 
   try {
     const messages: LLMMessage[] = [
-      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로.` },
+      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로. 구체적인 숫자를 직접 언급하지 마. 데이터는 이미 표시되어 있으니까, 전체적인 흐름과 느낌 위주로 총평해.` },
       { role: 'user', content: context },
     ];
     const response = await llmClient.chat(messages);
