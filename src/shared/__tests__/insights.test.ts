@@ -213,14 +213,14 @@ describe('detectSlotGap', () => {
     setupQueryMock({
       'time_slot.*GROUP BY.*time_slot.*HAVING': [
         { time_slot: '밤', total: '12', done: '5', rate: 42 },
-        { time_slot: '아침', total: '14', done: '13', rate: 93 },
+        { time_slot: '낮', total: '14', done: '13', rate: 93 },
       ],
     });
 
     const result = defined(await detectSlotGap('2026-03-15'));
     expect(result.type).toBe('slotGap');
     expect(result.timing).toBe('night');
-    expect(result.message).toContain('아침');
+    expect(result.message).toContain('낮');
     expect(result.message).toContain('밤');
     expect(result.message).toContain('93%');
     expect(result.message).toContain('42%');
@@ -229,7 +229,7 @@ describe('detectSlotGap', () => {
   it('격차 <30%이면 null', async () => {
     setupQueryMock({
       'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '아침', total: '14', done: '12', rate: 86 },
+        { time_slot: '낮', total: '14', done: '12', rate: 86 },
         { time_slot: '밤', total: '12', done: '8', rate: 67 },
       ],
     });
@@ -241,7 +241,7 @@ describe('detectSlotGap', () => {
   it('시간대 1개만 있으면 null (비교 불가)', async () => {
     setupQueryMock({
       'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '아침', total: '14', done: '12', rate: 86 },
+        { time_slot: '낮', total: '14', done: '12', rate: 86 },
       ],
     });
 
@@ -341,7 +341,7 @@ describe('pickMorningNudge', () => {
       "status = 'todo'.*date < ": [{ overdue_count: 4 }],
       // slotGap: night only → 아침에 선택 안 됨
       'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '아침', total: '14', done: '14', rate: 100 },
+        { time_slot: '낮', total: '14', done: '14', rate: 100 },
         { time_slot: '밤', total: '12', done: '2', rate: 17 },
       ],
     });
@@ -356,7 +356,7 @@ describe('pickMorningNudge', () => {
     // slotGap은 night only
     setupQueryMock({
       'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '아침', total: '14', done: '14', rate: 100 },
+        { time_slot: '낮', total: '14', done: '14', rate: 100 },
         { time_slot: '밤', total: '12', done: '2', rate: 17 },
       ],
     });
@@ -385,7 +385,7 @@ describe('pickNightNudge', () => {
       ],
       // slotGap: night, priority 5
       'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '아침', total: '14', done: '14', rate: 100 },
+        { time_slot: '낮', total: '14', done: '14', rate: 100 },
         { time_slot: '밤', total: '12', done: '2', rate: 17 },
       ],
     });

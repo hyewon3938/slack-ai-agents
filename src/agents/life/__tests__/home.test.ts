@@ -121,7 +121,7 @@ describe('publishHomeView', () => {
         completed_at: null,
         memo: null,
         name: '스트레칭',
-        time_slot: '아침',
+        time_slot: '낮',
         frequency: '매일',
       },
     ]);
