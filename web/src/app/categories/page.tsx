@@ -639,7 +639,7 @@ function SubcategoryPanel({
   onCreateSub,
 }: SubcategoryPanelProps) {
   return (
-    <div className="ml-6 mt-1 space-y-1 rounded-lg border border-gray-100 bg-gray-50 p-3">
+    <div className="mt-1 space-y-1 rounded-lg border border-gray-200 bg-white p-3">
       {/* 하위 카테고리 추가 폼 */}
       <div className="mb-2 flex items-center gap-2">
         <input
