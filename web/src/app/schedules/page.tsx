@@ -46,6 +46,7 @@ export default function SchedulesPage() {
     showCreateModal,
     setShowCreateModal,
     selectedCategories,
+    selectedSubcategories,
     selectedStatuses,
     loading,
     filteredSchedules,
@@ -64,6 +65,7 @@ export default function SchedulesPage() {
     handleDeleteById,
     handleSelectDate,
     toggleCategory,
+    toggleSubcategory,
     toggleStatus,
     clearFilters,
   } = useSchedules();
@@ -112,8 +114,10 @@ export default function SchedulesPage() {
         <FilterBar
           categories={categories}
           selectedCategories={selectedCategories}
+          selectedSubcategories={selectedSubcategories}
           selectedStatuses={selectedStatuses}
           onToggleCategory={toggleCategory}
+          onToggleSubcategory={toggleSubcategory}
           onToggleStatus={toggleStatus}
           onClearFilters={clearFilters}
         />

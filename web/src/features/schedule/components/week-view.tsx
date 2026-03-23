@@ -334,6 +334,9 @@ function WeekSpanBar({
         >
           <span className="mr-0.5">📅</span>
           {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
+          {span.schedule.category && (
+            <span className="mr-0.5 text-[10px] opacity-50">{span.schedule.category}</span>
+          )}
           {span.schedule.title}
         </div>
       ) : (
