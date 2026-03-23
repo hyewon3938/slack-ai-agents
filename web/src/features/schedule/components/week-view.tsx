@@ -26,7 +26,8 @@ interface WeekViewProps {
   onDelete: (id: number) => void;
 }
 
-const LANE_HEIGHT = 76;
+const TASK_LANE_HEIGHT = 76;
+const EVENT_LANE_HEIGHT = 30;
 const DATE_ROW_HEIGHT = 72;
 
 const NEXT_STATUS: Record<string, string> = {
@@ -60,6 +61,22 @@ export function WeekView({
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const layout = computeWeekLayout(days, schedules, categories);
 
+  // lane별 높이 계산: event-only lane은 compact, task가 있으면 full
+  const laneHeights: number[] = [];
+  for (let lane = 0; lane < layout.laneCount; lane++) {
+    const spansInLane = layout.spans.filter((s) => s.lane === lane);
+    const hasTask = spansInLane.some((s) => {
+      const cat = categories.find((c) => c.name === s.schedule.category && c.parent_id === null);
+      return !cat || cat.type !== 'event';
+    });
+    laneHeights.push(hasTask ? TASK_LANE_HEIGHT : EVENT_LANE_HEIGHT);
+  }
+  // lane별 누적 top 위치
+  const laneTops: number[] = [0];
+  for (let i = 0; i < laneHeights.length; i++) {
+    laneTops.push(laneTops[i]! + laneHeights[i]!);
+  }
+
   // 모바일: 오늘 날짜로 자동 스크롤 (뷰 진입, 오늘 버튼, 주 이동 시)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -78,7 +95,8 @@ export function WeekView({
           const today = isToday(day);
           const selected = selectedDate === dateStr;
           const dayOfWeek = day.getDay();
-          const daySpanHeight = (layout.laneCountPerDay[colIndex] ?? 0) * LANE_HEIGHT;
+          const dayLaneCount = layout.laneCountPerDay[colIndex] ?? 0;
+          const daySpanHeight = laneTops[dayLaneCount] ?? 0;
 
           return (
             <DroppableDay
@@ -143,7 +161,8 @@ export function WeekView({
             span={span}
             categories={categories}
             dateRowHeight={DATE_ROW_HEIGHT}
-            laneHeight={LANE_HEIGHT}
+            laneTop={laneTops[span.lane]!}
+            barHeight={laneHeights[span.lane]!}
             onStatusChange={onStatusChange}
             onClick={() => onScheduleClick(span.schedule)}
             onToggleImportant={onToggleImportant}
@@ -236,7 +255,8 @@ function WeekSpanBar({
   span,
   categories,
   dateRowHeight,
-  laneHeight,
+  laneTop,
+  barHeight,
   onStatusChange,
   onClick,
   onToggleImportant,
@@ -247,7 +267,8 @@ function WeekSpanBar({
   span: WeekSpan;
   categories: CategoryRow[];
   dateRowHeight: number;
-  laneHeight: number;
+  laneTop: number;
+  barHeight: number;
   onStatusChange: (id: number, status: string) => void;
   onClick: () => void;
   onToggleImportant: (id: number) => void;
@@ -298,8 +319,8 @@ function WeekSpanBar({
     position: 'absolute',
     left: `calc(${(span.startCol / 7) * 100}% + 4px)`,
     width: `calc(${((span.endCol - span.startCol + 1) / 7) * 100}% - 8px)`,
-    top: `${dateRowHeight + span.lane * laneHeight}px`,
-    height: `${laneHeight - 4}px`,
+    top: `${dateRowHeight + laneTop}px`,
+    height: `${barHeight - 4}px`,
     zIndex: 10,
   };
 
