@@ -332,6 +332,7 @@ function WeekSpanBar({
           className={`flex h-full items-center truncate rounded border-l-2 px-2 py-1 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
           style={{ backgroundColor: catStyle.bg, color: catStyle.text, borderLeftColor: catStyle.border }}
         >
+          <span className="mr-0.5">📅</span>
           {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
           {span.schedule.title}
         </div>
