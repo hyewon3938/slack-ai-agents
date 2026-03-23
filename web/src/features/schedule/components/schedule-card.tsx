@@ -64,6 +64,9 @@ export function ScheduleCard({
       >
         {isEvent && <span className="mr-0.5">📅</span>}
         {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
+        {isEvent && schedule.category && (
+          <span className="mr-0.5 text-[10px] opacity-50">{schedule.category}</span>
+        )}
         {schedule.title}
       </div>
     );
