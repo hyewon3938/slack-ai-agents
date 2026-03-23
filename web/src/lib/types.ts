@@ -118,7 +118,14 @@ export function compareSchedulePriority(
   b: ScheduleRow,
   categories: CategoryRow[],
 ): number {
-  // 1. 기간 일정 최상위
+  // 1. event 타입 최상위
+  const catA = categories.find((c) => c.name === a.category);
+  const catB = categories.find((c) => c.name === b.category);
+  const aEvent = catA?.type === 'event';
+  const bEvent = catB?.type === 'event';
+  if (aEvent !== bEvent) return aEvent ? -1 : 1;
+
+  // 2. 기간 일정
   const aMulti = isMultiDaySchedule(a);
   const bMulti = isMultiDaySchedule(b);
   if (aMulti !== bMulti) return aMulti ? -1 : 1;
@@ -136,8 +143,6 @@ export function compareSchedulePriority(
   if (statusDiff !== 0) return statusDiff;
 
   // 5. 카테고리 sort_order
-  const catA = categories.find((c) => c.name === a.category);
-  const catB = categories.find((c) => c.name === b.category);
   const orderA = a.category ? (catA?.sort_order ?? 999) : 9999;
   const orderB = b.category ? (catB?.sort_order ?? 999) : 9999;
   return orderA - orderB;

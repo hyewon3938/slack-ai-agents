@@ -107,8 +107,13 @@ export function DayView({
   );
 }
 
-/** 일정을 기간 → 중요 → 카테고리별 섹션으로 분리 */
+/** 일정을 이벤트 → 기간 → 중요 → 카테고리별 섹션으로 분리 */
 function buildDaySections(schedules: ScheduleRow[], categories: CategoryRow[]): Section[] {
+  const isEvent = (s: ScheduleRow) => {
+    const cat = categories.find((c) => c.name === s.category);
+    return cat?.type === 'event';
+  };
+
   const byCatThenStatus = (a: ScheduleRow, b: ScheduleRow) => {
     const catA = categories.find((c) => c.name === a.category);
     const catB = categories.find((c) => c.name === b.category);
@@ -118,17 +123,20 @@ function buildDaySections(schedules: ScheduleRow[], categories: CategoryRow[]): 
     return compareByStatus(a, b);
   };
 
-  // 1. 기간 일정
-  const multiDay = schedules.filter(isMultiDaySchedule).sort(byCatThenStatus);
+  // 0. 이벤트 (일정/이동 등)
+  const events = schedules.filter(isEvent).sort(byCatThenStatus);
 
-  // 2. 중요 단일 일정 (기간 제외)
+  // 1. 기간 일정 (이벤트 제외)
+  const multiDay = schedules.filter((s) => !isEvent(s) && isMultiDaySchedule(s)).sort(byCatThenStatus);
+
+  // 2. 중요 단일 일정 (기간·이벤트 제외)
   const importantSingle = schedules
-    .filter((s) => !isMultiDaySchedule(s) && s.important)
+    .filter((s) => !isEvent(s) && !isMultiDaySchedule(s) && s.important)
     .sort(byCatThenStatus);
 
   // 3. 나머지 → 카테고리별 그룹
   const regular = schedules
-    .filter((s) => !isMultiDaySchedule(s) && !s.important)
+    .filter((s) => !isEvent(s) && !isMultiDaySchedule(s) && !s.important)
     .sort(compareByStatus);
 
   const grouped = new Map<string, ScheduleRow[]>();
@@ -148,6 +156,7 @@ function buildDaySections(schedules: ScheduleRow[], categories: CategoryRow[]): 
   });
 
   const sections: Section[] = [];
+  if (events.length > 0) sections.push({ title: '일정', items: events });
   if (multiDay.length > 0) sections.push({ title: '기간 일정', items: multiDay });
   if (importantSingle.length > 0) sections.push({ title: '중요', items: importantSingle });
   for (const cat of sortedCats) {
