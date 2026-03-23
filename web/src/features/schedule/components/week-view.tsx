@@ -61,7 +61,7 @@ export function WeekView({
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const layout = computeWeekLayout(days, schedules, categories);
 
-  // lane별 높이 계산: event-only lane은 compact, task가 있으면 full
+  // lane별 높이 계산: lane 내 가장 큰 타입 기준 (spacer용)
   const laneHeights: number[] = [];
   for (let lane = 0; lane < layout.laneCount; lane++) {
     const spansInLane = layout.spans.filter((s) => s.lane === lane);
@@ -76,6 +76,18 @@ export function WeekView({
   for (let i = 0; i < laneHeights.length; i++) {
     laneTops.push(laneTops[i]! + laneHeights[i]!);
   }
+
+  // span별 실제 bar 높이 (event=compact, task=lane 높이)
+  const getSpanBarHeight = (span: WeekSpan): number => {
+    const cat = categories.find((c) => c.name === span.schedule.category && c.parent_id === null);
+    return cat?.type === 'event' ? EVENT_LANE_HEIGHT : laneHeights[span.lane]!;
+  };
+  // event 바는 lane 내 중앙 정렬 offset
+  const getSpanTopOffset = (span: WeekSpan): number => {
+    const h = getSpanBarHeight(span);
+    const laneH = laneHeights[span.lane]!;
+    return (laneH - h) / 2;
+  };
 
   // 모바일: 오늘 날짜로 자동 스크롤 (뷰 진입, 오늘 버튼, 주 이동 시)
   useEffect(() => {
@@ -161,8 +173,8 @@ export function WeekView({
             span={span}
             categories={categories}
             dateRowHeight={DATE_ROW_HEIGHT}
-            laneTop={laneTops[span.lane]!}
-            barHeight={laneHeights[span.lane]!}
+            laneTop={laneTops[span.lane]! + getSpanTopOffset(span)}
+            barHeight={getSpanBarHeight(span)}
             onStatusChange={onStatusChange}
             onClick={() => onScheduleClick(span.schedule)}
             onToggleImportant={onToggleImportant}
