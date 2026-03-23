@@ -32,6 +32,7 @@ export function useSchedules() {
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [selectedSubcategories, setSelectedSubcategories] = useState<Set<string>>(new Set());
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const mutatingRef = useRef(0);
@@ -119,15 +120,26 @@ export function useSchedules() {
   const filteredSchedules = useMemo(
     () =>
       schedules.filter((s) => {
-        if (selectedCategories.size > 0 && !selectedCategories.has(s.category ?? '미분류')) {
-          return false;
-        }
         if (selectedStatuses.size > 0 && !selectedStatuses.has(s.status)) {
           return false;
         }
+        if (selectedCategories.size > 0) {
+          if (!selectedCategories.has(s.category ?? '미분류')) return false;
+          // 하위카테고리 필터
+          if (selectedSubcategories.size > 0) {
+            const parent = categories.find((c) => c.name === s.category && c.parent_id === null);
+            if (parent) {
+              const childNames = categories.filter((c) => c.parent_id === parent.id).map((c) => c.name);
+              const activeForParent = childNames.filter((n) => selectedSubcategories.has(n));
+              if (activeForParent.length > 0 && !selectedSubcategories.has(s.subcategory ?? '')) {
+                return false;
+              }
+            }
+          }
+        }
         return true;
       }),
-    [schedules, selectedCategories, selectedStatuses],
+    [schedules, selectedCategories, selectedSubcategories, selectedStatuses, categories],
   );
 
   // 네비게이션
@@ -340,6 +352,28 @@ export function useSchedules() {
   const toggleCategory = (name: string) => {
     setSelectedCategories((prev) => {
       const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+        // 상위 해제 시 해당 하위도 제거
+        const parent = categories.find((c) => c.name === name && c.parent_id === null);
+        if (parent) {
+          const childNames = categories.filter((c) => c.parent_id === parent.id).map((c) => c.name);
+          setSelectedSubcategories((prev) => {
+            const nextSub = new Set(prev);
+            childNames.forEach((n) => nextSub.delete(n));
+            return nextSub;
+          });
+        }
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  };
+
+  const toggleSubcategory = (name: string) => {
+    setSelectedSubcategories((prev) => {
+      const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
       return next;
@@ -357,6 +391,7 @@ export function useSchedules() {
 
   const clearFilters = () => {
     setSelectedCategories(new Set());
+    setSelectedSubcategories(new Set());
     setSelectedStatuses(new Set());
   };
 
@@ -371,6 +406,7 @@ export function useSchedules() {
     showCreateModal,
     setShowCreateModal,
     selectedCategories,
+    selectedSubcategories,
     selectedStatuses,
     loading,
     filteredSchedules,
@@ -389,6 +425,7 @@ export function useSchedules() {
     handleDeleteById,
     handleSelectDate,
     toggleCategory,
+    toggleSubcategory,
     toggleStatus,
     clearFilters,
   };
