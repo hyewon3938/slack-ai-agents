@@ -323,20 +323,28 @@ function WeekSpanBar({
         </div>
       )}
 
-      {/* 카드 본체 — ScheduleCard 풀 모드 */}
-      <div
-        ref={moveRef}
-        {...moveListeners}
-        {...moveAttrs}
-        className={`h-full overflow-visible rounded-lg border p-3 transition hover:shadow-sm ${
-          STATUS_BG[span.schedule.status] ?? 'bg-white'
-        } ${isEvent ? 'border-gray-200 border-l-[3px]' : isOverdue ? 'border-red-300' : 'border-gray-200'}`}
-        style={isEvent ? { borderLeftColor: catStyle.border } : undefined}
-      >
-        <div className="flex items-start gap-2">
-          {isEvent ? (
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-sm">📅</span>
-          ) : (
+      {/* 카드 본체 */}
+      {isEvent ? (
+        <div
+          ref={moveRef}
+          {...moveListeners}
+          {...moveAttrs}
+          className={`flex h-full items-center truncate rounded border-l-2 px-2 py-1 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
+          style={{ backgroundColor: catStyle.bg, color: catStyle.text, borderLeftColor: catStyle.border }}
+        >
+          {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
+          {span.schedule.title}
+        </div>
+      ) : (
+        <div
+          ref={moveRef}
+          {...moveListeners}
+          {...moveAttrs}
+          className={`h-full overflow-visible rounded-lg border p-3 transition hover:shadow-sm ${
+            STATUS_BG[span.schedule.status] ?? 'bg-white'
+          } ${isOverdue ? 'border-red-300' : 'border-gray-200'}`}
+        >
+          <div className="flex items-start gap-2">
             <button
               onClick={handleStatusClick}
               className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
@@ -347,40 +355,40 @@ function WeekSpanBar({
             >
               {isDone && '✓'}
             </button>
-          )}
 
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className={`truncate text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-                {span.schedule.important && <span className="mr-1 text-amber-500">★</span>}
-                {span.schedule.title}
-              </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className={`truncate text-sm font-medium ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                  {span.schedule.important && <span className="mr-1 text-amber-500">★</span>}
+                  {span.schedule.title}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <StatusBadge status={span.schedule.status} />
+                {span.schedule.category && (
+                  <CategoryBadge colorKey={colorKey} label={span.schedule.category} />
+                )}
+                {span.schedule.subcategory && span.endCol - span.startCol >= 2 && (() => {
+                  const sub = categories.find((c) => c.name === span.schedule.subcategory && c.parent_id !== null);
+                  const subColor = sub?.color ?? 'gray';
+                  return <CategoryBadge colorKey={subColor} label={span.schedule.subcategory} />;
+                })()}
+              </div>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {!isEvent && <StatusBadge status={span.schedule.status} />}
-              {span.schedule.category && (
-                <CategoryBadge colorKey={colorKey} label={span.schedule.category} />
-              )}
-              {span.schedule.subcategory && span.endCol - span.startCol >= 2 && (() => {
-                const sub = categories.find((c) => c.name === span.schedule.subcategory && c.parent_id !== null);
-                const subColor = sub?.color ?? 'gray';
-                return <CategoryBadge colorKey={subColor} label={span.schedule.subcategory} />;
-              })()}
-            </div>
-          </div>
 
-          <div className="shrink-0">
-            <ActionMenu
-              scheduleId={span.schedule.id}
-              important={span.schedule.important}
-              onToggleImportant={onToggleImportant}
-              onPostpone={onPostpone}
-              onMoveToBacklog={onMoveToBacklog}
-              onDelete={onDelete}
-            />
+            <div className="shrink-0">
+              <ActionMenu
+                scheduleId={span.schedule.id}
+                important={span.schedule.important}
+                onToggleImportant={onToggleImportant}
+                onPostpone={onPostpone}
+                onMoveToBacklog={onMoveToBacklog}
+                onDelete={onDelete}
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 리사이즈 핸들 (우) */}
       {showRightHandle && (
