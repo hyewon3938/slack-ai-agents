@@ -55,7 +55,7 @@ export function ScheduleCard({
     onClick?.(schedule);
   };
 
-  if (compact) {
+  if (compact || isEvent) {
     return (
       <div
         onClick={handleCardClick}
@@ -72,29 +72,22 @@ export function ScheduleCard({
     <div
       onClick={handleCardClick}
       className={`cursor-pointer rounded-lg border p-3 transition hover:shadow-sm ${STATUS_BG[schedule.status] ?? 'bg-white'} ${
-        isEvent
-          ? 'border-gray-200 border-l-[3px]'
-          : !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') && schedule.status === 'todo'
-            ? 'border-red-300'
-            : 'border-gray-200'
+        !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') && schedule.status === 'todo'
+          ? 'border-red-300'
+          : 'border-gray-200'
       }`}
-      style={isEvent ? { borderLeftColor: catStyle.border } : undefined}
     >
       <div className="flex items-start gap-2">
-        {isEvent ? (
-          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-sm">📅</span>
-        ) : (
-          <button
-            onClick={handleStatusClick}
-            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
-              isDone
-                ? 'border-green-400 bg-green-100 text-green-600'
-                : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-            }`}
-          >
-            {isDone && '✓'}
-          </button>
-        )}
+        <button
+          onClick={handleStatusClick}
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs transition ${
+            isDone
+              ? 'border-green-400 bg-green-100 text-green-600'
+              : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+          }`}
+        >
+          {isDone && '✓'}
+        </button>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -105,7 +98,7 @@ export function ScheduleCard({
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            {!isEvent && <StatusBadge status={schedule.status} />}
+            <StatusBadge status={schedule.status} />
             {schedule.category && <CategoryBadge colorKey={colorKey} label={schedule.category} />}
             {schedule.subcategory && (() => {
               const sub = categories.find((c) => c.name === schedule.subcategory && c.parent_id !== null);
