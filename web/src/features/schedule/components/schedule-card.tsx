@@ -59,9 +59,10 @@ export function ScheduleCard({
     return (
       <div
         onClick={handleCardClick}
-        className={`cursor-pointer truncate rounded border-l-2 px-1.5 py-0.5 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
+        className={`cursor-pointer truncate rounded border-l-2 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''} ${isEvent ? 'px-1.5 py-1' : 'px-1.5 py-0.5'}`}
         style={{ backgroundColor: catStyle.bg, color: catStyle.text, borderLeftColor: catStyle.border }}
       >
+        {isEvent && <span className="mr-0.5">📅</span>}
         {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
         {schedule.title}
       </div>
