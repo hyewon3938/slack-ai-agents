@@ -19,6 +19,7 @@ import {
   queryTodaySchedules,
   queryNightSleepExists,
   queryNotificationSettings,
+  queryActiveReminderTimes,
   queryDueReminders,
   deactivateReminder,
   decrementReminderCount,
@@ -470,6 +471,8 @@ export class CronScheduler {
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
   private reloading = false;
   private reloadQueued = false;
+  private reminderTimesCache = new Set<string>();
+  private reminderCacheUpdatedAt = 0;
 
   constructor(
     private readonly app: App,
@@ -564,7 +567,18 @@ export class CronScheduler {
       '* * * * *',
       async () => {
         try {
-          await this.checkDueReminders();
+          const currentTime = getKSTTimeString();
+
+          // 캐시 갱신: 30분마다 또는 최초
+          const now = Date.now();
+          if (now - this.reminderCacheUpdatedAt > 30 * 60 * 1000) {
+            await this.refreshReminderCache();
+          }
+
+          // 현재 시각에 리마인더가 없으면 DB 쿼리 스킵
+          if (!this.reminderTimesCache.has(currentTime)) return;
+
+          await this.checkDueReminders(currentTime);
         } catch (error: unknown) {
           const msg = error instanceof Error ? error.message : String(error);
           console.error('[Life Cron] 리마인더 체크 오류:', msg);
@@ -580,12 +594,20 @@ export class CronScheduler {
     this.tasks.set('_reminderChecker', task);
   }
 
-  private async checkDueReminders(): Promise<void> {
+  private async refreshReminderCache(): Promise<void> {
+    this.reminderTimesCache = await queryActiveReminderTimes();
+    this.reminderCacheUpdatedAt = Date.now();
+    console.warn(
+      `[Life Cron] 리마인더 캐시 갱신: ${this.reminderTimesCache.size}개 시간대`,
+    );
+  }
+
+  private async checkDueReminders(currentTime?: string): Promise<void> {
     const today = getTodayISO();
-    const currentTime = getKSTTimeString();
+    const time = currentTime ?? getKSTTimeString();
     const dow = getKSTDayOfWeek();
 
-    const reminders = await queryDueReminders(today, currentTime, dow);
+    const reminders = await queryDueReminders(today, time, dow);
 
     for (const reminder of reminders) {
       await postToChannel(this.app.client, this.config.channelId, `리마인더: ${reminder.title}`);
@@ -593,6 +615,7 @@ export class CronScheduler {
       // 일회성(date 지정) → 자동 비활성화
       if (reminder.date) {
         await deactivateReminder(reminder.id);
+        this.reminderCacheUpdatedAt = 0; // 캐시 무효화
         console.warn(`[Life Cron] 일회성 리마인더 비활성화: ${reminder.title}`);
         continue;
       }
@@ -601,6 +624,7 @@ export class CronScheduler {
       if (reminder.remaining_count != null && reminder.remaining_count > 0) {
         const deactivated = await decrementReminderCount(reminder.id);
         if (deactivated) {
+          this.reminderCacheUpdatedAt = 0; // 캐시 무효화
           console.warn(`[Life Cron] 횟수 소진 리마인더 비활성화: ${reminder.title}`);
           continue;
         }
@@ -609,12 +633,13 @@ export class CronScheduler {
       // end_date 도달 → 비활성화
       if (reminder.end_date && today >= reminder.end_date) {
         await deactivateReminder(reminder.id);
+        this.reminderCacheUpdatedAt = 0; // 캐시 무효화
         console.warn(`[Life Cron] 기간 만료 리마인더 비활성화: ${reminder.title}`);
       }
     }
 
     if (reminders.length > 0) {
-      console.warn(`[Life Cron] 리마인더 ${reminders.length}건 전송 (${currentTime})`);
+      console.warn(`[Life Cron] 리마인더 ${reminders.length}건 전송 (${time})`);
     }
   }
 
