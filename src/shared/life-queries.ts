@@ -297,6 +297,14 @@ export const queryDueReminders = async (
     )
   ).rows;
 
+/** 활성 리마인더의 고유 time_value 목록 조회 (캐시용) */
+export const queryActiveReminderTimes = async (): Promise<Set<string>> => {
+  const result = await query<{ time_value: string }>(
+    'SELECT DISTINCT time_value FROM reminders WHERE active = true',
+  );
+  return new Set(result.rows.map((r) => r.time_value));
+};
+
 /** 리마인더 비활성화 (일회성 발동 후) */
 export const deactivateReminder = async (id: number): Promise<void> => {
   await query('UPDATE reminders SET active = false WHERE id = $1', [id]);
