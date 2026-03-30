@@ -21,6 +21,7 @@ import {
   queryNotificationSettings,
   queryDueReminders,
   deactivateReminder,
+  decrementReminderCount,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
 import { getTodayISO, getYesterdayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
@@ -593,6 +594,22 @@ export class CronScheduler {
       if (reminder.date) {
         await deactivateReminder(reminder.id);
         console.warn(`[Life Cron] 일회성 리마인더 비활성화: ${reminder.title}`);
+        continue;
+      }
+
+      // remaining_count 차감 → 0이면 비활성화
+      if (reminder.remaining_count != null && reminder.remaining_count > 0) {
+        const deactivated = await decrementReminderCount(reminder.id);
+        if (deactivated) {
+          console.warn(`[Life Cron] 횟수 소진 리마인더 비활성화: ${reminder.title}`);
+          continue;
+        }
+      }
+
+      // end_date 도달 → 비활성화
+      if (reminder.end_date && today >= reminder.end_date) {
+        await deactivateReminder(reminder.id);
+        console.warn(`[Life Cron] 기간 만료 리마인더 비활성화: ${reminder.title}`);
       }
     }
 

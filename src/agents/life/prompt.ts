@@ -198,6 +198,12 @@ sleep_records.date는 **수면을 기록하는 날짜**야. 보통 일어난 날
   - 매월 특정 날짜: frequency='매월', days_of_month=ARRAY[날짜]. 예: 매월 1,15일 → ARRAY[1,15]
   - 격주: frequency='매주', days_of_week=ARRAY[요일], repeat_interval=2, reference_date=첫 실행일
   - 격월: frequency='매월', days_of_month=ARRAY[날짜], repeat_interval=2, reference_date=첫 실행일
+  - 며칠마다: frequency='며칠마다', repeat_interval=N, reference_date=첫 실행일. 예: 3일마다 → repeat_interval=3
+  - 종료 조건 (선택, 모든 반복 패턴에 사용 가능):
+    - 횟수 제한: remaining_count=N. "5번만 반복" → remaining_count=5
+    - 기간 제한: end_date='YYYY-MM-DD'. "2주간" → end_date=2주 후 날짜 계산해서 지정
+    - 둘 다 지정 가능. 먼저 도달하는 쪽이 종료
+  - 시작일 지정: reference_date에 시작일 설정. 해당 날짜부터 발동
   - 요일 번호: 0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토
 
 ## 데이터 규칙
