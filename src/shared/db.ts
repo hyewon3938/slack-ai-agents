@@ -18,7 +18,7 @@ export const connectDB = async (databaseUrl: string): Promise<void> => {
     return;
   }
 
-  const useSSL = databaseUrl.includes('.neon.tech');
+  const useSSL = databaseUrl.includes('sslmode=require');
   pool = new Pool({
     connectionString: databaseUrl,
     max: 5,

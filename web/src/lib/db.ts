@@ -12,7 +12,7 @@ let pool: pg.Pool | null = null;
 const getPool = (): pg.Pool => {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
-    const useSSL = connectionString?.includes('.neon.tech');
+    const useSSL = connectionString?.includes('sslmode=require');
     pool = new Pool({
       connectionString,
       max: 5,
