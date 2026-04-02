@@ -42,21 +42,25 @@ const encodeFilter = (filter?: SlotFilter): string => {
   return `|${filter.targetSlots.join(',')}|${filter.incompleteFrom.join(',')}`;
 };
 
-/** 버튼 value에서 recordId + 필터 컨텍스트 파싱 */
+/** 버튼 value에서 recordId + date + 필터 컨텍스트 파싱 */
 export const parseButtonValue = (
   value: string,
-): { recordId: number; filter: SlotFilter | null } => {
+): { recordId: number; date: string | null; filter: SlotFilter | null } => {
   const parts = value.split('|');
-  const recordId = Number(parts[0]);
-  if (parts.length < 2 || !parts[1]) return { recordId, filter: null };
+  // recordId:date 또는 recordId (하위 호환)
+  const idPart = parts[0] ?? '';
+  const colonIdx = idPart.indexOf(':');
+  const recordId = colonIdx >= 0 ? Number(idPart.slice(0, colonIdx)) : Number(idPart);
+  const date = colonIdx >= 0 ? idPart.slice(colonIdx + 1) : null;
+  if (parts.length < 2 || !parts[1]) return { recordId, date, filter: null };
   const targetSlots = parts[1].split(',').filter(Boolean);
   const incompleteFrom = parts[2]?.split(',').filter(Boolean) ?? [];
-  return { recordId, filter: { targetSlots, incompleteFrom } };
+  return { recordId, date, filter: { targetSlots, incompleteFrom } };
 };
 
 // ─── 루틴 체크리스트 ────────────────────────────────────
 
-/** 루틴 체크리스트 Block Kit 빌드 */
+/** 루틴 체크리스트 Block Kit 빌드 (today = 레코드 날짜, 버튼 value에 인코딩) */
 export const buildRoutineBlocks = (
   records: RoutineRecordRow[],
   today: string,
@@ -97,7 +101,7 @@ export const buildRoutineBlocks = (
             type: 'button',
             text: { type: 'plain_text', text: '완료 ✓', emoji: true },
             action_id: ROUTINE_ACTION_ID,
-            value: `${record.id}${encodeFilter(slotFilter)}`,
+            value: `${record.id}:${today}${encodeFilter(slotFilter)}`,
           },
         });
       }

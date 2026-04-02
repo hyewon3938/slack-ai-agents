@@ -52,15 +52,33 @@ describe('formatDateShort', () => {
 // ─── parseButtonValue ──────────────────────────────────
 
 describe('parseButtonValue', () => {
-  it('recordId만 파싱', () => {
-    const { recordId, filter } = parseButtonValue('42');
+  it('recordId만 파싱 (하위 호환)', () => {
+    const { recordId, date, filter } = parseButtonValue('42');
     expect(recordId).toBe(42);
+    expect(date).toBeNull();
     expect(filter).toBeNull();
   });
 
-  it('recordId + 필터 컨텍스트 파싱', () => {
-    const { recordId, filter } = parseButtonValue('42|낮,밤|낮');
+  it('recordId:date 파싱', () => {
+    const { recordId, date, filter } = parseButtonValue('42:2026-04-01');
     expect(recordId).toBe(42);
+    expect(date).toBe('2026-04-01');
+    expect(filter).toBeNull();
+  });
+
+  it('recordId:date + 필터 컨텍스트 파싱', () => {
+    const { recordId, date, filter } = parseButtonValue('42:2026-04-01|낮,밤|낮');
+    expect(recordId).toBe(42);
+    expect(date).toBe('2026-04-01');
+    expect(filter).not.toBeNull();
+    expect(filter?.targetSlots).toEqual(['낮', '밤']);
+    expect(filter?.incompleteFrom).toEqual(['낮']);
+  });
+
+  it('recordId + 필터 (하위 호환 — date 없음)', () => {
+    const { recordId, date, filter } = parseButtonValue('42|낮,밤|낮');
+    expect(recordId).toBe(42);
+    expect(date).toBeNull();
     expect(filter).not.toBeNull();
     expect(filter?.targetSlots).toEqual(['낮', '밤']);
     expect(filter?.incompleteFrom).toEqual(['낮']);
@@ -130,6 +148,17 @@ describe('buildRoutineBlocks', () => {
     if (buttonBlock && 'accessory' in buttonBlock) {
       const accessory = buttonBlock.accessory as { action_id: string };
       expect(accessory.action_id).toBe(ROUTINE_ACTION_ID);
+    }
+  });
+
+  it('버튼 value에 날짜가 인코딩됨', () => {
+    const records = [makeRecord({ id: 7 })];
+    const { blocks } = buildRoutineBlocks(records, '2026-04-01');
+
+    const buttonBlock = blocks.find((b) => b.type === 'section' && 'accessory' in b);
+    if (buttonBlock && 'accessory' in buttonBlock) {
+      const accessory = buttonBlock.accessory as { value: string };
+      expect(accessory.value).toMatch(/^7:2026-04-01/);
     }
   });
 });
