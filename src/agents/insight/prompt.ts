@@ -74,16 +74,18 @@ const loadFortuneContext = async (today: string): Promise<string> => {
 
     const sections: string[] = [];
 
-    // 오늘 일운
+    // 오늘 일주 (getDayPillar로 정확한 값 계산 — DB 값에 의존하지 않음)
+    const todayPillar = getDayPillar(today);
+    const todayPillarStr = `${todayPillar.cheongan}${todayPillar.jiji}(${todayPillar.hanja})`;
     if (todayRow) {
       const parts: string[] = [];
-      if (todayRow.day_pillar) parts.push(`오늘의 일주: ${todayRow.day_pillar}`);
+      parts.push(`오늘의 일주: ${todayPillarStr}`);
       if (todayRow.summary) parts.push(`요약: ${todayRow.summary}`);
       if (todayRow.analysis) parts.push(`\n${todayRow.analysis}`);
       if (todayRow.advice) parts.push(`\n조언: ${todayRow.advice}`);
       sections.push(`\n\n## 오늘(${today}) 일운 (Opus 분석)\n${parts.join('\n')}`);
     } else {
-      sections.push('\n\n## 오늘 일운\n아직 오늘 일운 분석이 준비되지 않았어.');
+      sections.push(`\n\n## 오늘(${today}) 일주\n${todayPillarStr} — 일운 분석은 아직 준비되지 않았어.`);
     }
 
     // 내일 일주 (getDayPillar로 정확한 값 계산)
