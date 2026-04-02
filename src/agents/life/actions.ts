@@ -44,12 +44,13 @@ export const registerLifeActions = (app: App): void => {
     const rawValue = action.value;
     if (!rawValue) return;
 
-    const { recordId, filter } = parseButtonValue(rawValue);
+    const { recordId, date, filter } = parseButtonValue(rawValue);
 
     try {
       await completeRecord(recordId);
 
-      const today = getTodayISO();
+      // 버튼에 인코딩된 날짜 사용 (자정 이후 클릭 시에도 원래 날짜 기준 조회)
+      const today = date ?? getTodayISO();
       const records = await queryTodayRecords(today);
 
       const { text, blocks } = filter
