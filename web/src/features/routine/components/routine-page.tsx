@@ -10,12 +10,13 @@ import { RoutineStats } from './routine-stats';
 import { RoutineList } from './routine-list';
 import { RoutineForm } from './routine-form';
 import { RoutineRecordDetail } from './routine-record-detail';
+import { YearlyHeatmap } from './yearly-heatmap';
 import { Modal } from '@/components/ui/modal';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 
 export function RoutinePage() {
   const {
-    view, selectedDate, templates, records, stats, loading,
+    view, selectedDate, templates, records, stats, yearlyStats, loading,
     showForm, editingTemplate, editingRecord,
     setView, setShowForm, setEditingTemplate, setEditingRecord,
     handlePrevDate, handleNextDate, handleToday,
@@ -80,6 +81,7 @@ export function RoutinePage() {
         <div className="mx-auto max-w-3xl px-4 py-4 md:py-6">
           {view === 'checklist' ? (
             <div className="space-y-5">
+              <YearlyHeatmap stats={yearlyStats} />
               <DateNav
                 date={selectedDate}
                 onPrev={handlePrevDate}
