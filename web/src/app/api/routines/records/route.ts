@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
     if (date === getTodayISO()) {
       const created = await ensureTodayRecords(userId, date);
-      if (created > 0) revalidateTag('routine-records');
+      if (created > 0) revalidateTag('routine-records', 'seconds');
     }
 
     const data = await getCachedRoutineRecords(userId, date);

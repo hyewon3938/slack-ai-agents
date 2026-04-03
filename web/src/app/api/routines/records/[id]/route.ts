@@ -24,8 +24,8 @@ export async function PATCH(
       await updateRoutineRecordMemo(userId, Number(id), body.memo);
     }
 
-    revalidateTag('routine-records');
-    revalidateTag('routine-stats');
+    revalidateTag('routine-records', 'seconds');
+    revalidateTag('routine-stats', 'seconds');
     return NextResponse.json({ data: { id: Number(id) } });
   } catch {
     return NextResponse.json({ error: '루틴 기록 수정 실패' }, { status: 500 });

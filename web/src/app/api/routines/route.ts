@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       frequency: body.frequency ?? null,
     });
 
-    revalidateTag('routines');
+    revalidateTag('routines', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
   } catch {
     return NextResponse.json({ error: '루틴 생성 실패' }, { status: 500 });

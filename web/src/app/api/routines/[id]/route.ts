@@ -22,8 +22,8 @@ export async function PATCH(
     const data = await updateRoutineTemplate(userId, Number(id), body);
     if (!data) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
 
-    revalidateTag('routines');
-    revalidateTag('routine-records');
+    revalidateTag('routines', 'seconds');
+    revalidateTag('routine-records', 'seconds');
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '루틴 수정 실패' }, { status: 500 });
@@ -42,7 +42,7 @@ export async function DELETE(
     const deleted = await deleteRoutineTemplate(userId, Number(id));
     if (!deleted) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
 
-    revalidateTag('routines');
+    revalidateTag('routines', 'seconds');
     return NextResponse.json({ data: { id: Number(id) } });
   } catch {
     return NextResponse.json({ error: '루틴 삭제 실패' }, { status: 500 });
