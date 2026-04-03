@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 const NAV_ITEMS = [
   { href: '/schedules', label: '일정', icon: '📅' },
+  { href: '/routines', label: '루틴', icon: '🔄' },
   { href: '/backlog', label: '백로그', icon: '📋' },
   { href: '/categories', label: '카테고리', icon: '🏷' },
 ] as const;
@@ -110,6 +111,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <span className="text-lg">📅</span>
             <span>일정</span>
+          </a>
+          <a
+            href="/routines"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
+              pathname === '/routines' ? 'text-blue-600' : 'text-gray-400'
+            }`}
+          >
+            <span className="text-lg">🔄</span>
+            <span>루틴</span>
           </a>
           <a
             href="/backlog"
