@@ -3,12 +3,12 @@ import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/lib
 
 // ─── 템플릿 CRUD ─────────────────────────────────────
 
-/** 모든 템플릿 조회 (active 먼저 정렬) */
+/** 모든 템플릿 조회 (삭제된 항목 제외, active 먼저 정렬) */
 export async function queryRoutineTemplates(userId: number): Promise<RoutineTemplateRow[]> {
   const { rows } = await query<RoutineTemplateRow>(
     `SELECT id, name, time_slot, frequency, active, created_at::text
      FROM routine_templates
-     WHERE user_id = $1
+     WHERE user_id = $1 AND deleted_at IS NULL
      ORDER BY active DESC, time_slot, name`,
     [userId],
   );
@@ -53,10 +53,10 @@ export async function updateRoutineTemplate(
   );
 }
 
-/** 템플릿 삭제 (soft delete → active=false) */
+/** 템플릿 삭제 (soft delete — UI에서 완전히 숨김, DB에는 보존) */
 export async function deleteRoutineTemplate(userId: number, id: number): Promise<boolean> {
   const result = await query(
-    `UPDATE routine_templates SET active = false WHERE id = $1 AND user_id = $2`,
+    `UPDATE routine_templates SET active = false, deleted_at = NOW() WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
   return (result.rowCount ?? 0) > 0;
@@ -137,7 +137,7 @@ function shouldCreateToday(frequency: string | null, lastDate: string | null, to
 /** 오늘 기록 자동 생성 (아직 없는 active 템플릿만) */
 export async function ensureTodayRecords(userId: number, date: string): Promise<number> {
   const { rows: templates } = await query<{ id: number; frequency: string | null }>(
-    `SELECT id, frequency FROM routine_templates WHERE active = true AND user_id = $1`,
+    `SELECT id, frequency FROM routine_templates WHERE active = true AND deleted_at IS NULL AND user_id = $1`,
     [userId],
   );
 

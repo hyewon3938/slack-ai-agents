@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getTodayISO, addDays } from '@/lib/kst';
 import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/lib/types';
 
-export type RoutineView = 'checklist' | 'stats';
+export type RoutineView = 'checklist' | 'stats' | 'manage';
 
 export function useRoutines() {
   const [view, setView] = useState<RoutineView>('checklist');
