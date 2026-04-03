@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import type { RoutineDayStat } from '@/lib/types';
 import { getTodayISO, addDays } from '@/lib/kst';
 
@@ -23,6 +23,7 @@ function heatColor(rate: number | undefined): string {
 /** GitHub 잔디 스타일 1년 히트맵 */
 export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
   const today = getTodayISO();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const rateMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -30,10 +31,8 @@ export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
     return m;
   }, [stats]);
 
-  // 52주 + 남은 날 → 열(주) 단위 그리드 생성
   const { weeks, monthLabels, totalCompleted } = useMemo(() => {
     const startDate = addDays(today, -364);
-    // 시작일을 그 주 일요일로 맞춤
     const startDow = new Date(startDate + 'T12:00:00+09:00').getUTCDay();
     const gridStart = addDays(startDate, -startDow);
 
@@ -50,24 +49,25 @@ export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
       col.push({ date: d, rate });
       if (rate !== undefined && rate > 0) total++;
 
-      // 월 라벨
       const m = Number(d.slice(5, 7));
       if (m !== lastMonth) {
         months.push({ label: `${m}월`, col: colIdx });
         lastMonth = m;
       }
 
-      if (col.length === 7) {
-        cols.push(col);
-        col = [];
-        colIdx++;
-      }
+      if (col.length === 7) { cols.push(col); col = []; colIdx++; }
       d = addDays(d, 1);
     }
     if (col.length > 0) cols.push(col);
 
     return { weeks: cols, monthLabels: months, totalCompleted: total };
   }, [today, rateMap]);
+
+  // 모바일: 최신(오른쪽 끝)으로 스크롤
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [weeks]);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -77,10 +77,11 @@ export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
         </span>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="inline-block">
+      {/* 모바일: 가로 스크롤, 데스크탑: 꽉 차게 */}
+      <div ref={scrollRef} className="overflow-x-auto md:overflow-visible">
+        <div className="inline-block md:w-full">
           {/* 월 라벨 */}
-          <div className="flex" style={{ paddingLeft: 28 }}>
+          <div className="flex md:pl-[24px]" style={{ paddingLeft: 28 }}>
             {monthLabels.map((m, i) => {
               const nextCol = monthLabels[i + 1]?.col ?? weeks.length;
               const span = nextCol - m.col;
@@ -96,29 +97,29 @@ export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
             })}
           </div>
 
-          {/* 그리드: 행=요일, 열=주 */}
-          <div className="flex gap-0.5">
+          {/* 그리드 */}
+          <div className="flex gap-[2px]">
             {/* 요일 라벨 */}
-            <div className="flex flex-col gap-0.5 pr-1" style={{ width: 24 }}>
+            <div className="flex shrink-0 flex-col gap-[2px] pr-[2px]" style={{ width: 24 }}>
               {DAY_LABELS.map((label, i) => (
-                <div key={i} className="flex h-[13px] items-center text-[10px] text-gray-400">
+                <div key={i} className="flex h-[13px] items-center text-[10px] text-gray-400 md:h-auto md:aspect-square">
                   {label}
                 </div>
               ))}
             </div>
 
-            {/* 주 컬럼들 */}
+            {/* 모바일: 고정 크기, 데스크탑: flex-1 */}
             {weeks.map((week, wi) => (
-              <div key={wi} className="flex flex-col gap-0.5">
+              <div key={wi} className="flex shrink-0 flex-col gap-[2px] md:flex-1 md:shrink">
                 {Array.from({ length: 7 }, (_, di) => {
                   const cell = week[di];
                   if (!cell || cell.date > today) {
-                    return <div key={di} className="h-[13px] w-[13px]" />;
+                    return <div key={di} className="h-[13px] w-[13px] md:aspect-square md:h-auto md:w-auto" />;
                   }
                   return (
                     <div
                       key={di}
-                      className="h-[13px] w-[13px] rounded-sm"
+                      className="h-[13px] w-[13px] rounded-sm md:aspect-square md:h-auto md:w-auto"
                       style={{ backgroundColor: heatColor(cell.rate) }}
                       title={`${cell.date}: ${cell.rate !== undefined ? cell.rate + '%' : '기록 없음'}`}
                     />
