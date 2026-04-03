@@ -40,6 +40,7 @@ export function useRoutines() {
 
   const fetchStats = useCallback(async (from: string, to: string) => {
     const res = await fetch(`/api/routines/stats?from=${from}&to=${to}`);
+    if (res.status === 401) { window.location.href = '/login'; return; }
     if (res.ok) {
       const { data } = (await res.json()) as { data: RoutineDayStat[] };
       setStats(data);

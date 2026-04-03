@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import type { RoutineRecordRow, RoutineTemplateRow } from '@/lib/types';
+import type { RoutineRecordRow } from '@/lib/types';
 import { useRoutines } from '../hooks/use-routines';
 import { DateNav } from './date-nav';
 import { ViewToggle } from './view-toggle';
