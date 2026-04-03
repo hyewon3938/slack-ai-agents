@@ -107,6 +107,53 @@ export function colorToHex(colorKey: string): string {
 
 export const COLOR_OPTIONS = Object.keys(PRESET_COLORS);
 
+// ─── 루틴 ────────────────────────────────────────────
+
+/** 루틴 템플릿 */
+export interface RoutineTemplateRow {
+  id: number;
+  name: string;
+  time_slot: string | null; // '낮' | '밤'
+  frequency: string | null; // '매일' | '격일' | '주1회' | 'N일마다'
+  active: boolean;
+  created_at?: string;
+}
+
+/** 루틴 기록 (JOIN 결과) */
+export interface RoutineRecordRow {
+  id: number;
+  template_id: number;
+  date: string;
+  completed: boolean;
+  completed_at: string | null;
+  memo: string | null;
+  name: string;
+  time_slot: string | null;
+  frequency: string | null;
+}
+
+/** 루틴 일별 통계 */
+export interface RoutineDayStat {
+  date: string;
+  total: number;
+  completed: number;
+  rate: number; // 0~100
+}
+
+/** 빈도 옵션 */
+export const ROUTINE_FREQUENCIES = [
+  { value: '매일', label: '매일' },
+  { value: '격일', label: '격일' },
+  { value: '주1회', label: '주 1회' },
+  { value: '3일마다', label: '3일마다' },
+] as const;
+
+/** 시간대 옵션 */
+export const ROUTINE_TIME_SLOTS = [
+  { value: '낮', label: '낮' },
+  { value: '밤', label: '밤' },
+] as const;
+
 /** 기간 일정 여부 */
 export function isMultiDaySchedule(s: ScheduleRow): boolean {
   return !!s.end_date && s.end_date !== s.date;
