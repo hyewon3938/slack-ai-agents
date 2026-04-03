@@ -54,15 +54,13 @@ export function RoutinePage() {
     [handleUpdateTemplate],
   );
 
-  if (loading) {
-    return <LoadingSkeleton />;
-  }
+  if (loading) return <LoadingSkeleton />;
 
   return (
     <div className="flex flex-1 flex-col">
       {/* 헤더 */}
       <div className="border-b border-gray-200 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <h1 className="text-lg font-bold text-gray-900 md:text-xl">루틴</h1>
           <div className="flex items-center gap-2">
             <button
@@ -78,8 +76,8 @@ export function RoutinePage() {
 
       {/* 콘텐츠 */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-4 md:py-6">
-          {view === 'checklist' ? (
+        <div className="mx-auto max-w-5xl px-4 py-4 md:py-6">
+          {view === 'checklist' && (
             <div className="space-y-5">
               <YearlyHeatmap stats={yearlyStats} />
               <DateNav
@@ -94,17 +92,28 @@ export function RoutinePage() {
                 onMemoClick={handleMemoClick}
                 onEditTemplate={handleEditTemplate}
               />
-              {/* 루틴 관리 */}
-              <div className="border-t border-gray-200 pt-5">
-                <RoutineList
-                  templates={templates}
-                  onEdit={setEditingTemplate}
-                  onToggleActive={handleToggleActive}
-                />
-              </div>
             </div>
-          ) : (
+          )}
+          {view === 'stats' && (
             <RoutineStats stats={stats} fetchStats={fetchStats} selectedDate={selectedDate} />
+          )}
+          {view === 'manage' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-gray-900">루틴 관리</h2>
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+                >
+                  + 추가
+                </button>
+              </div>
+              <RoutineList
+                templates={templates}
+                onEdit={setEditingTemplate}
+                onToggleActive={handleToggleActive}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -170,12 +179,12 @@ function LoadingSkeleton() {
   return (
     <div className="flex flex-1 flex-col">
       <div className="border-b border-gray-200 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
+        <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="h-7 w-20 animate-pulse rounded bg-gray-200" />
           <div className="h-8 w-32 animate-pulse rounded bg-gray-200" />
         </div>
       </div>
-      <div className="mx-auto w-full max-w-3xl space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4">
         {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="h-14 animate-pulse rounded-lg bg-gray-100" />
         ))}

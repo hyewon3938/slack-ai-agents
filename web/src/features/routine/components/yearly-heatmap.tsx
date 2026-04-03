@@ -71,25 +71,24 @@ export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-2 flex items-baseline justify-between">
+      <div className="mb-2">
         <span className="text-xs font-medium text-gray-500">
           지난 1년간 {totalCompleted}일 달성
         </span>
       </div>
 
-      {/* 모바일: 가로 스크롤, 데스크탑: 꽉 차게 */}
       <div ref={scrollRef} className="overflow-x-auto md:overflow-visible">
-        <div className="inline-block md:w-full">
+        <div className="inline-flex flex-col md:w-full">
           {/* 월 라벨 */}
-          <div className="flex md:pl-[24px]" style={{ paddingLeft: 28 }}>
+          <div className="mb-0.5 flex" style={{ paddingLeft: 28 }}>
             {monthLabels.map((m, i) => {
               const nextCol = monthLabels[i + 1]?.col ?? weeks.length;
               const span = nextCol - m.col;
               return (
                 <div
                   key={`${m.label}-${m.col}`}
-                  className="text-xs text-gray-400"
-                  style={{ width: span * 15, minWidth: span * 15 }}
+                  className="shrink-0 text-xs text-gray-400 md:shrink md:basis-0"
+                  style={{ flexGrow: span }}
                 >
                   {span >= 3 ? m.label : ''}
                 </div>
@@ -99,7 +98,6 @@ export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
 
           {/* 그리드 */}
           <div className="flex gap-[2px]">
-            {/* 요일 라벨 */}
             <div className="flex shrink-0 flex-col gap-[2px] pr-[2px]" style={{ width: 24 }}>
               {DAY_LABELS.map((label, i) => (
                 <div key={i} className="flex h-[13px] items-center text-[10px] text-gray-400 md:h-auto md:aspect-square">
@@ -108,7 +106,6 @@ export function YearlyHeatmap({ stats }: YearlyHeatmapProps) {
               ))}
             </div>
 
-            {/* 모바일: 고정 크기, 데스크탑: flex-1 */}
             {weeks.map((week, wi) => (
               <div key={wi} className="flex shrink-0 flex-col gap-[2px] md:flex-1 md:shrink">
                 {Array.from({ length: 7 }, (_, di) => {
