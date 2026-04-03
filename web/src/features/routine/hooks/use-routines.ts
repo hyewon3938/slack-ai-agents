@@ -12,6 +12,7 @@ export function useRoutines() {
   const [templates, setTemplates] = useState<RoutineTemplateRow[]>([]);
   const [records, setRecords] = useState<RoutineRecordRow[]>([]);
   const [stats, setStats] = useState<RoutineDayStat[]>([]);
+  const [yearlyStats, setYearlyStats] = useState<RoutineDayStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RoutineTemplateRow | null>(null);
@@ -47,14 +48,24 @@ export function useRoutines() {
     }
   }, []);
 
+  const fetchYearlyStats = useCallback(async () => {
+    const today = getTodayISO();
+    const from = addDays(today, -364);
+    const res = await fetch(`/api/routines/stats?from=${from}&to=${today}`);
+    if (res.ok) {
+      const { data } = (await res.json()) as { data: RoutineDayStat[] };
+      setYearlyStats(data);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     await Promise.all([fetchTemplates(), fetchRecords()]);
   }, [fetchTemplates, fetchRecords]);
 
   // 초기 로드
   useEffect(() => {
-    fetchData().finally(() => setLoading(false));
-  }, [fetchData]);
+    Promise.all([fetchData(), fetchYearlyStats()]).finally(() => setLoading(false));
+  }, [fetchData, fetchYearlyStats]);
 
   // 15초 폴링 (탭 활성 시)
   useEffect(() => {
@@ -155,7 +166,7 @@ export function useRoutines() {
 
   return {
     // state
-    view, selectedDate, templates, records, stats, loading,
+    view, selectedDate, templates, records, stats, yearlyStats, loading,
     showForm, editingTemplate, editingRecord,
     // setters
     setView, setSelectedDate, setShowForm, setEditingTemplate, setEditingRecord,
