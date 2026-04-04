@@ -140,6 +140,15 @@ export interface RoutineDayStat {
   rate: number; // 0~100
 }
 
+/** 루틴별 달성률 통계 */
+export interface RoutinePerStat {
+  template_id: number;
+  name: string;
+  total: number;
+  completed: number;
+  rate: number; // 0~100
+}
+
 /** 빈도 옵션 */
 export const ROUTINE_FREQUENCIES = [
   { value: '매일', label: '매일' },

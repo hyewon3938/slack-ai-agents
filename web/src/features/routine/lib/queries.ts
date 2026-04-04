@@ -1,5 +1,5 @@
 import { query, queryOne } from '@/lib/db';
-import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/lib/types';
+import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat, RoutinePerStat } from '@/lib/types';
 
 // ─── 템플릿 CRUD ─────────────────────────────────────
 
@@ -190,6 +190,31 @@ export async function queryRoutineStats(
      WHERE r.user_id = $1 AND r.date BETWEEN $2 AND $3
      GROUP BY r.date
      ORDER BY r.date`,
+    [userId, from, to],
+  );
+  return rows;
+}
+
+/** 기간별 루틴별 달성률 */
+export async function queryRoutinePerStats(
+  userId: number,
+  from: string,
+  to: string,
+): Promise<RoutinePerStat[]> {
+  const { rows } = await query<RoutinePerStat>(
+    `SELECT r.template_id,
+            t.name,
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE r.completed)::int AS completed,
+            CASE WHEN COUNT(*) > 0
+              THEN ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / COUNT(*) * 100)::int
+              ELSE 0
+            END AS rate
+     FROM routine_records r
+     JOIN routine_templates t ON r.template_id = t.id
+     WHERE r.user_id = $1 AND r.date BETWEEN $2 AND $3
+     GROUP BY r.template_id, t.name
+     ORDER BY rate DESC, t.name`,
     [userId, from, to],
   );
   return rows;
