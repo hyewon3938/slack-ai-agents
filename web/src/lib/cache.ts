@@ -8,6 +8,7 @@ import {
   queryRoutineTemplates,
   queryRoutineRecords,
   queryRoutineStats,
+  queryRoutinePerStats,
 } from '@/features/routine/lib/queries';
 
 const REVALIDATE_SECONDS = 30;
@@ -53,5 +54,12 @@ export const getCachedRoutineStats = (userId: number, from: string, to: string) 
   unstable_cache(
     async () => queryRoutineStats(userId, from, to),
     ['routine-stats', String(userId), from, to],
+    { revalidate: REVALIDATE_SECONDS, tags: ['routine-stats'] },
+  )();
+
+export const getCachedRoutinePerStats = (userId: number, from: string, to: string) =>
+  unstable_cache(
+    async () => queryRoutinePerStats(userId, from, to),
+    ['routine-per-stats', String(userId), from, to],
     { revalidate: REVALIDATE_SECONDS, tags: ['routine-stats'] },
   )();
