@@ -66,7 +66,7 @@ export function MonthlyHeatmap({ stats, selectedDate }: MonthlyHeatmapProps) {
         <button onClick={handleNext} className="text-sm text-gray-400 hover:text-gray-600">▶</button>
       </div>
 
-      <div className="mb-1 grid grid-cols-7 gap-1">
+      <div className="mb-1 grid grid-cols-7 gap-[2px]">
         {DAY_HEADERS.map((d, i) => (
           <div
             key={d}
@@ -79,23 +79,20 @@ export function MonthlyHeatmap({ stats, selectedDate }: MonthlyHeatmapProps) {
         ))}
       </div>
 
-      <div className="grid gap-1">
+      <div className="grid gap-[2px]">
         {weeks.map((week, wi) => (
-          <div key={wi} className="grid grid-cols-7 gap-1">
+          <div key={wi} className="grid grid-cols-7 gap-[2px]">
             {week.map((day, di) => {
-              if (day === null) return <div key={di} className="aspect-square" />;
+              if (day === null) return <div key={di} className="flex justify-center"><div className="h-4 w-4" /></div>;
               const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const rate = rateMap.get(dateStr);
               return (
-                <div
-                  key={di}
-                  className="flex aspect-square items-center justify-center rounded text-xs"
-                  style={{ backgroundColor: heatColor(rate) }}
-                  title={rate !== undefined ? `${dateStr}: ${rate}%` : dateStr}
-                >
-                  <span className={rate !== undefined ? 'text-gray-700' : 'text-gray-400'}>
-                    {day}
-                  </span>
+                <div key={di} className="flex justify-center">
+                  <div
+                    className="h-4 w-4 rounded-sm"
+                    style={{ backgroundColor: heatColor(rate) }}
+                    title={rate !== undefined ? `${dateStr}: ${rate}%` : dateStr}
+                  />
                 </div>
               );
             })}

@@ -1,30 +1,45 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import type { RoutineDayStat } from '@/lib/types';
+import type { RoutineDayStat, RoutinePerStat } from '@/lib/types';
 import { getTodayISO, addDays, getDayName } from '@/lib/kst';
 import { MonthlyHeatmap } from './monthly-heatmap';
+import { YearlyHeatmap } from './yearly-heatmap';
 
 interface RoutineStatsProps {
   stats: RoutineDayStat[];
+  yearlyStats: RoutineDayStat[];
+  perRoutineStats: RoutinePerStat[];
   fetchStats: (from: string, to: string) => Promise<void>;
+  fetchPerRoutineStats: (from: string, to: string) => Promise<void>;
   selectedDate: string;
 }
 
-/** 달성률 통계 뷰 — 주간 바차트 + 월간 히트맵 + 기간 선택 */
-export function RoutineStats({ stats, fetchStats, selectedDate }: RoutineStatsProps) {
+/** 달성률 통계 뷰 — 기간 선택 + 1년 히트맵 + 주간 바차트 + 월간 히트맵 + 루틴별 달성률 */
+export function RoutineStats({
+  stats,
+  yearlyStats,
+  perRoutineStats,
+  fetchStats,
+  fetchPerRoutineStats,
+  selectedDate,
+}: RoutineStatsProps) {
   const today = getTodayISO();
   const weekStart = addDays(today, -6);
 
   useEffect(() => {
-    fetchStats(addDays(today, -30), today);
-  }, [fetchStats, today]);
+    const defaultFrom = addDays(today, -30);
+    fetchStats(defaultFrom, today);
+    fetchPerRoutineStats(defaultFrom, today);
+  }, [fetchStats, fetchPerRoutineStats, today]);
 
   return (
     <div className="space-y-6">
+      <PeriodSelector fetchStats={fetchStats} fetchPerRoutineStats={fetchPerRoutineStats} stats={stats} />
+      <YearlyHeatmap stats={yearlyStats} />
       <WeeklyChart stats={stats} from={weekStart} to={today} />
       <MonthlyHeatmap stats={stats} selectedDate={selectedDate} />
-      <PeriodSelector fetchStats={fetchStats} stats={stats} />
+      <PerRoutineChart stats={perRoutineStats} />
     </div>
   );
 }
@@ -92,9 +107,12 @@ function WeeklyChart({ stats, from, to }: { stats: RoutineDayStat[]; from: strin
 // ─── 기간 선택 ──────────────────────────────────────
 
 function PeriodSelector({
-  fetchStats, stats,
+  fetchStats,
+  fetchPerRoutineStats,
+  stats,
 }: {
   fetchStats: (from: string, to: string) => Promise<void>;
+  fetchPerRoutineStats: (from: string, to: string) => Promise<void>;
   stats: RoutineDayStat[];
 }) {
   const today = getTodayISO();
@@ -103,7 +121,7 @@ function PeriodSelector({
   const [queried, setQueried] = useState(false);
 
   const handleSearch = async () => {
-    await fetchStats(from, to);
+    await Promise.all([fetchStats(from, to), fetchPerRoutineStats(from, to)]);
     setQueried(true);
   };
 
@@ -139,6 +157,45 @@ function PeriodSelector({
           <span className="text-base font-bold text-green-600">{avg}%</span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── 루틴별 달성률 바차트 ────────────────────────────
+
+function perBarColor(rate: number): string {
+  if (rate >= 70) return '#22c55e';
+  if (rate >= 30) return '#fbbf24';
+  return '#f87171';
+}
+
+function PerRoutineChart({ stats }: { stats: RoutinePerStat[] }) {
+  if (stats.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <h3 className="mb-4 text-sm font-semibold text-gray-900">루틴별 달성률</h3>
+      <div className="space-y-3">
+        {stats.map((s) => (
+          <div key={s.template_id} className="flex items-center gap-3">
+            <span className="w-24 shrink-0 truncate text-sm text-gray-700" title={s.name}>
+              {s.name}
+            </span>
+            <div className="relative h-5 flex-1 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full transition-all"
+                style={{
+                  width: `${s.rate}%`,
+                  backgroundColor: perBarColor(s.rate),
+                }}
+              />
+            </div>
+            <span className="w-12 shrink-0 text-right text-sm font-medium text-gray-600">
+              {s.rate}%
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
