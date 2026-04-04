@@ -83,16 +83,17 @@ export function MonthlyHeatmap({ stats, selectedDate }: MonthlyHeatmapProps) {
         {weeks.map((week, wi) => (
           <div key={wi} className="grid grid-cols-7 gap-[2px]">
             {week.map((day, di) => {
-              if (day === null) return <div key={di} className="h-4 w-4" />;
+              if (day === null) return <div key={di} className="flex justify-center"><div className="h-4 w-4" /></div>;
               const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const rate = rateMap.get(dateStr);
               return (
-                <div
-                  key={di}
-                  className="h-4 w-4 rounded-sm"
-                  style={{ backgroundColor: heatColor(rate) }}
-                  title={rate !== undefined ? `${dateStr}: ${rate}%` : dateStr}
-                />
+                <div key={di} className="flex justify-center">
+                  <div
+                    className="h-4 w-4 rounded-sm"
+                    style={{ backgroundColor: heatColor(rate) }}
+                    title={rate !== undefined ? `${dateStr}: ${rate}%` : dateStr}
+                  />
+                </div>
               );
             })}
           </div>
