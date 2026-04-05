@@ -212,10 +212,7 @@ export async function queryRoutinePerStats(
               THEN ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / COUNT(*) * 100)::int
               ELSE 0
             END AS rate,
-            GREATEST(1, (CURRENT_DATE - COALESCE(
-              (SELECT MIN(date) FROM routine_records WHERE template_id = t.id),
-              t.created_at::date
-            )) + 1)::int AS days_active
+            GREATEST(1, (CURRENT_DATE - LEAST(MIN(r.date), t.created_at::date)) + 1)::int AS days_active
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
      WHERE r.user_id = $1 AND t.deleted_at IS NULL
