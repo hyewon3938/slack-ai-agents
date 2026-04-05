@@ -1,5 +1,50 @@
 # Work Log
 
+## 2026-03-17 (화)
+
+### 작업 요약
+- 아침 크론이 잘못된 날짜의 수면 기록을 참조하는 버그 수정 (PR #145)
+- 루틴 N일마다 빈도 패턴을 동적으로 파싱하여 매일 생성되는 버그 수정 (PR #144)
+- 탭 복귀 시 일정 추가 기본 날짜가 갱신되지 않는 버그 수정 (PR #143)
+- PWA 아이콘 & 파비콘 픽셀아트 캐릭터로 교체 후 배경 투명 처리
+
+### 변경 규모
+- 5개 커밋, 9개 파일, +67 / -56 lines
+
+### 주요 변경
+- `src/shared/life-context.ts` — 아침 크론 수면 기록 날짜 참조 버그 수정 (#145)
+- `src/shared/life-queries.ts` — 루틴 N일마다 빈도 패턴 동적 파싱으로 근본 해결 (#144)
+- `web/src/features/schedule/hooks/use-schedules.ts` — 탭 복귀 시 날짜 미갱신 수정 (#143)
+- `web/public/` — PWA 아이콘 4종 + 파비콘 픽셀아트 교체
+
+### 다음 할 일
+- Issues #7\~#10 착수 검토 (fortune, diet, expense 등)
+
+## 2026-03-15 (일)
+
+### 작업 요약
+- 대시보드 UX 집중 다듬기: ActionMenu Portal 전환(z-index 근본 해결), 주간뷰 스페이서 열별 계산, 삭제 확인 다이얼로그 추가, 카테고리 태그/주간뷰 여백/메모 확대 (PR #126\~#131, 5개 PR 머지)
+- Slack 봇 일정 표시 전면 수정 — 메모 제거 + event 타입 분리 (PR #132\~#133)
+- event 타입 카테고리 UX 개선 — 상태 버튼 숨김 + overdue 제외 (PR #136\~#137)
+- 루틴 created_at 기준 달성률 분기 처리 버그 수정 (PR #138\~#139)
+- Opus 일운/월운 분석 품질 개선 + saju-calendar 유틸 신규 작성 + 테스트 추가 (PR #134\~#135)
+- 주간뷰 오늘 날짜 동그라미 밀림 수정 + 간격 조정
+
+### 변경 규모
+- 20개 커밋, PR 6개 머지, 순 변경 12개 파일, +341 / -64 lines
+
+### 주요 변경
+- `web/src/features/schedule/components/action-menu.tsx` — Portal 패턴으로 z-index stacking context 문제 근본 해결 (#129)
+- `src/shared/saju-calendar.ts` — 사주 달력 유틸리티 신규 (104줄, 테스트 101줄 포함)
+- `src/agents/life/blocks.ts` — Slack 일정 블록 전면 수정, event 타입 분리 (#132)
+- `src/cron/weekly-report.ts` + `src/shared/insights.ts` — 루틴 created_at 기준 달성률 분기 처리 (#138)
+
+### 미완료
+- Issues #7\~#10 미착수 (fortune, diet, expense 등)
+
+### 다음 할 일
+- Issues #7\~#10 착수 검토
+
 ## 2026-03-12 (수)
 
 ### 작업 요약
