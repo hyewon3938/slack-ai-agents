@@ -45,7 +45,9 @@ function PerRoutineSection() {
 
   const fetchPerRoutine = useCallback(async (f?: string, t?: string) => {
     const params = f && t ? `&from=${f}&to=${t}` : '';
-    const res = await fetch(`/api/routines/stats?type=per-routine${params}`);
+    const res = await fetch(`/api/routines/stats?type=per-routine${params}`, {
+      cache: 'no-store',
+    });
     if (res.ok) {
       const { data } = (await res.json()) as { data: RoutinePerStat[] };
       setPerStats(data);
