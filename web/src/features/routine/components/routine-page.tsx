@@ -15,13 +15,13 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 
 export function RoutinePage() {
   const {
-    view, selectedDate, templates, records, stats, yearlyStats, perRoutineStats, loading,
+    view, selectedDate, templates, records, stats, loading,
     showForm, editingTemplate, editingRecord,
     setView, setShowForm, setEditingTemplate, setEditingRecord,
     handlePrevDate, handleNextDate, handleToday,
     handleCreateTemplate, handleUpdateTemplate, handleDeleteTemplate,
     handleToggleRecord, handleUpdateMemo,
-    fetchStats, fetchPerRoutineStats,
+    fetchStats,
   } = useRoutines();
 
   const handleEditTemplate = useCallback(
@@ -95,10 +95,7 @@ export function RoutinePage() {
           {view === 'stats' && (
             <RoutineStats
               stats={stats}
-              yearlyStats={yearlyStats}
-              perRoutineStats={perRoutineStats}
               fetchStats={fetchStats}
-              fetchPerRoutineStats={fetchPerRoutineStats}
               selectedDate={selectedDate}
             />
           )}

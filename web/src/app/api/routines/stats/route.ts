@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getCachedRoutineStats, getCachedRoutinePerStats } from '@/lib/cache';
+import { getCachedRoutineStats } from '@/lib/cache';
+import { queryRoutinePerStats } from '@/features/routine/lib/queries';
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -12,13 +13,18 @@ export async function GET(request: Request) {
     const to = searchParams.get('to');
     const type = searchParams.get('type');
 
-    if (!from || !to) {
-      return NextResponse.json({ error: 'from/to 파라미터 필요' }, { status: 400 });
+    if (type === 'per-routine') {
+      // from/to 없으면 전체 기간
+      const data = await queryRoutinePerStats(
+        userId,
+        from ?? undefined,
+        to ?? undefined,
+      );
+      return NextResponse.json({ data });
     }
 
-    if (type === 'per-routine') {
-      const data = await getCachedRoutinePerStats(userId, from, to);
-      return NextResponse.json({ data });
+    if (!from || !to) {
+      return NextResponse.json({ error: 'from/to 파라미터 필요' }, { status: 400 });
     }
 
     const data = await getCachedRoutineStats(userId, from, to);

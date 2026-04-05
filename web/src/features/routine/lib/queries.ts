@@ -195,27 +195,31 @@ export async function queryRoutineStats(
   return rows;
 }
 
-/** 기간별 루틴별 달성률 */
+/** 루틴별 달성률 (from/to 없으면 전체 기간) */
 export async function queryRoutinePerStats(
   userId: number,
-  from: string,
-  to: string,
+  from?: string,
+  to?: string,
 ): Promise<RoutinePerStat[]> {
+  const hasRange = from && to;
   const { rows } = await query<RoutinePerStat>(
     `SELECT r.template_id,
             t.name,
+            t.time_slot,
             COUNT(*)::int AS total,
             COUNT(*) FILTER (WHERE r.completed)::int AS completed,
             CASE WHEN COUNT(*) > 0
               THEN ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / COUNT(*) * 100)::int
               ELSE 0
-            END AS rate
+            END AS rate,
+            GREATEST(1, (CURRENT_DATE - t.created_at::date) + 1)::int AS days_active
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
-     WHERE r.user_id = $1 AND r.date BETWEEN $2 AND $3
-     GROUP BY r.template_id, t.name
+     WHERE r.user_id = $1 AND t.deleted_at IS NULL
+       ${hasRange ? 'AND r.date BETWEEN $2 AND $3' : ''}
+     GROUP BY r.template_id, t.name, t.time_slot, t.created_at
      ORDER BY rate DESC, t.name`,
-    [userId, from, to],
+    hasRange ? [userId, from, to] : [userId],
   );
   return rows;
 }

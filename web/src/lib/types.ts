@@ -144,9 +144,11 @@ export interface RoutineDayStat {
 export interface RoutinePerStat {
   template_id: number;
   name: string;
+  time_slot: string | null;
   total: number;
   completed: number;
   rate: number; // 0~100
+  days_active: number; // 생성 이후 경과 일수
 }
 
 /** 빈도 옵션 */
