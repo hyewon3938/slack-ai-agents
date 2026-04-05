@@ -195,7 +195,7 @@ export async function queryRoutineStats(
   return rows;
 }
 
-/** 루틴별 달성률 (from/to 없으면 전체 기간) */
+/** 루틴별 달성률 — 전체: active만, 기간 선택: 비활성 포함 (기록 있으면) */
 export async function queryRoutinePerStats(
   userId: number,
   from?: string,
@@ -216,7 +216,7 @@ export async function queryRoutinePerStats(
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
      WHERE r.user_id = $1 AND t.deleted_at IS NULL
-       ${hasRange ? 'AND r.date BETWEEN $2 AND $3' : ''}
+       ${hasRange ? 'AND r.date BETWEEN $2 AND $3' : 'AND t.active = true'}
      GROUP BY r.template_id, t.name, t.time_slot, t.created_at
      ORDER BY rate DESC, t.name`,
     hasRange ? [userId, from, to] : [userId],
