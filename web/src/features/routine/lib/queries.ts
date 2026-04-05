@@ -75,7 +75,7 @@ export async function queryRoutineRecords(
             t.name, t.time_slot, t.frequency
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
-     WHERE r.date = $1 AND r.user_id = $2
+     WHERE r.date = $1 AND r.user_id = $2 AND t.deleted_at IS NULL
      ORDER BY t.time_slot, t.name`,
     [date, userId],
   );
