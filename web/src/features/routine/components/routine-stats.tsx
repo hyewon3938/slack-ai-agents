@@ -17,7 +17,8 @@ export function RoutineStats({ stats, fetchStats, selectedDate }: RoutineStatsPr
   const weekStart = addDays(today, -6);
 
   useEffect(() => {
-    fetchStats(addDays(today, -30), today);
+    const defaultFrom = addDays(today, -30);
+    fetchStats(defaultFrom, today);
   }, [fetchStats, today]);
 
   return (
