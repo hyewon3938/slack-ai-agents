@@ -3,6 +3,8 @@ import { requireAuth } from '@/lib/auth';
 import { getCachedRoutineStats } from '@/lib/cache';
 import { queryRoutinePerStats } from '@/features/routine/lib/queries';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -14,13 +16,14 @@ export async function GET(request: Request) {
     const type = searchParams.get('type');
 
     if (type === 'per-routine') {
-      // from/to 없으면 전체 기간
       const data = await queryRoutinePerStats(
         userId,
         from ?? undefined,
         to ?? undefined,
       );
-      return NextResponse.json({ data });
+      return NextResponse.json({ data }, {
+        headers: { 'Cache-Control': 'no-store, max-age=0' },
+      });
     }
 
     if (!from || !to) {
