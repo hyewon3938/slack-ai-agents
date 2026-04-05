@@ -15,7 +15,7 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 
 export function RoutinePage() {
   const {
-    view, selectedDate, templates, records, stats, loading,
+    view, selectedDate, templates, records, stats, yearlyStats, loading,
     showForm, editingTemplate, editingRecord,
     setView, setShowForm, setEditingTemplate, setEditingRecord,
     handlePrevDate, handleNextDate, handleToday,
