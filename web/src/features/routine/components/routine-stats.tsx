@@ -4,15 +4,17 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { RoutineDayStat, RoutinePerStat } from '@/lib/types';
 import { getTodayISO, addDays, getDayName } from '@/lib/kst';
 import { MonthlyHeatmap } from './monthly-heatmap';
+import { YearlyHeatmap } from './yearly-heatmap';
 
 interface RoutineStatsProps {
   stats: RoutineDayStat[];
+  yearlyStats: RoutineDayStat[];
   fetchStats: (from: string, to: string) => Promise<void>;
   selectedDate: string;
 }
 
 /** 달성률 통계 뷰 */
-export function RoutineStats({ stats, fetchStats, selectedDate }: RoutineStatsProps) {
+export function RoutineStats({ stats, yearlyStats, fetchStats, selectedDate }: RoutineStatsProps) {
   const today = getTodayISO();
   const weekStart = addDays(today, -6);
 
@@ -23,6 +25,7 @@ export function RoutineStats({ stats, fetchStats, selectedDate }: RoutineStatsPr
 
   return (
     <div className="space-y-6">
+      <YearlyHeatmap stats={yearlyStats} />
       <PerRoutineSection />
       <WeeklyChart stats={stats} from={weekStart} to={today} />
       <MonthlyHeatmap stats={stats} selectedDate={selectedDate} />
