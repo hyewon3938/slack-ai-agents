@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getTodayISO, addDays } from '@/lib/kst';
-import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat, RoutinePerStat } from '@/lib/types';
+import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/lib/types';
 
 export type RoutineView = 'checklist' | 'stats' | 'manage';
 
@@ -13,7 +13,6 @@ export function useRoutines() {
   const [records, setRecords] = useState<RoutineRecordRow[]>([]);
   const [stats, setStats] = useState<RoutineDayStat[]>([]);
   const [yearlyStats, setYearlyStats] = useState<RoutineDayStat[]>([]);
-  const [perRoutineStats, setPerRoutineStats] = useState<RoutinePerStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RoutineTemplateRow | null>(null);
@@ -46,14 +45,6 @@ export function useRoutines() {
     if (res.ok) {
       const { data } = (await res.json()) as { data: RoutineDayStat[] };
       setStats(data);
-    }
-  }, []);
-
-  const fetchPerRoutineStats = useCallback(async (from: string, to: string) => {
-    const res = await fetch(`/api/routines/stats?from=${from}&to=${to}&type=per-routine`);
-    if (res.ok) {
-      const { data } = (await res.json()) as { data: RoutinePerStat[] };
-      setPerRoutineStats(data);
     }
   }, []);
 
@@ -175,7 +166,7 @@ export function useRoutines() {
 
   return {
     // state
-    view, selectedDate, templates, records, stats, yearlyStats, perRoutineStats, loading,
+    view, selectedDate, templates, records, stats, yearlyStats, loading,
     showForm, editingTemplate, editingRecord,
     // setters
     setView, setSelectedDate, setShowForm, setEditingTemplate, setEditingRecord,
@@ -186,6 +177,6 @@ export function useRoutines() {
     // records
     handleToggleRecord, handleUpdateMemo,
     // stats
-    fetchStats, fetchPerRoutineStats,
+    fetchStats,
   };
 }
