@@ -95,6 +95,7 @@ export function RoutinePage() {
           {view === 'stats' && (
             <RoutineStats
               stats={stats}
+              yearlyStats={yearlyStats}
               fetchStats={fetchStats}
               selectedDate={selectedDate}
             />
