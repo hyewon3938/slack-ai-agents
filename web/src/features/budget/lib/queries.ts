@@ -274,9 +274,9 @@ export async function queryRunway(userId: number): Promise<RunwayResult> {
   );
 
   const avgVariableMonthly = Math.round(Number(variableRows[0]?.avg_monthly ?? 0));
-  // 리커밋 평균 수입 추정 (네이버 즉시 정산 기준 ~60만)
-  const ESTIMATED_INCOME = 600_000;
-  const estimatedMonthlyNet = Math.max(fixedMonthly + avgVariableMonthly - ESTIMATED_INCOME, 1);
+  // 월 예상 수입은 환경변수로 관리 (코드에 금액 노출 금지)
+  const estimatedIncome = Number(process.env.ESTIMATED_MONTHLY_INCOME ?? '0');
+  const estimatedMonthlyNet = Math.max(fixedMonthly + avgVariableMonthly - estimatedIncome, 1);
   const runwayMonths = totalAvailable / estimatedMonthlyNet;
 
   const runwayDate = (() => {

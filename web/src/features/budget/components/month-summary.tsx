@@ -25,13 +25,19 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const totalBudget = budget?.total_budget ?? null;
   const dailyBudget = budget?.daily_budget ?? null;
 
+  // 결제주기: 전월 16일 ~ 당월 15일
   const today = new Date();
   const [year, month] = summary.year_month.split('-').map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const daysPassed = summary.year_month === today.toISOString().slice(0, 7)
-    ? today.getDate()
-    : daysInMonth;
-  const daysLeft = daysInMonth - daysPassed;
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const cycleStart = new Date(`${prevYear}-${String(prevMonth).padStart(2, '0')}-16T00:00:00`);
+  const cycleEnd = new Date(`${year}-${String(month).padStart(2, '0')}-15T00:00:00`);
+  const totalDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const isCurrentCycle = today >= cycleStart && today <= cycleEnd;
+  const daysPassed = isCurrentCycle
+    ? Math.round((today.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    : totalDays;
+  const daysLeft = Math.max(totalDays - daysPassed, 0);
 
   const budgetUsed = totalBudget !== null ? summary.variable_total : null;
   const budgetRemaining = totalBudget !== null && budgetUsed !== null ? totalBudget - budgetUsed : null;
