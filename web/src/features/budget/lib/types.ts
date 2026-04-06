@@ -66,6 +66,18 @@ export interface MonthSummary {
   daily_avg: number;
 }
 
+/** 월별 시뮬레이션 프로젝션 */
+export interface MonthProjection {
+  month: string;          // YYYY-MM (결제주기 기준)
+  fixed: number;          // 고정비
+  installments: number;   // 할부 합계
+  locked: number;         // fixed + installments (줄일 수 없는 돈)
+  free_budget: number;    // 자유 예산
+  income: number;         // 수입
+  net_burn: number;       // locked + free_budget - income
+  remaining: number;      // 남은 가용자금
+}
+
 /** 지출 카테고리 목록 */
 export const EXPENSE_CATEGORIES = [
   '식재료',
