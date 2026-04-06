@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { RoutineDayStat, RoutinePerStat } from '@/lib/types';
+import type { RoutineDayStat, RoutinePerStat } from '@/features/routine/lib/types';
 import { getTodayISO, addDays, getDayName } from '@/lib/kst';
 import { MonthlyHeatmap } from './monthly-heatmap';
 import { YearlyHeatmap } from './yearly-heatmap';

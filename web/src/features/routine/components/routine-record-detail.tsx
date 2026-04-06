@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { RoutineRecordRow } from '@/lib/types';
+import type { RoutineRecordRow } from '@/features/routine/lib/types';
 
 interface RoutineRecordDetailProps {
   record: RoutineRecordRow;

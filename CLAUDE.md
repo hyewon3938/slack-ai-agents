@@ -31,98 +31,24 @@
 - Cron: node-cron (timezone: Asia/Seoul)
 - Test: vitest
 
-## 프로젝트 구조
-
-```
-src/
-├── app.ts                    # 서버 진입점
-├── router.ts                 # 채널별 에이전트 라우팅
-├── agents/
-│   ├── life/                 # 통합 라이프 에이전트
-│   └── insight/              # 명리학 일운 + 일기/고민 에이전트
-│       ├── index.ts          # 에이전트 생성 (SQL 도구 기반)
-│       ├── prompt.ts         # 시스템 프롬프트 (DB 스키마 + 캐릭터)
-│       ├── actions.ts        # 인터랙티브 버튼 핸들러 (루틴 완료 등)
-│       └── blocks.ts         # Slack Block Kit 메시지 빌더
-├── cron/
-│   └── life-cron.ts          # 통합 크론 알림 (아침/점심/저녁/밤)
-└── shared/
-    ├── config.ts             # 환경변수 검증 + 설정
-    ├── llm.ts                # LLM 추상화 (Anthropic/Gemini/Groq)
-    ├── agent-loop.ts         # 에이전트 루프 (LLM ↔ 도구 반복)
-    ├── db.ts                 # Neon PostgreSQL 연결 + 쿼리
-    ├── migrate.ts            # DB 마이그레이션 실행
-    ├── sql-tools.ts          # SQL 도구 정의 (query_db, modify_db, get_schema)
-    ├── life-queries.ts       # 크론용 SQL 조회 헬퍼
-    ├── life-context.ts       # 생활 맥락 빌더 (잔소리 시스템)
-    ├── chat-history.ts       # 대화 히스토리 관리
-    ├── kst.ts                # KST 타임존 유틸리티
-    ├── personality.ts        # 캐릭터 프롬프트 정의
-    └── slack.ts              # Slack API 유틸리티
-db/
-├── migrations/               # SQL 마이그레이션 파일
-│   ├── 001_init.sql          # 일정, 루틴 테이블
-│   ├── 002_sleep_records.sql # 수면 기록 테이블
-│   ├── 003_schedule_important.sql # 일정 중요 표시
-│   ├── 004_custom_instructions.sql # 커스텀 지시사항
-│   ├── 005_sleep_type.sql    # 수면 유형 (밤잠/낮잠)
-│   └── 006_smart_memory.sql  # 스마트 메모리 (카테고리/source/active)
-├── migrate.ts                # 마이그레이션 실행 스크립트
-├── migrate-from-notion.ts    # Notion → PostgreSQL 1회성 마이그레이션
-└── test-connection.ts        # DB 연결 테스트
-```
-
 ## 핵심 설계 원칙
 
-- **단일 에이전트**: 채널별 분리 없이 하나의 에이전트가 모든 도메인 처리 (LLM이 자율 판단)
 - **SQL 도구 기반**: LLM이 직접 SQL을 작성하여 데이터 조회/변경/분석
-- **최소 프롬프트**: DB 스키마 + 캐릭터 규칙만. 모델 자율성 활용
-- **크로스 분석**: 모든 라이프 데이터가 한 DB에 → SQL JOIN으로 패턴 분석
+- **도메인별 분리**: 각 도메인의 스키마/API/로직은 도메인 문서에서 관리
 - **환경변수 기반 설정**: API 키, DB 접속 정보 등 모두 .env로 관리
 
-## Slack 채널
+## 도메인별 상세
 
-| 채널 | 용도 |
-|------|------|
-| #life | 메인. 모든 자연어 대화, 기록, 분석 |
-| #insight | 명리학 일운 분석 + 일기/고민 기록 |
+각 도메인의 DB 스키마, API, 컴포넌트 구조, 핵심 로직은 개별 문서 참조:
 
-## DB 스키마 (PostgreSQL)
+| 도메인 | 문서 | Slack 채널 |
+|--------|------|-----------|
+| 일정 관리 | [docs/domains/schedule.md](docs/domains/schedule.md) | #life |
+| 루틴 관리 | [docs/domains/routine.md](docs/domains/routine.md) | #life |
+| 사주/일기 | [docs/domains/insight.md](docs/domains/insight.md) | #insight |
+| 지출/예산 | [docs/domains/budget.md](docs/domains/budget.md) | #money |
 
-```sql
--- 일정
-schedules: id, title, date, end_date, status, category, memo, important, created_at
-
--- 루틴 템플릿
-routine_templates: id, name, time_slot, frequency, active, created_at
-
--- 루틴 일별 기록
-routine_records: id, template_id(FK), date, completed, created_at
-
--- 수면 기록
-sleep_records: id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo, created_at
-
--- 커스텀 지시사항 (스마트 메모리: 카테고리 분류 + 자동 감지 + soft-delete)
-custom_instructions: id, instruction, category, source(user/auto), active, created_at
-
--- 리마인더
-reminders: id, title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[]), days_of_month(INTEGER[]), repeat_interval(기본1, 격주/격월=2), reference_date, active
-
--- 사주 프로필
-saju_profiles: id, user_id, year/month/day/hour_pillar, gender, daewun_start_age, daewun_direction, daewun_list(JSONB), gyeokguk, yongshin, strength(신강/중화/신약), heeshin(희신), gishin(기신), hanshin(한신), profile_summary, birth_date, birth_time
-
--- 운세 분석 (일운/월운/세운/대운)
-fortune_analyses: id, user_id, date, period(daily/monthly/yearly/major), day/month/year_pillar, analysis, summary, warnings(JSONB), recommendations(JSONB), advice, model — UNIQUE(user_id, date, period)
-
--- 일기 (날짜별 누적)
-diary_entries: id, user_id, date(UNIQUE), content, updated_at
-
--- 삶의 테마/고민
-life_themes: id, user_id, theme, category, detail, active, source(user/auto), first_mentioned, mention_count
-
--- 사주 패턴 (일기↔일운 상관 분석)
-saju_patterns: id, user_id, pattern_type(sipsin/ganji/relation/sibiunsung), trigger_element, description, evidence(JSONB), active, detection_count, first_detected, last_detected, activated_at, deactivated_at, source(auto/user), confidence(high/medium/low), updated_at
-```
+**해당 도메인 작업 시 관련 문서만 읽으면 됨** — 전체 스키마를 로드할 필요 없음.
 
 ## 에이전트 도구
 
@@ -153,27 +79,20 @@ saju_patterns: id, user_id, pattern_type(sipsin/ganji/relation/sibiunsung), trig
 
 ### 절대 금지
 - API 키, 비밀번호, 토큰, DB 접속 정보 → 코드/커밋에 절대 포함 금지
+- **개인 재정 정보(금액, 자산, 부채, 수입, 구독료, 고정비 등) → 코드/커밋/이슈/PR에 절대 포함 금지**
+- **개인 상황(재직 상태, 이직/취업 준비, 자금 사정 등) → 이슈/PR/커밋 메시지에 노출 금지**
+- **런웨이, 자금 소진 시점 등 재정 상황을 유추할 수 있는 표현 → 공개 영역에 사용 금지**
+- 금액이 필요한 스크립트는 반드시 0 또는 placeholder로 작성하고, 실행 전 직접 입력하도록 안내
 - .env 값은 .env.example에 키 이름만 기재
 - 시스템 프롬프트에 개인정보(이름, IP, 도메인 등) 하드코딩 금지
 - 커밋 히스토리에 민감정보 유입 시 즉시 알림
+- **이슈/PR 설명은 포트폴리오용 공개 문서로 취급 — 기능 설명만 두루뭉실하게 작성**
 
-### 인프라/배포 변경 시 필수 보안 체크
-코드가 인프라에 영향을 주는 변경(docker-compose, Dockerfile, Vercel 설정, 환경변수, 포트, 인증 등)이 있을 때 **반드시** 아래를 점검:
-
-1. **환경변수**: VM .env / Vercel 환경변수 / .env.example 동기화 확인
-2. **인증/세션**: 쿠키 설정(Secure, HttpOnly, SameSite), 세션 만료, 비밀번호 해싱은 적절한가?
-3. **HTTPS**: 통신 암호화가 적용되어 있는가? HTTP 평문 전송 구간은 없는가?
-4. **CORS/헤더**: API 엔드포인트의 CORS 정책, 보안 헤더(CSP, X-Frame-Options 등)
-5. **DB 접근**: Neon 연결은 SSL(sslmode=require) 적용되어 있는가?
-
-### API/웹 엔드포인트 변경 시 필수 보안 체크
-1. **인증 확인**: 모든 API 라우트에 세션/인증 검증이 있는가?
-2. **입력 검증**: 사용자 입력(body, query, params)이 서버에서 검증되는가?
-3. **SQL 인젝션**: 동적 쿼리에 파라미터 바인딩 사용하는가? 컬럼명 화이트리스트 적용했는가?
-4. **에러 응답**: 에러 메시지에 내부 구현(스택 트레이스, DB 구조)이 노출되지 않는가?
+### 보안 체크리스트
+상세 보안 체크리스트 → docs/conventions.md "보안 체크리스트" 섹션 참조
 
 ### Claude 보안 행동 규칙
-- **모든 PR/코드 리뷰에서 위 체크리스트를 자동으로 점검**한다
+- **모든 PR/코드 리뷰에서 보안 체크리스트를 자동으로 점검**한다
 - 보안 이슈 발견 시 🔴로 표시하고 반드시 수정 후 진행
 - "나중에 고치자"는 보안 항목에 적용하지 않는다 — 보안은 항상 즉시 수정
 - 새 API 엔드포인트 추가 시 인증 없는 상태로 커밋하지 않는다

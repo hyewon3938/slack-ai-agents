@@ -2,8 +2,9 @@
 
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { compareByStatus, isMultiDaySchedule } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
+import { compareByStatus, isMultiDaySchedule } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
 import { ScheduleCard } from './schedule-card';
 import { ActionMenu } from './action-menu';
 

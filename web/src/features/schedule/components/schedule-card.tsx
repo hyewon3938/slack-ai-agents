@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { StatusBadge } from './status-badge';
 

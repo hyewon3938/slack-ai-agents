@@ -1,6 +1,6 @@
 'use client';
 
-import type { RoutineTemplateRow } from '@/lib/types';
+import type { RoutineTemplateRow } from '@/features/routine/lib/types';
 
 interface RoutineListProps {
   templates: RoutineTemplateRow[];
