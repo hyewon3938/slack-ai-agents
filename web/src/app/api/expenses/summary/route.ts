@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { queryMonthSummary } from '@/features/budget/lib/queries';
+import { queryMonthSummary, ensureFixedCostExpenses } from '@/features/budget/lib/queries';
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -13,6 +13,9 @@ export async function GET(request: Request) {
     if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
       return NextResponse.json({ error: 'yearMonth 형식이 올바르지 않습니다 (YYYY-MM)' }, { status: 400 });
     }
+
+    // 고정비 자동 기록 (결제일 지난 건)
+    await ensureFixedCostExpenses(userId, yearMonth);
 
     const data = await queryMonthSummary(userId, yearMonth);
     return NextResponse.json({ data });

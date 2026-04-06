@@ -183,6 +183,71 @@ export async function queryFixedCosts(userId: number): Promise<FixedCostRow[]> {
   return rows;
 }
 
+/**
+ * 고정비 자동 기록: 결제일(day_of_month)이 설정된 활성 고정비에 대해
+ * 해당 결제주기 내에 지출 기록이 없으면 자동 생성.
+ * - 미래 날짜는 생성하지 않음 (오늘까지만)
+ * - source='fixed'로 구분, 삭제 후에도 기록은 유지
+ */
+export async function ensureFixedCostExpenses(userId: number, yearMonth: string): Promise<number> {
+  const [year, month] = yearMonth.split('-').map(Number);
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+
+  const fixedCosts = await queryFixedCosts(userId);
+  const activeCostsWithDay = fixedCosts.filter((fc) => fc.active && fc.day_of_month);
+
+  if (activeCostsWithDay.length === 0) return 0;
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  let created = 0;
+
+  for (const fc of activeCostsWithDay) {
+    const day = fc.day_of_month!;
+
+    // 결제주기 내 실제 날짜 계산
+    // day >= 16 → 전월 (결제주기 시작 쪽), day <= 15 → 당월 (결제주기 끝 쪽)
+    let expenseYear: number, expenseMonth: number;
+    if (day >= 16) {
+      expenseYear = prevYear;
+      expenseMonth = prevMonth;
+    } else {
+      expenseYear = year;
+      expenseMonth = month;
+    }
+
+    // 해당 월의 실제 마지막 일자 확인 (31일이 없는 달 처리)
+    const lastDay = new Date(expenseYear, expenseMonth, 0).getDate();
+    const actualDay = Math.min(day, lastDay);
+    const expenseDate = `${expenseYear}-${String(expenseMonth).padStart(2, '0')}-${String(actualDay).padStart(2, '0')}`;
+
+    // 미래 날짜는 스킵
+    if (expenseDate > todayStr) continue;
+
+    // 이미 기록된 건이 있는지 확인 (source='fixed', 같은 날짜, 같은 이름)
+    const existing = await queryOne<{ id: number }>(
+      `SELECT id FROM expenses
+       WHERE user_id = $1 AND source = 'fixed' AND date = $2 AND description = $3`,
+      [userId, expenseDate, fc.name],
+    );
+
+    if (existing) continue;
+
+    // 자동 생성
+    await queryOne(
+      `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, source, memo)
+       VALUES ($1, $2, $3, $4, $5, '카드', 'fixed', $6)
+       RETURNING id`,
+      [userId, expenseDate, fc.amount, fc.category ?? '기타', fc.name, `고정비 자동 기록 (fixed_cost_id: ${fc.id})`],
+    );
+    created++;
+  }
+
+  return created;
+}
+
 // ─── 예산 ─────────────────────────────────────────────
 
 /** 월 예산 조회 */
