@@ -1,7 +1,9 @@
 'use client';
 
-import type { CategoryRow, ScheduleStatus } from '@/lib/types';
-import { getCategoryStyle, SCHEDULE_STATUSES, STATUS_LABELS } from '@/lib/types';
+import type { ScheduleStatus } from '@/features/schedule/lib/types';
+import { SCHEDULE_STATUSES, STATUS_LABELS } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
+import { getCategoryStyle } from '@/lib/types';
 
 const STATUS_FILTER_COLORS: Record<string, { active: string; inactive: string }> = {
   todo: { active: 'bg-gray-200 text-gray-700', inactive: 'bg-gray-100 text-gray-500 hover:bg-gray-200' },

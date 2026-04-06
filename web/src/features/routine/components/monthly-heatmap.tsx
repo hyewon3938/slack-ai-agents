@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import type { RoutineDayStat } from '@/lib/types';
+import type { RoutineDayStat } from '@/features/routine/lib/types';
 
 interface MonthlyHeatmapProps {
   stats: RoutineDayStat[];

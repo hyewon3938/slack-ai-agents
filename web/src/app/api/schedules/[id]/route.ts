@@ -7,7 +7,7 @@ import {
   deleteSchedule,
   ensureCategoryExists,
 } from '@/features/schedule/lib/queries';
-import { isValidStatus } from '@/lib/types';
+import { isValidStatus } from '@/features/schedule/lib/types';
 
 export async function GET(
   _request: Request,
