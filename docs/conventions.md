@@ -166,7 +166,7 @@ api/{domain}/[id]/route.ts  → GET (단건), PATCH (수정), DELETE (삭제)
 - [ ] 에러 응답에 스택 트레이스, DB 구조 등 내부 정보 미포함
 
 ### 인프라/배포
-- [ ] Neon DB 연결에 SSL(`sslmode=require`) 적용 확인
+- [ ] DB 연결 설정 확인 (VM PostgreSQL: direct, Vercel → VM 네트워크 안정성)
 - [ ] 쿠키: `HttpOnly`, `SameSite=lax` 필수 / `Secure`는 HTTPS 환경에서만
 - [ ] 보안 헤더 설정 (CSP, X-Frame-Options, X-Content-Type-Options)
 - [ ] HTTPS 적용 여부 확인 (Vercel: 자동, VM: 외부 노출 최소화)

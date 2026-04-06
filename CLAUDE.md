@@ -1,7 +1,7 @@
 # slack-ai-agents
 
 개인 라이프 데이터 AI 에이전트 시스템.
-자연어(Slack) → AI(Claude Sonnet + SQL 도구) → Neon PostgreSQL → Slack 응답.
+자연어(Slack) → AI(Claude Sonnet + SQL 도구) → PostgreSQL → Slack 응답.
 
 ## 아키텍처 (v3)
 
@@ -13,9 +13,8 @@
                         │
                    ┌────┴────┐
                    ▼         ▼
-              [Neon DB]    [외부 API]
-              (managed     (명리학: Gemini)
-               PostgreSQL)
+              [PostgreSQL]  [외부 API]
+              (Oracle VM)   (명리학: Gemini)
                    ↑
               [Vercel]
               (Next.js 웹 대시보드)
@@ -26,7 +25,7 @@
 - Runtime: Node.js + TypeScript (strict)
 - Slack: @slack/bolt (Socket Mode)
 - LLM: Claude Sonnet (메인) — 명리학 분석 전용: Gemini
-- DB: Neon (managed PostgreSQL)
+- DB: PostgreSQL (Oracle VM, Docker)
 - Web: Next.js 16 (Vercel 배포)
 - Cron: node-cron (timezone: Asia/Seoul)
 - Test: vitest

@@ -49,7 +49,7 @@
 - **프롬프트 엔지니어링** — LLM 반복 실수 분석→규칙화. 의도 분류 3단계 진화→최종 삭제.
 - **Claude Code 풀스택 활용** — Hooks(3) + Skills(3, Opus/Sonnet 분리 파이프라인) + MCP(2) + Scheduled Tasks로 개발 파이프라인 자동화.
 - **UX 중심 의사결정** — 직접 사용하며 개선. 속도 불만→fast path, 체크리스트 밀림→App Home 도입.
-- **1인 풀스택** — Slack 에이전트 + Next.js 대시보드(DnD, PWA) + Docker/VM + Vercel + Neon.
+- **1인 풀스택** — Slack 에이전트 + Next.js 대시보드(DnD, PWA) + Docker/VM + Vercel + PostgreSQL.
 - **개인 프로젝트에 팀 수준 품질 관리** — 245개 테스트(인사이트 엔진 TDD), GitHub Actions CI/CD, Public 저장소 4곳 보안 방어.
 
 ---
@@ -70,14 +70,14 @@
 
 | | v1 | v2 | v3 |
 |---|---|---|---|
-| **데이터** | Notion (JOIN 불가) | PostgreSQL (SQL 크로스 분석) | Neon managed (동일) |
+| **데이터** | Notion (JOIN 불가) | PostgreSQL (SQL 크로스 분석) | PostgreSQL (동일, VM Docker) |
 | **모델** | Gemini Flash (추론 약함) | Claude Sonnet (추론형) | 동일 |
 | **에이전트** | 채널별 분리 | 통합 (LLM 자율 판단) | 동일 |
-| **인프라** | Docker 1개 | Docker 4개 (app+db+web+caddy) | 역할 분리: VM(봇) + Vercel(웹) + Neon(DB) |
+| **인프라** | Docker 1개 | Docker 4개 (app+db+web+caddy) | 역할 분리: VM(봇+DB) + Vercel(웹) |
 | **배포** | — | docker compose (8\~9분) | yarn deploy (2분) + GitHub push |
 
 - **v1→v2**: Notion은 테이블 간 JOIN이 안 돼서 크로스 분석이 불가능. 코어(데이터층 + 모델 + 에이전트 구조)를 통째로 교체.
-- **v2→v3**: 웹 대시보드 추가로 Docker 서비스가 4개로 팽창. DB와 웹을 managed 서비스(Neon, Vercel)로 분리해 VM은 봇만 담당.
+- **v2→v3**: 웹 대시보드 추가로 Docker 서비스가 4개로 팽창. 웹을 Vercel로 분리하고, DB는 VM에 PostgreSQL Docker로 유지. VM은 봇+DB 담당.
 
 ---
 
@@ -130,7 +130,7 @@ Slack 대화(LLM 호출) 없이 일정·루틴을 직접 관리할 수 있는 UI
 | Backend    | Node.js + TypeScript (strict)                                    |
 | Frontend   | Next.js 16 (App Router) + Tailwind CSS v4 + @dnd-kit             |
 | Messaging  | Slack Bolt (Socket Mode)                                         |
-| Database   | Neon (managed PostgreSQL)                                        |
+| Database   | PostgreSQL (Oracle VM Docker)                                    |
 | Auth       | iron-session (암호화 쿠키 세션)                                  |
 | Scheduling | node-cron (timezone: Asia/Seoul)                                 |
 | Bot Infra  | Docker + Oracle Cloud Free Tier ARM VM                           |
@@ -228,7 +228,7 @@ v1 설계 → 운영 → 한계 인식 → v2 전환 → 웹 대시보드 → v3
 | 03-08     | **v2 전환** — PostgreSQL, KST 수정, App Home, 스마트 메모리              |
 | 03-09     | Hooks/Skills, 비용 최적화, 생활 맥락 잔소리, 개발 크론                   |
 | 03-10\~11 | Next.js 캘린더, DnD, 백로그, 카테고리, PWA, 다층 보안 체계, HTTPS 배포   |
-| 03-12     | **v3 전환**(Vercel+Neon), UX 개선, CI/CD, **프로액티브 인사이트 시스템** |
+| 03-12     | **v3 전환**(Vercel+VM PG), UX 개선, CI/CD, **프로액티브 인사이트 시스템** |
 
 > 상세 기록: [docs/project-history.md](docs/project-history.md)
 
@@ -255,7 +255,7 @@ src/                              # Slack 에이전트 (Oracle VM + Docker)
     ├── config.ts                 # 환경변수 검증 + 설정
     ├── llm.ts                    # LLM 추상화 (Anthropic)
     ├── agent-loop.ts             # 에이전트 루프 (LLM ↔ 도구 반복)
-    ├── db.ts                     # Neon PostgreSQL 연결 + 쿼리
+    ├── db.ts                     # PostgreSQL 연결 + 쿼리
     ├── sql-tools.ts              # SQL 도구 정의 (query_db, modify_db, get_schema)
     ├── insights.ts               # 프로액티브 인사이트 감지 엔진
     ├── life-context.ts           # 생활 맥락 빌더 (잔소리 시스템)
@@ -271,7 +271,7 @@ web/                              # 웹 대시보드 (Vercel 자동 배포)
 │   ├── backlog/                  # 백로그 관리
 │   ├── categories/               # 카테고리 관리
 │   ├── login/                    # 인증
-│   └── api/                      # API Routes (Neon DB 직접 연결)
+│   └── api/                      # API Routes (VM PostgreSQL 직접 연결)
 └── src/components/               # 공용 UI 컴포넌트
 ```
 
@@ -284,7 +284,7 @@ web/                              # 웹 대시보드 (Vercel 자동 배포)
 ```bash
 # Slack 봇 (백엔드)
 yarn install
-cp .env.example .env        # Slack, Anthropic, Neon DB 등 API 키 설정
+cp .env.example .env        # Slack, Anthropic, DB 등 API 키 설정
 yarn dev                    # 개발 모드
 yarn build && yarn start    # 빌드 & 실행
 yarn deploy                 # Oracle VM 배포
@@ -292,7 +292,7 @@ yarn deploy                 # Oracle VM 배포
 # 웹 대시보드
 cd web
 yarn install
-cp .env.example .env.local  # Neon DB URL, 대시보드 비밀번호 설정
+cp .env.example .env.local  # DB URL, 대시보드 비밀번호 설정
 yarn dev                    # localhost:3000
 # 프로덕션은 Vercel 자동 배포 (GitHub push → 빌드 → 배포)
 ```
