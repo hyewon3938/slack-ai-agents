@@ -21,7 +21,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/schedules', label: '일정', Icon: CalendarIcon },
   { href: '/routines', label: '루틴', Icon: ArrowPathIcon },
-  { href: '/budget', label: '지출', Icon: WalletIcon, activeOn: ['/budget/settings'] },
+  { href: '/budget', label: '지출', Icon: WalletIcon },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
