@@ -60,6 +60,8 @@ export interface MonthSummary {
   installment_total: number;
   /** 자유 지출 (가변 지출 중 할부 제외 = 내가 직접 쓴 돈) */
   flexible_spent: number;
+  /** 환불 합계 (카테고리='환불'인 건, 실질적 수입) */
+  refund_total: number;
   by_category: CategoryStat[];
   daily_avg: number;
 }

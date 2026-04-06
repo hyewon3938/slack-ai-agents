@@ -1,21 +1,45 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { RunwayResult } from '@/features/budget/lib/queries';
 import { formatAmount } from '@/lib/types';
-import { ArrowTrendingDownIcon, ExclamationTriangleIcon, CheckCircleIcon } from '@/components/ui/icons';
+import { ArrowTrendingDownIcon, ExclamationTriangleIcon, CheckCircleIcon, PencilIcon, XMarkIcon } from '@/components/ui/icons';
+
+const STORAGE_KEY = 'budget_target_date';
+
+function getStoredTargetDate(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(STORAGE_KEY) ?? '';
+}
 
 export function RunwayCard() {
   const [runway, setRunway] = useState<RunwayResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetInput, setTargetInput] = useState('');
 
-  useEffect(() => {
-    fetch('/api/budget/runway')
+  const fetchRunway = useCallback((targetDate?: string) => {
+    setLoading(true);
+    const params = targetDate ? `?targetDate=${targetDate}` : '';
+    fetch(`/api/budget/runway${params}`)
       .then((r) => r.json())
       .then((d: { data: RunwayResult }) => setRunway(d.data))
       .catch(() => setRunway(null))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    const stored = getStoredTargetDate();
+    fetchRunway(stored || undefined);
+  }, [fetchRunway]);
+
+  const handleSaveTarget = () => {
+    const val = targetInput.trim();
+    if (val && !/^\d{4}-\d{2}$/.test(val)) return;
+    localStorage.setItem(STORAGE_KEY, val);
+    setEditingTarget(false);
+    fetchRunway(val || undefined);
+  };
 
   if (loading) {
     return (
@@ -39,7 +63,38 @@ export function RunwayCard() {
 
   return (
     <div className="space-y-3">
-      {/* 예산 추천 (예산 미설정 또는 추천값과 차이 클 때) */}
+      {/* 목표 기간 설정 */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-gray-400">목표 기간</div>
+          {!editingTarget && (
+            <button
+              onClick={() => { setTargetInput(getStoredTargetDate()); setEditingTarget(true); }}
+              className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
+            >
+              <PencilIcon size={13} />
+            </button>
+          )}
+        </div>
+        {editingTarget ? (
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              type="month"
+              value={targetInput}
+              onChange={(e) => setTargetInput(e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+            />
+            <button onClick={() => setEditingTarget(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
+            <button onClick={handleSaveTarget} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
+          </div>
+        ) : (
+          <div className="text-sm font-semibold text-gray-800">
+            {runway.target_date ? `${runway.target_date}까지` : '미설정'}
+          </div>
+        )}
+      </div>
+
+      {/* 예산 추천 */}
       {runway.recommended_budget !== null && runway.target_date && (
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
           <div className="text-xs text-blue-600 mb-1">추천 월 가변 예산</div>
@@ -47,16 +102,14 @@ export function RunwayCard() {
             <span className="text-2xl font-bold text-blue-700">
               {formatAmount(runway.recommended_budget)}
             </span>
-            <span className="mb-0.5 text-xs text-blue-500">
-              / 월 ({runway.target_date}까지 기준)
-            </span>
+            <span className="mb-0.5 text-xs text-blue-500">/ 월</span>
           </div>
           <p className="mt-1.5 text-xs text-blue-500">
-            가용 자금 {formatAmount(runway.total_available)} ÷ 남은 기간 − 고정비 + 수입 기준
+            가용 자금 {formatAmount(runway.total_available)} 기준, {runway.target_date}까지 유지
           </p>
           {runway.monthly_budget !== null && runway.recommended_budget !== runway.monthly_budget && (
             <p className="mt-1 text-xs text-blue-600 font-medium">
-              현재 설정 예산: {formatAmount(runway.monthly_budget)}
+              현재 설정: {formatAmount(runway.monthly_budget)}
               {runway.monthly_budget > runway.recommended_budget
                 ? ` (추천보다 ${formatAmount(runway.monthly_budget - runway.recommended_budget)} 많음)`
                 : ` (추천보다 ${formatAmount(runway.recommended_budget - runway.monthly_budget)} 적음)`}

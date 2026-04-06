@@ -140,7 +140,7 @@ export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCa
         <div className="divide-y divide-gray-100">
           {sortedDates.map((date) => {
             const dayExpenses = grouped.get(date) ?? [];
-            const dayTotal = dayExpenses.reduce((s, e) => s + e.amount, 0);
+            const dayTotal = dayExpenses.reduce((s, e) => e.category === '환불' ? s - e.amount : s + e.amount, 0);
             const dateObj = new Date(date + 'T00:00:00');
             return (
               <div key={date}>
@@ -149,7 +149,9 @@ export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCa
                   <span className="text-xs font-medium text-gray-500">
                     {format(dateObj, 'M월 d일 (E)', { locale: ko })}
                   </span>
-                  <span className="text-xs text-gray-500">{formatAmount(dayTotal)}</span>
+                  <span className={`text-xs ${dayTotal < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                    {dayTotal < 0 ? '+' : ''}{formatAmount(Math.abs(dayTotal))}
+                  </span>
                 </div>
 
                 {/* 해당 날 지출 */}
@@ -174,7 +176,9 @@ export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCa
                         )}
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className="text-sm font-semibold text-gray-800">{formatAmount(expense.amount)}</div>
+                        <div className={`text-sm font-semibold ${expense.category === '환불' ? 'text-green-600' : 'text-gray-800'}`}>
+                          {expense.category === '환불' ? '+' : ''}{formatAmount(expense.amount)}
+                        </div>
                       </div>
                       {expense.source !== 'import' && (
                         <button
