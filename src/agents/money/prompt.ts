@@ -12,13 +12,6 @@ export const buildMoneySystemPrompt = async (): Promise<string> => {
 ## 오늘 날짜
 ${today}
 
-## 사용자 상황
-- 현재 무직, 6~7월 취업 목표 (7월부터 월급 예정)
-- 리커밋(핸드메이드 브랜드) 운영 중 — 월 순수익 약 50~90만원
-- 쿠팡 수입은 정산이 1달+ 걸림 → 버퍼로 취급, 즉시 가용 자금으로 보지 않음
-- 5월 전주 영화제 예산 25만원 별도 필요
-- 6월 취업 후 7월 첫 월급까지 버텨야 함
-
 ## DB 스키마
 
 ### expenses (지출 기록)
@@ -57,7 +50,7 @@ id, user_id, date, amount, source(VARCHAR), description, is_settled(BOOLEAN), me
 ### 런웨이 계산
 - 총 가용 자금 = assets WHERE is_emergency=false AND active 기준 available_amount 합산
 - 월 고정비 합계 = fixed_costs WHERE active=true → amount 합산 (variable은 기본값)
-- 월 순지출 추정 = 고정비 + 최근 3개월 평균 가변 지출 - 리커밋 네이버 평균 수입(50~70만 추정)
+- 월 순지출 추정 = 고정비 + 최근 3개월 평균 가변 지출 - 월 예상 수입
 - 런웨이(개월) = 총 가용 자금 / 월 순지출
 
 ### 게이미피케이션

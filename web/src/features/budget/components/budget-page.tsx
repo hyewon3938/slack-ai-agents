@@ -7,6 +7,7 @@ import { ExpenseForm } from './expense-form';
 import { ExpenseList } from './expense-list';
 import { CategoryChart } from './category-chart';
 import { RunwayCard } from './runway-card';
+import { SettingsPanel } from './settings-panel';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
 
 function MonthNavigator({
@@ -46,10 +47,24 @@ function MonthNavigator({
   );
 }
 
+type TabId = 'list' | 'chart' | 'runway' | 'settings';
+
 export function BudgetPage() {
-  const { selectedMonth, setSelectedMonth, expenses, summary, loading, error, addExpense, deleteExpense } = useBudget();
+  const {
+    selectedMonth, setSelectedMonth,
+    expenses, summary, fixedCosts, assets,
+    loading, error,
+    addExpense, deleteExpense, updateAssetBalance,
+  } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'list' | 'chart' | 'runway'>('list');
+  const [activeTab, setActiveTab] = useState<TabId>('list');
+
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'list', label: '지출 목록' },
+    { id: 'chart', label: '카테고리' },
+    { id: 'runway', label: '분석' },
+    { id: 'settings', label: '설정' },
+  ];
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-4">
@@ -79,20 +94,17 @@ export function BudgetPage() {
 
       {/* 탭 */}
       <div className="mb-3 flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-        {(['list', 'chart', 'runway'] as const).map((tab) => {
-          const labels = { list: '지출 목록', chart: '카테고리', runway: '런웨이' };
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
-                activeTab === tab ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {labels[tab]}
-            </button>
-          );
-        })}
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
+              activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* 탭 내용 */}
@@ -114,6 +126,14 @@ export function BudgetPage() {
       )}
 
       {activeTab === 'runway' && <RunwayCard />}
+
+      {activeTab === 'settings' && (
+        <SettingsPanel
+          fixedCosts={fixedCosts}
+          assets={assets}
+          onUpdateAsset={updateAssetBalance}
+        />
+      )}
     </div>
   );
 }
