@@ -3,7 +3,7 @@ import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { createSchedule, ensureCategoryExists } from '@/features/schedule/lib/queries';
 import { getCachedSchedulesByRange, getCachedBacklogSchedules } from '@/lib/cache';
-import { isValidStatus } from '@/lib/types';
+import { isValidStatus } from '@/features/schedule/lib/types';
 
 export async function GET(request: Request) {
   const userId = await requireAuth();

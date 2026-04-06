@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
-  isValidStatus,
-  compareByStatus,
   hexToStyles,
   getCategoryStyle,
   colorToHex,
 } from '../types';
-import type { ScheduleRow } from '../types';
+import {
+  isValidStatus,
+  compareByStatus,
+} from '@/features/schedule/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
 
 // ─── isValidStatus ──────────────────────────────────────
 
