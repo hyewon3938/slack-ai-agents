@@ -6,7 +6,7 @@ import type {
   AssetRow,
   MonthSummary,
   CategoryStat,
-} from '@/lib/types';
+} from './types';
 
 // ─── 지출 CRUD ───────────────────────────────────────
 

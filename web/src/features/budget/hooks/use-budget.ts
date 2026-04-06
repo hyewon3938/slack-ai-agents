@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { ExpenseRow, MonthSummary, AssetRow, FixedCostRow } from '@/lib/types';
+import type { ExpenseRow, MonthSummary, AssetRow, FixedCostRow } from '@/features/budget/lib/types';
 
 function getCurrentYearMonth(): string {
   return new Date().toISOString().slice(0, 7);
