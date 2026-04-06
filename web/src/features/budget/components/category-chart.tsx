@@ -34,7 +34,11 @@ const CATEGORY_COLORS: Record<string, string> = {
 const DEFAULT_COLOR = '#e5e7eb';
 
 export function CategoryChart({ stats, total }: CategoryChartProps) {
-  if (stats.length === 0) {
+  // 환불은 지출이 아니므로 차트에서 분리
+  const refundStat = stats.find((s) => s.category === '환불');
+  const expenseStats = stats.filter((s) => s.category !== '환불');
+
+  if (expenseStats.length === 0 && !refundStat) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-gray-700">카테고리별 지출</h2>
@@ -43,7 +47,7 @@ export function CategoryChart({ stats, total }: CategoryChartProps) {
     );
   }
 
-  const top = stats.slice(0, 8);
+  const top = expenseStats.slice(0, 8);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -90,6 +94,15 @@ export function CategoryChart({ stats, total }: CategoryChartProps) {
           );
         })}
       </div>
+
+      {/* 환불 (수입 성격 — 별도 표시) */}
+      {refundStat && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2">
+          <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-green-400" />
+          <span className="flex-1 text-xs text-green-700">환불 (카드 대금 상쇄)</span>
+          <span className="text-xs font-medium text-green-600">+{formatAmount(refundStat.total)}</span>
+        </div>
+      )}
     </div>
   );
 }
