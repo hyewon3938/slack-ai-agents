@@ -28,8 +28,6 @@ function MonthNavigator({
     onChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  const isCurrentMonth = selectedMonth === new Date().toISOString().slice(0, 7);
-
   return (
     <div className="flex items-center gap-2">
       <button onClick={prev} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
@@ -40,8 +38,7 @@ function MonthNavigator({
       </span>
       <button
         onClick={next}
-        disabled={isCurrentMonth}
-        className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30"
+        className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <ChevronRightIcon size={18} />
       </button>
