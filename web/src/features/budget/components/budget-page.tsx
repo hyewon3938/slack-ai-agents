@@ -9,7 +9,8 @@ import { ExpenseList } from './expense-list';
 import { ExpenseEditModal } from './expense-edit-modal';
 import { CategoryChart } from './category-chart';
 import { RunwayCard } from './runway-card';
-import { ChevronLeftIcon, ChevronRightIcon, Cog6ToothIcon } from '@/components/ui/icons';
+import { BudgetSettingsPage } from './budget-settings-page';
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
 
 /** 결제주기 날짜 범위 계산 (표시용) */
 function getBillingRangeLabel(yearMonth: string): string {
@@ -58,7 +59,7 @@ function MonthNavigator({
   );
 }
 
-type TabId = 'list' | 'chart' | 'runway';
+type TabId = 'list' | 'chart' | 'runway' | 'settings';
 
 export function BudgetPage() {
   const {
@@ -72,9 +73,10 @@ export function BudgetPage() {
   const [editingExpense, setEditingExpense] = useState<ExpenseRow | null>(null);
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: 'list', label: '지출 목록' },
+    { id: 'list', label: '지출' },
     { id: 'chart', label: '카테고리' },
     { id: 'runway', label: '분석' },
+    { id: 'settings', label: '설정' },
   ];
 
   return (
@@ -82,35 +84,33 @@ export function BudgetPage() {
       {/* 헤더 */}
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-base font-bold text-gray-900">지출 관리</h1>
-        <div className="flex items-center gap-2">
+        {activeTab !== 'settings' && (
           <MonthNavigator selectedMonth={selectedMonth} onChange={setSelectedMonth} />
-          <a
-            href="/budget/settings"
-            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
-            title="예산 설정"
-          >
-            <Cog6ToothIcon size={18} />
-          </a>
-        </div>
+        )}
       </div>
 
-      {error && (
+      {error && activeTab !== 'settings' && (
         <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
       )}
 
-      {/* 월간 요약 */}
-      {loading ? (
-        <div className="mb-4 h-40 animate-pulse rounded-xl bg-gray-100" />
-      ) : summary ? (
-        <div className="mb-4">
-          <MonthSummaryCard summary={summary} />
-        </div>
-      ) : null}
+      {/* 설정이 아닌 탭에서만 월간 요약 + 지출 폼 표시 */}
+      {activeTab !== 'settings' && activeTab !== 'runway' && (
+        <>
+          {/* 월간 요약 */}
+          {loading ? (
+            <div className="mb-4 h-40 animate-pulse rounded-xl bg-gray-100" />
+          ) : summary ? (
+            <div className="mb-4">
+              <MonthSummaryCard summary={summary} />
+            </div>
+          ) : null}
 
-      {/* 지출 추가 폼 */}
-      <div className="mb-4">
-        <ExpenseForm onAdd={addExpense} />
-      </div>
+          {/* 지출 추가 폼 */}
+          <div className="mb-4">
+            <ExpenseForm onAdd={addExpense} />
+          </div>
+        </>
+      )}
 
       {/* 탭 */}
       <div className="mb-3 flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
@@ -147,6 +147,8 @@ export function BudgetPage() {
       )}
 
       {activeTab === 'runway' && <RunwayCard />}
+
+      {activeTab === 'settings' && <BudgetSettingsPage />}
 
       {/* 수정 모달 */}
       {editingExpense && (
