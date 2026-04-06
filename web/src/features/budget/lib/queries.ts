@@ -443,48 +443,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
       remaining: r.installment_total - r.installment_num,
     }));
 
-  // ─── 월별 시뮬레이션 ───
-  const projections: MonthProjection[] = [];
-  let remaining = totalAvailable;
-  const maxMonths = 120;
-
-  for (let i = 1; i <= maxMonths && remaining > 0; i++) {
-    const month = addBillingMonths(billingMonth, i);
-    // 해당 월의 할부 합계 (남은 회차가 i 이상인 그룹만)
-    const installmentSum = installments
-      .filter((inst) => inst.remaining >= i)
-      .reduce((s, inst) => s + inst.amount, 0);
-
-    const locked = fixedMonthly + installmentSum;
-    const freeBudget = budgetVariable;
-    const netBurn = locked + freeBudget - estimatedIncome;
-
-    remaining -= netBurn;
-
-    projections.push({
-      month,
-      fixed: fixedMonthly,
-      installments: installmentSum,
-      locked,
-      free_budget: freeBudget,
-      income: estimatedIncome,
-      net_burn: netBurn,
-      remaining: Math.max(remaining, 0),
-    });
-
-    if (remaining <= 0) break;
-  }
-
-  const budgetRunwayMonths = projections.length > 0
-    ? projections.length - 1 + (remaining <= 0
-        ? (projections.at(-1)!.remaining + projections.at(-1)!.net_burn) / projections.at(-1)!.net_burn
-        : projections.length)
-    : 0;
-  const budgetRunwayDate = projections.length > 0
-    ? (remaining <= 0 ? projections.at(-1)!.month : addBillingMonths(billingMonth, maxMonths))
-    : billingMonth;
-
-  // ─── 목표 기간 기반 추천 예산 (할부 차등 반영) ───
+  // ─── 목표 기간 기반 추천 예산 (할부 차등 반영, 시뮬레이션보다 먼저 계산) ───
   const validTarget = targetDate && /^\d{4}-\d{2}$/.test(targetDate) ? targetDate : null;
   let recommendedBudget: number | null = null;
   let recommendedDaily: number | null = null;
@@ -507,12 +466,55 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
 
       // 추천 일일 예산 (결제주기 일수 기준)
       const { from, to } = getBillingRange(billingMonth);
-      const cycleDays = Math.round(
+      const cycleDaysForRec = Math.round(
         (new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime()) / 86400000,
       ) + 1;
-      recommendedDaily = cycleDays > 0 ? Math.round(recommendedBudget / cycleDays) : null;
+      recommendedDaily = cycleDaysForRec > 0 ? Math.round(recommendedBudget / cycleDaysForRec) : null;
     }
   }
+
+  // 시뮬레이션 자유 예산: 추천 > 수동 설정 > 평균 순
+  const simulationFreeBudget = recommendedBudget ?? budgetVariable;
+
+  // ─── 월별 시뮬레이션 ───
+  const projections: MonthProjection[] = [];
+  let remaining = totalAvailable;
+  const maxMonths = 120;
+
+  for (let i = 1; i <= maxMonths && remaining > 0; i++) {
+    const month = addBillingMonths(billingMonth, i);
+    // 해당 월의 할부 합계 (남은 회차가 i 이상인 그룹만)
+    const installmentSum = installments
+      .filter((inst) => inst.remaining >= i)
+      .reduce((s, inst) => s + inst.amount, 0);
+
+    const locked = fixedMonthly + installmentSum;
+    const netBurn = locked + simulationFreeBudget - estimatedIncome;
+
+    remaining -= netBurn;
+
+    projections.push({
+      month,
+      fixed: fixedMonthly,
+      installments: installmentSum,
+      locked,
+      free_budget: simulationFreeBudget,
+      income: estimatedIncome,
+      net_burn: netBurn,
+      remaining: Math.max(remaining, 0),
+    });
+
+    if (remaining <= 0) break;
+  }
+
+  const budgetRunwayMonths = projections.length > 0
+    ? projections.length - 1 + (remaining <= 0
+        ? (projections.at(-1)!.remaining + projections.at(-1)!.net_burn) / projections.at(-1)!.net_burn
+        : projections.length)
+    : 0;
+  const budgetRunwayDate = projections.length > 0
+    ? (remaining <= 0 ? projections.at(-1)!.month : addBillingMonths(billingMonth, maxMonths))
+    : billingMonth;
 
   // ─── 현재 결제주기 추적 ───
   const { from: cycleFrom, to: cycleTo } = getBillingRange(billingMonth);

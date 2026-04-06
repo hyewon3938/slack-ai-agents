@@ -59,8 +59,8 @@ function MonthNavigator({
   );
 }
 
-type TopTab = 'manage' | 'settings';
-type SubTab = 'list' | 'chart' | 'runway';
+type TopTab = 'manage' | 'runway' | 'settings';
+type SubTab = 'list' | 'chart';
 
 export function BudgetPage() {
   const {
@@ -76,13 +76,13 @@ export function BudgetPage() {
 
   const topTabs: { id: TopTab; label: string }[] = [
     { id: 'manage', label: '관리' },
+    { id: 'runway', label: '분석' },
     { id: 'settings', label: '설정' },
   ];
 
   const subTabs: { id: SubTab; label: string }[] = [
     { id: 'list', label: '지출' },
     { id: 'chart', label: '카테고리' },
-    { id: 'runway', label: '분석' },
   ];
 
   return (
@@ -119,16 +119,14 @@ export function BudgetPage() {
             <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
           )}
 
-          {/* 월간 요약 */}
-          {subTab !== 'runway' && (
-            loading ? (
-              <div className="mb-4 h-40 animate-pulse rounded-xl bg-gray-100" />
-            ) : summary ? (
-              <div className="mb-4">
-                <MonthSummaryCard summary={summary} />
-              </div>
-            ) : null
-          )}
+          {/* 월간 요약 (항상 표시) */}
+          {loading ? (
+            <div className="mb-4 h-40 animate-pulse rounded-xl bg-gray-100" />
+          ) : summary ? (
+            <div className="mb-4">
+              <MonthSummaryCard summary={summary} />
+            </div>
+          ) : null}
 
           {/* 지출 추가 폼 */}
           {subTab === 'list' && (
@@ -170,8 +168,13 @@ export function BudgetPage() {
           {subTab === 'chart' && summary && (
             <CategoryChart stats={summary.by_category} total={summary.variable_total} />
           )}
+        </div>
+      )}
 
-          {subTab === 'runway' && <RunwayCard />}
+      {/* 분석 탭 */}
+      {topTab === 'runway' && (
+        <div className="mx-auto w-full max-w-2xl px-4 py-4">
+          <RunwayCard />
         </div>
       )}
 
