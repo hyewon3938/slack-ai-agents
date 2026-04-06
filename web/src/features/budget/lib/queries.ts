@@ -141,11 +141,21 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     .filter((c) => !EXCLUDED_CATEGORIES.has(c.category))
     .reduce((s, c) => s + c.total, 0);
 
+  // 할부 합계 (가변 카테고리 중 is_installment=true)
+  const installmentResult = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+     WHERE user_id = $1 AND date >= $2 AND date <= $3
+       AND is_installment = true
+       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배', '환불')`,
+    [userId, from, to],
+  );
+  const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
+  const flexibleSpent = variableTotal - installmentTotal;
+
   // 결제주기 일수 계산 (전월 16일 ~ 당월 15일)
   const fromDate = new Date(`${from}T00:00:00`);
   const toDate = new Date(`${to}T00:00:00`);
   const daysInCycle = Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  // 일평균은 가변 지출 기준 (고정비/사업비/환불 제외)
   const dailyAvg = variableTotal > 0 ? Math.round(variableTotal / daysInCycle) : 0;
 
   return {
@@ -154,6 +164,8 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     budget,
     fixed_total: fixedTotal,
     variable_total: variableTotal,
+    installment_total: installmentTotal,
+    flexible_spent: flexibleSpent,
     by_category: byCategory,
     daily_avg: dailyAvg,
   };
@@ -235,32 +247,40 @@ export async function updateAsset(
 // ─── 런웨이 계산 ──────────────────────────────────────
 
 export interface RunwayResult {
-  total_available: number;       // 총 가용 자금 (비상금 제외)
-  emergency_available: number;   // 비상금 포함 총액
-  fixed_monthly: number;         // 월 고정비 합계
-  avg_variable_monthly: number;  // 최근 3개월 평균 가변 지출
-  estimated_monthly_net: number; // 월 순지출 추정
-  runway_months: number;         // 런웨이 (개월)
-  runway_date: string;           // 런웨이 종료 예상일 (YYYY-MM)
+  total_available: number;         // 총 가용 자금 (비상금 제외)
+  fixed_monthly: number;           // 월 고정비 합계
+  monthly_budget: number | null;   // 월 가변 예산 (설정값)
+  avg_variable_monthly: number;    // 최근 3개월 평균 가변 지출
+  budget_monthly_burn: number;     // 예산 기준 월 소진액 (고정비 + 가변예산 - 수입)
+  actual_monthly_burn: number;     // 실제 월 소진액 (고정비 + 실제지출 - 수입)
+  budget_runway_months: number;    // 예산대로 살 때 런웨이
+  actual_runway_months: number;    // 실제 지출 기준 런웨이
+  budget_runway_date: string;      // 예산 기준 종료일
+  actual_runway_date: string;      // 실제 기준 종료일
+  over_budget: number;             // 예산 초과분 누적 (양수 = 초과)
 }
 
 export async function queryRunway(userId: number): Promise<RunwayResult> {
-  const [assets, fixedCosts] = await Promise.all([
+  const now = new Date();
+  const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const [assets, fixedCosts, currentBudget] = await Promise.all([
     queryAssets(userId),
     queryFixedCosts(userId),
+    queryBudget(userId, currentYearMonth),
   ]);
 
   const totalAvailable = assets
     .filter((a) => !a.is_emergency)
     .reduce((s, a) => s + (a.available_amount ?? a.balance), 0);
 
-  const emergencyAvailable = assets.reduce((s, a) => s + (a.available_amount ?? a.balance), 0);
-
   const fixedMonthly = fixedCosts
     .filter((fc) => fc.active)
     .reduce((s, fc) => s + fc.amount, 0);
 
-  // 최근 3개월 가변 지출 평균
+  const monthlyBudget = currentBudget?.total_budget ?? null;
+
+  // 최근 3개월 가변 지출 평균 (리커밋/환불 제외)
   const { rows: variableRows } = await query<{ avg_monthly: string }>(
     `SELECT COALESCE(AVG(monthly_total), 0) as avg_monthly
      FROM (
@@ -268,31 +288,43 @@ export async function queryRunway(userId: number): Promise<RunwayResult> {
        FROM expenses
        WHERE user_id = $1
          AND date >= NOW() - INTERVAL '3 months'
-         AND category NOT IN ('통신비', '공과금', '환불')
+         AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배', '환불')
        GROUP BY 1
      ) sub`,
     [userId],
   );
 
   const avgVariableMonthly = Math.round(Number(variableRows[0]?.avg_monthly ?? 0));
-  // 월 예상 수입은 환경변수로 관리 (코드에 금액 노출 금지)
   const estimatedIncome = Number(process.env.ESTIMATED_MONTHLY_INCOME ?? '0');
-  const estimatedMonthlyNet = Math.max(fixedMonthly + avgVariableMonthly - estimatedIncome, 1);
-  const runwayMonths = totalAvailable / estimatedMonthlyNet;
 
-  const runwayDate = (() => {
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth() + Math.floor(runwayMonths), 1);
+  // 예산 기준 런웨이: 예산대로 살면 얼마나 버틸 수 있는지
+  const budgetVariable = monthlyBudget ?? avgVariableMonthly;
+  const budgetMonthlyBurn = Math.max(fixedMonthly + budgetVariable - estimatedIncome, 1);
+  const budgetRunwayMonths = totalAvailable / budgetMonthlyBurn;
+
+  // 실제 기준 런웨이: 최근 소비 패턴 유지 시
+  const actualMonthlyBurn = Math.max(fixedMonthly + avgVariableMonthly - estimatedIncome, 1);
+  const actualRunwayMonths = totalAvailable / actualMonthlyBurn;
+
+  // 예산 초과분: 실제 평균 - 예산 (양수면 초과)
+  const overBudget = monthlyBudget !== null ? avgVariableMonthly - monthlyBudget : 0;
+
+  const toDateStr = (months: number) => {
+    const target = new Date(now.getFullYear(), now.getMonth() + Math.floor(months), 1);
     return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}`;
-  })();
+  };
 
   return {
     total_available: totalAvailable,
-    emergency_available: emergencyAvailable,
     fixed_monthly: fixedMonthly,
+    monthly_budget: monthlyBudget,
     avg_variable_monthly: avgVariableMonthly,
-    estimated_monthly_net: estimatedMonthlyNet,
-    runway_months: Math.round(runwayMonths * 10) / 10,
-    runway_date: runwayDate,
+    budget_monthly_burn: budgetMonthlyBurn,
+    actual_monthly_burn: actualMonthlyBurn,
+    budget_runway_months: Math.round(budgetRunwayMonths * 10) / 10,
+    actual_runway_months: Math.round(actualRunwayMonths * 10) / 10,
+    budget_runway_date: toDateStr(budgetRunwayMonths),
+    actual_runway_date: toDateStr(actualRunwayMonths),
+    over_budget: overBudget,
   };
 }

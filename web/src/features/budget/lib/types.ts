@@ -56,6 +56,10 @@ export interface MonthSummary {
   budget: BudgetRow | null;
   fixed_total: number;
   variable_total: number;
+  /** 할부 합계 (이미 확정된 지출, 가변 카테고리 중 is_installment=true) */
+  installment_total: number;
+  /** 자유 지출 (가변 지출 중 할부 제외 = 내가 직접 쓴 돈) */
+  flexible_spent: number;
   by_category: CategoryStat[];
   daily_avg: number;
 }

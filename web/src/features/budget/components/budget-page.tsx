@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { useBudget } from '@/features/budget/hooks/use-budget';
+import type { ExpenseRow } from '@/features/budget/lib/types';
 import { MonthSummaryCard } from './month-summary';
 import { ExpenseForm } from './expense-form';
 import { ExpenseList } from './expense-list';
+import { ExpenseEditModal } from './expense-edit-modal';
 import { CategoryChart } from './category-chart';
 import { RunwayCard } from './runway-card';
 import { SettingsPanel } from './settings-panel';
@@ -12,7 +14,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
 
 /** 결제주기 날짜 범위 계산 (표시용) */
 function getBillingRangeLabel(yearMonth: string): string {
-  const [year, month] = yearMonth.split('-').map(Number);
+  const [, month] = yearMonth.split('-').map(Number);
   const prevMonth = month === 1 ? 12 : month - 1;
   return `${prevMonth}/16~${month}/15`;
 }
@@ -64,10 +66,11 @@ export function BudgetPage() {
     selectedMonth, setSelectedMonth,
     expenses, summary, fixedCosts, assets,
     loading, error,
-    addExpense, deleteExpense, updateAssetBalance,
+    addExpense, deleteExpense, updateExpense, updateAssetBalance,
   } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('list');
+  const [editingExpense, setEditingExpense] = useState<ExpenseRow | null>(null);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'list', label: '지출 목록' },
@@ -125,6 +128,7 @@ export function BudgetPage() {
           <ExpenseList
             expenses={expenses}
             onDelete={deleteExpense}
+            onEdit={setEditingExpense}
             selectedCategory={selectedCategory}
             onCategoryChange={setSelectedCategory}
           />
@@ -142,6 +146,15 @@ export function BudgetPage() {
           fixedCosts={fixedCosts}
           assets={assets}
           onUpdateAsset={updateAssetBalance}
+        />
+      )}
+
+      {/* 수정 모달 */}
+      {editingExpense && (
+        <ExpenseEditModal
+          expense={editingExpense}
+          onSave={updateExpense}
+          onClose={() => setEditingExpense(null)}
         />
       )}
     </div>
