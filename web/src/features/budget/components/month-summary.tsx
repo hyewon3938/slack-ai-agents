@@ -158,12 +158,19 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
         </div>
       </div>
 
-      {/* 고정비 */}
-      {summary.fixed_total > 0 && (
-        <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
-          총 지출 {formatAmount(summary.total)} (고정비 {formatAmount(summary.fixed_total)} 포함)
-        </div>
-      )}
+      {/* 부가 정보 */}
+      <div className="mt-3 space-y-1">
+        {summary.refund_total > 0 && (
+          <div className="rounded-lg bg-green-50 px-3 py-2 text-xs text-green-600">
+            환불 +{formatAmount(summary.refund_total)} (카드 대금 상쇄)
+          </div>
+        )}
+        {summary.fixed_total > 0 && (
+          <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+            총 지출 {formatAmount(summary.total)} (고정비 {formatAmount(summary.fixed_total)} 포함)
+          </div>
+        )}
+      </div>
     </div>
   );
 }

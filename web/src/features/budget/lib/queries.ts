@@ -135,10 +135,14 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     count: Number(r.count),
   }));
 
-  // 일평균/예산 계산에서 제외할 카테고리 (고정비, 사업비, 환불)
-  const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배', '환불']);
+  // 일평균/예산 계산에서 제외할 카테고리 (고정비, 사업비)
+  const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배']);
+  // 환불은 별도 집계 (수입 성격)
+  const refundTotal = byCategory
+    .filter((c) => c.category === '환불')
+    .reduce((s, c) => s + c.total, 0);
   const variableTotal = byCategory
-    .filter((c) => !EXCLUDED_CATEGORIES.has(c.category))
+    .filter((c) => !EXCLUDED_CATEGORIES.has(c.category) && c.category !== '환불')
     .reduce((s, c) => s + c.total, 0);
 
   // 할부 합계 (가변 카테고리 중 is_installment=true)
@@ -146,7 +150,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
        AND is_installment = true
-       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배', '환불')`,
+       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')`,
     [userId, from, to],
   );
   const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
@@ -166,6 +170,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     variable_total: variableTotal,
     installment_total: installmentTotal,
     flexible_spent: flexibleSpent,
+    refund_total: refundTotal,
     by_category: byCategory,
     daily_avg: dailyAvg,
   };
@@ -327,7 +332,7 @@ export interface RunwayResult {
   target_date: string | null;       // 목표 생존 기간 (YYYY-MM)
 }
 
-export async function queryRunway(userId: number): Promise<RunwayResult> {
+export async function queryRunway(userId: number, targetDate?: string): Promise<RunwayResult> {
   const now = new Date();
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -382,10 +387,10 @@ export async function queryRunway(userId: number): Promise<RunwayResult> {
   };
 
   // 목표 기간 기반 추천 예산: (가용자금 / 남은개월) - 고정비 + 수입
-  const targetDate = process.env.TARGET_SURVIVAL_DATE ?? null;
+  const validTarget = targetDate && /^\d{4}-\d{2}$/.test(targetDate) ? targetDate : null;
   let recommendedBudget: number | null = null;
-  if (targetDate && /^\d{4}-\d{2}$/.test(targetDate)) {
-    const [ty, tm] = targetDate.split('-').map(Number);
+  if (validTarget) {
+    const [ty, tm] = validTarget.split('-').map(Number);
     const targetMonths = (ty - now.getFullYear()) * 12 + (tm - now.getMonth() - 1);
     if (targetMonths > 0) {
       const monthlyAllowance = totalAvailable / targetMonths;
@@ -406,6 +411,6 @@ export async function queryRunway(userId: number): Promise<RunwayResult> {
     actual_runway_date: toDateStr(actualRunwayMonths),
     over_budget: overBudget,
     recommended_budget: recommendedBudget,
-    target_date: targetDate,
+    target_date: validTarget,
   };
 }
