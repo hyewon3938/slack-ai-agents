@@ -73,3 +73,4 @@ export const COLOR_OPTIONS = Object.keys(PRESET_COLORS);
 export function formatAmount(amount: number): string {
   return `${amount.toLocaleString('ko-KR')}원`;
 }
+

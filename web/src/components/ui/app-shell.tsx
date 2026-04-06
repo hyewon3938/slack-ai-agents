@@ -2,21 +2,43 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  CalendarIcon,
+  ArrowPathIcon,
+  WalletIcon,
+  ClipboardListIcon,
+  TagIcon,
+  EllipsisHorizontalIcon,
+  ArrowRightStartOnRectangleIcon,
+  Bars3Icon,
+} from '@/components/ui/icons';
 
-const NAV_ITEMS = [
-  { href: '/schedules', label: '일정', icon: '📅' },
-  { href: '/routines', label: '루틴', icon: '🔄' },
-  { href: '/backlog', label: '백로그', icon: '📋' },
-  { href: '/categories', label: '카테고리', icon: '🏷' },
-] as const;
+interface NavItem {
+  href: string;
+  label: string;
+  Icon: React.ComponentType<{ className?: string; size?: number }>;
+}
 
-/** 모바일 더보기 메뉴 항목 (하단 탭에 없는 페이지들) */
-const MOBILE_MORE_ITEMS = [
-  { href: '/categories', label: '카테고리 관리', icon: '🏷' },
-  // 확장 예정:
-  // { href: '/sleep', label: '수면 기록', icon: '🌙' },
-  // { href: '/analytics', label: '분석', icon: '📊' },
-] as const;
+const NAV_ITEMS: NavItem[] = [
+  { href: '/schedules', label: '일정', Icon: CalendarIcon },
+  { href: '/routines', label: '루틴', Icon: ArrowPathIcon },
+  { href: '/budget', label: '지출', Icon: WalletIcon },
+  { href: '/backlog', label: '백로그', Icon: ClipboardListIcon },
+  { href: '/categories', label: '카테고리', Icon: TagIcon },
+];
+
+/** 모바일 하단 탭 (4개) */
+const MOBILE_TAB_ITEMS: NavItem[] = [
+  { href: '/schedules', label: '일정', Icon: CalendarIcon },
+  { href: '/routines', label: '루틴', Icon: ArrowPathIcon },
+  { href: '/budget', label: '지출', Icon: WalletIcon },
+];
+
+/** 모바일 더보기 메뉴 항목 */
+const MOBILE_MORE_ITEMS: NavItem[] = [
+  { href: '/backlog', label: '백로그', Icon: ClipboardListIcon },
+  { href: '/categories', label: '카테고리 관리', Icon: TagIcon },
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -45,36 +67,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen, mobileMenuOpen]);
 
+  const moreActive = mobileMenuOpen || MOBILE_MORE_ITEMS.some((item) => pathname === item.href);
+
   return (
     <div className="flex min-h-dvh flex-col">
       {/* 데스크탑 상단 네비 */}
       <header className="hidden border-b border-gray-200 bg-white md:block">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <nav className="flex gap-1">
-            {NAV_ITEMS.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                  pathname === item.href
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {item.label}
-              </a>
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <item.Icon size={16} />
+                  {item.label}
+                </a>
+              );
+            })}
           </nav>
 
-          {/* 데스크탑: 로그아웃만 */}
+          {/* 데스크탑: 햄버거 메뉴 */}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+              <Bars3Icon size={20} />
             </button>
 
             {menuOpen && (
@@ -86,9 +110,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
+                  <ArrowRightStartOnRectangleIcon size={16} />
                   로그아웃
                 </button>
               </div>
@@ -103,43 +125,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* 모바일 하단 탭 */}
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
         <div className="flex">
-          <a
-            href="/schedules"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
-              pathname === '/schedules' ? 'text-blue-600' : 'text-gray-400'
-            }`}
-          >
-            <span className="text-lg">📅</span>
-            <span>일정</span>
-          </a>
-          <a
-            href="/routines"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
-              pathname === '/routines' ? 'text-blue-600' : 'text-gray-400'
-            }`}
-          >
-            <span className="text-lg">🔄</span>
-            <span>루틴</span>
-          </a>
-          <a
-            href="/backlog"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
-              pathname === '/backlog' ? 'text-blue-600' : 'text-gray-400'
-            }`}
-          >
-            <span className="text-lg">📋</span>
-            <span>백로그</span>
-          </a>
+          {MOBILE_TAB_ITEMS.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
+                  isActive ? 'text-blue-600' : 'text-gray-400'
+                }`}
+              >
+                <item.Icon size={22} />
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
 
           {/* 모바일 더보기 */}
           <div className="relative flex flex-1" ref={mobileMenuRef}>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
-                mobileMenuOpen || pathname === '/categories' ? 'text-blue-600' : 'text-gray-400'
+                moreActive ? 'text-blue-600' : 'text-gray-400'
               }`}
             >
-              <span className="text-lg">⋯</span>
+              <EllipsisHorizontalIcon size={22} />
               <span>더보기</span>
             </button>
 
@@ -154,7 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       pathname === item.href ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
                     }`}
                   >
-                    <span>{item.icon}</span>
+                    <item.Icon size={16} />
                     {item.label}
                   </a>
                 ))}
@@ -166,9 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-gray-500"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
+                  <ArrowRightStartOnRectangleIcon size={16} />
                   로그아웃
                 </button>
               </div>
