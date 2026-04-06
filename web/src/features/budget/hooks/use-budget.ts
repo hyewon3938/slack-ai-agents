@@ -44,28 +44,41 @@ export function useBudget() {
     setSummary(null);
     try {
       const { from, to } = getBillingRange(month);
-      const [expensesRes, summaryRes, assetsRes, fixedRes] = await Promise.all([
-        fetch(`/api/expenses?from=${from}&to=${to}`),
-        fetch(`/api/expenses/summary?yearMonth=${month}`),
-        fetch('/api/budget/assets'),
-        fetch('/api/budget/fixed-costs'),
-      ]);
 
-      if (!expensesRes.ok || !summaryRes.ok || !assetsRes.ok || !fixedRes.ok) {
-        throw new Error('데이터 조회 실패');
-      }
+      // 개별 요청 실패 시에도 나머지는 정상 처리 (Neon cold start 대응)
+      const fetchJson = async <T,>(url: string): Promise<T | null> => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          return (await res.json()) as T;
+        } catch {
+          return null;
+        }
+      };
 
       const [expData, sumData, assetData, fixedData] = await Promise.all([
-        expensesRes.json() as Promise<{ data: ExpenseRow[] }>,
-        summaryRes.json() as Promise<{ data: MonthSummary }>,
-        assetsRes.json() as Promise<{ data: AssetRow[] }>,
-        fixedRes.json() as Promise<{ data: FixedCostRow[] }>,
+        fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?from=${from}&to=${to}`),
+        fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
+        fetchJson<{ data: AssetRow[] }>('/api/budget/assets'),
+        fetchJson<{ data: FixedCostRow[] }>('/api/budget/fixed-costs'),
       ]);
 
-      setExpenses(expData.data);
-      setSummary(sumData.data);
-      setAssets(assetData.data);
-      setFixedCosts(fixedData.data);
+      // 핵심 데이터(지출, 요약) 실패 시 1회 재시도
+      if (!expData || !sumData) {
+        const [retryExp, retrySum] = await Promise.all([
+          !expData ? fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?from=${from}&to=${to}`) : Promise.resolve(expData),
+          !sumData ? fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`) : Promise.resolve(sumData),
+        ]);
+        if (retryExp) setExpenses(retryExp.data);
+        if (retrySum) setSummary(retrySum.data);
+        if (!retryExp && !retrySum) setError('데이터 조회 실패 — 새로고침 해주세요');
+      } else {
+        setExpenses(expData.data);
+        setSummary(sumData.data);
+      }
+
+      if (assetData) setAssets(assetData.data);
+      if (fixedData) setFixedCosts(fixedData.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류 발생');
     } finally {

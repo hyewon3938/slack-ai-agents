@@ -28,7 +28,16 @@ export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<pg.QueryResult<T>> => {
-  return getPool().query<T>(text, params);
+  // Neon free tier cold start 대응: 첫 시도 실패 시 1회 재시도
+  try {
+    return await getPool().query<T>(text, params);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg.includes('Connection terminated') || msg.includes('connect ETIMEDOUT') || msg.includes('connection refused')) {
+      return getPool().query<T>(text, params);
+    }
+    throw err;
+  }
 };
 
 export const queryOne = async <T extends pg.QueryResultRow = pg.QueryResultRow>(

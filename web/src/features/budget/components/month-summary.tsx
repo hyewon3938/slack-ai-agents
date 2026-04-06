@@ -41,15 +41,14 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       : totalDays;
   const daysLeft = totalDays - daysPassed;
 
-  // 예산 계산
-  // 자유 예산 = 총 예산 - 할부(이미 확정)
-  // 남은 자유 예산 = 자유 예산 - 이미 쓴 자유 지출
-  // 일일 목표 = 남은 자유 예산 / 남은 날
+  // 일일 목표 = (예산 - 할부 확정) / 전체 일수 → 고정값
   const flexibleBudget = totalBudget !== null ? totalBudget - summary.installment_total : null;
-  const flexibleRemaining = flexibleBudget !== null ? flexibleBudget - summary.flexible_spent : null;
-  const dailyTarget = flexibleRemaining !== null && daysLeft > 0
-    ? Math.round(flexibleRemaining / daysLeft)
-    : null;
+  const dailyTarget = flexibleBudget !== null ? Math.round(flexibleBudget / totalDays) : null;
+
+  // 누적 절약/초과 = (일일목표 × 경과일) - 실제 자유지출
+  const expectedSpent = dailyTarget !== null ? dailyTarget * daysPassed : null;
+  const cumDiff = expectedSpent !== null ? expectedSpent - summary.flexible_spent : null;
+  // cumDiff > 0: 절약, cumDiff < 0: 초과
 
   const isOverBudget = totalBudget !== null && summary.variable_total > totalBudget;
   const budgetRemaining = totalBudget !== null ? totalBudget - summary.variable_total : null;
@@ -103,20 +102,20 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
             <span className="text-lg font-bold text-gray-900">{formatAmount(summary.variable_total)}</span>
           </div>
           <div className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-600">
-            월 예산을 설정하면 일일 목표를 계산해줘요
+            예산 설정에서 월 예산을 설정하면 일일 목표를 계산해줘요
           </div>
         </div>
       )}
 
       {/* 핵심 지표 */}
       <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
-        {/* 일일 목표 */}
+        {/* 일일 목표 (고정) */}
         <div className="text-center">
-          <div className="text-xs text-gray-400">오늘 목표</div>
+          <div className="text-xs text-gray-400">하루 목표</div>
           {dailyTarget !== null ? (
             <>
-              <div className={`text-sm font-semibold ${dailyTarget < 0 ? 'text-red-500' : 'text-gray-800'}`}>
-                {dailyTarget < 0 ? '-' : ''}{formatAmount(Math.abs(dailyTarget))}
+              <div className="text-sm font-semibold text-gray-800">
+                {formatAmount(dailyTarget)}
               </div>
               <div className="text-[10px] text-gray-400">할부 제외</div>
             </>
@@ -125,25 +124,37 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
           )}
         </div>
 
-        {/* 남은 날 */}
+        {/* 누적 절약/초과 */}
+        <div className="text-center">
+          <div className="text-xs text-gray-400">
+            {cumDiff !== null && cumDiff >= 0 ? '절약 중' : '초과 중'}
+          </div>
+          {cumDiff !== null && daysPassed > 0 ? (
+            <>
+              <div className={`text-sm font-semibold ${cumDiff >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {cumDiff >= 0 ? '+' : ''}{formatAmount(cumDiff)}
+              </div>
+              <div className="text-[10px] text-gray-400">{daysPassed}일 경과</div>
+            </>
+          ) : cumDiff !== null ? (
+            <div className="text-sm text-gray-300">-</div>
+          ) : (
+            <div className="text-sm text-gray-300">-</div>
+          )}
+        </div>
+
+        {/* 남은 날 + 할부 */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-0.5 text-xs text-gray-400">
             <ClockIcon size={12} />
             남은 날
           </div>
           <div className="text-sm font-semibold text-gray-800">{daysLeft}일</div>
-          {flexibleRemaining !== null && daysLeft > 0 && (
+          {summary.installment_total > 0 && (
             <div className="text-[10px] text-gray-400">
-              남은 예산 {formatAmount(Math.max(flexibleRemaining, 0))}
+              할부 {formatAmount(summary.installment_total)}
             </div>
           )}
-        </div>
-
-        {/* 할부 확정분 */}
-        <div className="text-center">
-          <div className="text-xs text-gray-400">할부 확정</div>
-          <div className="text-sm font-semibold text-gray-800">{formatAmount(summary.installment_total)}</div>
-          <div className="text-[10px] text-gray-400">이번 주기</div>
         </div>
       </div>
 

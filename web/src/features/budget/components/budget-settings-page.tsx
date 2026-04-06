@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { FixedCostRow, AssetRow, BudgetRow } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
+import type { RunwayResult } from '@/features/budget/lib/queries';
 import { ChevronLeftIcon, PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 
 /** 현재 결제주기의 대금 월 */
@@ -99,6 +100,8 @@ export function BudgetSettingsPage() {
   const [budget, setBudget] = useState<BudgetRow | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [recommended, setRecommended] = useState<{ budget: number; targetDate: string } | null>(null);
+
   // 예산 수정 상태
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
@@ -126,6 +129,17 @@ export function BudgetSettingsPage() {
         const d = (await budgetRes.json()) as { data: BudgetRow | null };
         setBudget(d.data);
       }
+
+      // 추천 예산 조회
+      try {
+        const runwayRes = await fetch('/api/budget/runway');
+        if (runwayRes.ok) {
+          const d = (await runwayRes.json()) as { data: RunwayResult };
+          if (d.data.recommended_budget !== null && d.data.target_date) {
+            setRecommended({ budget: d.data.recommended_budget, targetDate: d.data.target_date });
+          }
+        }
+      } catch { /* ignore */ }
     } finally {
       setLoading(false);
     }
@@ -204,21 +218,32 @@ export function BudgetSettingsPage() {
           </div>
 
           {editingBudget ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={budgetInput}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9]/g, '');
-                  const num = parseInt(raw, 10);
-                  setBudgetInput(raw ? num.toLocaleString('ko-KR') : '');
-                }}
-                placeholder="월 예산 입력"
-                className="flex-1 rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-              />
-              <button onClick={() => setEditingBudget(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
-              <button onClick={() => void handleSaveBudget()} disabled={savingBudget} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={budgetInput}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                    const num = parseInt(raw, 10);
+                    setBudgetInput(raw ? num.toLocaleString('ko-KR') : '');
+                  }}
+                  placeholder="월 예산 입력"
+                  className="flex-1 rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                />
+                <button onClick={() => setEditingBudget(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
+                <button onClick={() => void handleSaveBudget()} disabled={savingBudget} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
+              </div>
+              {recommended && (
+                <button
+                  type="button"
+                  onClick={() => setBudgetInput(recommended.budget.toLocaleString('ko-KR'))}
+                  className="text-xs text-blue-500 hover:text-blue-700"
+                >
+                  추천값 적용: {formatAmount(recommended.budget)}
+                </button>
+              )}
             </div>
           ) : (
             <div>
@@ -226,6 +251,11 @@ export function BudgetSettingsPage() {
                 {budget?.total_budget ? formatAmount(budget.total_budget) : '미설정'}
               </span>
               <p className="mt-1 text-xs text-gray-400">고정비/할부 제외, 자유롭게 쓸 수 있는 월 예산</p>
+              {recommended && (
+                <p className="mt-1 text-xs text-blue-500">
+                  추천: {formatAmount(recommended.budget)} ({recommended.targetDate}까지 기준)
+                </p>
+              )}
             </div>
           )}
         </div>
