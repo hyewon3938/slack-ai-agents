@@ -1,8 +1,5 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
-import { ClipboardListIcon, TagIcon } from '@/components/ui/icons';
-
 export type CalendarView = 'month' | 'week' | 'day';
 
 interface CalendarHeaderProps {
@@ -15,11 +12,6 @@ interface CalendarHeaderProps {
   onAdd: () => void;
 }
 
-const SUB_LINKS = [
-  { href: '/backlog', label: '백로그', Icon: ClipboardListIcon },
-  { href: '/categories', label: '카테고리', Icon: TagIcon },
-];
-
 export function CalendarHeader({
   view,
   onViewChange,
@@ -29,7 +21,6 @@ export function CalendarHeader({
   onToday,
   onAdd,
 }: CalendarHeaderProps) {
-  const pathname = usePathname();
   const views: { key: CalendarView; label: string }[] = [
     { key: 'month', label: '월' },
     { key: 'week', label: '주' },
@@ -81,22 +72,6 @@ export function CalendarHeader({
           >
             {v.label}
           </button>
-        ))}
-      </div>
-
-      {/* 백로그 / 카테고리 링크 */}
-      <div className="flex items-center gap-1">
-        {SUB_LINKS.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-              pathname === link.href ? 'bg-blue-50 text-blue-600' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-            }`}
-          >
-            <link.Icon size={14} />
-            {link.label}
-          </a>
         ))}
       </div>
 
