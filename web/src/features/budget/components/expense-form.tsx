@@ -121,9 +121,9 @@ export function ExpenseForm({ onAdd }: ExpenseFormProps) {
       <button
         type="submit"
         disabled={loading}
-        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+        className="mt-3 ml-auto flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
       >
-        <PlusIcon size={16} />
+        <PlusIcon size={13} />
         {loading ? '추가 중...' : '추가'}
       </button>
     </form>

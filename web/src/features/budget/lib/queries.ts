@@ -101,12 +101,16 @@ export async function deleteExpense(userId: number, id: number): Promise<boolean
 
 // ─── 월간 요약 ────────────────────────────────────────
 
-/** 월간 요약: 총 지출, 카테고리별, 예산 대비 */
+/**
+ * 월간 요약: 총 지출, 카테고리별, 예산 대비.
+ * 카드 결제주기 기준: 전월 16일 ~ 당월 15일.
+ */
 export async function queryMonthSummary(userId: number, yearMonth: string): Promise<MonthSummary> {
-  const from = `${yearMonth}-01`;
-  // 월 마지막일 계산
   const [year, month] = yearMonth.split('-').map(Number);
-  const to = new Date(year, month, 0).toISOString().slice(0, 10);
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const from = `${prevYear}-${String(prevMonth).padStart(2, '0')}-16`;
+  const to = `${year}-${String(month).padStart(2, '0')}-15`;
 
   const [totalResult, categoryResult, budget, fixedCosts] = await Promise.all([
     query<{ total: string }>(
@@ -137,9 +141,11 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     .filter((c) => !FIXED_CATEGORIES.has(c.category))
     .reduce((s, c) => s + c.total, 0);
 
-  // 이 달 실제 날짜 수
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const dailyAvg = total > 0 ? Math.round(total / daysInMonth) : 0;
+  // 결제주기 일수 계산 (전월 16일 ~ 당월 15일)
+  const fromDate = new Date(`${from}T00:00:00`);
+  const toDate = new Date(`${to}T00:00:00`);
+  const daysInCycle = Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const dailyAvg = total > 0 ? Math.round(total / daysInCycle) : 0;
 
   return {
     year_month: yearMonth,
