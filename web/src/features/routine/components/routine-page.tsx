@@ -172,10 +172,12 @@ export function RoutinePage() {
 function LoadingSkeleton() {
   return (
     <div className="flex flex-1 flex-col">
-      <div className="border-b border-gray-200 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <div className="h-7 w-20 animate-pulse rounded bg-gray-200" />
-          <div className="h-8 w-32 animate-pulse rounded bg-gray-200" />
+      {/* 탭 바 스켈레톤 */}
+      <div className="border-b border-gray-200 bg-white px-4 pt-2">
+        <div className="mx-auto flex max-w-5xl gap-1">
+          <div className="h-8 w-20 animate-pulse rounded bg-gray-100" />
+          <div className="h-8 w-14 animate-pulse rounded bg-gray-100" />
+          <div className="h-8 w-14 animate-pulse rounded bg-gray-100" />
         </div>
       </div>
       <div className="mx-auto w-full max-w-5xl space-y-3 p-4">
