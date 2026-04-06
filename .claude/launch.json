@@ -4,7 +4,7 @@
     {
       "name": "web-dev",
       "runtimeExecutable": "/opt/homebrew/Cellar/node/22.5.1/bin/node",
-      "runtimeArgs": ["/Users/ihyewon/slack-ai-agents/web/node_modules/.bin/next", "dev", "--no-turbopack"],
+      "runtimeArgs": ["/Users/ihyewon/slack-ai-agents/web/node_modules/.bin/next", "dev", "--webpack"],
       "cwd": "/Users/ihyewon/slack-ai-agents/web",
       "port": 3000,
       "autoPort": true
