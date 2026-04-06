@@ -33,11 +33,15 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const cycleStart = new Date(`${prevYear}-${String(prevMonth).padStart(2, '0')}-16T00:00:00`);
   const cycleEnd = new Date(`${year}-${String(month).padStart(2, '0')}-15T00:00:00`);
   const totalDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const isFutureCycle = today < cycleStart;
   const isCurrentCycle = today >= cycleStart && today <= cycleEnd;
-  const daysPassed = isCurrentCycle
-    ? Math.round((today.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    : totalDays;
-  const daysLeft = Math.max(totalDays - daysPassed, 0);
+  const isPastCycle = today > cycleEnd;
+  const daysPassed = isFutureCycle
+    ? 0
+    : isCurrentCycle
+      ? Math.round((today.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      : totalDays;
+  const daysLeft = totalDays - daysPassed;
 
   const budgetUsed = totalBudget !== null ? summary.variable_total : null;
   const budgetRemaining = totalBudget !== null && budgetUsed !== null ? totalBudget - budgetUsed : null;
@@ -49,7 +53,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">{summary.year_month.replace('-', '년 ')}월 요약</h2>
+        <h2 className="text-sm font-semibold text-gray-700">{month}월 대금 요약</h2>
         {isOverBudget ? (
           <span className="flex items-center gap-1 text-xs text-red-500">
             <ExclamationTriangleIcon size={14} />

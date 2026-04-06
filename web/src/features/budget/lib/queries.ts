@@ -135,17 +135,18 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     count: Number(r.count),
   }));
 
-  // 고정비 카테고리 제외한 가변 지출
-  const FIXED_CATEGORIES = new Set(['통신비', '공과금']);
+  // 일평균/예산 계산에서 제외할 카테고리 (고정비, 사업비, 환불)
+  const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배', '환불']);
   const variableTotal = byCategory
-    .filter((c) => !FIXED_CATEGORIES.has(c.category))
+    .filter((c) => !EXCLUDED_CATEGORIES.has(c.category))
     .reduce((s, c) => s + c.total, 0);
 
   // 결제주기 일수 계산 (전월 16일 ~ 당월 15일)
   const fromDate = new Date(`${from}T00:00:00`);
   const toDate = new Date(`${to}T00:00:00`);
   const daysInCycle = Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  const dailyAvg = total > 0 ? Math.round(total / daysInCycle) : 0;
+  // 일평균은 가변 지출 기준 (고정비/사업비/환불 제외)
+  const dailyAvg = variableTotal > 0 ? Math.round(variableTotal / daysInCycle) : 0;
 
   return {
     year_month: yearMonth,
