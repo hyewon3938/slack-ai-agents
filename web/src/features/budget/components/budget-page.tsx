@@ -10,6 +10,13 @@ import { RunwayCard } from './runway-card';
 import { SettingsPanel } from './settings-panel';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
 
+/** 결제주기 날짜 범위 계산 (표시용) */
+function getBillingRangeLabel(yearMonth: string): string {
+  const [year, month] = yearMonth.split('-').map(Number);
+  const prevMonth = month === 1 ? 12 : month - 1;
+  return `${prevMonth}/16~${month}/15`;
+}
+
 function MonthNavigator({
   selectedMonth,
   onChange,
@@ -30,19 +37,22 @@ function MonthNavigator({
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <button onClick={prev} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-        <ChevronLeftIcon size={18} />
-      </button>
-      <span className="min-w-[80px] text-center text-sm font-semibold text-gray-800">
-        {year}년 {month}월
-      </span>
-      <button
-        onClick={next}
-        className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-      >
-        <ChevronRightIcon size={18} />
-      </button>
+    <div className="flex flex-col items-end gap-0.5">
+      <div className="flex items-center gap-2">
+        <button onClick={prev} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+          <ChevronLeftIcon size={18} />
+        </button>
+        <span className="min-w-[80px] text-center text-sm font-semibold text-gray-800">
+          {month}월 대금
+        </span>
+        <button
+          onClick={next}
+          className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        >
+          <ChevronRightIcon size={18} />
+        </button>
+      </div>
+      <span className="text-[10px] text-gray-400">{getBillingRangeLabel(selectedMonth)}</span>
     </div>
   );
 }

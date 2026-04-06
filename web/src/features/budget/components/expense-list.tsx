@@ -6,7 +6,7 @@ import { ko } from 'date-fns/locale';
 import type { ExpenseRow } from '@/features/budget/lib/types';
 import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
-import { TrashIcon, TagIcon, ChevronDownIcon } from '@/components/ui/icons';
+import { TrashIcon, FunnelIcon, ChevronDownIcon } from '@/components/ui/icons';
 
 /** 카테고리별 색상 맵 */
 const CATEGORY_COLORS: Record<string, string> = {
@@ -91,8 +91,8 @@ export function ExpenseList({ expenses, onDelete, selectedCategory, onCategoryCh
               : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
           }`}
         >
-          <TagIcon size={13} />
-          {selectedCategory ?? '전체 카테고리'}
+          <FunnelIcon size={13} />
+          {selectedCategory ?? '필터'}
           <ChevronDownIcon size={13} />
         </button>
 
