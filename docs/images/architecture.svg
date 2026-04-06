@@ -99,7 +99,7 @@
   <line x1="578" y1="150" x2="622" y2="110" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
   <text x="580" y="142" fill="#4338ca" font-size="9" font-weight="600">Tool Use</text>
 
-  <!-- ===== VM → Neon 화살표 ===== -->
+  <!-- ===== VM → PostgreSQL 화살표 ===== -->
   <line x1="578" y1="200" x2="622" y2="224" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)"/>
   <text x="583" y="206" fill="#4338ca" font-size="9" font-weight="600">SQL</text>
 
@@ -113,17 +113,17 @@
   <text x="646" y="110" fill="#78716c" font-size="11">자연어 이해 · SQL 생성 · 크로스 분석 · 인사이트</text>
   <text x="646" y="128" fill="#78716c" font-size="11">크론 메시지 생성 · 주간 리포트 · Pure SQL 비용 최적화</text>
 
-  <!-- Neon PostgreSQL -->
+  <!-- PostgreSQL (VM) -->
   <rect x="628" y="166" width="304" height="130" rx="12" fill="url(#svcGrad)" stroke="#c8d6e5" stroke-width="1.5" filter="url(#shadow)"/>
   <rect x="628" y="166" width="304" height="36" rx="12" fill="#2563eb"/>
   <rect x="628" y="190" width="304" height="12" fill="#2563eb"/>
-  <text x="646" y="190" fill="#fff" font-size="13" font-weight="700">🗄 Neon PostgreSQL (managed)</text>
+  <text x="646" y="190" fill="#fff" font-size="13" font-weight="700">🗄 PostgreSQL (Oracle VM Docker)</text>
   <text x="646" y="222" fill="#78716c" font-size="11">일정 · 루틴 · 수면 · 리마인더 · 메모리</text>
-  <text x="646" y="240" fill="#78716c" font-size="11">SSL 필수 · LLM이 SQL로 자유 접근</text>
+  <text x="646" y="240" fill="#78716c" font-size="11">LLM이 SQL로 자유 접근</text>
   <text x="646" y="258" fill="#78716c" font-size="11">모든 라이프 데이터 → JOIN으로 크로스 분석</text>
-  <text x="646" y="276" fill="#64748b" font-size="10">VM: direct endpoint · Vercel: pooled endpoint</text>
+  <text x="646" y="276" fill="#64748b" font-size="10">VM/봇: localhost · Vercel: VM IP 직접 연결</text>
 
-  <!-- Neon → Vercel 화살표 -->
+  <!-- PostgreSQL → Vercel 화살표 -->
   <line x1="780" y1="300" x2="780" y2="318" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowR)" marker-start="url(#arrowL)"/>
 
   <!-- Vercel -->

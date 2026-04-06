@@ -28,7 +28,7 @@ export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<pg.QueryResult<T>> => {
-  // Neon free tier cold start 대응: 연결 에러 시 1회 재시도
+  // Vercel serverless → VM DB 연결 에러 대응: 1회 재시도
   try {
     return await getPool().query<T>(text, params);
   } catch (err) {
