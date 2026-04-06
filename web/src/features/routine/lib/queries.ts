@@ -1,5 +1,5 @@
 import { query, queryOne } from '@/lib/db';
-import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat, RoutinePerStat } from '@/lib/types';
+import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat, RoutinePerStat } from '@/features/routine/lib/types';
 
 // ─── 템플릿 CRUD ─────────────────────────────────────
 

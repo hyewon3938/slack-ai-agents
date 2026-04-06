@@ -1,7 +1,8 @@
 'use client';
 
 import { useDraggable } from '@dnd-kit/core';
-import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
 import { ScheduleCard } from './schedule-card';
 
 interface DraggableCardProps {
