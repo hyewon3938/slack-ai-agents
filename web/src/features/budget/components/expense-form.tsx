@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { ExpenseRow } from '@/lib/types';
-import { EXPENSE_CATEGORIES } from '@/lib/types';
+import type { ExpenseRow } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
 import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 
 interface ExpenseFormProps {

@@ -1,6 +1,6 @@
 'use client';
 
-import type { CategoryStat } from '@/lib/types';
+import type { CategoryStat } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
 
 interface CategoryChartProps {

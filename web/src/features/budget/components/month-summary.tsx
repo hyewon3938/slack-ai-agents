@@ -1,6 +1,6 @@
 'use client';
 
-import type { MonthSummary } from '@/lib/types';
+import type { MonthSummary } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
 import { BanknotesIcon, ClockIcon, ExclamationTriangleIcon, CheckCircleIcon } from '@/components/ui/icons';
 

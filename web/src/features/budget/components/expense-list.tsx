@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import type { ExpenseRow } from '@/lib/types';
-import { formatAmount, EXPENSE_CATEGORIES } from '@/lib/types';
+import type { ExpenseRow } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
+import { formatAmount } from '@/lib/types';
 import { TrashIcon, TagIcon } from '@/components/ui/icons';
 
 interface ExpenseListProps {
