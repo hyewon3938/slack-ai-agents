@@ -259,12 +259,6 @@ export function RunwayCard() {
               {formatAmount(runway.avg_variable_monthly)}
             </div>
           </div>
-          <div>
-            <div className="text-gray-400">수동 예산</div>
-            <div className="font-medium text-gray-700">
-              {runway.monthly_budget !== null ? formatAmount(runway.monthly_budget) : '미설정'}
-            </div>
-          </div>
         </div>
       </div>
     </div>
