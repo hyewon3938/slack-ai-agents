@@ -17,6 +17,16 @@ import { DndCalendar } from '@/features/schedule/components/dnd-calendar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/features/schedule/components/schedule-form';
+import { BacklogPanel } from '@/features/schedule/components/backlog-panel';
+import { CategoriesPanel } from '@/features/schedule/components/categories-panel';
+
+type ScheduleTab = 'calendar' | 'backlog' | 'categories';
+
+const TABS: { id: ScheduleTab; label: string }[] = [
+  { id: 'calendar', label: '캘린더' },
+  { id: 'backlog', label: '백로그' },
+  { id: 'categories', label: '카테고리' },
+];
 
 function getTitle(view: string, currentDate: Date): string {
   switch (view) {
@@ -71,12 +81,13 @@ export default function SchedulesPage() {
   } = useSchedules();
 
   const [formDirty, setFormDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState<ScheduleTab>('calendar');
   const handleBeforeClose = useCallback(
     () => !formDirty || confirm('수정 중인 내용이 있어. 닫을까?'),
     [formDirty],
   );
 
-  if (loading) {
+  if (loading && activeTab === 'calendar') {
     return (
       <AppShell>
         <div className="flex flex-1 flex-col">
@@ -101,96 +112,126 @@ export default function SchedulesPage() {
   return (
     <AppShell>
       <div className="flex flex-1 flex-col">
-        <CalendarHeader
-          view={view}
-          onViewChange={setView}
-          title={getTitle(view, currentDate)}
-          onPrev={handlePrev}
-          onNext={handleNext}
-          onToday={handleToday}
-          onAdd={() => setShowCreateModal(true)}
-        />
-
-        <FilterBar
-          categories={categories}
-          selectedCategories={selectedCategories}
-          selectedSubcategories={selectedSubcategories}
-          selectedStatuses={selectedStatuses}
-          onToggleCategory={toggleCategory}
-          onToggleSubcategory={toggleSubcategory}
-          onToggleStatus={toggleStatus}
-          onClearFilters={clearFilters}
-        />
-
-        <DndCalendar
-          schedules={filteredSchedules}
-          categories={categories}
-          onDateChange={handleDateChange}
-          onEndDateChange={handleEndDateChange}
-        >
-          <div className={`md:flex md:flex-1 md:min-h-0 ${view === 'month' && selectedDate ? '' : 'md:flex-col'}`}>
-            <div className={view === 'month' && selectedDate ? 'flex-1' : 'md:flex md:flex-1 md:flex-col'}>
-              {view === 'month' && (
-                <MonthView
-                  currentDate={currentDate}
-                  schedules={filteredSchedules}
-                  categories={categories}
-                  selectedDate={selectedDate}
-                  onSelectDate={handleSelectDate}
-                  onScheduleClick={setEditingSchedule}
-                  onStatusChange={handleStatusChange}
-                />
-              )}
-              {view === 'week' && (
-                <WeekView
-                  currentDate={currentDate}
-                  schedules={filteredSchedules}
-                  categories={categories}
-                  selectedDate={selectedDate}
-                  onSelectDate={handleSelectDate}
-                  onScheduleClick={setEditingSchedule}
-                  onStatusChange={handleStatusChange}
-                  onToggleImportant={handleToggleImportant}
-                  onPostpone={handlePostpone}
-                  onMoveToBacklog={handleMoveToBacklog}
-                  onDelete={handleDeleteById}
-                />
-              )}
-              {view === 'day' && (
-                <DayView
-                  currentDate={currentDate}
-                  schedules={filteredSchedules}
-                  categories={categories}
-                  onScheduleClick={setEditingSchedule}
-                  onStatusChange={handleStatusChange}
-                  onToggleImportant={handleToggleImportant}
-                  onPostpone={handlePostpone}
-                  onMoveToBacklog={handleMoveToBacklog}
-                  onDelete={handleDeleteById}
-                />
-              )}
-            </div>
-
-            {/* 데스크탑: 사이드 패널 */}
-            {view === 'month' && selectedDate && (
-              <div className="hidden md:block md:sticky md:top-0 md:w-80 md:self-stretch md:max-h-[calc(100vh-160px)] md:overflow-y-auto">
-                <DayDetailPanel
-                  dateStr={selectedDate}
-                  schedules={filteredSchedules}
-                  categories={categories}
-                  onScheduleClick={setEditingSchedule}
-                  onStatusChange={handleStatusChange}
-                  onClose={() => handleSelectDate(selectedDate)}
-                />
-              </div>
-            )}
+        {/* 서브 탭 */}
+        <div className="border-b border-gray-200 bg-white px-4 pt-2">
+          <div className="mx-auto flex max-w-5xl gap-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-t-lg px-4 py-2 text-xs font-medium transition ${
+                  activeTab === tab.id
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        </DndCalendar>
+        </div>
+
+        {/* 캘린더 탭 */}
+        {activeTab === 'calendar' && (
+          <>
+            <CalendarHeader
+              view={view}
+              onViewChange={setView}
+              title={getTitle(view, currentDate)}
+              onPrev={handlePrev}
+              onNext={handleNext}
+              onToday={handleToday}
+              onAdd={() => setShowCreateModal(true)}
+            />
+
+            <FilterBar
+              categories={categories}
+              selectedCategories={selectedCategories}
+              selectedSubcategories={selectedSubcategories}
+              selectedStatuses={selectedStatuses}
+              onToggleCategory={toggleCategory}
+              onToggleSubcategory={toggleSubcategory}
+              onToggleStatus={toggleStatus}
+              onClearFilters={clearFilters}
+            />
+
+            <DndCalendar
+              schedules={filteredSchedules}
+              categories={categories}
+              onDateChange={handleDateChange}
+              onEndDateChange={handleEndDateChange}
+            >
+              <div className={`md:flex md:flex-1 md:min-h-0 ${view === 'month' && selectedDate ? '' : 'md:flex-col'}`}>
+                <div className={view === 'month' && selectedDate ? 'flex-1' : 'md:flex md:flex-1 md:flex-col'}>
+                  {view === 'month' && (
+                    <MonthView
+                      currentDate={currentDate}
+                      schedules={filteredSchedules}
+                      categories={categories}
+                      selectedDate={selectedDate}
+                      onSelectDate={handleSelectDate}
+                      onScheduleClick={setEditingSchedule}
+                      onStatusChange={handleStatusChange}
+                    />
+                  )}
+                  {view === 'week' && (
+                    <WeekView
+                      currentDate={currentDate}
+                      schedules={filteredSchedules}
+                      categories={categories}
+                      selectedDate={selectedDate}
+                      onSelectDate={handleSelectDate}
+                      onScheduleClick={setEditingSchedule}
+                      onStatusChange={handleStatusChange}
+                      onToggleImportant={handleToggleImportant}
+                      onPostpone={handlePostpone}
+                      onMoveToBacklog={handleMoveToBacklog}
+                      onDelete={handleDeleteById}
+                    />
+                  )}
+                  {view === 'day' && (
+                    <DayView
+                      currentDate={currentDate}
+                      schedules={filteredSchedules}
+                      categories={categories}
+                      onScheduleClick={setEditingSchedule}
+                      onStatusChange={handleStatusChange}
+                      onToggleImportant={handleToggleImportant}
+                      onPostpone={handlePostpone}
+                      onMoveToBacklog={handleMoveToBacklog}
+                      onDelete={handleDeleteById}
+                    />
+                  )}
+                </div>
+
+                {/* 데스크탑: 사이드 패널 */}
+                {view === 'month' && selectedDate && (
+                  <div className="hidden md:block md:sticky md:top-0 md:w-80 md:self-stretch md:max-h-[calc(100vh-160px)] md:overflow-y-auto">
+                    <DayDetailPanel
+                      dateStr={selectedDate}
+                      schedules={filteredSchedules}
+                      categories={categories}
+                      onScheduleClick={setEditingSchedule}
+                      onStatusChange={handleStatusChange}
+                      onClose={() => handleSelectDate(selectedDate)}
+                    />
+                  </div>
+                )}
+              </div>
+            </DndCalendar>
+          </>
+        )}
+
+        {/* 백로그 탭 */}
+        {activeTab === 'backlog' && <BacklogPanel />}
+
+        {/* 카테고리 탭 */}
+        {activeTab === 'categories' && <CategoriesPanel />}
       </div>
 
       {/* 모바일: 바텀시트 */}
       <BottomSheet
-        open={view === 'month' && !!selectedDate}
+        open={activeTab === 'calendar' && view === 'month' && !!selectedDate}
         onClose={() => selectedDate && handleSelectDate(selectedDate)}
       >
         {selectedDate && (
