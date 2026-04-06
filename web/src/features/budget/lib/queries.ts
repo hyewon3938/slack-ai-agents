@@ -188,6 +188,27 @@ export async function queryFixedCosts(userId: number): Promise<FixedCostRow[]> {
   return rows;
 }
 
+/** 고정비 수정 */
+const FIXED_COST_COLUMNS = new Set(['name', 'amount', 'category', 'is_variable', 'day_of_month', 'active', 'memo']);
+
+export async function updateFixedCost(
+  userId: number,
+  id: number,
+  updates: Record<string, unknown>,
+): Promise<FixedCostRow | null> {
+  const keys = Object.keys(updates).filter((k) => FIXED_COST_COLUMNS.has(k));
+  if (keys.length === 0) return null;
+
+  const setClauses = keys.map((k, i) => `${k} = $${i + 3}`);
+  const values = keys.map((k) => updates[k]);
+  return queryOne<FixedCostRow>(
+    `UPDATE fixed_costs SET ${setClauses.join(', ')}
+     WHERE id = $1 AND user_id = $2
+     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo`,
+    [id, userId, ...values],
+  );
+}
+
 /**
  * 고정비 자동 기록: 결제일(day_of_month)이 설정된 활성 고정비에 대해
  * 해당 결제주기 내에 지출 기록이 없으면 자동 생성.

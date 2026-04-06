@@ -1,12 +1,5 @@
-'use client';
-
-import { AppShell } from '@/components/ui/app-shell';
-import { BudgetSettingsPage } from '@/features/budget/components/budget-settings-page';
+import { redirect } from 'next/navigation';
 
 export default function Page() {
-  return (
-    <AppShell>
-      <BudgetSettingsPage />
-    </AppShell>
-  );
+  redirect('/budget');
 }
