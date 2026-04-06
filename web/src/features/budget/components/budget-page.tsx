@@ -9,8 +9,7 @@ import { ExpenseList } from './expense-list';
 import { ExpenseEditModal } from './expense-edit-modal';
 import { CategoryChart } from './category-chart';
 import { RunwayCard } from './runway-card';
-import { SettingsPanel } from './settings-panel';
-import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
+import { ChevronLeftIcon, ChevronRightIcon, Bars3Icon } from '@/components/ui/icons';
 
 /** 결제주기 날짜 범위 계산 (표시용) */
 function getBillingRangeLabel(yearMonth: string): string {
@@ -59,14 +58,14 @@ function MonthNavigator({
   );
 }
 
-type TabId = 'list' | 'chart' | 'runway' | 'settings';
+type TabId = 'list' | 'chart' | 'runway';
 
 export function BudgetPage() {
   const {
     selectedMonth, setSelectedMonth,
-    expenses, summary, fixedCosts, assets,
+    expenses, summary,
     loading, error,
-    addExpense, deleteExpense, updateExpense, updateAssetBalance,
+    addExpense, deleteExpense, updateExpense,
   } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('list');
@@ -76,14 +75,22 @@ export function BudgetPage() {
     { id: 'list', label: '지출 목록' },
     { id: 'chart', label: '카테고리' },
     { id: 'runway', label: '분석' },
-    { id: 'settings', label: '설정' },
   ];
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-4">
       {/* 헤더 */}
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-base font-bold text-gray-900">지출 관리</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-bold text-gray-900">지출 관리</h1>
+          <a
+            href="/budget/settings"
+            className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+            title="예산 설정"
+          >
+            <Bars3Icon size={18} />
+          </a>
+        </div>
         <MonthNavigator selectedMonth={selectedMonth} onChange={setSelectedMonth} />
       </div>
 
@@ -140,14 +147,6 @@ export function BudgetPage() {
       )}
 
       {activeTab === 'runway' && <RunwayCard />}
-
-      {activeTab === 'settings' && (
-        <SettingsPanel
-          fixedCosts={fixedCosts}
-          assets={assets}
-          onUpdateAsset={updateAssetBalance}
-        />
-      )}
 
       {/* 수정 모달 */}
       {editingExpense && (
