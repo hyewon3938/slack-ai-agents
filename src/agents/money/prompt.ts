@@ -12,13 +12,6 @@ export const buildMoneySystemPrompt = async (): Promise<string> => {
 ## 오늘 날짜
 ${today}
 
-## 사용자 상황
-- [REDACTED]
-- [REDACTED]
-- [REDACTED]
-- [REDACTED]
-- [REDACTED]
-
 ## DB 스키마
 
 ### expenses (지출 기록)

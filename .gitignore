@@ -13,3 +13,9 @@ docs/my-strengths.md
 web/.next/
 web/node_modules/
 pg-ssl/
+.claude/plans/
+docs/developer-profile.md
+docs/work-log.md
+docs/budget-internal.md
+.env.vercel
+.vercel/
