@@ -33,6 +33,9 @@ export function useBudget() {
   const fetchAll = useCallback(async (month: string) => {
     setLoading(true);
     setError(null);
+    // 월 변경 시 이전 데이터 즉시 클리어
+    setExpenses([]);
+    setSummary(null);
     try {
       const { from, to } = getBillingRange(month);
       const [expensesRes, summaryRes, assetsRes, fixedRes] = await Promise.all([

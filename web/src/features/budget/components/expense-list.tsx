@@ -158,13 +158,8 @@ export function ExpenseList({ expenses, onDelete, selectedCategory, onCategoryCh
                     <div key={expense.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-medium"
-                            style={{
-                              backgroundColor: `${color}15`,
-                              color,
-                            }}
-                          >
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                          <span className="text-xs font-medium text-gray-700">
                             {expense.category}
                           </span>
                           {expense.is_installment && expense.installment_num !== null && expense.installment_total !== null && (
