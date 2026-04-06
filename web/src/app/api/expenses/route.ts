@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { queryExpenses, createExpense } from '@/features/budget/lib/queries';
-import { EXPENSE_CATEGORIES } from '@/lib/types';
+import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
 
 const VALID_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
 
