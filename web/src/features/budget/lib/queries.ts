@@ -323,6 +323,8 @@ export interface RunwayResult {
   budget_runway_date: string;      // 예산 기준 종료일
   actual_runway_date: string;      // 실제 기준 종료일
   over_budget: number;             // 예산 초과분 누적 (양수 = 초과)
+  recommended_budget: number | null; // 목표 기간 기반 추천 가변 예산
+  target_date: string | null;       // 목표 생존 기간 (YYYY-MM)
 }
 
 export async function queryRunway(userId: number): Promise<RunwayResult> {
@@ -379,6 +381,18 @@ export async function queryRunway(userId: number): Promise<RunwayResult> {
     return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}`;
   };
 
+  // 목표 기간 기반 추천 예산: (가용자금 / 남은개월) - 고정비 + 수입
+  const targetDate = process.env.TARGET_SURVIVAL_DATE ?? null;
+  let recommendedBudget: number | null = null;
+  if (targetDate && /^\d{4}-\d{2}$/.test(targetDate)) {
+    const [ty, tm] = targetDate.split('-').map(Number);
+    const targetMonths = (ty - now.getFullYear()) * 12 + (tm - now.getMonth() - 1);
+    if (targetMonths > 0) {
+      const monthlyAllowance = totalAvailable / targetMonths;
+      recommendedBudget = Math.max(Math.round(monthlyAllowance - fixedMonthly + estimatedIncome), 0);
+    }
+  }
+
   return {
     total_available: totalAvailable,
     fixed_monthly: fixedMonthly,
@@ -391,5 +405,7 @@ export async function queryRunway(userId: number): Promise<RunwayResult> {
     budget_runway_date: toDateStr(budgetRunwayMonths),
     actual_runway_date: toDateStr(actualRunwayMonths),
     over_budget: overBudget,
+    recommended_budget: recommendedBudget,
+    target_date: targetDate,
   };
 }

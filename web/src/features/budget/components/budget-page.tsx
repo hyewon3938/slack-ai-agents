@@ -9,7 +9,7 @@ import { ExpenseList } from './expense-list';
 import { ExpenseEditModal } from './expense-edit-modal';
 import { CategoryChart } from './category-chart';
 import { RunwayCard } from './runway-card';
-import { ChevronLeftIcon, ChevronRightIcon, Bars3Icon } from '@/components/ui/icons';
+import { ChevronLeftIcon, ChevronRightIcon, Cog6ToothIcon } from '@/components/ui/icons';
 
 /** 결제주기 날짜 범위 계산 (표시용) */
 function getBillingRangeLabel(yearMonth: string): string {
@@ -81,17 +81,17 @@ export function BudgetPage() {
     <div className="mx-auto w-full max-w-2xl px-4 py-4">
       {/* 헤더 */}
       <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-base font-bold text-gray-900">지출 관리</h1>
         <div className="flex items-center gap-2">
-          <h1 className="text-base font-bold text-gray-900">지출 관리</h1>
+          <MonthNavigator selectedMonth={selectedMonth} onChange={setSelectedMonth} />
           <a
             href="/budget/settings"
-            className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
             title="예산 설정"
           >
-            <Bars3Icon size={18} />
+            <Cog6ToothIcon size={18} />
           </a>
         </div>
-        <MonthNavigator selectedMonth={selectedMonth} onChange={setSelectedMonth} />
       </div>
 
       {error && (
