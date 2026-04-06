@@ -6,13 +6,6 @@ import type { MonthProjection } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
 import { ArrowTrendingDownIcon, PencilIcon, XMarkIcon, CheckCircleIcon } from '@/components/ui/icons';
 
-const STORAGE_KEY = 'budget_target_date';
-
-function getStoredTargetDate(): string {
-  if (typeof window === 'undefined') return '';
-  return localStorage.getItem(STORAGE_KEY) ?? '';
-}
-
 /** 프로젝션 바 높이 (remaining 기준 0~100%) */
 function barHeight(projection: MonthProjection, maxRemaining: number): number {
   if (maxRemaining <= 0) return 0;
@@ -25,6 +18,7 @@ export function RunwayCard() {
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetInput, setTargetInput] = useState('');
   const [showProjections, setShowProjections] = useState(false);
+  const [savedTarget, setSavedTarget] = useState<string | null>(null);
 
   const fetchRunway = useCallback((targetDate?: string) => {
     setLoading(true);
@@ -36,17 +30,33 @@ export function RunwayCard() {
       .finally(() => setLoading(false));
   }, []);
 
+  // 초기 로드: DB에서 목표 기간 조회 → 런웨이 계산
   useEffect(() => {
-    const stored = getStoredTargetDate();
-    fetchRunway(stored || undefined);
+    fetch('/api/budget/settings')
+      .then((r) => r.json())
+      .then((d: { data: { target_date: string | null } }) => {
+        const td = d.data.target_date;
+        setSavedTarget(td);
+        fetchRunway(td ?? undefined);
+      })
+      .catch(() => fetchRunway());
   }, [fetchRunway]);
 
-  const handleSaveTarget = () => {
+  const handleSaveTarget = async () => {
     const val = targetInput.trim();
     if (!val || !/^\d{4}-\d{2}$/.test(val)) return;
-    localStorage.setItem(STORAGE_KEY, val);
-    setEditingTarget(false);
-    fetchRunway(val);
+    try {
+      await fetch('/api/budget/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_date: val }),
+      });
+      setSavedTarget(val);
+      setEditingTarget(false);
+      fetchRunway(val);
+    } catch {
+      // 저장 실패 시 무시
+    }
   };
 
   if (loading) {
@@ -80,7 +90,7 @@ export function RunwayCard() {
   return (
     <div className="space-y-3">
       {/* 일일 목표 + 누적 절약/초과 */}
-      {runway.daily_target !== null && (
+      {runway.daily_target !== null && runway.target_date && (
         <div className={`rounded-xl border p-4 shadow-sm ${isSaved ? 'border-green-100 bg-green-50' : 'border-red-100 bg-red-50'}`}>
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs text-gray-500">일일 자유 예산</div>
@@ -139,7 +149,7 @@ export function RunwayCard() {
           {/* 목표 기간 */}
           {!editingTarget ? (
             <button
-              onClick={() => { setTargetInput(getStoredTargetDate()); setEditingTarget(true); }}
+              onClick={() => { setTargetInput(savedTarget ?? ''); setEditingTarget(true); }}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             >
               목표: {runway.target_date ?? '미설정'}
@@ -236,6 +246,13 @@ export function RunwayCard() {
                 * 할부 종료로 잠긴돈 감소
               </div>
             )}
+          </div>
+        )}
+
+        {/* 목표 미설정 안내 */}
+        {!runway.target_date && (
+          <div className="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+            목표 기간을 설정하면 자유 예산과 일일 목표가 자동 계산됩니다.
           </div>
         )}
 
