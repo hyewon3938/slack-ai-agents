@@ -7,11 +7,10 @@ import { formatAmount } from '@/lib/types';
 import { ArrowTrendingDownIcon, PencilIcon, XMarkIcon, CheckCircleIcon } from '@/components/ui/icons';
 
 const STORAGE_KEY = 'budget_target_date';
-const DEFAULT_TARGET = '2026-07';
 
 function getStoredTargetDate(): string {
-  if (typeof window === 'undefined') return DEFAULT_TARGET;
-  return localStorage.getItem(STORAGE_KEY) || DEFAULT_TARGET;
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(STORAGE_KEY) ?? '';
 }
 
 /** 프로젝션 바 높이 (remaining 기준 0~100%) */
@@ -27,9 +26,10 @@ export function RunwayCard() {
   const [targetInput, setTargetInput] = useState('');
   const [showProjections, setShowProjections] = useState(false);
 
-  const fetchRunway = useCallback((targetDate: string) => {
+  const fetchRunway = useCallback((targetDate?: string) => {
     setLoading(true);
-    fetch(`/api/budget/runway?targetDate=${targetDate}`)
+    const params = targetDate ? `?targetDate=${targetDate}` : '';
+    fetch(`/api/budget/runway${params}`)
       .then((r) => r.json())
       .then((d: { data: RunwayResult }) => setRunway(d.data))
       .catch(() => setRunway(null))
@@ -38,11 +38,7 @@ export function RunwayCard() {
 
   useEffect(() => {
     const stored = getStoredTargetDate();
-    // 기본값 저장 (처음 방문 시)
-    if (typeof window !== 'undefined' && !localStorage.getItem(STORAGE_KEY)) {
-      localStorage.setItem(STORAGE_KEY, DEFAULT_TARGET);
-    }
-    fetchRunway(stored);
+    fetchRunway(stored || undefined);
   }, [fetchRunway]);
 
   const handleSaveTarget = () => {
@@ -146,7 +142,7 @@ export function RunwayCard() {
               onClick={() => { setTargetInput(getStoredTargetDate()); setEditingTarget(true); }}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             >
-              목표: {runway.target_date ?? DEFAULT_TARGET}
+              목표: {runway.target_date ?? '미설정'}
               <PencilIcon size={11} />
             </button>
           ) : (
