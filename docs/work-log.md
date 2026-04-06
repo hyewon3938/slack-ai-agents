@@ -1,5 +1,28 @@
 # Work Log
 
+## 2026-04-06 (일)
+
+### 작업 요약
+- 지출/예산 도메인 전체 수직 완성 — DB 스키마부터 대시보드 UI까지 (Issue #162, PR #163\~#168)
+- 보안 이슈(개인정보 하드코딩) 발견 및 즉시 수정 (PR #167)
+- 도메인별 타입 파일·문서 분리 리팩토링 (PR #164)
+- 네비게이션 일정/루틴/지출 3탭 체제 전환
+
+### 변경 규모
+- 16개 커밋, 60+ 파일, +\~3700 / -\~600 lines
+
+### 주요 변경
+- `db/migrations/030_budget_expenses.sql` — expenses, budget_settings, assets, fixed_costs 테이블 추가
+- `src/agents/money/` — #money 채널 지출 Slack 에이전트 신규 추가
+- `web/src/app/api/budget/`, `web/src/app/api/expenses/` — 지출/예산 API 엔드포인트 8개 추가
+- `web/src/features/budget/components/` — 대시보드 UI 전체 (budget-page, category-chart, expense-form, expense-list, month-summary, runway-card, settings-panel)
+- `web/src/components/ui/icons.tsx` — 아이콘 시스템 신규 구축 (226줄)
+- `docs/domains/budget.md`, `routine.md`, `schedule.md`, `insight.md` — 도메인별 문서 분리
+- `web/src/features/*/lib/types.ts` — 도메인별 타입 파일 분리
+
+### 다음 할 일
+- 지출 도메인 추가 기능(카테고리 분석, 월별 트렌드 등) 검토
+
 ## 2026-03-17 (화)
 
 ### 작업 요약
@@ -53,7 +76,7 @@
 - 테스트 커버리지 PR #102 머지 (router, calendar-utils, kst, types)
 - Next.js 캐싱 PR #100 머지 (unstable_cache + revalidateTag)
 - CI/CD Slack 배포 알림 PR #98 머지
-- v3 아키텍처 전환 (Vercel + Neon), 개발 크론 Scheduled Task 통합
+- v3 아키텍처 전환 (Vercel + VM PostgreSQL), 개발 크론 Scheduled Task 통합
 - README 포트폴리오 전략 정비 + developer-profile 구조 개편
 
 ### 변경 규모

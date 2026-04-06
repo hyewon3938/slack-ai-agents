@@ -45,7 +45,7 @@ export function useBudget() {
     try {
       const { from, to } = getBillingRange(month);
 
-      // 개별 요청 실패 시에도 나머지는 정상 처리 (Neon cold start 대응)
+      // 개별 요청 실패 시에도 나머지는 정상 처리 (DB 연결 불안정 대응)
       const fetchJson = async <T,>(url: string): Promise<T | null> => {
         try {
           const res = await fetch(url);
