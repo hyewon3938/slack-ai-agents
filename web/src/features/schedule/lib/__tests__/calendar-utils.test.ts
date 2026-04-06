@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeWeekLayout, WEEK_START } from '../calendar-utils';
-import type { ScheduleRow } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
 
 // ─── 헬퍼 ───────────────────────────────────────────────
 

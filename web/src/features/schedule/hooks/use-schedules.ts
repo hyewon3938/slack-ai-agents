@@ -14,7 +14,8 @@ import {
   startOfWeek,
   endOfWeek,
 } from 'date-fns';
-import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
 import type { CalendarView } from '@/features/schedule/components/calendar-header';
 import { WEEK_START } from '@/features/schedule/lib/calendar-utils';
 

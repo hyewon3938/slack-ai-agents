@@ -11,7 +11,8 @@ import {
   isToday,
 } from 'date-fns';
 import { useDraggable } from '@dnd-kit/core';
-import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedule/lib/calendar-utils';
 import { ScheduleCard } from './schedule-card';

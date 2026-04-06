@@ -1,6 +1,6 @@
 'use client';
 
-import type { RoutineRecordRow } from '@/lib/types';
+import type { RoutineRecordRow } from '@/features/routine/lib/types';
 import { RoutineCard } from './routine-card';
 
 interface RoutineChecklistProps {

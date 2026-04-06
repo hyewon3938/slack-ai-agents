@@ -11,7 +11,8 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import type { ScheduleRow, CategoryRow } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
 
 type DragType = 'move' | 'resize-left' | 'resize-right';
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getTodayISO, addDays } from '@/lib/kst';
-import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/lib/types';
+import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/features/routine/lib/types';
 
 export type RoutineView = 'checklist' | 'stats' | 'manage';
 

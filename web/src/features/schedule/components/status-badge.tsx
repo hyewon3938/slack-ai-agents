@@ -1,4 +1,4 @@
-import type { ScheduleStatus } from '@/lib/types';
+import type { ScheduleStatus } from '@/features/schedule/lib/types';
 
 const STATUS_STYLES: Record<ScheduleStatus, string> = {
   todo: 'bg-slate-100 text-slate-700',

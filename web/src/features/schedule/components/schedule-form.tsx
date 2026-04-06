@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import type { ScheduleRow, CategoryRow } from '@/lib/types';
-import { SCHEDULE_STATUSES, STATUS_LABELS, getCategoryStyle } from '@/lib/types';
+import type { ScheduleRow } from '@/features/schedule/lib/types';
+import { SCHEDULE_STATUSES, STATUS_LABELS } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '@/lib/types';
+import { getCategoryStyle } from '@/lib/types';
 
 
 interface ScheduleFormProps {

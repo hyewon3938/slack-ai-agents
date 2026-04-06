@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { RoutineTemplateRow } from '@/lib/types';
-import { ROUTINE_FREQUENCIES, ROUTINE_TIME_SLOTS } from '@/lib/types';
+import type { RoutineTemplateRow } from '@/features/routine/lib/types';
+import { ROUTINE_FREQUENCIES, ROUTINE_TIME_SLOTS } from '@/features/routine/lib/types';
 
 interface RoutineFormProps {
   template?: RoutineTemplateRow;
