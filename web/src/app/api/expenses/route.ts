@@ -15,6 +15,13 @@ export async function GET(request: Request) {
     const to = searchParams.get('to') ?? new Date().toISOString().slice(0, 10);
     const category = searchParams.get('category') ?? undefined;
 
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return NextResponse.json({ error: 'from/to 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)' }, { status: 400 });
+    }
+    if (category && !VALID_CATEGORIES.has(category)) {
+      return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
+    }
+
     const data = await queryExpenses(userId, from, to, category);
     return NextResponse.json({ data });
   } catch {
