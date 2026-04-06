@@ -87,9 +87,9 @@ export function BudgetPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      {/* 상단 탭 바 (일정 페이지와 동일 스타일) */}
+      {/* 상단 탭 바 */}
       <div className="border-b border-gray-200 bg-white px-4 pt-2">
-        <div className="mx-auto flex max-w-5xl gap-1">
+        <div className="mx-auto flex max-w-2xl gap-1">
           {topTabs.map((tab) => (
             <button
               key={tab.id}
@@ -97,7 +97,7 @@ export function BudgetPage() {
               className={`rounded-t-lg px-4 py-2 text-xs font-medium transition ${
                 topTab === tab.id
                   ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-400 hover:text-gray-600'
+                  : 'border-b-2 border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
               {tab.label}
