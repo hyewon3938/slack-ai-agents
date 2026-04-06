@@ -28,12 +28,25 @@ export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<pg.QueryResult<T>> => {
-  // Neon free tier cold start 대응: 첫 시도 실패 시 1회 재시도
+  // Neon free tier cold start 대응: 연결 에러 시 1회 재시도
   try {
     return await getPool().query<T>(text, params);
   } catch (err) {
     const msg = err instanceof Error ? err.message : '';
-    if (msg.includes('Connection terminated') || msg.includes('connect ETIMEDOUT') || msg.includes('connection refused')) {
+    const isConnectionError =
+      msg.includes('Connection terminated') ||
+      msg.includes('connect ETIMEDOUT') ||
+      msg.includes('connection refused') ||
+      msg.includes('Client has encountered a connection error') ||
+      msg.includes('terminating connection') ||
+      msg.includes('sorry, too many clients') ||
+      msg.includes('ECONNRESET');
+    if (isConnectionError) {
+      // 풀 리셋 후 재시도
+      if (pool) {
+        await pool.end().catch(() => {});
+        pool = null;
+      }
       return getPool().query<T>(text, params);
     }
     throw err;
