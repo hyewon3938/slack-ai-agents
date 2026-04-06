@@ -3,8 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ExpenseRow, MonthSummary, AssetRow, FixedCostRow } from '@/features/budget/lib/types';
 
-function getCurrentYearMonth(): string {
-  return new Date().toISOString().slice(0, 7);
+/** 현재 결제주기의 대금 월 반환. 16일 이후면 다음달 대금. */
+function getCurrentBillingMonth(): string {
+  const now = new Date();
+  if (now.getDate() >= 16) {
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+  }
+  return now.toISOString().slice(0, 7);
 }
 
 /**
@@ -22,7 +28,7 @@ function getBillingRange(yearMonth: string): { from: string; to: string } {
 }
 
 export function useBudget() {
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentYearMonth);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentBillingMonth);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [summary, setSummary] = useState<MonthSummary | null>(null);
   const [assets, setAssets] = useState<AssetRow[]>([]);
