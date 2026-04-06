@@ -122,7 +122,7 @@ export default function SchedulesPage() {
                 className={`rounded-t-lg px-4 py-2 text-xs font-medium transition ${
                   activeTab === tab.id
                     ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-400 hover:text-gray-600'
+                    : 'border-b-2 border-transparent text-gray-400 hover:text-gray-600'
                 }`}
               >
                 {tab.label}
