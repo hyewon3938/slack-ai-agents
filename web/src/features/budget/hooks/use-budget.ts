@@ -121,6 +121,26 @@ export function useBudget() {
       .then((d: { data: MonthSummary }) => setSummary(d.data));
   }, [selectedMonth]);
 
+  const updateExpense = useCallback(
+    async (id: number, updates: { date: string; amount: number; category: string; description: string | null }): Promise<void> => {
+      const res = await fetch(`/api/expenses/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? '지출 수정 실패');
+      }
+      const { data } = (await res.json()) as { data: ExpenseRow };
+      setExpenses((prev) => prev.map((e) => (e.id === id ? data : e)));
+      void fetch(`/api/expenses/summary?yearMonth=${selectedMonth}`)
+        .then((r) => r.json())
+        .then((d: { data: MonthSummary }) => setSummary(d.data));
+    },
+    [selectedMonth],
+  );
+
   const updateAssetBalance = useCallback(
     async (id: number, balance: number, available_amount: number): Promise<void> => {
       const res = await fetch(`/api/budget/assets/${id}`, {
@@ -146,6 +166,7 @@ export function useBudget() {
     error,
     addExpense,
     deleteExpense,
+    updateExpense,
     updateAssetBalance,
     refresh: () => void fetchAll(selectedMonth),
   };
