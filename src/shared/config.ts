@@ -38,6 +38,7 @@ export const CONFIG = {
     life: requireEnv('LIFE_CHANNEL_ID'),
     project: process.env['PROJECT_CHANNEL_ID'] ?? '',
     insight: process.env['INSIGHT_CHANNEL_ID'] ?? '',
+    money: process.env['MONEY_CHANNEL_ID'] ?? '',
   },
   db: {
     url: requireEnv('DATABASE_URL'),
