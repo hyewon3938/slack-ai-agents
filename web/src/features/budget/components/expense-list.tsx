@@ -39,6 +39,7 @@ function getCategoryColor(category: string): string {
 interface ExpenseListProps {
   expenses: ExpenseRow[];
   onDelete: (id: number) => Promise<void>;
+  onEdit: (expense: ExpenseRow) => void;
   selectedCategory: string | null;
   onCategoryChange: (cat: string | null) => void;
 }
@@ -54,7 +55,7 @@ function groupByDate(expenses: ExpenseRow[]): Map<string, ExpenseRow[]> {
   return map;
 }
 
-export function ExpenseList({ expenses, onDelete, selectedCategory, onCategoryChange }: ExpenseListProps) {
+export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCategoryChange }: ExpenseListProps) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
 
@@ -155,7 +156,7 @@ export function ExpenseList({ expenses, onDelete, selectedCategory, onCategoryCh
                 {dayExpenses.map((expense) => {
                   const color = getCategoryColor(expense.category);
                   return (
-                    <div key={expense.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50">
+                    <div key={expense.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer" onClick={() => onEdit(expense)}>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
@@ -177,7 +178,7 @@ export function ExpenseList({ expenses, onDelete, selectedCategory, onCategoryCh
                       </div>
                       {expense.source !== 'import' && (
                         <button
-                          onClick={() => void handleDelete(expense.id)}
+                          onClick={(e) => { e.stopPropagation(); void handleDelete(expense.id); }}
                           disabled={deletingId === expense.id}
                           className="shrink-0 rounded-md p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-400 disabled:opacity-50"
                         >
