@@ -59,7 +59,8 @@ function MonthNavigator({
   );
 }
 
-type TabId = 'list' | 'chart' | 'runway' | 'settings';
+type TopTab = 'manage' | 'settings';
+type SubTab = 'list' | 'chart' | 'runway';
 
 export function BudgetPage() {
   const {
@@ -69,86 +70,117 @@ export function BudgetPage() {
     addExpense, deleteExpense, updateExpense,
   } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('list');
+  const [topTab, setTopTab] = useState<TopTab>('manage');
+  const [subTab, setSubTab] = useState<SubTab>('list');
   const [editingExpense, setEditingExpense] = useState<ExpenseRow | null>(null);
 
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'list', label: '지출' },
-    { id: 'chart', label: '카테고리' },
-    { id: 'runway', label: '분석' },
+  const topTabs: { id: TopTab; label: string }[] = [
+    { id: 'manage', label: '관리' },
     { id: 'settings', label: '설정' },
   ];
 
+  const subTabs: { id: SubTab; label: string }[] = [
+    { id: 'list', label: '지출' },
+    { id: 'chart', label: '카테고리' },
+    { id: 'runway', label: '분석' },
+  ];
+
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-4">
-      {/* 헤더 */}
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-base font-bold text-gray-900">지출 관리</h1>
-        {activeTab !== 'settings' && (
-          <MonthNavigator selectedMonth={selectedMonth} onChange={setSelectedMonth} />
-        )}
+    <div className="flex flex-1 flex-col">
+      {/* 상단 탭 바 (일정 페이지와 동일 스타일) */}
+      <div className="border-b border-gray-200 bg-white px-4 pt-2">
+        <div className="mx-auto flex max-w-5xl gap-1">
+          {topTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setTopTab(tab.id)}
+              className={`rounded-t-lg px-4 py-2 text-xs font-medium transition ${
+                topTab === tab.id
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {error && activeTab !== 'settings' && (
-        <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
-      )}
+      {/* 관리 탭 */}
+      {topTab === 'manage' && (
+        <div className="mx-auto w-full max-w-2xl px-4 py-4">
+          {/* 헤더: 월 네비게이터 */}
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-bold text-gray-900">지출 관리</h2>
+            <MonthNavigator selectedMonth={selectedMonth} onChange={setSelectedMonth} />
+          </div>
 
-      {/* 설정이 아닌 탭에서만 월간 요약 + 지출 폼 표시 */}
-      {activeTab !== 'settings' && activeTab !== 'runway' && (
-        <>
+          {error && (
+            <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+          )}
+
           {/* 월간 요약 */}
-          {loading ? (
-            <div className="mb-4 h-40 animate-pulse rounded-xl bg-gray-100" />
-          ) : summary ? (
-            <div className="mb-4">
-              <MonthSummaryCard summary={summary} />
-            </div>
-          ) : null}
+          {subTab !== 'runway' && (
+            loading ? (
+              <div className="mb-4 h-40 animate-pulse rounded-xl bg-gray-100" />
+            ) : summary ? (
+              <div className="mb-4">
+                <MonthSummaryCard summary={summary} />
+              </div>
+            ) : null
+          )}
 
           {/* 지출 추가 폼 */}
-          <div className="mb-4">
-            <ExpenseForm onAdd={addExpense} />
+          {subTab === 'list' && (
+            <div className="mb-4">
+              <ExpenseForm onAdd={addExpense} />
+            </div>
+          )}
+
+          {/* 서브 탭 */}
+          <div className="mb-3 flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+            {subTabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSubTab(tab.id)}
+                className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
+                  subTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        </>
+
+          {/* 서브 탭 내용 */}
+          {subTab === 'list' && (
+            loading ? (
+              <div className="h-48 animate-pulse rounded-xl bg-gray-100" />
+            ) : (
+              <ExpenseList
+                expenses={expenses}
+                onDelete={deleteExpense}
+                onEdit={setEditingExpense}
+                selectedCategory={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+              />
+            )
+          )}
+
+          {subTab === 'chart' && summary && (
+            <CategoryChart stats={summary.by_category} total={summary.variable_total} />
+          )}
+
+          {subTab === 'runway' && <RunwayCard />}
+        </div>
       )}
 
-      {/* 탭 */}
-      <div className="mb-3 flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
-              activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* 탭 내용 */}
-      {activeTab === 'list' && (
-        loading ? (
-          <div className="h-48 animate-pulse rounded-xl bg-gray-100" />
-        ) : (
-          <ExpenseList
-            expenses={expenses}
-            onDelete={deleteExpense}
-            onEdit={setEditingExpense}
-            selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-          />
-        )
+      {/* 설정 탭 */}
+      {topTab === 'settings' && (
+        <div className="mx-auto w-full max-w-2xl px-4 py-4">
+          <BudgetSettingsPage />
+        </div>
       )}
-
-      {activeTab === 'chart' && summary && (
-        <CategoryChart stats={summary.by_category} total={summary.variable_total} />
-      )}
-
-      {activeTab === 'runway' && <RunwayCard />}
-
-      {activeTab === 'settings' && <BudgetSettingsPage />}
 
       {/* 수정 모달 */}
       {editingExpense && (

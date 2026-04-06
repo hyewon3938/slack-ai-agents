@@ -57,19 +57,10 @@ export function RoutinePage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      {/* 헤더 */}
-      <div className="border-b border-gray-200 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <h1 className="text-lg font-bold text-gray-900 md:text-xl">루틴</h1>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowForm(true)}
-              className="hidden rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 md:block"
-            >
-              + 추가
-            </button>
-            <ViewToggle view={view} onChange={setView} />
-          </div>
+      {/* 탭 바 (일정 페이지와 동일 스타일) */}
+      <div className="border-b border-gray-200 bg-white px-4 pt-2">
+        <div className="mx-auto flex max-w-5xl gap-1">
+          <ViewToggle view={view} onChange={setView} />
         </div>
       </div>
 
