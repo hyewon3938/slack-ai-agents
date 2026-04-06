@@ -15,8 +15,8 @@ const getPool = (): pg.Pool => {
     const useSSL = connectionString?.includes('sslmode=require');
     pool = new Pool({
       connectionString,
-      max: 3,
-      idleTimeoutMillis: 10_000,
+      max: 1,
+      idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 10_000,
       ...(useSSL && { ssl: { rejectUnauthorized: false } }),
     });

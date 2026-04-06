@@ -24,7 +24,7 @@ services:
       - "-c"
       - "shared_buffers=32MB"
       - "-c"
-      - "max_connections=20"
+      - "max_connections=100"
       - "-c"
       - "work_mem=2MB"
       - "-c"
