@@ -341,7 +341,6 @@ export async function updateAsset(
 export interface RunwayResult {
   total_available: number;           // 총 가용 자금 (비상금 제외)
   fixed_monthly: number;             // 월 고정비 합계
-  monthly_budget: number | null;     // 월 가변 예산 (설정값)
   avg_variable_monthly: number;      // 최근 3개월 평균 가변 지출
   projections: MonthProjection[];    // 월별 시뮬레이션 결과
   budget_runway_months: number;      // 시뮬레이션 기반 런웨이 (개월)
@@ -388,10 +387,9 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const now = new Date();
   const billingMonth = getCurrentBillingMonth(now);
 
-  const [assets, fixedCosts, currentBudget, installmentRows, variableRows] = await Promise.all([
+  const [assets, fixedCosts, installmentRows, variableRows] = await Promise.all([
     queryAssets(userId),
     queryFixedCosts(userId),
-    queryBudget(userId, billingMonth),
     // 할부 그룹별 최신 레코드 (남은 회차 계산용)
     query<{
       installment_group: string;
@@ -430,10 +428,8 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     .filter((fc) => fc.active)
     .reduce((s, fc) => s + fc.amount, 0);
 
-  const monthlyBudget = currentBudget?.total_budget ?? null;
   const avgVariableMonthly = Math.round(Number(variableRows.rows[0]?.avg_monthly ?? 0));
   const estimatedIncome = Number(process.env.ESTIMATED_MONTHLY_INCOME ?? '0');
-  const budgetVariable = monthlyBudget ?? avgVariableMonthly;
 
   // 할부 프로젝션: 그룹별 남은 회차와 월 금액
   const installments = installmentRows.rows
@@ -473,8 +469,8 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     }
   }
 
-  // 시뮬레이션 자유 예산: 추천 > 수동 설정 > 평균 순
-  const simulationFreeBudget = recommendedBudget ?? budgetVariable;
+  // 시뮬레이션 자유 예산: 추천 > 평균 순
+  const simulationFreeBudget = recommendedBudget ?? avgVariableMonthly;
 
   // ─── 월별 시뮬레이션 ───
   const projections: MonthProjection[] = [];
@@ -542,8 +538,8 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   );
   const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0);
 
-  // 일일 목표: 추천예산 > 설정예산 > 평균 순으로 사용
-  const freeBudgetForDaily = recommendedBudget ?? monthlyBudget ?? avgVariableMonthly;
+  // 일일 목표: 추천예산 > 평균 순으로 사용
+  const freeBudgetForDaily = recommendedBudget ?? avgVariableMonthly;
   const dailyTarget = cycleDays > 0 ? Math.round(freeBudgetForDaily / cycleDays) : null;
   const cumulativeSaved = dailyTarget !== null
     ? Math.round(dailyTarget * cycleElapsed - flexibleSpent)
@@ -552,7 +548,6 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   return {
     total_available: totalAvailable,
     fixed_monthly: fixedMonthly,
-    monthly_budget: monthlyBudget,
     avg_variable_monthly: avgVariableMonthly,
     projections,
     budget_runway_months: Math.round(budgetRunwayMonths * 10) / 10,
