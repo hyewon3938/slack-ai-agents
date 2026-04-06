@@ -6,9 +6,6 @@ import {
   CalendarIcon,
   ArrowPathIcon,
   WalletIcon,
-  ClipboardListIcon,
-  TagIcon,
-  EllipsisHorizontalIcon,
   ArrowRightStartOnRectangleIcon,
   Bars3Icon,
 } from '@/components/ui/icons';
@@ -17,27 +14,14 @@ interface NavItem {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string; size?: number }>;
+  /** 이 경로들도 활성 상태로 표시 */
+  activeOn?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/schedules', label: '일정', Icon: CalendarIcon },
+  { href: '/schedules', label: '일정', Icon: CalendarIcon, activeOn: ['/backlog', '/categories'] },
   { href: '/routines', label: '루틴', Icon: ArrowPathIcon },
   { href: '/budget', label: '지출', Icon: WalletIcon },
-  { href: '/backlog', label: '백로그', Icon: ClipboardListIcon },
-  { href: '/categories', label: '카테고리', Icon: TagIcon },
-];
-
-/** 모바일 하단 탭 (4개) */
-const MOBILE_TAB_ITEMS: NavItem[] = [
-  { href: '/schedules', label: '일정', Icon: CalendarIcon },
-  { href: '/routines', label: '루틴', Icon: ArrowPathIcon },
-  { href: '/budget', label: '지출', Icon: WalletIcon },
-];
-
-/** 모바일 더보기 메뉴 항목 */
-const MOBILE_MORE_ITEMS: NavItem[] = [
-  { href: '/backlog', label: '백로그', Icon: ClipboardListIcon },
-  { href: '/categories', label: '카테고리 관리', Icon: TagIcon },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -67,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen, mobileMenuOpen]);
 
-  const moreActive = mobileMenuOpen || MOBILE_MORE_ITEMS.some((item) => pathname === item.href);
+  const moreActive = mobileMenuOpen;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -76,7 +60,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <nav className="flex gap-1">
             {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || (item.activeOn?.includes(pathname) ?? false);
               return (
                 <a
                   key={item.href}
@@ -125,8 +109,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* 모바일 하단 탭 */}
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
         <div className="flex">
-          {MOBILE_TAB_ITEMS.map((item) => {
-            const isActive = pathname === item.href;
+          {NAV_ITEMS.map((item) => {
+            const isActive = pathname === item.href || (item.activeOn?.includes(pathname) ?? false);
             return (
               <a
                 key={item.href}
@@ -149,26 +133,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 moreActive ? 'text-blue-600' : 'text-gray-400'
               }`}
             >
-              <EllipsisHorizontalIcon size={22} />
-              <span>더보기</span>
+              <Bars3Icon size={22} />
+              <span>설정</span>
             </button>
 
             {mobileMenuOpen && (
               <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                {MOBILE_MORE_ITEMS.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-2 px-4 py-2.5 text-sm ${
-                      pathname === item.href ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                    }`}
-                  >
-                    <item.Icon size={16} />
-                    {item.label}
-                  </a>
-                ))}
-                <div className="my-1 border-t border-gray-100" />
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
