@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useEffect } from 'react';
-import type { RoutineDayStat } from '@/lib/types';
+import type { RoutineDayStat } from '@/features/routine/lib/types';
 import { getTodayISO, addDays } from '@/lib/kst';
 
 interface YearlyHeatmapProps {
