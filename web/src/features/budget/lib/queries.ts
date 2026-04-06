@@ -336,6 +336,27 @@ export async function updateAsset(
   );
 }
 
+// ─── 예산 설정 (목표 기간 등) ─────────────────────────────
+
+/** 목표 기간 조회 */
+export async function queryTargetDate(userId: number): Promise<string | null> {
+  const row = await queryOne<{ target_date: string | null }>(
+    'SELECT target_date FROM budget_settings WHERE user_id = $1',
+    [userId],
+  );
+  return row?.target_date ?? null;
+}
+
+/** 목표 기간 저장 */
+export async function upsertTargetDate(userId: number, targetDate: string | null): Promise<void> {
+  await query(
+    `INSERT INTO budget_settings (user_id, target_date, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET target_date = $2, updated_at = NOW()`,
+    [userId, targetDate],
+  );
+}
+
 // ─── 런웨이 계산 (월별 시뮬레이션) ──────────────────────
 
 export interface RunwayResult {
