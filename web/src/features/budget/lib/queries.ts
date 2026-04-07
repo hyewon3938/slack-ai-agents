@@ -219,6 +219,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     planned_total: plannedTotal,
     auto_budget: null,
     auto_daily: null,
+    month_budget_remaining: null,
     by_category: byCategory,
     daily_avg: dailyAvg,
   };
