@@ -1,4 +1,5 @@
 import { query, queryOne } from '@/lib/db';
+import { getTodayISO } from '@/lib/kst';
 import type {
   ExpenseRow,
   FixedCostRow,
@@ -272,8 +273,7 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
 
   if (activeCostsWithDay.length === 0) return 0;
 
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayStr = getTodayISO();
 
   let created = 0;
 
@@ -574,8 +574,8 @@ export async function calcBudgetPreview(
 ): Promise<{ free_per_month: number; daily_estimate: number; month_breakdown: MonthBudgetPreview[] } | null> {
   if (!/^\d{4}-\d{2}$/.test(targetDate)) return null;
 
-  const now = new Date();
-  const billingMonth = getCurrentBillingMonth(now);
+  const calcNow = new Date(`${getTodayISO()}T12:00:00`);
+  const billingMonth = getCurrentBillingMonth(calcNow);
   const [ty, tm] = targetDate.split('-').map(Number);
   const [by, bm] = billingMonth.split('-').map(Number);
   // +1: "8월까지" = 8월 대금(7/16~8/15) 포함
@@ -615,9 +615,8 @@ export async function calcBudgetPreview(
     const mDays = calcCycleDays(mf, mt);
     if (i === 0) {
       // 현재 달: 남은 비율
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const remaining = Math.max(1, Math.round((new Date(`${mt}T00:00:00`).getTime() - new Date(`${todayStr}T00:00:00`).getTime()) / 86400000) + 1);
+      const todayISOStr = getTodayISO();
+      const remaining = Math.max(1, Math.round((new Date(`${mt}T00:00:00`).getTime() - new Date(`${todayISOStr}T00:00:00`).getTime()) / 86400000) + 1);
       const ratio = mDays > 0 ? remaining / mDays : 0;
       totalLocked += Math.round(monthLocked * ratio);
       totalDaysArr.push(remaining);
@@ -660,7 +659,8 @@ export async function calcBudgetPreview(
 }
 
 export async function queryRunway(userId: number, targetDate?: string): Promise<RunwayResult> {
-  const now = new Date();
+  const todayStr = getTodayISO();
+  const now = new Date(`${todayStr}T12:00:00`);
   const billingMonth = getCurrentBillingMonth(now);
 
   // 예산 시작일: 목표 기간을 처음 설정한 날 (이전 지출은 과거 취급)
@@ -718,7 +718,6 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const { from: cycleFrom, to: cycleTo } = getBillingRange(billingMonth);
   const cycleDays = calcCycleDays(cycleFrom, cycleTo);
 
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const todayDate = new Date(`${todayStr}T00:00:00`);
   const cycleFromDate = new Date(`${cycleFrom}T00:00:00`);
   const cycleToDate = new Date(`${cycleTo}T00:00:00`);
