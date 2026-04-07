@@ -601,28 +601,46 @@ export async function calcBudgetPreview(
     queryPlannedExpenses(userId),
   ]);
 
-  // 스냅샷 기반 (지출 차감 전 원본)
-  const budgetBase = effectiveData.snapshot_total + effectiveData.income_since;
+  // 실시간 가용자금 기반
+  const budgetBase = effectiveData.effective;
   const fixedMonthly = fixedCosts.filter((fc) => fc.active).reduce((s, fc) => s + fc.amount, 0);
   const installments = installmentRows.rows
     .filter((r) => r.installment_total > r.installment_num)
     .map((r) => ({ amount: r.amount, remaining: r.installment_total - r.installment_num }));
 
-  // 전체 잠긴 돈 합계 계산
+  // 미래 잠긴 돈 (현재 달은 남은 비율만)
   let totalLocked = 0;
+  const totalDaysArr: number[] = [];
   for (let i = 0; i < targetMonths; i++) {
     const month = addBillingMonths(billingMonth, i);
     const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
     const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
-    totalLocked += fixedMonthly + installmentSum + plannedSum;
+    const monthLocked = fixedMonthly + installmentSum + plannedSum;
+    const { from: mf, to: mt } = getBillingRange(month);
+    const mDays = calcCycleDays(mf, mt);
+    if (i === 0) {
+      // 현재 달: 남은 비율
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const remaining = Math.max(1, Math.round((new Date(`${mt}T00:00:00`).getTime() - new Date(`${todayStr}T00:00:00`).getTime()) / 86400000) + 1);
+      const ratio = mDays > 0 ? remaining / mDays : 0;
+      totalLocked += Math.round(monthLocked * ratio);
+      totalDaysArr.push(remaining);
+    } else {
+      totalLocked += monthLocked;
+      totalDaysArr.push(mDays);
+    }
   }
 
-  const freePerMonth = Math.max(0, Math.round((budgetBase - totalLocked) / targetMonths));
+  const totalFree = Math.max(0, budgetBase - totalLocked);
+  const sumDays = totalDaysArr.reduce((s, d) => s + d, 0);
+  const dailyFree = sumDays > 0 ? totalFree / sumDays : 0;
+  const { from: curFrom, to: curTo } = getBillingRange(billingMonth);
+  const curCycleDays = calcCycleDays(curFrom, curTo);
+  const freePerMonth = Math.round(dailyFree * curCycleDays);
 
-  // 현재 결제주기 일수 (일일 예산 추정용)
-  const { from, to } = getBillingRange(billingMonth);
-  const cycleDays = calcCycleDays(from, to);
-  const dailyEstimate = cycleDays > 0 ? Math.round(freePerMonth / cycleDays) : 0;
+  // 일일 예산 추정
+  const dailyEstimate = Math.round(dailyFree);
 
   // 월별 브레이크다운
   const monthBreakdown: MonthBudgetPreview[] = [];
@@ -631,15 +649,15 @@ export async function calcBudgetPreview(
     const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
     const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
     const locked = fixedMonthly + installmentSum + plannedSum;
-    const { from: mFrom, to: mTo } = getBillingRange(month);
-    const mCycleDays = calcCycleDays(mFrom, mTo);
+    const mDays = totalDaysArr[i] ?? 30;
+    const monthFree = Math.round(dailyFree * mDays);
     monthBreakdown.push({
       month,
       locked,
       installments: installmentSum,
       planned: plannedSum,
-      free: freePerMonth,
-      daily: mCycleDays > 0 ? Math.round(freePerMonth / mCycleDays) : 0,
+      free: monthFree,
+      daily: dailyEstimate,
     });
   }
 
@@ -761,16 +779,16 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   );
   const currentMonthIncome = Number(incomeResult.rows[0]?.total ?? 0);
 
-  // ─── 예산 계산: 스냅샷 기반 (이중 차감 방지) ───
+  // ─── 예산 계산: 실시간 가용자금 기반 ───
   //
   // 핵심 원리:
-  // - budgetBase = 스냅샷 합계 + 스냅샷 이후 수입 (지출 차감 전 원본)
-  // - totalLocked = 모든 월의 고정비 + 할부 + 예정지출 합계
+  // - budgetBase = 실시간 가용자금 (이미 쓴 돈 반영)
+  // - totalLocked = 미래 잠긴 돈 (고정비+할부+예정지출, 현재 달은 남은 비율만)
   // - freePerMonth = (budgetBase - totalLocked) / targetMonths
-  // - dynamicDaily = (freePerMonth - 이번 달 자유 지출) / 남은 일수
+  // - dynamicDaily = freePerMonth 프로레이션 / 남은 일수
   //
-  // effective_available(실시간)은 런웨이 시뮬레이션용으로만 사용
-  const budgetBase = effectiveData.snapshot_total + effectiveData.income_since;
+  // flexibleSpent는 예산 시작일(budget_settings.updated_at) 이후만 추적
+  const budgetBase = totalAvailable;
 
   if (validTarget) {
     const [ty, tm] = validTarget.split('-').map(Number);
@@ -778,6 +796,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     // +1: "7월까지" = 7월 대금(6/16~7/15) 포함
     targetMonths = (ty - by) * 12 + (tm - bm) + 1;
     if (targetMonths > 0) {
+      // 미래 잠긴 돈: 현재 달은 남은 비율만, 나머지는 전체
       let totalLocked = 0;
       for (let i = 0; i < targetMonths; i++) {
         const month = addBillingMonths(billingMonth, i);
@@ -787,11 +806,28 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
         const plannedSum = allPlanned
           .filter((p) => p.year_month === month)
           .reduce((s, p) => s + p.amount, 0);
-        totalLocked += fixedMonthly + installmentSum + plannedSum;
+        const monthLocked = fixedMonthly + installmentSum + plannedSum;
+        if (i === 0) {
+          // 현재 달: 남은 일수 비율만 (이미 지불된 고정비는 가용자금에서 차감됨)
+          const ratio = cycleDays > 0 ? budgetDays / cycleDays : 0;
+          totalLocked += Math.round(monthLocked * ratio);
+        } else {
+          totalLocked += monthLocked;
+        }
       }
 
       const totalFree = Math.max(0, budgetBase - totalLocked);
-      freePerMonth = Math.round(totalFree / targetMonths);
+      // 남은 총 일수 기준으로 균등 분배 → 월 예산으로 환산
+      const totalDaysToTarget = [budgetDays];
+      for (let i = 1; i < targetMonths; i++) {
+        const fm = addBillingMonths(billingMonth, i);
+        const { from: f, to: t } = getBillingRange(fm);
+        totalDaysToTarget.push(calcCycleDays(f, t));
+      }
+      const sumDays = totalDaysToTarget.reduce((s, d) => s + d, 0);
+      // freePerMonth = 일일 자유 예산 * 한 달 일수 (일관성)
+      const dailyFree = sumDays > 0 ? totalFree / sumDays : 0;
+      freePerMonth = Math.round(dailyFree * cycleDays);
     }
   }
 
@@ -799,8 +835,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const simulationFreeBudget = freePerMonth ?? avgVariableMonthly;
 
   // ─── 동적 일일 예산 ───
-  // freePerMonth(순수 자유 예산)에서 이번 달 자유 지출을 빼고 남은 일수로 나눔
-  // 이중 차감 없음: freePerMonth은 스냅샷 기반, flexibleSpent는 실제 자유 지출만
+  // 가용자금 기반 월 예산에서 예산 시작일 이후 자유 지출을 빼고 남은 일수로 나눔
   let dynamicDaily = 0;
   let monthBudgetRemaining = 0;
   let totalRemainingDays = cycleRemainingDays;
