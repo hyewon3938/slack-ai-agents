@@ -86,6 +86,64 @@ export async function createExpense(
   return row;
 }
 
+/** 할부 지출 다건 생성 (총액 기준, 월별 분할) */
+export async function createInstallmentExpenses(
+  userId: number,
+  data: {
+    date: string;
+    totalAmount: number;
+    months: number;
+    category: string;
+    description?: string | null;
+    payment_method?: string;
+    memo?: string | null;
+    type?: 'expense' | 'income';
+  },
+): Promise<ExpenseRow> {
+  const monthlyAmount = Math.round(data.totalAmount / data.months);
+  // 끝전 보정: 마지막 회차에서 나머지 흡수
+  const lastMonthAmount = data.totalAmount - monthlyAmount * (data.months - 1);
+  const groupId = crypto.randomUUID();
+
+  let firstRow: ExpenseRow | null = null;
+
+  for (let i = 0; i < data.months; i++) {
+    const amount = i === data.months - 1 ? lastMonthAmount : monthlyAmount;
+
+    // 첫 회차 날짜 기준 i개월 후 계산
+    const baseDate = new Date(`${data.date}T00:00:00`);
+    baseDate.setMonth(baseDate.getMonth() + i);
+    const expDate = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
+
+    const row = await queryOne<ExpenseRow>(
+      `INSERT INTO expenses (user_id, date, amount, category, description, payment_method,
+                             is_installment, installment_num, installment_total, installment_group,
+                             memo, source, type)
+       VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, 'manual', $11)
+       RETURNING id, date::text, amount, category, description, payment_method,
+                 is_installment, installment_num, installment_total, installment_group,
+                 source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text`,
+      [
+        userId,
+        expDate,
+        amount,
+        data.category,
+        data.description ?? null,
+        data.payment_method ?? '카드',
+        i + 1,
+        data.months,
+        groupId,
+        data.memo ?? null,
+        data.type ?? 'expense',
+      ],
+    );
+    if (i === 0) firstRow = row ?? null;
+  }
+
+  if (!firstRow) throw new Error('createInstallmentExpenses: INSERT returned no rows');
+  return firstRow;
+}
+
 /** 지출 수정 (허용 컬럼 화이트리스트) */
 const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type', 'planned_expense_id']);
 
