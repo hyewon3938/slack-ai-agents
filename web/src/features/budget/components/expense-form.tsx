@@ -5,6 +5,7 @@ import type { ExpenseRow, PlannedExpenseRow } from '@/features/budget/lib/types'
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 import { formatAmount } from '@/lib/types';
+import { Input, Select } from '@/components/ui/input';
 
 interface ExpenseFormProps {
   onAdd: (data: {
@@ -116,53 +117,39 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {/* 날짜 */}
         <div className="col-span-1">
-          <label className="mb-1 block text-xs text-gray-500">날짜</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-            required
-          />
+          <Input label="날짜" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         </div>
 
         {/* 금액 */}
         <div className="col-span-1">
-          <label className="mb-1 block text-xs text-gray-500">금액 (원)</label>
-          <input
+          <Input
+            label="금액 (원)"
             type="text"
             inputMode="numeric"
             value={amountStr}
             onChange={handleAmountChange}
             placeholder="0"
-            className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
             required
           />
         </div>
 
         {/* 카테고리 */}
         <div className="col-span-1">
-          <label className="mb-1 block text-xs text-gray-500">카테고리</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-          >
+          <Select label="카테고리" value={category} onChange={(e) => setCategory(e.target.value)}>
             {currentCategories.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* 내역 */}
         <div className="col-span-1">
-          <label className="mb-1 block text-xs text-gray-500">내역 (선택)</label>
-          <input
+          <Input
+            label="내역 (선택)"
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="메모"
-            className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
           />
         </div>
       </div>
@@ -170,11 +157,10 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
       {/* 예정 지출 연결 (지출 모드 + 예정 지출이 있을 때만) */}
       {entryType === 'expense' && plannedExpenses.length > 0 && (
         <div className="mt-2">
-          <label className="mb-1 block text-xs text-gray-500">예정 지출 연결 (선택)</label>
-          <select
+          <Select
+            label="예정 지출 연결 (선택)"
             value={selectedPlanned ?? ''}
             onChange={(e) => setSelectedPlanned(e.target.value ? Number(e.target.value) : null)}
-            className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
           >
             <option value="">일반 지출 (일일 예산 차감)</option>
             {plannedExpenses.map((p) => (
@@ -183,7 +169,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
                 {(p.used_amount ?? 0) > 0 && ` (사용 ${formatAmount(p.used_amount ?? 0)})`}
               </option>
             ))}
-          </select>
+          </Select>
           {selectedPlanned && (
             <p className="mt-1 text-[10px] text-blue-500">이 지출은 일일 예산에 영향을 주지 않습니다</p>
           )}
