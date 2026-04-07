@@ -221,6 +221,9 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     auto_budget: null,
     auto_daily: null,
     month_budget_remaining: null,
+    today_budget: null,
+    today_flex_spent: null,
+    today_remaining: null,
     by_category: byCategory,
     daily_avg: dailyAvg,
   };
@@ -528,6 +531,11 @@ export interface RunwayResult {
 
   // 평균 가변 지출 (참고용)
   avg_variable_monthly: number;
+
+  // 오늘의 현황 (하루 고정)
+  today_budget: number;       // 오늘 할당 예산 (B방식 — 하루 고정)
+  today_flex_spent: number;   // 오늘 자유 지출
+  today_remaining: number;    // 오늘 남음(양수)/초과(음수)
 }
 
 /** 결제주기 기준 billing month 오프셋 계산 */
@@ -738,9 +746,9 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const cycleElapsed = daysSinceStart;
   const cycleRemainingDays = Math.max(0, budgetDays - daysSinceStart);
 
-  // 현재 주기 자유 지출 + 예정 초과 + 수입 (단일 쿼리로 통합)
+  // 현재 주기 자유 지출 + 예정 초과 + 수입 + 오늘 자유 지출 (단일 쿼리로 통합)
   const endDate = todayStr < cycleTo ? todayStr : cycleTo;
-  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string }>(
+  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string; today_flex: string }>(
     `SELECT
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$2 AND date<=$3 AND is_installment=false
@@ -754,11 +762,17 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        ) sub), 0)::text as overflow,
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$4 AND date<=$5 AND COALESCE(type,'expense')='income'
-       ), 0)::text as income`,
-    [userId, trackingFrom, endDate, cycleFrom, cycleTo],
+       ), 0)::text as income,
+       COALESCE((SELECT SUM(amount) FROM expenses
+         WHERE user_id=$1 AND date=$6 AND is_installment=false
+           AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
+           AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
+       ), 0)::text as today_flex`,
+    [userId, trackingFrom, endDate, cycleFrom, cycleTo, todayStr],
   );
   const flexibleSpent = Number(cycleMetrics?.flex ?? 0) + Number(cycleMetrics?.overflow ?? 0);
   const currentMonthIncome = Number(cycleMetrics?.income ?? 0);
+  const todayFlexSpent = Number(cycleMetrics?.today_flex ?? 0);
 
   // ─── 예산 계산: 실시간 가용자금 기반 ───
   //
@@ -769,7 +783,9 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   // - dynamicDaily = freePerMonth 프로레이션 / 남은 일수
   //
   // flexibleSpent는 예산 시작일(budget_settings.updated_at) 이후만 추적
-  const budgetBase = totalAvailable;
+  // 미래 월 예산 안정화: 이번 달 자유 지출을 더해서 "이번 달 시작 시점" 가용자금으로 복원
+  // 이번 달 지출은 "이번 달 예산을 소비한 것"이지, 전체 가용자금을 영구적으로 깎은 것이 아님
+  const budgetBase = totalAvailable + flexibleSpent;
 
   if (validTarget) {
     const [ty, tm] = validTarget.split('-').map(Number);
@@ -844,6 +860,14 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
       : (cycleDays > 0 ? Math.round(avgVariableMonthly / cycleDays) : 0);
   }
 
+  // 오늘 할당 예산 (B방식 — 하루 고정)
+  // "오늘 시작 시점 남은 예산 / 오늘 포함 남은 일수" 로 역산
+  // cycleRemainingDays는 오늘 제외 남은 일수이므로 +1하면 오늘 포함
+  const budgetBeforeToday = monthBudgetRemaining + todayFlexSpent;
+  const todayIncludedDays = cycleRemainingDays + 1;
+  const todayBudget = todayIncludedDays > 0 ? Math.round(budgetBeforeToday / todayIncludedDays) : 0;
+  const todayRemaining = todayBudget - todayFlexSpent;
+
   // ─── 월별 시뮬레이션 (실제 런웨이) ───
   const projections: MonthProjection[] = [];
   let remaining = totalAvailable;
@@ -911,5 +935,8 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     projections,
     total_remaining_days: totalRemainingDays,
     avg_variable_monthly: avgVariableMonthly,
+    today_budget: todayBudget,
+    today_flex_spent: todayFlexSpent,
+    today_remaining: todayRemaining,
   };
 }
