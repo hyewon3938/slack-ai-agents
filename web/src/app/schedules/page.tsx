@@ -7,6 +7,8 @@ import { startOfWeek, endOfWeek } from 'date-fns';
 import { WEEK_START } from '@/features/schedule/lib/calendar-utils';
 import { useSchedules } from '@/features/schedule/hooks/use-schedules';
 import { AppShell } from '@/components/ui/app-shell';
+import { TopTabs } from '@/components/ui/tabs';
+import { TabsSkeleton, ListSkeleton } from '@/components/ui/skeleton';
 import { CalendarHeader } from '@/features/schedule/components/calendar-header';
 import { MonthView } from '@/features/schedule/components/month-view';
 import { DayDetailPanel } from '@/features/schedule/components/day-detail-panel';
@@ -91,17 +93,10 @@ export default function SchedulesPage() {
     return (
       <AppShell>
         <div className="flex flex-1 flex-col">
-          <div className="border-b border-gray-200 bg-white px-4 py-3">
-            <div className="mx-auto flex max-w-5xl items-center justify-between">
-              <div className="h-8 w-48 animate-pulse rounded bg-gray-200" />
-              <div className="h-8 w-24 animate-pulse rounded bg-gray-200" />
-            </div>
-          </div>
+          <TabsSkeleton count={3} />
           <div className="flex-1 p-4">
-            <div className="mx-auto max-w-3xl space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />
-              ))}
+            <div className="mx-auto max-w-3xl">
+              <ListSkeleton rows={5} rowHeight="h-20" />
             </div>
           </div>
         </div>
@@ -113,23 +108,7 @@ export default function SchedulesPage() {
     <AppShell>
       <div className="flex flex-1 flex-col">
         {/* 서브 탭 */}
-        <div className="border-b border-gray-200 bg-white px-4 pt-2">
-          <div className="mx-auto flex max-w-5xl gap-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`rounded-t-lg px-4 py-2 text-xs font-medium transition ${
-                  activeTab === tab.id
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'border-b-2 border-transparent text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <TopTabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
         {/* 캘린더 탭 */}
         {activeTab === 'calendar' && (

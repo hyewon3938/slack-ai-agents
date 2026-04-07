@@ -67,7 +67,7 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
               onClick={() => setTimeSlot(slot.value)}
               className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition ${
                 timeSlot === slot.value
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -87,7 +87,7 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
               onClick={() => setFrequency(freq.value)}
               className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
                 frequency === freq.value
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -117,7 +117,7 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
         <button
           onClick={handleSubmit}
           disabled={!name.trim() || saving || !isDirty()}
-          className="rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {saving ? '저장 중...' : template ? '수정' : '추가'}
         </button>
