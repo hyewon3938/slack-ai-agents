@@ -600,7 +600,8 @@ export async function calcBudgetPreview(
     queryPlannedExpenses(userId),
   ]);
 
-  const totalAvailable = effectiveData.effective;
+  // 스냅샷 기반 (지출 차감 전 원본)
+  const budgetBase = effectiveData.snapshot_total + effectiveData.income_since;
   const fixedMonthly = fixedCosts.filter((fc) => fc.active).reduce((s, fc) => s + fc.amount, 0);
   const installments = installmentRows.rows
     .filter((r) => r.installment_total > r.installment_num)
@@ -615,7 +616,7 @@ export async function calcBudgetPreview(
     totalLocked += fixedMonthly + installmentSum + plannedSum;
   }
 
-  const freePerMonth = Math.max(0, Math.round((totalAvailable - totalLocked) / targetMonths));
+  const freePerMonth = Math.max(0, Math.round((budgetBase - totalLocked) / targetMonths));
 
   // 현재 결제주기 일수 (일일 예산 추정용)
   const { from, to } = getBillingRange(billingMonth);
@@ -742,13 +743,23 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   );
   const currentMonthIncome = Number(incomeResult.rows[0]?.total ?? 0);
 
+  // ─── 예산 계산: 스냅샷 기반 (이중 차감 방지) ───
+  //
+  // 핵심 원리:
+  // - budgetBase = 스냅샷 합계 + 스냅샷 이후 수입 (지출 차감 전 원본)
+  // - totalLocked = 모든 월의 고정비 + 할부 + 예정지출 합계
+  // - freePerMonth = (budgetBase - totalLocked) / targetMonths
+  // - dynamicDaily = (freePerMonth - 이번 달 자유 지출) / 남은 일수
+  //
+  // effective_available(실시간)은 런웨이 시뮬레이션용으로만 사용
+  const budgetBase = effectiveData.snapshot_total + effectiveData.income_since;
+
   if (validTarget) {
     const [ty, tm] = validTarget.split('-').map(Number);
     const [by, bm] = billingMonth.split('-').map(Number);
-    // +1: "8월까지" = 8월 대금 포함 (7/16~8/15)
+    // +1: "7월까지" = 7월 대금(6/16~7/15) 포함
     targetMonths = (ty - by) * 12 + (tm - bm) + 1;
     if (targetMonths > 0) {
-      // 미래 잠긴 돈 합계 (현재 ~ 목표, 모든 월 포함)
       let totalLocked = 0;
       for (let i = 0; i < targetMonths; i++) {
         const month = addBillingMonths(billingMonth, i);
@@ -761,53 +772,40 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
         totalLocked += fixedMonthly + installmentSum + plannedSum;
       }
 
-      // ★ 핵심 수정: 가용자금에서 이미 지출이 차감된 상태이므로,
-      // "남은 자유자금 ÷ 남은 총 일수"로 일일 예산 산정 (이중 차감 없음)
-      const totalFreeRemaining = Math.max(0, totalAvailable - totalLocked);
-      freePerMonth = targetMonths > 0 ? Math.round(totalFreeRemaining / targetMonths) : 0;
+      const totalFree = Math.max(0, budgetBase - totalLocked);
+      freePerMonth = Math.round(totalFree / targetMonths);
     }
   }
 
   // 시뮬레이션 자유 예산: 목표 기반 > 평균 순
   const simulationFreeBudget = freePerMonth ?? avgVariableMonthly;
 
-  // ★ 동적 일일 예산: (가용자금 - 미래 잠긴 돈) ÷ 남은 총 일수
-  // 이중 차감 없음: effective_available에 이미 지출이 반영됨
+  // ─── 동적 일일 예산 ───
+  // freePerMonth(순수 자유 예산)에서 이번 달 자유 지출을 빼고 남은 일수로 나눔
+  // 이중 차감 없음: freePerMonth은 스냅샷 기반, flexibleSpent는 실제 자유 지출만
   let dynamicDaily = 0;
   let monthBudgetRemaining = 0;
   let totalRemainingDays = cycleRemainingDays;
 
   if (validTarget && targetMonths > 0) {
-    // 나머지 미래 월의 총 일수 합산
     for (let i = 1; i < targetMonths; i++) {
       const futureMonth = addBillingMonths(billingMonth, i);
       const { from: fFrom, to: fTo } = getBillingRange(futureMonth);
       totalRemainingDays += calcCycleDays(fFrom, fTo);
     }
 
-    // 미래 잠긴 돈 총합 (현재 주기 남은 비율 + 미래 전체)
-    let futureLocked = 0;
-    for (let i = 0; i < targetMonths; i++) {
-      const month = addBillingMonths(billingMonth, i);
-      const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
-      const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
-      if (i === 0) {
-        // 현재 월: 남은 일수 비율만큼만 잠김 (이미 지불된 고정비는 effective에서 차감됨)
-        const ratio = cycleDays > 0 ? cycleRemainingDays / cycleDays : 0;
-        futureLocked += Math.round((fixedMonthly + installmentSum + plannedSum) * ratio);
-      } else {
-        futureLocked += fixedMonthly + installmentSum + plannedSum;
-      }
-    }
-
-    const totalFreeForDays = Math.max(0, totalAvailable - futureLocked);
-    dynamicDaily = totalRemainingDays > 0 ? Math.round(totalFreeForDays / totalRemainingDays) : 0;
-    monthBudgetRemaining = dynamicDaily * cycleRemainingDays;
+    // 이번 달 자유 예산 = freePerMonth + 이번 달 수입 (예정지출은 이미 locked에 포함)
+    const thisMonthFree = (freePerMonth ?? 0) + currentMonthIncome;
+    monthBudgetRemaining = thisMonthFree - flexibleSpent;
+    dynamicDaily = cycleRemainingDays > 0
+      ? Math.round(monthBudgetRemaining / cycleRemainingDays)
+      : 0;
   } else {
-    // 목표 미설정: 3개월 평균 기준으로 남은 일수 계산
-    const avgDailyBudget = cycleDays > 0 ? Math.round(avgVariableMonthly / cycleDays) : 0;
+    // 목표 미설정: 3개월 평균 기준
     monthBudgetRemaining = Math.max(0, avgVariableMonthly - flexibleSpent);
-    dynamicDaily = cycleRemainingDays > 0 ? Math.round(monthBudgetRemaining / cycleRemainingDays) : avgDailyBudget;
+    dynamicDaily = cycleRemainingDays > 0
+      ? Math.round(monthBudgetRemaining / cycleRemainingDays)
+      : (cycleDays > 0 ? Math.round(avgVariableMonthly / cycleDays) : 0);
   }
 
   // ─── 월별 시뮬레이션 (실제 런웨이) ───
