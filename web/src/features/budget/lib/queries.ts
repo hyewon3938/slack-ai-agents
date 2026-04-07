@@ -451,44 +451,39 @@ interface EffectiveAvailable {
 }
 
 /**
- * 가용자금 실시간 계산:
+ * 가용자금 실시간 계산 (단일 CTE 쿼리로 통합):
  * 자산 available_amount 합계 - 스냅샷 이후 지출 + 스냅샷 이후 수입
  */
 export async function getEffectiveAvailable(userId: number): Promise<EffectiveAvailable> {
-  const assetResult = await query<{ total: string; latest_update: string | null }>(
-    `SELECT COALESCE(SUM(available_amount), 0) as total, MAX(updated_at) as latest_update
-     FROM assets WHERE user_id = $1 AND is_emergency = false`,
+  const result = await queryOne<{
+    snapshot_total: string;
+    latest_update: string | null;
+    expense_since: string;
+    income_since: string;
+  }>(
+    `WITH asset_snapshot AS (
+       SELECT COALESCE(SUM(available_amount), 0) as total, MAX(updated_at) as latest
+       FROM assets WHERE user_id = $1 AND is_emergency = false
+     )
+     SELECT
+       a.total::text as snapshot_total,
+       a.latest::text as latest_update,
+       COALESCE((SELECT SUM(amount) FROM expenses WHERE user_id = $1 AND COALESCE(type,'expense')='expense' AND created_at > a.latest), 0)::text as expense_since,
+       COALESCE((SELECT SUM(amount) FROM expenses WHERE user_id = $1 AND COALESCE(type,'expense')='income' AND created_at > a.latest), 0)::text as income_since
+     FROM asset_snapshot a`,
     [userId],
   );
-  const snapshotTotal = Number(assetResult.rows[0]?.total ?? 0);
-  const latestUpdate = assetResult.rows[0]?.latest_update ?? null;
 
-  if (!latestUpdate) {
-    return { snapshot_total: snapshotTotal, expense_since: 0, income_since: 0, effective: snapshotTotal, latest_update: null };
-  }
-
-  const [expResult, incResult] = await Promise.all([
-    query<{ total: string }>(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-       WHERE user_id = $1 AND COALESCE(type, 'expense') = 'expense' AND created_at > $2`,
-      [userId, latestUpdate],
-    ),
-    query<{ total: string }>(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-       WHERE user_id = $1 AND COALESCE(type, 'expense') = 'income' AND created_at > $2`,
-      [userId, latestUpdate],
-    ),
-  ]);
-
-  const expenseSince = Number(expResult.rows[0]?.total ?? 0);
-  const incomeSince = Number(incResult.rows[0]?.total ?? 0);
+  const snapshotTotal = Number(result?.snapshot_total ?? 0);
+  const expenseSince = Number(result?.expense_since ?? 0);
+  const incomeSince = Number(result?.income_since ?? 0);
 
   return {
     snapshot_total: snapshotTotal,
     expense_since: expenseSince,
     income_since: incomeSince,
     effective: snapshotTotal - expenseSince + incomeSince,
-    latest_update: latestUpdate,
+    latest_update: result?.latest_update ?? null,
   };
 }
 
@@ -744,40 +739,27 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const cycleElapsed = daysSinceStart;
   const cycleRemainingDays = Math.max(0, budgetDays - daysSinceStart);
 
-  // 현재 주기 자유 지출 (예산 시작일 이후만)
-  const flexResult = await query<{ total: string }>(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-     WHERE user_id = $1 AND date >= $2 AND date <= $3
-       AND is_installment = false
-       AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
-       AND COALESCE(type, 'expense') = 'expense'
-       AND planned_expense_id IS NULL`,
-    [userId, trackingFrom, todayStr < cycleTo ? todayStr : cycleTo],
+  // 현재 주기 자유 지출 + 예정 초과 + 수입 (단일 쿼리로 통합)
+  const endDate = todayStr < cycleTo ? todayStr : cycleTo;
+  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string }>(
+    `SELECT
+       COALESCE((SELECT SUM(amount) FROM expenses
+         WHERE user_id=$1 AND date>=$2 AND date<=$3 AND is_installment=false
+           AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
+           AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
+       ), 0)::text as flex,
+       COALESCE((SELECT SUM(GREATEST(used-budget,0)) FROM (
+         SELECT p.amount as budget, COALESCE(SUM(e.amount),0) as used
+         FROM planned_expenses p LEFT JOIN expenses e ON e.planned_expense_id=p.id AND e.date>=$2 AND e.date<=$3
+         WHERE p.user_id=$1 GROUP BY p.id, p.amount
+       ) sub), 0)::text as overflow,
+       COALESCE((SELECT SUM(amount) FROM expenses
+         WHERE user_id=$1 AND date>=$4 AND date<=$5 AND COALESCE(type,'expense')='income'
+       ), 0)::text as income`,
+    [userId, trackingFrom, endDate, cycleFrom, cycleTo],
   );
-  // 예정 지출 초과분
-  const overflowResult = await query<{ overflow: string }>(
-    `SELECT COALESCE(SUM(GREATEST(used - budget, 0)), 0) as overflow
-     FROM (
-       SELECT p.id, p.amount as budget, COALESCE(SUM(e.amount), 0) as used
-       FROM planned_expenses p
-       LEFT JOIN expenses e ON e.planned_expense_id = p.id
-         AND e.date >= $2 AND e.date <= $3
-       WHERE p.user_id = $1
-       GROUP BY p.id, p.amount
-     ) sub`,
-    [userId, trackingFrom, todayStr < cycleTo ? todayStr : cycleTo],
-  );
-  const plannedOverflow = Number(overflowResult.rows[0]?.overflow ?? 0);
-  const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0) + plannedOverflow;
-
-  // 이번 달 수입 합계
-  const incomeResult = await query<{ total: string }>(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-     WHERE user_id = $1 AND date >= $2 AND date <= $3
-       AND COALESCE(type, 'expense') = 'income'`,
-    [userId, cycleFrom, cycleTo],
-  );
-  const currentMonthIncome = Number(incomeResult.rows[0]?.total ?? 0);
+  const flexibleSpent = Number(cycleMetrics?.flex ?? 0) + Number(cycleMetrics?.overflow ?? 0);
+  const currentMonthIncome = Number(cycleMetrics?.income ?? 0);
 
   // ─── 예산 계산: 실시간 가용자금 기반 ───
   //
