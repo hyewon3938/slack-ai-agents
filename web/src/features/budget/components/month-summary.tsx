@@ -31,7 +31,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
 
   // 결제주기: 전월 16일 ~ 당월 15일
   const todayISO = getTodayISO();
-  const today = new Date(`${todayISO}T12:00:00`);
+  const today = new Date(`${todayISO}T00:00:00`);
   const [year, month] = summary.year_month.split('-').map(Number);
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevYear = month === 1 ? year - 1 : year;
@@ -92,7 +92,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
               {/* 하루 분석 메시지 */}
               {todayRemaining < 0 && daysLeft > 0 && todayBudget > 0 && (
                 <div className="mt-2 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-500">
-                  이 패턴이면 런웨이 약 {Math.floor(Math.abs(todayRemaining) * daysLeft / todayBudget)}일 단축
+                  남은 {daysLeft}일 이 패턴이면 런웨이 약 {Math.floor(Math.abs(todayRemaining) * daysLeft / todayBudget)}일 단축
                 </div>
               )}
               {todayRemaining > 0 && todayFlexSpent > 0 && (
