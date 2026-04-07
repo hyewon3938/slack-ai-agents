@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { queryExpenses, createExpense } from '@/features/budget/lib/queries';
-import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 
-const VALID_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
+const VALID_EXPENSE_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
+const VALID_INCOME_CATEGORIES = new Set<string>(INCOME_CATEGORIES);
+const VALID_CATEGORIES = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -41,6 +43,7 @@ export async function POST(request: Request) {
       description?: string | null;
       payment_method?: string;
       memo?: string | null;
+      type?: 'expense' | 'income';
     };
 
     if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
@@ -49,7 +52,15 @@ export async function POST(request: Request) {
     if (typeof body.amount !== 'number' || body.amount <= 0 || !Number.isInteger(body.amount)) {
       return NextResponse.json({ error: 'amount는 양수 정수여야 합니다' }, { status: 400 });
     }
-    if (!body.category || !VALID_CATEGORIES.has(body.category)) {
+
+    const entryType = body.type ?? 'expense';
+    if (entryType !== 'expense' && entryType !== 'income') {
+      return NextResponse.json({ error: 'type은 expense 또는 income이어야 합니다' }, { status: 400 });
+    }
+
+    // 수입이면 수입 카테고리, 지출이면 지출 카테고리 검증
+    const validSet = entryType === 'income' ? VALID_INCOME_CATEGORIES : VALID_EXPENSE_CATEGORIES;
+    if (!body.category || !validSet.has(body.category)) {
       return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
     }
 
@@ -60,6 +71,7 @@ export async function POST(request: Request) {
       description: body.description,
       payment_method: body.payment_method,
       memo: body.memo,
+      type: entryType,
     });
     return NextResponse.json({ data }, { status: 201 });
   } catch {

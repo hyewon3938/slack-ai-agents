@@ -7,6 +7,7 @@ import type {
   MonthSummary,
   CategoryStat,
   MonthProjection,
+  PlannedExpenseRow,
 } from './types';
 
 // ─── 지출 CRUD ───────────────────────────────────────
@@ -27,7 +28,7 @@ export async function queryExpenses(
   const { rows } = await query<ExpenseRow>(
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
-            source, memo, created_at::text
+            source, memo, COALESCE(type, 'expense') as type, created_at::text
      FROM expenses
      WHERE ${conditions.join(' AND ')}
      ORDER BY date DESC, created_at DESC`,
@@ -41,13 +42,13 @@ export async function queryExpense(userId: number, id: number): Promise<ExpenseR
   return queryOne<ExpenseRow>(
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
-            source, memo, created_at::text
+            source, memo, COALESCE(type, 'expense') as type, created_at::text
      FROM expenses WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
 }
 
-/** 지출 추가 */
+/** 지출/수입 추가 */
 export async function createExpense(
   userId: number,
   data: {
@@ -57,22 +58,32 @@ export async function createExpense(
     description?: string | null;
     payment_method?: string;
     memo?: string | null;
+    type?: 'expense' | 'income';
   },
 ): Promise<ExpenseRow> {
   const row = await queryOne<ExpenseRow>(
-    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual')
+    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8)
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
-               source, memo, created_at::text`,
-    [userId, data.date, data.amount, data.category, data.description ?? null, data.payment_method ?? '카드', data.memo ?? null],
+               source, memo, COALESCE(type, 'expense') as type, created_at::text`,
+    [
+      userId,
+      data.date,
+      data.amount,
+      data.category,
+      data.description ?? null,
+      data.payment_method ?? '카드',
+      data.memo ?? null,
+      data.type ?? 'expense',
+    ],
   );
   if (!row) throw new Error('createExpense: INSERT returned no rows');
   return row;
 }
 
 /** 지출 수정 (허용 컬럼 화이트리스트) */
-const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo']);
+const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type']);
 
 export async function updateExpense(
   userId: number,
@@ -89,7 +100,7 @@ export async function updateExpense(
      WHERE id = $1 AND user_id = $2
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
-               source, memo, created_at::text`,
+               source, memo, COALESCE(type, 'expense') as type, created_at::text`,
     [id, userId, ...values],
   );
 }
@@ -115,12 +126,14 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
 
   const [totalResult, categoryResult, budget, fixedCosts] = await Promise.all([
     query<{ total: string }>(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = $1 AND date >= $2 AND date <= $3`,
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+       WHERE user_id = $1 AND date >= $2 AND date <= $3 AND COALESCE(type, 'expense') = 'expense'`,
       [userId, from, to],
     ),
     query<{ category: string; total: string; count: string }>(
       `SELECT category, SUM(amount) as total, COUNT(*) as count
        FROM expenses WHERE user_id = $1 AND date >= $2 AND date <= $3
+         AND COALESCE(type, 'expense') = 'expense'
        GROUP BY category ORDER BY SUM(amount) DESC`,
       [userId, from, to],
     ),
@@ -138,12 +151,9 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
 
   // 일평균/예산 계산에서 제외할 카테고리 (고정비, 사업비)
   const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배']);
-  // 환불은 별도 집계 (수입 성격)
-  const refundTotal = byCategory
-    .filter((c) => c.category === '환불')
-    .reduce((s, c) => s + c.total, 0);
+
   const variableTotal = byCategory
-    .filter((c) => !EXCLUDED_CATEGORIES.has(c.category) && c.category !== '환불')
+    .filter((c) => !EXCLUDED_CATEGORIES.has(c.category))
     .reduce((s, c) => s + c.total, 0);
 
   // 할부 합계 (가변 카테고리 중 is_installment=true)
@@ -151,11 +161,24 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
        AND is_installment = true
-       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')`,
+       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
+       AND COALESCE(type, 'expense') = 'expense'`,
     [userId, from, to],
   );
   const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
   const flexibleSpent = variableTotal - installmentTotal;
+
+  // 수입 합계 (type='income')
+  const incomeResult = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+     WHERE user_id = $1 AND date >= $2 AND date <= $3 AND COALESCE(type, 'expense') = 'income'`,
+    [userId, from, to],
+  );
+  const incomeTotal = Number(incomeResult.rows[0]?.total ?? 0);
+
+  // 예정 지출 합계
+  const plannedRows = await queryPlannedExpenses(userId, yearMonth);
+  const plannedTotal = plannedRows.reduce((s, p) => s + p.amount, 0);
 
   // 결제주기 일수 계산 (전월 16일 ~ 당월 15일)
   const fromDate = new Date(`${from}T00:00:00`);
@@ -163,6 +186,8 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   const daysInCycle = Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const dailyAvg = variableTotal > 0 ? Math.round(variableTotal / daysInCycle) : 0;
 
+  // 자동 예산은 런웨이 API에서 따로 로드 (순환 참조 방지)
+  // 기본값 null, 필요 시 클라이언트에서 병렬 로드
   return {
     year_month: yearMonth,
     total,
@@ -171,7 +196,10 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     variable_total: variableTotal,
     installment_total: installmentTotal,
     flexible_spent: flexibleSpent,
-    refund_total: refundTotal,
+    income_total: incomeTotal,
+    planned_total: plannedTotal,
+    auto_budget: null,
+    auto_daily: null,
     by_category: byCategory,
     daily_avg: dailyAvg,
   };
@@ -213,8 +241,6 @@ export async function updateFixedCost(
 /**
  * 고정비 자동 기록: 결제일(day_of_month)이 설정된 활성 고정비에 대해
  * 해당 결제주기 내에 지출 기록이 없으면 자동 생성.
- * - 미래 날짜는 생성하지 않음 (오늘까지만)
- * - source='fixed'로 구분, 삭제 후에도 기록은 유지
  */
 export async function ensureFixedCostExpenses(userId: number, yearMonth: string): Promise<number> {
   const [year, month] = yearMonth.split('-').map(Number);
@@ -234,8 +260,6 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
   for (const fc of activeCostsWithDay) {
     const day = fc.day_of_month!;
 
-    // 결제주기 내 실제 날짜 계산
-    // day >= 16 → 전월 (결제주기 시작 쪽), day <= 15 → 당월 (결제주기 끝 쪽)
     let expenseYear: number, expenseMonth: number;
     if (day >= 16) {
       expenseYear = prevYear;
@@ -245,15 +269,12 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
       expenseMonth = month;
     }
 
-    // 해당 월의 실제 마지막 일자 확인 (31일이 없는 달 처리)
     const lastDay = new Date(expenseYear, expenseMonth, 0).getDate();
     const actualDay = Math.min(day, lastDay);
     const expenseDate = `${expenseYear}-${String(expenseMonth).padStart(2, '0')}-${String(actualDay).padStart(2, '0')}`;
 
-    // 미래 날짜는 스킵
     if (expenseDate > todayStr) continue;
 
-    // 이미 기록된 건이 있는지 확인 (source='fixed', 같은 날짜, 같은 이름)
     const existing = await queryOne<{ id: number }>(
       `SELECT id FROM expenses
        WHERE user_id = $1 AND source = 'fixed' AND date = $2 AND description = $3`,
@@ -262,10 +283,9 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
 
     if (existing) continue;
 
-    // 자동 생성
     await queryOne(
-      `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, source, memo)
-       VALUES ($1, $2, $3, $4, $5, '카드', 'fixed', $6)
+      `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, source, memo, type)
+       VALUES ($1, $2, $3, $4, $5, '카드', 'fixed', $6, 'expense')
        RETURNING id`,
       [userId, expenseDate, fc.amount, fc.category ?? '기타', fc.name, `고정비 자동 기록 (fixed_cost_id: ${fc.id})`],
     );
@@ -336,6 +356,52 @@ export async function updateAsset(
   );
 }
 
+// ─── 예정 지출 ────────────────────────────────────────
+
+/** 예정 지출 목록 조회 */
+export async function queryPlannedExpenses(userId: number, yearMonth?: string): Promise<PlannedExpenseRow[]> {
+  if (yearMonth) {
+    const { rows } = await query<PlannedExpenseRow>(
+      `SELECT id, year_month, amount, memo, created_at::text
+       FROM planned_expenses WHERE user_id = $1 AND year_month = $2
+       ORDER BY created_at`,
+      [userId, yearMonth],
+    );
+    return rows;
+  }
+  const { rows } = await query<PlannedExpenseRow>(
+    `SELECT id, year_month, amount, memo, created_at::text
+     FROM planned_expenses WHERE user_id = $1
+     ORDER BY year_month, created_at`,
+    [userId],
+  );
+  return rows;
+}
+
+/** 예정 지출 추가 */
+export async function createPlannedExpense(
+  userId: number,
+  data: { year_month: string; amount: number; memo?: string | null },
+): Promise<PlannedExpenseRow> {
+  const row = await queryOne<PlannedExpenseRow>(
+    `INSERT INTO planned_expenses (user_id, year_month, amount, memo)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, year_month, amount, memo, created_at::text`,
+    [userId, data.year_month, data.amount, data.memo ?? null],
+  );
+  if (!row) throw new Error('createPlannedExpense: INSERT returned no rows');
+  return row;
+}
+
+/** 예정 지출 삭제 */
+export async function deletePlannedExpense(userId: number, id: number): Promise<boolean> {
+  const result = await query(
+    'DELETE FROM planned_expenses WHERE id = $1 AND user_id = $2',
+    [id, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 // ─── 예산 설정 (목표 기간 등) ─────────────────────────────
 
 /** 목표 기간 조회 */
@@ -357,24 +423,96 @@ export async function upsertTargetDate(userId: number, targetDate: string | null
   );
 }
 
+// ─── 가용자금 실시간 계산 ────────────────────────────────
+
+interface EffectiveAvailable {
+  snapshot_total: number;  // 자산 스냅샷 합계
+  expense_since: number;   // 스냅샷 이후 지출
+  income_since: number;    // 스냅샷 이후 수입
+  effective: number;       // 실시간 가용자금
+  latest_update: string | null;
+}
+
+/**
+ * 가용자금 실시간 계산:
+ * 자산 available_amount 합계 - 스냅샷 이후 지출 + 스냅샷 이후 수입
+ */
+export async function getEffectiveAvailable(userId: number): Promise<EffectiveAvailable> {
+  const assetResult = await query<{ total: string; latest_update: string | null }>(
+    `SELECT COALESCE(SUM(available_amount), 0) as total, MAX(updated_at) as latest_update
+     FROM assets WHERE user_id = $1 AND is_emergency = false`,
+    [userId],
+  );
+  const snapshotTotal = Number(assetResult.rows[0]?.total ?? 0);
+  const latestUpdate = assetResult.rows[0]?.latest_update ?? null;
+
+  if (!latestUpdate) {
+    return { snapshot_total: snapshotTotal, expense_since: 0, income_since: 0, effective: snapshotTotal, latest_update: null };
+  }
+
+  const [expResult, incResult] = await Promise.all([
+    query<{ total: string }>(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+       WHERE user_id = $1 AND COALESCE(type, 'expense') = 'expense' AND created_at > $2`,
+      [userId, latestUpdate],
+    ),
+    query<{ total: string }>(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+       WHERE user_id = $1 AND COALESCE(type, 'expense') = 'income' AND created_at > $2`,
+      [userId, latestUpdate],
+    ),
+  ]);
+
+  const expenseSince = Number(expResult.rows[0]?.total ?? 0);
+  const incomeSince = Number(incResult.rows[0]?.total ?? 0);
+
+  return {
+    snapshot_total: snapshotTotal,
+    expense_since: expenseSince,
+    income_since: incomeSince,
+    effective: snapshotTotal - expenseSince + incomeSince,
+    latest_update: latestUpdate,
+  };
+}
+
 // ─── 런웨이 계산 (월별 시뮬레이션) ──────────────────────
 
+/** 월별 예산 프리뷰 (설정 탭용) */
+export interface MonthBudgetPreview {
+  month: string;
+  locked: number;         // 고정비 + 할부 + 예정지출
+  installments: number;   // 할부 합계
+  planned: number;        // 예정 지출 합계
+  free: number;           // 자유 예산
+  daily: number;          // 일일 자유 예산
+}
+
 export interface RunwayResult {
-  total_available: number;           // 총 가용 자금 (비상금 제외)
-  fixed_monthly: number;             // 월 고정비 합계
-  avg_variable_monthly: number;      // 최근 3개월 평균 가변 지출
-  projections: MonthProjection[];    // 월별 시뮬레이션 결과
-  budget_runway_months: number;      // 시뮬레이션 기반 런웨이 (개월)
-  budget_runway_date: string;        // 런웨이 종료월
-  target_date: string | null;        // 목표 기간 (YYYY-MM)
-  recommended_budget: number | null; // 목표 기간 기반 추천 자유 예산
-  recommended_daily: number | null;  // 추천 일일 자유 예산
-  // 현재 결제주기 추적
-  daily_target: number | null;       // 일일 목표 (자유 예산 / 결제주기 일수)
-  cycle_days: number;                // 결제주기 일수
-  cycle_elapsed: number;             // 경과 일수
-  flexible_spent: number;            // 현재 주기 자유 지출
-  cumulative_saved: number;          // (일일목표 × 경과일) - 실제 자유지출
+  // 가용자금
+  effective_available: number;   // 실시간 가용자금
+  snapshot_total: number;        // 자산 스냅샷 합계
+  fixed_monthly: number;         // 월 고정비
+
+  // 목표 기반 예산
+  target_date: string | null;
+  free_per_month: number | null; // 균등 분배 월 자유 예산
+
+  // 동적 일일 예산
+  dynamic_daily: number;         // (월예산 - 이번달지출) / 남은일수
+  month_budget_remaining: number; // 이번 달 남은 자유 예산
+  cycle_days: number;
+  cycle_remaining_days: number;  // 남은 일수
+  cycle_elapsed: number;         // 경과 일수
+  flexible_spent: number;        // 이번 주기 자유 지출
+  current_month_income: number;  // 이번 달 수입
+
+  // 실제 런웨이 (시뮬레이션)
+  actual_runway_months: number;
+  actual_runway_date: string;
+  projections: MonthProjection[];
+
+  // 평균 가변 지출 (참고용)
+  avg_variable_monthly: number;
 }
 
 /** 결제주기 기준 billing month 오프셋 계산 */
@@ -404,20 +542,34 @@ function getBillingRange(yearMonth: string): { from: string; to: string } {
   };
 }
 
-export async function queryRunway(userId: number, targetDate?: string): Promise<RunwayResult> {
+/** 결제주기 일수 계산 */
+function calcCycleDays(from: string, to: string): number {
+  return Math.round(
+    (new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime()) / 86400000,
+  ) + 1;
+}
+
+/**
+ * 목표 날짜 기준 월별 예산 프리뷰 계산
+ * 설정 탭에서 목표 날짜 변경 시 즉시 확인용
+ */
+export async function calcBudgetPreview(
+  userId: number,
+  targetDate: string,
+): Promise<{ free_per_month: number; daily_estimate: number; month_breakdown: MonthBudgetPreview[] } | null> {
+  if (!/^\d{4}-\d{2}$/.test(targetDate)) return null;
+
   const now = new Date();
   const billingMonth = getCurrentBillingMonth(now);
+  const [ty, tm] = targetDate.split('-').map(Number);
+  const [by, bm] = billingMonth.split('-').map(Number);
+  const targetMonths = (ty - by) * 12 + (tm - bm);
+  if (targetMonths <= 0) return null;
 
-  const [assets, fixedCosts, installmentRows, variableRows] = await Promise.all([
-    queryAssets(userId),
+  const [effectiveData, fixedCosts, installmentRows, allPlanned] = await Promise.all([
+    getEffectiveAvailable(userId),
     queryFixedCosts(userId),
-    // 할부 그룹별 최신 레코드 (남은 회차 계산용)
-    query<{
-      installment_group: string;
-      installment_num: number;
-      installment_total: number;
-      amount: number;
-    }>(
+    query<{ installment_group: string; installment_num: number; installment_total: number; amount: number }>(
       `SELECT DISTINCT ON (installment_group)
          installment_group, installment_num, installment_total, amount
        FROM expenses
@@ -425,7 +577,69 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        ORDER BY installment_group, date DESC, created_at DESC`,
       [userId],
     ),
-    // 최근 3개월 가변 지출 평균 (고정비/사업비/환불 제외)
+    queryPlannedExpenses(userId),
+  ]);
+
+  const totalAvailable = effectiveData.effective;
+  const fixedMonthly = fixedCosts.filter((fc) => fc.active).reduce((s, fc) => s + fc.amount, 0);
+  const installments = installmentRows.rows
+    .filter((r) => r.installment_total > r.installment_num)
+    .map((r) => ({ amount: r.amount, remaining: r.installment_total - r.installment_num }));
+
+  // 전체 잠긴 돈 합계 계산
+  let totalLocked = 0;
+  for (let i = 0; i < targetMonths; i++) {
+    const month = addBillingMonths(billingMonth, i);
+    const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
+    const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
+    totalLocked += fixedMonthly + installmentSum + plannedSum;
+  }
+
+  const freePerMonth = Math.max(0, Math.round((totalAvailable - totalLocked) / targetMonths));
+
+  // 현재 결제주기 일수 (일일 예산 추정용)
+  const { from, to } = getBillingRange(billingMonth);
+  const cycleDays = calcCycleDays(from, to);
+  const dailyEstimate = cycleDays > 0 ? Math.round(freePerMonth / cycleDays) : 0;
+
+  // 월별 브레이크다운
+  const monthBreakdown: MonthBudgetPreview[] = [];
+  for (let i = 0; i < targetMonths; i++) {
+    const month = addBillingMonths(billingMonth, i);
+    const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
+    const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
+    const locked = fixedMonthly + installmentSum + plannedSum;
+    const { from: mFrom, to: mTo } = getBillingRange(month);
+    const mCycleDays = calcCycleDays(mFrom, mTo);
+    monthBreakdown.push({
+      month,
+      locked,
+      installments: installmentSum,
+      planned: plannedSum,
+      free: freePerMonth,
+      daily: mCycleDays > 0 ? Math.round(freePerMonth / mCycleDays) : 0,
+    });
+  }
+
+  return { free_per_month: freePerMonth, daily_estimate: dailyEstimate, month_breakdown: monthBreakdown };
+}
+
+export async function queryRunway(userId: number, targetDate?: string): Promise<RunwayResult> {
+  const now = new Date();
+  const billingMonth = getCurrentBillingMonth(now);
+
+  const [effectiveData, fixedCosts, installmentRows, variableRows, allPlanned] = await Promise.all([
+    getEffectiveAvailable(userId),
+    queryFixedCosts(userId),
+    query<{ installment_group: string; installment_num: number; installment_total: number; amount: number }>(
+      `SELECT DISTINCT ON (installment_group)
+         installment_group, installment_num, installment_total, amount
+       FROM expenses
+       WHERE user_id = $1 AND is_installment = true AND installment_group IS NOT NULL
+       ORDER BY installment_group, date DESC, created_at DESC`,
+      [userId],
+    ),
+    // 최근 3개월 가변 지출 평균 (고정비/사업비/수입 제외)
     query<{ avg_monthly: string }>(
       `SELECT COALESCE(AVG(monthly_total), 0) as avg_monthly
        FROM (
@@ -433,24 +647,18 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
          FROM expenses
          WHERE user_id = $1
            AND date >= NOW() - INTERVAL '3 months'
-           AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배', '환불')
+           AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
+           AND COALESCE(type, 'expense') = 'expense'
          GROUP BY 1
        ) sub`,
       [userId],
     ),
+    queryPlannedExpenses(userId),
   ]);
 
-  // 기본 수치
-  const totalAvailable = assets
-    .filter((a) => !a.is_emergency)
-    .reduce((s, a) => s + (a.available_amount ?? a.balance), 0);
-
-  const fixedMonthly = fixedCosts
-    .filter((fc) => fc.active)
-    .reduce((s, fc) => s + fc.amount, 0);
-
+  const totalAvailable = effectiveData.effective;
+  const fixedMonthly = fixedCosts.filter((fc) => fc.active).reduce((s, fc) => s + fc.amount, 0);
   const avgVariableMonthly = Math.round(Number(variableRows.rows[0]?.avg_monthly ?? 0));
-  const estimatedIncome = Number(process.env.ESTIMATED_MONTHLY_INCOME ?? '0');
 
   // 할부 프로젝션: 그룹별 남은 회차와 월 금액
   const installments = installmentRows.rows
@@ -460,53 +668,94 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
       remaining: r.installment_total - r.installment_num,
     }));
 
-  // ─── 목표 기간 기반 추천 예산 (할부 차등 반영, 시뮬레이션보다 먼저 계산) ───
+  // ─── 목표 기간 기반 월 자유 예산 계산 ───
   const validTarget = targetDate && /^\d{4}-\d{2}$/.test(targetDate) ? targetDate : null;
-  let recommendedBudget: number | null = null;
-  let recommendedDaily: number | null = null;
+  let freePerMonth: number | null = null;
 
   if (validTarget) {
     const [ty, tm] = validTarget.split('-').map(Number);
-    const targetMonths = (ty - now.getFullYear()) * 12 + (tm - now.getMonth() - 1);
+    const [by, bm] = billingMonth.split('-').map(Number);
+    const targetMonths = (ty - by) * 12 + (tm - bm);
     if (targetMonths > 0) {
-      // 목표까지 각 월의 잠긴 돈 합계 (고정비 + 할부)
       let totalLocked = 0;
-      for (let i = 1; i <= targetMonths; i++) {
+      for (let i = 0; i < targetMonths; i++) {
+        const month = addBillingMonths(billingMonth, i);
         const installmentSum = installments
-          .filter((inst) => inst.remaining >= i)
+          .filter((inst) => inst.remaining > i)
           .reduce((s, inst) => s + inst.amount, 0);
-        totalLocked += fixedMonthly + installmentSum;
+        const plannedSum = allPlanned
+          .filter((p) => p.year_month === month)
+          .reduce((s, p) => s + p.amount, 0);
+        totalLocked += fixedMonthly + installmentSum + plannedSum;
       }
-      const totalIncome = estimatedIncome * targetMonths;
-      const availableForFree = totalAvailable - totalLocked + totalIncome;
-      recommendedBudget = Math.max(Math.round(availableForFree / targetMonths), 0);
-
-      // 추천 일일 예산 (결제주기 일수 기준)
-      const { from, to } = getBillingRange(billingMonth);
-      const cycleDaysForRec = Math.round(
-        (new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime()) / 86400000,
-      ) + 1;
-      recommendedDaily = cycleDaysForRec > 0 ? Math.round(recommendedBudget / cycleDaysForRec) : null;
+      freePerMonth = Math.max(0, Math.round((totalAvailable - totalLocked) / targetMonths));
     }
   }
 
-  // 시뮬레이션 자유 예산: 추천 > 평균 순
-  const simulationFreeBudget = recommendedBudget ?? avgVariableMonthly;
+  // 시뮬레이션 자유 예산: 목표 기반 > 평균 순
+  const simulationFreeBudget = freePerMonth ?? avgVariableMonthly;
 
-  // ─── 월별 시뮬레이션 ───
+  // ─── 현재 결제주기 추적 ───
+  const { from: cycleFrom, to: cycleTo } = getBillingRange(billingMonth);
+  const cycleDays = calcCycleDays(cycleFrom, cycleTo);
+
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayDate = new Date(`${todayStr}T00:00:00`);
+  const cycleFromDate = new Date(`${cycleFrom}T00:00:00`);
+  const cycleElapsed = Math.max(
+    0,
+    Math.min(cycleDays, Math.round((todayDate.getTime() - cycleFromDate.getTime()) / 86400000) + 1),
+  );
+  const cycleRemainingDays = Math.max(0, cycleDays - cycleElapsed);
+
+  // 현재 주기 자유 지출 (가변 - 할부 - 제외 카테고리)
+  const flexResult = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+     WHERE user_id = $1 AND date >= $2 AND date <= $3
+       AND is_installment = false
+       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
+       AND COALESCE(type, 'expense') = 'expense'`,
+    [userId, cycleFrom, todayStr < cycleTo ? todayStr : cycleTo],
+  );
+  const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0);
+
+  // 이번 달 수입 합계
+  const incomeResult = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+     WHERE user_id = $1 AND date >= $2 AND date <= $3
+       AND COALESCE(type, 'expense') = 'income'`,
+    [userId, cycleFrom, cycleTo],
+  );
+  const currentMonthIncome = Number(incomeResult.rows[0]?.total ?? 0);
+
+  // 이번 달 예정 지출
+  const currentMonthPlanned = allPlanned
+    .filter((p) => p.year_month === billingMonth)
+    .reduce((s, p) => s + p.amount, 0);
+
+  // 동적 일일 예산: (월 자유 예산 + 이번 달 수입 - 이번 달 예정지출 - 지출) / 남은 일수
+  const effectiveMonthBudget = simulationFreeBudget + currentMonthIncome - currentMonthPlanned;
+  const monthBudgetRemaining = effectiveMonthBudget - flexibleSpent;
+  const dynamicDaily = cycleRemainingDays > 0
+    ? Math.round(monthBudgetRemaining / cycleRemainingDays)
+    : 0;
+
+  // ─── 월별 시뮬레이션 (실제 런웨이) ───
   const projections: MonthProjection[] = [];
   let remaining = totalAvailable;
   const maxMonths = 120;
 
-  for (let i = 1; i <= maxMonths && remaining > 0; i++) {
+  for (let i = 0; i < maxMonths && remaining > 0; i++) {
     const month = addBillingMonths(billingMonth, i);
-    // 해당 월의 할부 합계 (남은 회차가 i 이상인 그룹만)
     const installmentSum = installments
-      .filter((inst) => inst.remaining >= i)
+      .filter((inst) => inst.remaining > i)
       .reduce((s, inst) => s + inst.amount, 0);
+    const plannedSum = allPlanned
+      .filter((p) => p.year_month === month)
+      .reduce((s, p) => s + p.amount, 0);
 
-    const locked = fixedMonthly + installmentSum;
-    const netBurn = locked + simulationFreeBudget - estimatedIncome;
+    const locked = fixedMonthly + installmentSum + plannedSum;
+    const netBurn = locked + simulationFreeBudget;
 
     remaining -= netBurn;
 
@@ -516,7 +765,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
       installments: installmentSum,
       locked,
       free_budget: simulationFreeBudget,
-      income: estimatedIncome,
+      income: 0,
       net_burn: netBurn,
       remaining: Math.max(remaining, 0),
     });
@@ -524,62 +773,38 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     if (remaining <= 0) break;
   }
 
-  const budgetRunwayMonths = projections.length > 0
-    ? projections.length - 1 + (remaining <= 0
-        ? (projections.at(-1)!.remaining + projections.at(-1)!.net_burn) / projections.at(-1)!.net_burn
-        : projections.length)
-    : 0;
-  const budgetRunwayDate = projections.length > 0
-    ? (remaining <= 0 ? projections.at(-1)!.month : addBillingMonths(billingMonth, maxMonths))
-    : billingMonth;
-
-  // ─── 현재 결제주기 추적 ───
-  const { from: cycleFrom, to: cycleTo } = getBillingRange(billingMonth);
-  const cycleFromDate = new Date(`${cycleFrom}T00:00:00`);
-  const cycleToDate = new Date(`${cycleTo}T00:00:00`);
-  const cycleDays = Math.round((cycleToDate.getTime() - cycleFromDate.getTime()) / 86400000) + 1;
-
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const todayDate = new Date(`${todayStr}T00:00:00`);
-  const cycleElapsed = Math.max(
-    0,
-    Math.min(
-      cycleDays,
-      Math.round((todayDate.getTime() - cycleFromDate.getTime()) / 86400000) + 1,
-    ),
-  );
-
-  // 현재 주기 자유 지출 (가변 - 할부 - 제외 카테고리 - 환불)
-  const flexResult = await query<{ total: string }>(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-     WHERE user_id = $1 AND date >= $2 AND date <= $3
-       AND is_installment = false
-       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배', '환불')`,
-    [userId, cycleFrom, todayStr < cycleTo ? todayStr : cycleTo],
-  );
-  const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0);
-
-  // 일일 목표: 추천예산 > 평균 순으로 사용
-  const freeBudgetForDaily = recommendedBudget ?? avgVariableMonthly;
-  const dailyTarget = cycleDays > 0 ? Math.round(freeBudgetForDaily / cycleDays) : null;
-  const cumulativeSaved = dailyTarget !== null
-    ? Math.round(dailyTarget * cycleElapsed - flexibleSpent)
-    : 0;
+  // 실제 런웨이 계산
+  let actualRunwayMonths = 0;
+  let actualRunwayDate = billingMonth;
+  if (projections.length > 0) {
+    const last = projections.at(-1)!;
+    if (remaining <= 0) {
+      // 마지막 달에 소진: 소수점으로 정밀 계산
+      const prevRemaining = last.remaining + last.net_burn;
+      const fraction = prevRemaining / last.net_burn;
+      actualRunwayMonths = Math.round((projections.length - 1 + fraction) * 10) / 10;
+    } else {
+      actualRunwayMonths = projections.length;
+    }
+    actualRunwayDate = last.month;
+  }
 
   return {
-    total_available: totalAvailable,
+    effective_available: totalAvailable,
+    snapshot_total: effectiveData.snapshot_total,
     fixed_monthly: fixedMonthly,
-    avg_variable_monthly: avgVariableMonthly,
-    projections,
-    budget_runway_months: Math.round(budgetRunwayMonths * 10) / 10,
-    budget_runway_date: budgetRunwayDate,
     target_date: validTarget,
-    recommended_budget: recommendedBudget,
-    recommended_daily: recommendedDaily,
-    daily_target: dailyTarget,
+    free_per_month: freePerMonth,
+    dynamic_daily: dynamicDaily,
+    month_budget_remaining: monthBudgetRemaining,
     cycle_days: cycleDays,
+    cycle_remaining_days: cycleRemainingDays,
     cycle_elapsed: cycleElapsed,
     flexible_spent: flexibleSpent,
-    cumulative_saved: cumulativeSaved,
+    current_month_income: currentMonthIncome,
+    actual_runway_months: actualRunwayMonths,
+    actual_runway_date: actualRunwayDate,
+    projections,
+    avg_variable_monthly: avgVariableMonthly,
   };
 }

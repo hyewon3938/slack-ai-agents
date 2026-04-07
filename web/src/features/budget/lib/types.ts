@@ -11,6 +11,15 @@ export interface ExpenseRow {
   installment_group: string | null;
   source: string;
   memo: string | null;
+  type: 'expense' | 'income';
+  created_at?: string;
+}
+
+export interface PlannedExpenseRow {
+  id: number;
+  year_month: string;
+  amount: number;
+  memo: string | null;
   created_at?: string;
 }
 
@@ -60,8 +69,14 @@ export interface MonthSummary {
   installment_total: number;
   /** 자유 지출 (가변 지출 중 할부 제외 = 내가 직접 쓴 돈) */
   flexible_spent: number;
-  /** 환불 합계 (카테고리='환불'인 건, 실질적 수입) */
-  refund_total: number;
+  /** 수입 합계 (type='income'인 건) */
+  income_total: number;
+  /** 예정 지출 합계 */
+  planned_total: number;
+  /** 자동 산정 월 자유 예산 (런웨이 기반) */
+  auto_budget: number | null;
+  /** 자동 산정 동적 일일 자유 예산 */
+  auto_daily: number | null;
   by_category: CategoryStat[];
   daily_avg: number;
 }
@@ -98,8 +113,16 @@ export const EXPENSE_CATEGORIES = [
   '고양이',
   '리커밋 사업',
   '리커밋 택배',
-  '환불',
   '기타',
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+/** 수입 카테고리 목록 */
+export const INCOME_CATEGORIES = [
+  '환불',
+  '수입',
+  '기타수입',
+] as const;
+
+export type IncomeCategory = (typeof INCOME_CATEGORIES)[number];
