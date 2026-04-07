@@ -169,15 +169,22 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   );
   const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
 
-  // 예정 지출 연결 건 합계 (봉투에서 사용한 금액 — 자유 지출에서 제외)
-  const plannedLinkedResult = await query<{ total: string }>(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-     WHERE user_id = $1 AND date >= $2 AND date <= $3
-       AND planned_expense_id IS NOT NULL
-       AND COALESCE(type, 'expense') = 'expense'`,
+  // 예정 지출 연결 건: 예정 금액까지만 제외, 초과분은 자유 지출에 포함
+  const plannedLinkedResult = await query<{ linked: string; overflow: string }>(
+    `SELECT
+       COALESCE(SUM(LEAST(used, budget)), 0) as linked,
+       COALESCE(SUM(GREATEST(used - budget, 0)), 0) as overflow
+     FROM (
+       SELECT p.amount as budget, COALESCE(SUM(e.amount), 0) as used
+       FROM planned_expenses p
+       LEFT JOIN expenses e ON e.planned_expense_id = p.id
+         AND e.date >= $2 AND e.date <= $3
+       WHERE p.user_id = $1
+       GROUP BY p.id, p.amount
+     ) sub`,
     [userId, from, to],
   );
-  const plannedLinkedTotal = Number(plannedLinkedResult.rows[0]?.total ?? 0);
+  const plannedLinkedTotal = Number(plannedLinkedResult.rows[0]?.linked ?? 0);
   const flexibleSpent = variableTotal - installmentTotal - plannedLinkedTotal;
 
   // 수입 합계 (type='income')
@@ -520,6 +527,9 @@ export interface RunwayResult {
   actual_runway_date: string;
   projections: MonthProjection[];
 
+  // 남은 총 일수 (현재 주기 잔여 + 미래 월)
+  total_remaining_days: number;
+
   // 평균 가변 지출 (참고용)
   avg_variable_monthly: number;
 }
@@ -572,7 +582,8 @@ export async function calcBudgetPreview(
   const billingMonth = getCurrentBillingMonth(now);
   const [ty, tm] = targetDate.split('-').map(Number);
   const [by, bm] = billingMonth.split('-').map(Number);
-  const targetMonths = (ty - by) * 12 + (tm - bm);
+  // +1: "8월까지" = 8월 대금(7/16~8/15) 포함
+  const targetMonths = (ty - by) * 12 + (tm - bm) + 1;
   if (targetMonths <= 0) return null;
 
   const [effectiveData, fixedCosts, installmentRows, allPlanned] = await Promise.all([
@@ -677,32 +688,10 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
       remaining: r.installment_total - r.installment_num,
     }));
 
-  // ─── 목표 기간 기반 월 자유 예산 계산 ───
+  // ─── 목표 기간 기반 계산 ───
   const validTarget = targetDate && /^\d{4}-\d{2}$/.test(targetDate) ? targetDate : null;
   let freePerMonth: number | null = null;
-
-  if (validTarget) {
-    const [ty, tm] = validTarget.split('-').map(Number);
-    const [by, bm] = billingMonth.split('-').map(Number);
-    const targetMonths = (ty - by) * 12 + (tm - bm);
-    if (targetMonths > 0) {
-      let totalLocked = 0;
-      for (let i = 0; i < targetMonths; i++) {
-        const month = addBillingMonths(billingMonth, i);
-        const installmentSum = installments
-          .filter((inst) => inst.remaining > i)
-          .reduce((s, inst) => s + inst.amount, 0);
-        const plannedSum = allPlanned
-          .filter((p) => p.year_month === month)
-          .reduce((s, p) => s + p.amount, 0);
-        totalLocked += fixedMonthly + installmentSum + plannedSum;
-      }
-      freePerMonth = Math.max(0, Math.round((totalAvailable - totalLocked) / targetMonths));
-    }
-  }
-
-  // 시뮬레이션 자유 예산: 목표 기반 > 평균 순
-  const simulationFreeBudget = freePerMonth ?? avgVariableMonthly;
+  let targetMonths = 0;
 
   // ─── 현재 결제주기 추적 ───
   const { from: cycleFrom, to: cycleTo } = getBillingRange(billingMonth);
@@ -717,7 +706,8 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   );
   const cycleRemainingDays = Math.max(0, cycleDays - cycleElapsed);
 
-  // 현재 주기 자유 지출 (가변 - 할부 - 제외 카테고리 - 예정 지출 연결 건 제외)
+  // 현재 주기 자유 지출
+  // 일반 자유 지출 (예정 지출 연결 건 제외)
   const flexResult = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
@@ -727,7 +717,21 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        AND planned_expense_id IS NULL`,
     [userId, cycleFrom, todayStr < cycleTo ? todayStr : cycleTo],
   );
-  const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0);
+  // 예정 지출 초과분: 연결된 지출 중 예정 금액을 초과한 부분은 자유 지출에 포함
+  const overflowResult = await query<{ overflow: string }>(
+    `SELECT COALESCE(SUM(GREATEST(used - budget, 0)), 0) as overflow
+     FROM (
+       SELECT p.id, p.amount as budget, COALESCE(SUM(e.amount), 0) as used
+       FROM planned_expenses p
+       LEFT JOIN expenses e ON e.planned_expense_id = p.id
+         AND e.date >= $2 AND e.date <= $3
+       WHERE p.user_id = $1
+       GROUP BY p.id, p.amount
+     ) sub`,
+    [userId, cycleFrom, todayStr < cycleTo ? todayStr : cycleTo],
+  );
+  const plannedOverflow = Number(overflowResult.rows[0]?.overflow ?? 0);
+  const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0) + plannedOverflow;
 
   // 이번 달 수입 합계
   const incomeResult = await query<{ total: string }>(
@@ -738,17 +742,73 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   );
   const currentMonthIncome = Number(incomeResult.rows[0]?.total ?? 0);
 
-  // 이번 달 예정 지출
-  const currentMonthPlanned = allPlanned
-    .filter((p) => p.year_month === billingMonth)
-    .reduce((s, p) => s + p.amount, 0);
+  if (validTarget) {
+    const [ty, tm] = validTarget.split('-').map(Number);
+    const [by, bm] = billingMonth.split('-').map(Number);
+    // +1: "8월까지" = 8월 대금 포함 (7/16~8/15)
+    targetMonths = (ty - by) * 12 + (tm - bm) + 1;
+    if (targetMonths > 0) {
+      // 미래 잠긴 돈 합계 (현재 ~ 목표, 모든 월 포함)
+      let totalLocked = 0;
+      for (let i = 0; i < targetMonths; i++) {
+        const month = addBillingMonths(billingMonth, i);
+        const installmentSum = installments
+          .filter((inst) => inst.remaining > i)
+          .reduce((s, inst) => s + inst.amount, 0);
+        const plannedSum = allPlanned
+          .filter((p) => p.year_month === month)
+          .reduce((s, p) => s + p.amount, 0);
+        totalLocked += fixedMonthly + installmentSum + plannedSum;
+      }
 
-  // 동적 일일 예산: (월 자유 예산 + 이번 달 수입 - 이번 달 예정지출 - 지출) / 남은 일수
-  const effectiveMonthBudget = simulationFreeBudget + currentMonthIncome - currentMonthPlanned;
-  const monthBudgetRemaining = effectiveMonthBudget - flexibleSpent;
-  const dynamicDaily = cycleRemainingDays > 0
-    ? Math.round(monthBudgetRemaining / cycleRemainingDays)
-    : 0;
+      // ★ 핵심 수정: 가용자금에서 이미 지출이 차감된 상태이므로,
+      // "남은 자유자금 ÷ 남은 총 일수"로 일일 예산 산정 (이중 차감 없음)
+      const totalFreeRemaining = Math.max(0, totalAvailable - totalLocked);
+      freePerMonth = targetMonths > 0 ? Math.round(totalFreeRemaining / targetMonths) : 0;
+    }
+  }
+
+  // 시뮬레이션 자유 예산: 목표 기반 > 평균 순
+  const simulationFreeBudget = freePerMonth ?? avgVariableMonthly;
+
+  // ★ 동적 일일 예산: (가용자금 - 미래 잠긴 돈) ÷ 남은 총 일수
+  // 이중 차감 없음: effective_available에 이미 지출이 반영됨
+  let dynamicDaily = 0;
+  let monthBudgetRemaining = 0;
+  let totalRemainingDays = cycleRemainingDays;
+
+  if (validTarget && targetMonths > 0) {
+    // 나머지 미래 월의 총 일수 합산
+    for (let i = 1; i < targetMonths; i++) {
+      const futureMonth = addBillingMonths(billingMonth, i);
+      const { from: fFrom, to: fTo } = getBillingRange(futureMonth);
+      totalRemainingDays += calcCycleDays(fFrom, fTo);
+    }
+
+    // 미래 잠긴 돈 총합 (현재 주기 남은 비율 + 미래 전체)
+    let futureLocked = 0;
+    for (let i = 0; i < targetMonths; i++) {
+      const month = addBillingMonths(billingMonth, i);
+      const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
+      const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
+      if (i === 0) {
+        // 현재 월: 남은 일수 비율만큼만 잠김 (이미 지불된 고정비는 effective에서 차감됨)
+        const ratio = cycleDays > 0 ? cycleRemainingDays / cycleDays : 0;
+        futureLocked += Math.round((fixedMonthly + installmentSum + plannedSum) * ratio);
+      } else {
+        futureLocked += fixedMonthly + installmentSum + plannedSum;
+      }
+    }
+
+    const totalFreeForDays = Math.max(0, totalAvailable - futureLocked);
+    dynamicDaily = totalRemainingDays > 0 ? Math.round(totalFreeForDays / totalRemainingDays) : 0;
+    monthBudgetRemaining = dynamicDaily * cycleRemainingDays;
+  } else {
+    // 목표 미설정: 3개월 평균 기준으로 남은 일수 계산
+    const avgDailyBudget = cycleDays > 0 ? Math.round(avgVariableMonthly / cycleDays) : 0;
+    monthBudgetRemaining = Math.max(0, avgVariableMonthly - flexibleSpent);
+    dynamicDaily = cycleRemainingDays > 0 ? Math.round(monthBudgetRemaining / cycleRemainingDays) : avgDailyBudget;
+  }
 
   // ─── 월별 시뮬레이션 (실제 런웨이) ───
   const projections: MonthProjection[] = [];
@@ -815,6 +875,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     actual_runway_months: actualRunwayMonths,
     actual_runway_date: actualRunwayDate,
     projections,
+    total_remaining_days: totalRemainingDays,
     avg_variable_monthly: avgVariableMonthly,
   };
 }
