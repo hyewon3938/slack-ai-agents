@@ -15,10 +15,14 @@ interface ExpenseFormProps {
     description?: string | null;
     type?: 'expense' | 'income';
     planned_expense_id?: number | null;
+    payment_method?: string;
+    installment_months?: number;
   }) => Promise<ExpenseRow>;
   /** 현재 보고 있는 결제주기 월 (예정 지출 목록용) */
   yearMonth?: string;
 }
+
+const INSTALLMENT_OPTIONS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const today = new Date().toISOString().slice(0, 10);
@@ -29,6 +33,8 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const [description, setDescription] = useState('');
   const [selectedPlanned, setSelectedPlanned] = useState<number | null>(null);
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpenseRow[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<'카드' | '현금'>('카드');
+  const [installmentMonths, setInstallmentMonths] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +51,12 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     setEntryType(type);
     // 타입 변경 시 카테고리를 해당 타입의 첫 번째로 초기화
     setCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
+  };
+
+  const handlePaymentMethodChange = (method: '카드' | '현금') => {
+    setPaymentMethod(method);
+    // 현금으로 바꾸면 할부 초기화
+    if (method === '현금') setInstallmentMonths(1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,11 +76,14 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         description: description || null,
         type: entryType,
         planned_expense_id: selectedPlanned,
+        payment_method: entryType === 'expense' ? paymentMethod : '기타',
+        installment_months: entryType === 'expense' && paymentMethod === '카드' ? installmentMonths : undefined,
       });
       setAmountStr('');
       setDescription('');
       setDate(today);
       setSelectedPlanned(null);
+      setInstallmentMonths(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : '추가 실패');
     } finally {
@@ -83,6 +98,12 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   };
 
   const currentCategories = entryType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+
+  // 할부 미리보기 금액 계산
+  const rawAmount = parseInt(amountStr.replace(/,/g, ''), 10);
+  const monthlyPreview = !isNaN(rawAmount) && rawAmount > 0 && installmentMonths > 1
+    ? Math.round(rawAmount / installmentMonths)
+    : null;
 
   return (
     <form onSubmit={(e) => void handleSubmit(e)} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -154,8 +175,61 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         </div>
       </div>
 
-      {/* 예정 지출 연결 (지출 모드 + 예정 지출이 있을 때만) */}
-      {entryType === 'expense' && plannedExpenses.length > 0 && (
+      {/* 결제수단 + 할부 (지출 모드 전용) */}
+      {entryType === 'expense' && (
+        <div className="mt-2 flex flex-wrap items-end gap-3">
+          {/* 결제수단 토글 */}
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">결제수단</label>
+            <div className="flex rounded-lg border border-gray-200 p-0.5">
+              <button
+                type="button"
+                onClick={() => handlePaymentMethodChange('카드')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  paymentMethod === '카드' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                카드
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePaymentMethodChange('현금')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  paymentMethod === '현금' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                현금
+              </button>
+            </div>
+          </div>
+
+          {/* 할부 (카드 선택 시만) */}
+          {paymentMethod === '카드' && (
+            <div>
+              <Select
+                label="할부"
+                value={installmentMonths}
+                onChange={(e) => setInstallmentMonths(Number(e.target.value))}
+              >
+                <option value={1}>일시불</option>
+                {INSTALLMENT_OPTIONS.map((m) => (
+                  <option key={m} value={m}>{m}개월</option>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {/* 할부 미리보기 */}
+          {monthlyPreview !== null && (
+            <p className="pb-1 text-[10px] text-blue-500">
+              월 {formatAmount(monthlyPreview)} × {installmentMonths}개월
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 예정 지출 연결 (지출 모드 + 일시불/현금 + 예정 지출이 있을 때만) */}
+      {entryType === 'expense' && installmentMonths === 1 && plannedExpenses.length > 0 && (
         <div className="mt-2">
           <Select
             label="예정 지출 연결 (선택)"
