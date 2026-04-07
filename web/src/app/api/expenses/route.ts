@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { queryExpenses, createExpense } from '@/features/budget/lib/queries';
+import { queryExpenses, createExpense, createInstallmentExpenses } from '@/features/budget/lib/queries';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 
 const VALID_EXPENSE_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       memo?: string | null;
       type?: 'expense' | 'income';
       planned_expense_id?: number | null;
+      installment_months?: number;
     };
 
     if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
@@ -66,6 +67,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
     }
 
+    // 할부 처리 (카드 2~12개월)
+    const installmentMonths = body.installment_months ?? 1;
+    if (installmentMonths >= 2 && installmentMonths <= 12) {
+      const data = await createInstallmentExpenses(userId, {
+        date: body.date,
+        totalAmount: body.amount,
+        months: installmentMonths,
+        category: body.category,
+        description: body.description,
+        payment_method: body.payment_method,
+        memo: body.memo,
+        type: entryType,
+      });
+      return NextResponse.json({ data }, { status: 201 });
+    }
+
+    // 일반 지출 (일시불 또는 현금)
     const data = await createExpense(userId, {
       date: body.date,
       amount: body.amount,
