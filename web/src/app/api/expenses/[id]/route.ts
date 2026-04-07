@@ -30,12 +30,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const data = await updateExpense(userId, id, body);
     if (!data) return NextResponse.json({ error: '지출을 찾을 수 없습니다' }, { status: 404 });
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Expense API]', request.url, err);
     return NextResponse.json({ error: '지출 수정 실패' }, { status: 500 });
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -47,7 +48,8 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const deleted = await deleteExpense(userId, id);
     if (!deleted) return NextResponse.json({ error: '지출을 찾을 수 없습니다' }, { status: 404 });
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error('[Expense API]', request.url, err);
     return NextResponse.json({ error: '지출 삭제 실패' }, { status: 500 });
   }
 }

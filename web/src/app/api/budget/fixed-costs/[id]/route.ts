@@ -19,7 +19,8 @@ export async function PATCH(
     if (!data) return NextResponse.json({ error: '고정비를 찾을 수 없습니다' }, { status: 404 });
 
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '고정비 수정 실패' }, { status: 500 });
   }
 }

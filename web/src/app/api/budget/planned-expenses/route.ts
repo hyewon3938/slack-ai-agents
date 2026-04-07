@@ -13,7 +13,8 @@ export async function GET(request: Request) {
     const yearMonth = searchParams.get('yearMonth') ?? undefined;
     const data = await queryPlannedExpenses(userId, yearMonth);
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '예정 지출 조회 실패' }, { status: 500 });
   }
 }
@@ -35,7 +36,8 @@ export async function POST(request: Request) {
 
     const data = await createPlannedExpense(userId, { year_month, amount, memo: memo ?? null });
     return NextResponse.json({ data }, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '예정 지출 추가 실패' }, { status: 500 });
   }
 }
@@ -52,7 +54,8 @@ export async function DELETE(request: Request) {
     const deleted = await deletePlannedExpense(userId, id);
     if (!deleted) return NextResponse.json({ error: '항목을 찾을 수 없습니다' }, { status: 404 });
     return NextResponse.json({ data: { deleted: true } });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '예정 지출 삭제 실패' }, { status: 500 });
   }
 }
