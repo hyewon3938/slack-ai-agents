@@ -25,6 +25,9 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const totalBudget = summary.auto_budget;
   const dailyBudget = summary.auto_daily;
   const monthRemaining = summary.month_budget_remaining;
+  const todayBudget = summary.today_budget;
+  const todayFlexSpent = summary.today_flex_spent ?? 0;
+  const todayRemaining = summary.today_remaining;
 
   // 결제주기: 전월 16일 ~ 당월 15일
   const todayISO = getTodayISO();
@@ -63,18 +66,61 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       {/* 현재 달: 남은 예산 중심 뷰 */}
       {hasRemainingView ? (
         <div className="mb-4">
-          {/* 하루 자유 예산 (가장 중요한 숫자) */}
-          <div className="mb-3 rounded-lg bg-gray-50 px-3 py-3">
-            <div className="text-xs text-gray-500 mb-1">하루 자유 예산</div>
-            <div className={`text-2xl font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}>
-              {isRemainingNegative ? '-' : ''}{formatAmount(Math.abs(dailyBudget!))}
-            </div>
-            {isRemainingNegative && (
-              <div className="mt-1 text-xs text-red-500">
-                이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일 최대한 아껴봐
+          {/* 오늘의 현황 (가장 중요한 영역) */}
+          {todayBudget !== null && todayRemaining !== null ? (
+            <div className="mb-3 rounded-lg bg-gray-50 px-3 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-500">오늘의 현황</span>
+                <span className="text-xs text-gray-400">예산 {formatAmount(todayBudget)}</span>
               </div>
-            )}
-          </div>
+
+              {/* 오늘 남은/초과 (가장 큰 숫자) */}
+              <div className={`text-2xl font-bold ${todayRemaining < 0 ? 'text-red-500' : 'text-gray-900'}`}>
+                {todayRemaining < 0 ? '-' : ''}{formatAmount(Math.abs(todayRemaining))}
+                <span className="ml-1 text-sm font-medium text-gray-400">
+                  {todayRemaining < 0 ? '초과' : '남음'}
+                </span>
+              </div>
+
+              {/* 오늘 지출 */}
+              {todayFlexSpent > 0 && (
+                <div className="mt-1 text-xs text-gray-500">
+                  오늘 지출 {formatAmount(todayFlexSpent)}
+                </div>
+              )}
+
+              {/* 하루 분석 메시지 */}
+              {todayRemaining < 0 && daysLeft > 0 && todayBudget > 0 && (
+                <div className="mt-2 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-500">
+                  이 패턴이면 런웨이 약 {Math.floor(Math.abs(todayRemaining) * daysLeft / todayBudget)}일 단축
+                </div>
+              )}
+              {todayRemaining > 0 && todayFlexSpent > 0 && (
+                <div className="mt-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs text-green-600">
+                  오늘 {formatAmount(todayRemaining)} 아꼈어!
+                </div>
+              )}
+
+              {/* 이번 달 예산 초과 경고 */}
+              {isRemainingNegative && (
+                <div className="mt-2 text-xs text-red-500">
+                  이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일 최대한 아껴봐
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mb-3 rounded-lg bg-gray-50 px-3 py-3">
+              <div className="text-xs text-gray-500 mb-1">하루 자유 예산</div>
+              <div className={`text-2xl font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}>
+                {isRemainingNegative ? '-' : ''}{formatAmount(Math.abs(dailyBudget!))}
+              </div>
+              {isRemainingNegative && (
+                <div className="mt-1 text-xs text-red-500">
+                  이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일 최대한 아껴봐
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 남은 예산 바 */}
           <div className="flex items-end justify-between mb-1">
