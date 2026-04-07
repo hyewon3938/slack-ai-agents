@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback } from 'react';
+import type { RoutineView } from '../hooks/use-routines';
 import type { RoutineRecordRow } from '@/features/routine/lib/types';
 import { useRoutines } from '../hooks/use-routines';
 import { DateNav } from './date-nav';
-import { ViewToggle } from './view-toggle';
 import { RoutineChecklist } from './routine-checklist';
 import { RoutineStats } from './routine-stats';
 import { RoutineList } from './routine-list';
@@ -12,6 +12,14 @@ import { RoutineForm } from './routine-form';
 import { RoutineRecordDetail } from './routine-record-detail';
 import { Modal } from '@/components/ui/modal';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { TopTabs } from '@/components/ui/tabs';
+import { TabsSkeleton, ListSkeleton } from '@/components/ui/skeleton';
+
+const ROUTINE_TABS: { id: RoutineView; label: string }[] = [
+  { id: 'checklist', label: '체크리스트' },
+  { id: 'stats', label: '통계' },
+  { id: 'manage', label: '관리' },
+];
 
 export function RoutinePage() {
   const {
@@ -53,16 +61,20 @@ export function RoutinePage() {
     [handleUpdateTemplate],
   );
 
-  if (loading) return <LoadingSkeleton />;
-
-  return (
-    <div className="flex flex-1 flex-col">
-      {/* 탭 바 (일정 페이지와 동일 스타일) */}
-      <div className="border-b border-gray-200 bg-white px-4 pt-2">
-        <div className="mx-auto flex max-w-5xl gap-1">
-          <ViewToggle view={view} onChange={setView} />
+  if (loading) {
+    return (
+      <div className="flex flex-1 flex-col">
+        <TabsSkeleton count={3} />
+        <div className="mx-auto w-full max-w-5xl px-4 py-4">
+          <ListSkeleton rows={5} rowHeight="h-14" />
         </div>
       </div>
+    );
+  }
+  return (
+    <div className="flex flex-1 flex-col">
+      {/* 탭 바 */}
+      <TopTabs tabs={ROUTINE_TABS} active={view} onChange={setView} />
 
       {/* 콘텐츠 */}
       <div className="flex-1 overflow-y-auto">
@@ -97,7 +109,7 @@ export function RoutinePage() {
                 <h2 className="text-base font-semibold text-gray-900">루틴 관리</h2>
                 <button
                   onClick={() => setShowForm(true)}
-                  className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
                   + 추가
                 </button>
@@ -115,7 +127,7 @@ export function RoutinePage() {
       {/* 모바일 FAB */}
       <button
         onClick={() => setShowForm(true)}
-        className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-500 text-2xl text-white shadow-lg hover:bg-blue-600 md:hidden"
+        className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-2xl text-white shadow-lg hover:bg-blue-700 md:hidden"
         style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
       >
         +
@@ -169,22 +181,3 @@ export function RoutinePage() {
   );
 }
 
-function LoadingSkeleton() {
-  return (
-    <div className="flex flex-1 flex-col">
-      {/* 탭 바 스켈레톤 */}
-      <div className="border-b border-gray-200 bg-white px-4 pt-2">
-        <div className="mx-auto flex max-w-5xl gap-1">
-          <div className="h-8 w-20 animate-pulse rounded bg-gray-100" />
-          <div className="h-8 w-14 animate-pulse rounded bg-gray-100" />
-          <div className="h-8 w-14 animate-pulse rounded bg-gray-100" />
-        </div>
-      </div>
-      <div className="mx-auto w-full max-w-5xl space-y-3 p-4">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="h-14 animate-pulse rounded-lg bg-gray-100" />
-        ))}
-      </div>
-    </div>
-  );
-}
