@@ -28,7 +28,7 @@ export async function queryExpenses(
   const { rows } = await query<ExpenseRow>(
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
-            source, memo, COALESCE(type, 'expense') as type, created_at::text
+            source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text
      FROM expenses
      WHERE ${conditions.join(' AND ')}
      ORDER BY date DESC, created_at DESC`,
@@ -42,7 +42,7 @@ export async function queryExpense(userId: number, id: number): Promise<ExpenseR
   return queryOne<ExpenseRow>(
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
-            source, memo, COALESCE(type, 'expense') as type, created_at::text
+            source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text
      FROM expenses WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
@@ -59,14 +59,15 @@ export async function createExpense(
     payment_method?: string;
     memo?: string | null;
     type?: 'expense' | 'income';
+    planned_expense_id?: number | null;
   },
 ): Promise<ExpenseRow> {
   const row = await queryOne<ExpenseRow>(
-    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8)
+    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type, planned_expense_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8, $9)
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
-               source, memo, COALESCE(type, 'expense') as type, created_at::text`,
+               source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text`,
     [
       userId,
       data.date,
@@ -76,6 +77,7 @@ export async function createExpense(
       data.payment_method ?? '카드',
       data.memo ?? null,
       data.type ?? 'expense',
+      data.planned_expense_id ?? null,
     ],
   );
   if (!row) throw new Error('createExpense: INSERT returned no rows');
@@ -83,7 +85,7 @@ export async function createExpense(
 }
 
 /** 지출 수정 (허용 컬럼 화이트리스트) */
-const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type']);
+const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type', 'planned_expense_id']);
 
 export async function updateExpense(
   userId: number,
@@ -100,7 +102,7 @@ export async function updateExpense(
      WHERE id = $1 AND user_id = $2
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
-               source, memo, COALESCE(type, 'expense') as type, created_at::text`,
+               source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text`,
     [id, userId, ...values],
   );
 }
@@ -166,7 +168,17 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     [userId, from, to],
   );
   const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
-  const flexibleSpent = variableTotal - installmentTotal;
+
+  // 예정 지출 연결 건 합계 (봉투에서 사용한 금액 — 자유 지출에서 제외)
+  const plannedLinkedResult = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+     WHERE user_id = $1 AND date >= $2 AND date <= $3
+       AND planned_expense_id IS NOT NULL
+       AND COALESCE(type, 'expense') = 'expense'`,
+    [userId, from, to],
+  );
+  const plannedLinkedTotal = Number(plannedLinkedResult.rows[0]?.total ?? 0);
+  const flexibleSpent = variableTotal - installmentTotal - plannedLinkedTotal;
 
   // 수입 합계 (type='income')
   const incomeResult = await query<{ total: string }>(
@@ -358,22 +370,19 @@ export async function updateAsset(
 
 // ─── 예정 지출 ────────────────────────────────────────
 
-/** 예정 지출 목록 조회 */
+/** 예정 지출 목록 조회 (사용 금액 포함) */
 export async function queryPlannedExpenses(userId: number, yearMonth?: string): Promise<PlannedExpenseRow[]> {
-  if (yearMonth) {
-    const { rows } = await query<PlannedExpenseRow>(
-      `SELECT id, year_month, amount, memo, created_at::text
-       FROM planned_expenses WHERE user_id = $1 AND year_month = $2
-       ORDER BY created_at`,
-      [userId, yearMonth],
-    );
-    return rows;
-  }
+  const condition = yearMonth ? 'AND p.year_month = $2' : '';
+  const params: unknown[] = yearMonth ? [userId, yearMonth] : [userId];
   const { rows } = await query<PlannedExpenseRow>(
-    `SELECT id, year_month, amount, memo, created_at::text
-     FROM planned_expenses WHERE user_id = $1
-     ORDER BY year_month, created_at`,
-    [userId],
+    `SELECT p.id, p.year_month, p.amount, p.memo, p.created_at::text,
+            COALESCE(SUM(e.amount), 0)::integer as used_amount
+     FROM planned_expenses p
+     LEFT JOIN expenses e ON e.planned_expense_id = p.id
+     WHERE p.user_id = $1 ${condition}
+     GROUP BY p.id
+     ORDER BY p.year_month, p.created_at`,
+    params,
   );
   return rows;
 }
@@ -708,13 +717,14 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   );
   const cycleRemainingDays = Math.max(0, cycleDays - cycleElapsed);
 
-  // 현재 주기 자유 지출 (가변 - 할부 - 제외 카테고리)
+  // 현재 주기 자유 지출 (가변 - 할부 - 제외 카테고리 - 예정 지출 연결 건 제외)
   const flexResult = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
        AND is_installment = false
        AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
-       AND COALESCE(type, 'expense') = 'expense'`,
+       AND COALESCE(type, 'expense') = 'expense'
+       AND planned_expense_id IS NULL`,
     [userId, cycleFrom, todayStr < cycleTo ? todayStr : cycleTo],
   );
   const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0);

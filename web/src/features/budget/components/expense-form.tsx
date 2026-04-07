@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import type { ExpenseRow } from '@/features/budget/lib/types';
+import { useState, useEffect } from 'react';
+import type { ExpenseRow, PlannedExpenseRow } from '@/features/budget/lib/types';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
+import { formatAmount } from '@/lib/types';
 
 interface ExpenseFormProps {
   onAdd: (data: {
@@ -12,18 +13,32 @@ interface ExpenseFormProps {
     category: string;
     description?: string | null;
     type?: 'expense' | 'income';
+    planned_expense_id?: number | null;
   }) => Promise<ExpenseRow>;
+  /** 현재 보고 있는 결제주기 월 (예정 지출 목록용) */
+  yearMonth?: string;
 }
 
-export function ExpenseForm({ onAdd }: ExpenseFormProps) {
+export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [entryType, setEntryType] = useState<'expense' | 'income'>('expense');
   const [date, setDate] = useState(today);
   const [amountStr, setAmountStr] = useState('');
   const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
   const [description, setDescription] = useState('');
+  const [selectedPlanned, setSelectedPlanned] = useState<number | null>(null);
+  const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpenseRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 예정 지출 목록 로드
+  useEffect(() => {
+    if (!yearMonth) return;
+    void fetch(`/api/budget/planned-expenses?yearMonth=${yearMonth}`)
+      .then((r) => r.json())
+      .then((d: { data: PlannedExpenseRow[] }) => setPlannedExpenses(d.data))
+      .catch(() => setPlannedExpenses([]));
+  }, [yearMonth]);
 
   const handleTypeChange = (type: 'expense' | 'income') => {
     setEntryType(type);
@@ -41,10 +56,18 @@ export function ExpenseForm({ onAdd }: ExpenseFormProps) {
     }
     setLoading(true);
     try {
-      await onAdd({ date, amount, category, description: description || null, type: entryType });
+      await onAdd({
+        date,
+        amount,
+        category,
+        description: description || null,
+        type: entryType,
+        planned_expense_id: selectedPlanned,
+      });
       setAmountStr('');
       setDescription('');
       setDate(today);
+      setSelectedPlanned(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '추가 실패');
     } finally {
@@ -143,6 +166,29 @@ export function ExpenseForm({ onAdd }: ExpenseFormProps) {
           />
         </div>
       </div>
+
+      {/* 예정 지출 연결 (지출 모드 + 예정 지출이 있을 때만) */}
+      {entryType === 'expense' && plannedExpenses.length > 0 && (
+        <div className="mt-2">
+          <label className="mb-1 block text-xs text-gray-500">예정 지출 연결 (선택)</label>
+          <select
+            value={selectedPlanned ?? ''}
+            onChange={(e) => setSelectedPlanned(e.target.value ? Number(e.target.value) : null)}
+            className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
+          >
+            <option value="">일반 지출 (일일 예산 차감)</option>
+            {plannedExpenses.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.memo ?? '예정 지출'} — {formatAmount(p.amount)}
+                {(p.used_amount ?? 0) > 0 && ` (사용 ${formatAmount(p.used_amount ?? 0)})`}
+              </option>
+            ))}
+          </select>
+          {selectedPlanned && (
+            <p className="mt-1 text-[10px] text-blue-500">이 지출은 일일 예산에 영향을 주지 않습니다</p>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mt-2 flex items-center gap-1 text-xs text-red-500">

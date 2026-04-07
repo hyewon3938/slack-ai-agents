@@ -101,7 +101,7 @@ export function RunwayCard() {
       </div>
 
       {/* 2. 이번 달 예산 카드 */}
-      {runway.free_per_month !== null && (
+      {(runway.free_per_month !== null || runway.avg_variable_monthly > 0) && (
         <div className={`rounded-xl border p-4 shadow-sm ${
           isDynamicDailyNegative
             ? 'border-red-200 bg-red-50'
@@ -110,8 +110,8 @@ export function RunwayCard() {
               : 'border-green-100 bg-green-50'
         }`}>
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs text-gray-500">이번 달 자유 예산</span>
-            <span className="text-sm font-semibold text-gray-700">{formatAmount(runway.free_per_month)}</span>
+            <span className="text-xs text-gray-500">이번 달 자유 예산{runway.free_per_month === null ? ' (3개월 평균)' : ''}</span>
+            <span className="text-sm font-semibold text-gray-700">{formatAmount(runway.free_per_month ?? runway.avg_variable_monthly)}</span>
           </div>
 
           <div className="flex items-center justify-between mb-3">
@@ -129,7 +129,9 @@ export function RunwayCard() {
                 {isDynamicDailyNegative ? '-' : ''}{formatAmount(Math.abs(runway.dynamic_daily))}
               </div>
               {isDynamicDailyNegative && (
-                <div className="text-xs text-red-500 mt-0.5">이번 달 예산 초과 — 지출을 최대한 줄여봐</div>
+                <div className="text-xs text-red-500 mt-0.5">
+                  이번 달 {formatAmount(Math.abs(runway.month_budget_remaining))} 초과 — 남은 {runway.cycle_remaining_days}일 최대한 아껴봐
+                </div>
               )}
             </div>
             <div className="text-right text-xs text-gray-400">

@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       payment_method?: string;
       memo?: string | null;
       type?: 'expense' | 'income';
+      planned_expense_id?: number | null;
     };
 
     if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
@@ -72,6 +73,7 @@ export async function POST(request: Request) {
       payment_method: body.payment_method,
       memo: body.memo,
       type: entryType,
+      planned_expense_id: body.planned_expense_id ?? null,
     });
     return NextResponse.json({ data }, { status: 201 });
   } catch {
