@@ -21,8 +21,8 @@ function ProgressBar({ value, max, danger }: { value: number; max: number; dange
 }
 
 export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
-  // 자동 예산 우선, 없으면 수동 예산
-  const totalBudget = summary.auto_budget ?? summary.budget?.total_budget ?? null;
+  // 자동 예산만 사용 (수동 예산 제거됨)
+  const totalBudget = summary.auto_budget;
   const autoDailyBudget = summary.auto_daily;
 
   // 결제주기: 전월 16일 ~ 당월 15일
@@ -45,10 +45,8 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const isOverBudget = totalBudget !== null && summary.flexible_spent > totalBudget;
   const budgetRemaining = totalBudget !== null ? totalBudget - summary.flexible_spent : null;
 
-  // 자동 일일 예산이 있으면 사용, 없으면 전통 방식으로 계산
-  const displayDaily = autoDailyBudget ?? (
-    totalBudget !== null ? Math.round((totalBudget - summary.installment_total) / totalDays) : null
-  );
+  // 자동 일일 예산만 사용
+  const displayDaily = autoDailyBudget;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -96,7 +94,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
             <span className="text-lg font-bold text-gray-900">{formatAmount(summary.flexible_spent)}</span>
           </div>
           <div className="rounded-lg bg-gray-50 px-3 py-1.5 text-xs text-gray-500">
-            분석 탭에서 목표 기간을 설정하면 예산이 자동 산정됩니다
+            설정 탭에서 목표 기간을 설정하면 예산이 자동 산정됩니다
           </div>
         </div>
       )}
