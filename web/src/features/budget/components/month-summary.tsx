@@ -21,8 +21,9 @@ function ProgressBar({ value, max, danger }: { value: number; max: number; dange
 }
 
 export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
-  const budget = summary.budget;
-  const totalBudget = budget?.total_budget ?? null;
+  // 자동 예산 우선, 없으면 수동 예산
+  const totalBudget = summary.auto_budget ?? summary.budget?.total_budget ?? null;
+  const autoDailyBudget = summary.auto_daily;
 
   // 결제주기: 전월 16일 ~ 당월 15일
   const today = new Date();
@@ -41,17 +42,13 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       : totalDays;
   const daysLeft = totalDays - daysPassed;
 
-  // 일일 목표 = (예산 - 할부 확정) / 전체 일수 → 고정값
-  const flexibleBudget = totalBudget !== null ? totalBudget - summary.installment_total : null;
-  const dailyTarget = flexibleBudget !== null ? Math.round(flexibleBudget / totalDays) : null;
+  const isOverBudget = totalBudget !== null && summary.flexible_spent > totalBudget;
+  const budgetRemaining = totalBudget !== null ? totalBudget - summary.flexible_spent : null;
 
-  // 누적 절약/초과 = (일일목표 × 경과일) - 실제 자유지출
-  const expectedSpent = dailyTarget !== null ? dailyTarget * daysPassed : null;
-  const cumDiff = expectedSpent !== null ? expectedSpent - summary.flexible_spent : null;
-  // cumDiff > 0: 절약, cumDiff < 0: 초과
-
-  const isOverBudget = totalBudget !== null && summary.variable_total > totalBudget;
-  const budgetRemaining = totalBudget !== null ? totalBudget - summary.variable_total : null;
+  // 자동 일일 예산이 있으면 사용, 없으면 전통 방식으로 계산
+  const displayDaily = autoDailyBudget ?? (
+    totalBudget !== null ? Math.round((totalBudget - summary.installment_total) / totalDays) : null
+  );
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -73,16 +70,16 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       </div>
 
       {/* 예산 진행 */}
-      {totalBudget !== null && (
+      {totalBudget !== null ? (
         <div className="mb-4">
           <div className="mb-1 flex items-end justify-between">
             <span className="flex items-center gap-1 text-xs text-gray-500">
               <BanknotesIcon size={13} />
-              가변 지출
+              자유 지출
             </span>
-            <span className="text-lg font-bold text-gray-900">{formatAmount(summary.variable_total)}</span>
+            <span className="text-lg font-bold text-gray-900">{formatAmount(summary.flexible_spent)}</span>
           </div>
-          <ProgressBar value={summary.variable_total} max={totalBudget} danger={isOverBudget} />
+          <ProgressBar value={summary.flexible_spent} max={totalBudget} danger={isOverBudget} />
           <div className="mt-1 flex justify-between text-xs text-gray-400">
             <span>예산 {formatAmount(totalBudget)}</span>
             <span className={isOverBudget ? 'font-medium text-red-500' : 'text-gray-500'}>
@@ -92,77 +89,70 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
             </span>
           </div>
         </div>
-      )}
-
-      {/* 예산 미설정 시 */}
-      {totalBudget === null && (
+      ) : (
         <div className="mb-4">
           <div className="mb-1 flex items-end justify-between">
-            <span className="text-xs text-gray-500">가변 지출</span>
-            <span className="text-lg font-bold text-gray-900">{formatAmount(summary.variable_total)}</span>
+            <span className="text-xs text-gray-500">자유 지출</span>
+            <span className="text-lg font-bold text-gray-900">{formatAmount(summary.flexible_spent)}</span>
           </div>
-          <div className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-600">
-            예산 설정에서 월 예산을 설정하면 일일 목표를 계산해줘요
+          <div className="rounded-lg bg-gray-50 px-3 py-1.5 text-xs text-gray-500">
+            분석 탭에서 목표 기간을 설정하면 예산이 자동 산정됩니다
           </div>
         </div>
       )}
 
       {/* 핵심 지표 */}
       <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
-        {/* 일일 목표 (고정) */}
+        {/* 일일 예산 */}
         <div className="text-center">
-          <div className="text-xs text-gray-400">하루 목표</div>
-          {dailyTarget !== null ? (
+          <div className="text-xs text-gray-400">하루 예산</div>
+          {displayDaily !== null ? (
             <>
               <div className="text-sm font-semibold text-gray-800">
-                {formatAmount(dailyTarget)}
+                {formatAmount(displayDaily)}
               </div>
-              <div className="text-[10px] text-gray-400">할부 제외</div>
+              {summary.auto_daily !== null && (
+                <div className="text-[10px] text-gray-400">자동</div>
+              )}
             </>
           ) : (
             <div className="text-sm text-gray-300">-</div>
           )}
         </div>
 
-        {/* 누적 절약/초과 */}
+        {/* 할부 */}
         <div className="text-center">
-          <div className="text-xs text-gray-400">
-            {cumDiff !== null && cumDiff >= 0 ? '절약 중' : '초과 중'}
-          </div>
-          {cumDiff !== null && daysPassed > 0 ? (
-            <>
-              <div className={`text-sm font-semibold ${cumDiff >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {cumDiff >= 0 ? '+' : ''}{formatAmount(cumDiff)}
-              </div>
-              <div className="text-[10px] text-gray-400">{daysPassed}일 경과</div>
-            </>
-          ) : cumDiff !== null ? (
-            <div className="text-sm text-gray-300">-</div>
+          <div className="text-xs text-gray-400">할부</div>
+          {summary.installment_total > 0 ? (
+            <div className="text-sm font-semibold text-gray-800">
+              {formatAmount(summary.installment_total)}
+            </div>
           ) : (
             <div className="text-sm text-gray-300">-</div>
           )}
         </div>
 
-        {/* 남은 날 + 할부 */}
+        {/* 남은 날 */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-0.5 text-xs text-gray-400">
             <ClockIcon size={12} />
             남은 날
           </div>
           <div className="text-sm font-semibold text-gray-800">{daysLeft}일</div>
-          {summary.installment_total > 0 && (
-            <div className="text-[10px] text-gray-400">
-              할부 {formatAmount(summary.installment_total)}
-            </div>
-          )}
+          <div className="text-[10px] text-gray-400">{daysPassed}일 경과</div>
         </div>
       </div>
 
       {/* 부가 정보 */}
       <div className="mt-3 space-y-1">
-        {summary.refund_total > 0 && (
+        {summary.income_total > 0 && (
           <div className="rounded-lg bg-green-50 px-3 py-2 text-xs text-green-600">
-            환불 +{formatAmount(summary.refund_total)} (카드 대금 상쇄)
+            수입 +{formatAmount(summary.income_total)} (예산에 반영됨)
+          </div>
+        )}
+        {summary.planned_total > 0 && (
+          <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-600">
+            예정 지출 {formatAmount(summary.planned_total)} (예산에서 차감됨)
           </div>
         )}
         {summary.fixed_total > 0 && (

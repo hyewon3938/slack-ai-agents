@@ -1,19 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { FixedCostRow, AssetRow, BudgetRow } from '@/features/budget/lib/types';
+import type { FixedCostRow, AssetRow } from '@/features/budget/lib/types';
+import type { MonthBudgetPreview } from '@/features/budget/lib/queries';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
-
-/** 현재 결제주기의 대금 월 */
-function getCurrentBillingMonth(): string {
-  const now = new Date();
-  if (now.getDate() >= 16) {
-    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
-  }
-  return now.toISOString().slice(0, 7);
-}
 
 // ─── 고정비 수정 아이템 ─────────────────────────────────
 
@@ -173,28 +164,180 @@ function AssetItem({
   );
 }
 
+// ─── 목표 기간 설정 카드 ──────────────────────────────
+
+interface BudgetPreviewData {
+  free_per_month: number;
+  daily_estimate: number;
+  month_breakdown: MonthBudgetPreview[];
+}
+
+function TargetDateCard({
+  savedTarget,
+  onSaved,
+}: {
+  savedTarget: string | null;
+  onSaved: (target: string) => void;
+}) {
+  const [inputValue, setInputValue] = useState(savedTarget ?? '');
+  const [preview, setPreview] = useState<BudgetPreviewData | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showAllMonths, setShowAllMonths] = useState(false);
+
+  // 초기 프리뷰 로드 (저장된 목표가 있으면)
+  useEffect(() => {
+    if (savedTarget && /^\d{4}-\d{2}$/.test(savedTarget)) {
+      void fetchPreview(savedTarget);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedTarget]);
+
+  const fetchPreview = async (target: string) => {
+    if (!/^\d{4}-\d{2}$/.test(target)) return;
+    setLoadingPreview(true);
+    try {
+      const res = await fetch(`/api/budget/settings?previewTarget=${target}`);
+      if (res.ok) {
+        const d = (await res.json()) as { data: BudgetPreviewData };
+        setPreview(d.data);
+      }
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const handleInputChange = (val: string) => {
+    setInputValue(val);
+    if (/^\d{4}-\d{2}$/.test(val)) {
+      void fetchPreview(val);
+    } else {
+      setPreview(null);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!inputValue || !/^\d{4}-\d{2}$/.test(inputValue)) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/budget/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_date: inputValue }),
+      });
+      if (res.ok) {
+        onSaved(inputValue);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isDailyLow = preview && preview.daily_estimate < 10000;
+  const displayMonths = showAllMonths
+    ? preview?.month_breakdown
+    : preview?.month_breakdown.slice(0, 4);
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <h2 className="mb-3 text-sm font-semibold text-gray-700">목표 기간</h2>
+
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          type="month"
+          value={inputValue}
+          onChange={(e) => handleInputChange(e.target.value)}
+          className="flex-1 rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
+        />
+        <button
+          onClick={() => void handleSave()}
+          disabled={saving || !inputValue || !/^\d{4}-\d{2}$/.test(inputValue)}
+          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-blue-700 transition"
+        >
+          {saving ? '저장 중...' : '설정'}
+        </button>
+      </div>
+
+      {savedTarget && (
+        <p className="mb-3 text-xs text-gray-400">현재 설정: <span className="font-medium text-gray-600">{savedTarget}</span></p>
+      )}
+
+      {/* 프리뷰 */}
+      {loadingPreview && (
+        <div className="mt-2 h-20 animate-pulse rounded-lg bg-gray-100" />
+      )}
+
+      {preview && !loadingPreview && (
+        <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
+          {/* 요약 */}
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <span className="text-xs text-gray-500">월 자유 예산</span>
+              <span className="ml-2 text-base font-bold text-gray-800">{formatAmount(preview.free_per_month)}</span>
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-gray-500">하루</span>
+              <span className={`ml-1 text-base font-bold ${isDailyLow ? 'text-red-500' : 'text-gray-800'}`}>
+                {formatAmount(preview.daily_estimate)}
+              </span>
+            </div>
+          </div>
+
+          {isDailyLow && (
+            <div className="mb-2 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
+              하루 {formatAmount(preview.daily_estimate)}으로 설정됩니다. 기간을 줄이거나 자금을 늘리면 더 여유로워져요.
+            </div>
+          )}
+
+          {/* 월별 브레이크다운 */}
+          <div className="divide-y divide-gray-100">
+            {displayMonths?.map((m, i) => (
+              <div key={m.month} className={`flex items-center justify-between py-1.5 text-xs ${i === 0 ? 'pt-0' : ''}`}>
+                <span className="text-gray-500">{m.month.slice(2)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-400">잠긴 {formatAmount(m.locked)}</span>
+                  <span className="font-medium text-gray-700">자유 {formatAmount(m.free)}</span>
+                  <span className="text-gray-400">일 {formatAmount(m.daily)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {preview.month_breakdown.length > 4 && (
+            <button
+              onClick={() => setShowAllMonths(!showAllMonths)}
+              className="mt-1.5 text-[11px] text-blue-500 hover:underline"
+            >
+              {showAllMonths ? '접기' : `+${preview.month_breakdown.length - 4}개월 더 보기`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {!preview && !loadingPreview && (
+        <p className="text-xs text-gray-400">
+          목표 기간을 설정하면 월별 예산과 일일 자유 예산을 미리 확인할 수 있습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── 메인 설정 페이지 ─────────────────────────────────
 
 export function BudgetSettingsPage() {
   const [fixedCosts, setFixedCosts] = useState<FixedCostRow[]>([]);
   const [assets, setAssets] = useState<AssetRow[]>([]);
-  const [budget, setBudget] = useState<BudgetRow | null>(null);
+  const [savedTarget, setSavedTarget] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // 예산 수정 상태
-  const [editingBudget, setEditingBudget] = useState(false);
-  const [budgetInput, setBudgetInput] = useState('');
-  const [savingBudget, setSavingBudget] = useState(false);
-
-  const yearMonth = getCurrentBillingMonth();
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [fixedRes, assetsRes, budgetRes] = await Promise.all([
+      const [fixedRes, assetsRes, settingsRes] = await Promise.all([
         fetch('/api/budget/fixed-costs'),
         fetch('/api/budget/assets'),
-        fetch(`/api/budget?yearMonth=${yearMonth}`),
+        fetch('/api/budget/settings'),
       ]);
       if (fixedRes.ok) {
         const d = (await fixedRes.json()) as { data: FixedCostRow[] };
@@ -204,14 +347,14 @@ export function BudgetSettingsPage() {
         const d = (await assetsRes.json()) as { data: AssetRow[] };
         setAssets(d.data);
       }
-      if (budgetRes.ok) {
-        const d = (await budgetRes.json()) as { data: BudgetRow | null };
-        setBudget(d.data);
+      if (settingsRes.ok) {
+        const d = (await settingsRes.json()) as { data: { target_date: string | null } };
+        setSavedTarget(d.data.target_date);
       }
     } finally {
       setLoading(false);
     }
-  }, [yearMonth]);
+  }, []);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
 
@@ -237,26 +380,6 @@ export function BudgetSettingsPage() {
     setAssets((prev) => prev.map((a) => (a.id === id ? data : a)));
   };
 
-  const handleSaveBudget = async () => {
-    const amount = parseInt(budgetInput.replace(/,/g, ''), 10);
-    if (isNaN(amount) || amount <= 0) return;
-    setSavingBudget(true);
-    try {
-      const res = await fetch('/api/budget', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year_month: yearMonth, total_budget: amount }),
-      });
-      if (res.ok) {
-        const { data } = (await res.json()) as { data: BudgetRow };
-        setBudget(data);
-        setEditingBudget(false);
-      }
-    } finally {
-      setSavingBudget(false);
-    }
-  };
-
   const activeCosts = fixedCosts.filter((c) => c.active);
   const inactiveCosts = fixedCosts.filter((c) => !c.active);
   const totalFixed = activeCosts.reduce((s, c) => s + c.amount, 0);
@@ -272,46 +395,11 @@ export function BudgetSettingsPage() {
 
   return (
     <div className="space-y-4">
-      {/* 월 예산 */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-gray-700">월 가변 예산</h2>
-          {!editingBudget && (
-            <button
-              onClick={() => { setBudgetInput(String(budget?.total_budget ?? '')); setEditingBudget(true); }}
-              className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
-            >
-              <PencilIcon size={14} />
-            </button>
-          )}
-        </div>
-
-        {editingBudget ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={budgetInput}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/[^0-9]/g, '');
-                const num = parseInt(raw, 10);
-                setBudgetInput(raw ? num.toLocaleString('ko-KR') : '');
-              }}
-              placeholder="월 예산 입력"
-              className="flex-1 rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-            />
-            <button onClick={() => setEditingBudget(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
-            <button onClick={() => void handleSaveBudget()} disabled={savingBudget} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
-          </div>
-        ) : (
-          <div>
-            <span className="text-2xl font-bold text-gray-900">
-              {budget?.total_budget ? formatAmount(budget.total_budget) : '미설정'}
-            </span>
-            <p className="mt-1 text-xs text-gray-400">고정비/할부 제외, 자유롭게 쓸 수 있는 월 예산</p>
-          </div>
-        )}
-      </div>
+      {/* 목표 기간 설정 */}
+      <TargetDateCard
+        savedTarget={savedTarget}
+        onSaved={(target) => setSavedTarget(target)}
+      />
 
       {/* 고정 지출 */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -346,7 +434,7 @@ export function BudgetSettingsPage() {
 
         <div className="border-t border-gray-100 px-4 py-2.5">
           <p className="text-xs text-gray-400">
-            결제일 설정 시 해당 날짜에 자동으로 지출 내역에 기록됩니다. 각 항목을 눌러 결제일을 설정하세요.
+            결제일 설정 시 해당 날짜에 자동으로 지출 내역에 기록됩니다.
           </p>
         </div>
       </div>
@@ -366,6 +454,12 @@ export function BudgetSettingsPage() {
             ))}
           </div>
         )}
+
+        <div className="border-t border-gray-100 px-4 py-2.5">
+          <p className="text-xs text-gray-400">
+            잔액 업데이트 시 이후 지출/수입 내역이 자동으로 차감·가산되어 런웨이에 반영됩니다.
+          </p>
+        </div>
       </div>
     </div>
   );
