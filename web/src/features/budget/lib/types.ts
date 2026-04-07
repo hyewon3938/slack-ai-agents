@@ -80,6 +80,8 @@ export interface MonthSummary {
   auto_budget: number | null;
   /** 자동 산정 동적 일일 자유 예산 */
   auto_daily: number | null;
+  /** 이번 달 남은 자유 예산 (현재 달 전용) */
+  month_budget_remaining: number | null;
   by_category: CategoryStat[];
   daily_avg: number;
 }
