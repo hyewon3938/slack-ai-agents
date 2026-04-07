@@ -709,15 +709,16 @@ export async function calcBudgetPreview(
     const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
     const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
     const locked = fixedMonthly + installmentSum + plannedSum;
-    const mDays = totalDaysArr[i] ?? 30;
-    const monthFree = Math.round(dailyFree * mDays);
+    const { from: bFrom, to: bTo } = getBillingRange(month);
+    const fullCycleDays = calcCycleDays(bFrom, bTo);
+    const monthFree = Math.round(dailyFree * (totalDaysArr[i] ?? fullCycleDays));
     monthBreakdown.push({
       month,
       locked,
       installments: installmentSum,
       planned: plannedSum,
       free: monthFree,
-      daily: dailyEstimate,
+      daily: fullCycleDays > 0 ? Math.round(freePerMonth / fullCycleDays) : dailyEstimate,
     });
   }
 
