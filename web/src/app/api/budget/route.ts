@@ -16,7 +16,8 @@ export async function GET(request: Request) {
 
     const data = await queryBudget(userId, yearMonth);
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '예산 조회 실패' }, { status: 500 });
   }
 }
@@ -49,7 +50,8 @@ export async function PUT(request: Request) {
       notes: body.notes,
     });
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '예산 설정 실패' }, { status: 500 });
   }
 }

@@ -15,7 +15,8 @@ export async function GET(request: Request) {
     const targetDate = paramTarget ?? (await queryTargetDate(userId)) ?? undefined;
     const data = await queryRunway(userId, targetDate);
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '런웨이 계산 실패' }, { status: 500 });
   }
 }

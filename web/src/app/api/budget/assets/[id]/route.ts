@@ -24,7 +24,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const data = await updateAsset(userId, id, body);
     if (!data) return NextResponse.json({ error: '자산을 찾을 수 없습니다' }, { status: 404 });
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '자산 수정 실패' }, { status: 500 });
   }
 }

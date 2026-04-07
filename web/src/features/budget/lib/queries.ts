@@ -9,6 +9,7 @@ import type {
   MonthProjection,
   PlannedExpenseRow,
 } from './types';
+import { EXCLUDED_CATEGORIES, EXCLUDED_CATEGORIES_SQL } from './types';
 
 // ─── 지출 CRUD ───────────────────────────────────────
 
@@ -151,8 +152,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     count: Number(r.count),
   }));
 
-  // 일평균/예산 계산에서 제외할 카테고리 (고정비, 사업비)
-  const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배']);
+  // 자유 지출에서 제외할 카테고리 (types.ts에서 import)
 
   const variableTotal = byCategory
     .filter((c) => !EXCLUDED_CATEGORIES.has(c.category))
@@ -163,7 +163,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
        AND is_installment = true
-       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
+       AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
        AND COALESCE(type, 'expense') = 'expense'`,
     [userId, from, to],
   );
@@ -693,7 +693,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
          FROM expenses
          WHERE user_id = $1
            AND date >= NOW() - INTERVAL '3 months'
-           AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
+           AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
            AND COALESCE(type, 'expense') = 'expense'
          GROUP BY 1
        ) sub`,
@@ -749,7 +749,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
        AND is_installment = false
-       AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
+       AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
        AND COALESCE(type, 'expense') = 'expense'
        AND planned_expense_id IS NULL`,
     [userId, trackingFrom, todayStr < cycleTo ? todayStr : cycleTo],

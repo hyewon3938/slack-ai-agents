@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { FixedCostRow, AssetRow } from '@/features/budget/lib/types';
+import { MIN_DAILY_BUDGET } from '@/features/budget/lib/types';
 import type { MonthBudgetPreview } from '@/features/budget/lib/queries';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
@@ -233,7 +234,7 @@ function TargetDateCard({
     }
   };
 
-  const isDailyLow = preview && preview.daily_estimate < 10000;
+  const isDailyLow = preview && preview.daily_estimate < MIN_DAILY_BUDGET;
   const displayMonths = showAllMonths
     ? preview?.month_breakdown
     : preview?.month_breakdown.slice(0, 4);
