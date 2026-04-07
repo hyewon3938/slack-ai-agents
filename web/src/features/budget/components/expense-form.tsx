@@ -43,7 +43,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     if (!yearMonth) return;
     void fetch(`/api/budget/planned-expenses?yearMonth=${yearMonth}`)
       .then((r) => r.json())
-      .then((d: { data: PlannedExpenseRow[] }) => setPlannedExpenses(d.data))
+      .then((d: { data?: PlannedExpenseRow[] }) => setPlannedExpenses(d.data ?? []))
       .catch(() => setPlannedExpenses([]));
   }, [yearMonth]);
 
