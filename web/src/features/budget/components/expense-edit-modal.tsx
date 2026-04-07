@@ -4,6 +4,8 @@ import { useState } from 'react';
 import type { ExpenseRow } from '@/features/budget/lib/types';
 import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
 import { XMarkIcon } from '@/components/ui/icons';
+import { Button } from '@/components/ui/button';
+import { Input, Select } from '@/components/ui/input';
 
 interface ExpenseEditModalProps {
   expense: ExpenseRow;
@@ -84,56 +86,44 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
           {/* 날짜 */}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">날짜</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-              required
-            />
-          </div>
+          <Input
+            label="날짜"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
 
           {/* 금액 */}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">금액 (원)</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={amountStr}
-              onChange={handleAmountChange}
-              placeholder="0"
-              className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-              required
-            />
-          </div>
+          <Input
+            label="금액 (원)"
+            type="text"
+            inputMode="numeric"
+            value={amountStr}
+            onChange={handleAmountChange}
+            placeholder="0"
+            required
+          />
 
           {/* 카테고리 */}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">카테고리</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-            >
-              {EXPENSE_CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="카테고리"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            {EXPENSE_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </Select>
 
           {/* 내역 */}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">내역</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="메모"
-              className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
-            />
-          </div>
+          <Input
+            label="내역"
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="메모"
+          />
 
           {/* Error */}
           {error && (
@@ -145,33 +135,25 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
 
           {/* Buttons */}
           <div className="flex items-center justify-between pt-1">
-            <button
+            <Button
               type="button"
+              variant="destructive"
               disabled={deleting}
               onClick={() => {
                 if (!confirm('이 내역을 삭제할까요?')) return;
                 setDeleting(true);
                 void onDelete(expense.id).then(onClose).finally(() => setDeleting(false));
               }}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
             >
               {deleting ? '삭제 중...' : '삭제'}
-            </button>
+            </Button>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:text-gray-700"
-              >
+              <Button type="button" variant="ghost" onClick={onClose}>
                 취소
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
-              >
+              </Button>
+              <Button type="submit" disabled={loading}>
                 {loading ? '저장 중...' : '저장'}
-              </button>
+              </Button>
             </div>
           </div>
         </form>
