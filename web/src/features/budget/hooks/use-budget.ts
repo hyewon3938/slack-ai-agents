@@ -56,13 +56,53 @@ export function useBudget() {
         }
       };
 
+      interface RunwayResponse {
+        free_per_month: number | null;
+        dynamic_daily: number;
+        target_date: string | null;
+        cycle_days: number;
+      }
+
       const [expData, sumData, assetData, fixedData, runwayData] = await Promise.all([
         fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?from=${from}&to=${to}`),
         fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
         fetchJson<{ data: AssetRow[] }>('/api/budget/assets'),
         fetchJson<{ data: FixedCostRow[] }>('/api/budget/fixed-costs'),
-        fetchJson<{ data: { free_per_month: number | null; dynamic_daily: number } }>('/api/budget/runway'),
+        fetchJson<{ data: RunwayResponse }>('/api/budget/runway'),
       ]);
+
+      // 런웨이 데이터 → 해당 월에 맞는 auto_budget/auto_daily 결정
+      const applyAutoBudget = (sum: MonthSummary) => {
+        const rd = runwayData?.data;
+        if (!rd || rd.free_per_month == null || !rd.target_date) return;
+
+        // 목표 기간 범위 내인지 확인
+        const currentBilling = getCurrentBillingMonth();
+        const [ty, tm] = rd.target_date.split('-').map(Number);
+        const [sy, sm] = month.split('-').map(Number);
+        const [cy, cm] = currentBilling.split('-').map(Number);
+        const targetBilling = (ty - cy) * 12 + (tm - cm) + 1; // +1: 해당 월 포함
+        const monthOffset = (sy - cy) * 12 + (sm - cm);
+
+        // 목표 범위 밖이면 예산 0
+        if (monthOffset < 0 || monthOffset >= targetBilling) return;
+
+        sum.auto_budget = rd.free_per_month;
+
+        // 현재 달: 동적 일일 예산 (남은 예산/남은 일수)
+        if (month === currentBilling) {
+          sum.auto_daily = rd.dynamic_daily;
+        } else {
+          // 다른 달: 월 예산 / 해당 주기 일수 (정적)
+          const [year, mon] = month.split('-').map(Number);
+          const prevMon = mon === 1 ? 12 : mon - 1;
+          const prevYear = mon === 1 ? year - 1 : year;
+          const cycFrom = new Date(`${prevYear}-${String(prevMon).padStart(2, '0')}-16T00:00:00`);
+          const cycTo = new Date(`${year}-${String(mon).padStart(2, '0')}-15T00:00:00`);
+          const days = Math.round((cycTo.getTime() - cycFrom.getTime()) / 86400000) + 1;
+          sum.auto_daily = days > 0 ? Math.round(rd.free_per_month / days) : null;
+        }
+      };
 
       // 핵심 데이터(지출, 요약) 실패 시 1회 재시도
       if (!expData || !sumData) {
@@ -73,20 +113,14 @@ export function useBudget() {
         if (retryExp) setExpenses(retryExp.data);
         if (retrySum) {
           const sum = retrySum.data;
-          if (runwayData?.data.free_per_month != null) {
-            sum.auto_budget = runwayData.data.free_per_month;
-            sum.auto_daily = runwayData.data.dynamic_daily;
-          }
+          applyAutoBudget(sum);
           setSummary(sum);
         }
         if (!retryExp && !retrySum) setError('데이터 조회 실패 — 새로고침 해주세요');
       } else {
         setExpenses(expData.data);
         const sum = sumData.data;
-        if (runwayData?.data.free_per_month != null) {
-          sum.auto_budget = runwayData.data.free_per_month;
-          sum.auto_daily = runwayData.data.dynamic_daily;
-        }
+        applyAutoBudget(sum);
         setSummary(sum);
       }
 
