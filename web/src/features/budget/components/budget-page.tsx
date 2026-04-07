@@ -122,7 +122,9 @@ export function BudgetPage() {
 
           {/* 월간 요약 (항상 표시) */}
           {loading ? (
-            <div className="mb-4 h-40 animate-pulse rounded-xl bg-gray-100" />
+            <div className="mb-4 space-y-3">
+              <div className="h-52 animate-pulse rounded-xl bg-gray-100" />
+            </div>
           ) : summary ? (
             <div className="mb-4">
               <MonthSummaryCard summary={summary} />
@@ -159,11 +161,15 @@ export function BudgetPage() {
           {/* 서브 탭 내용 */}
           {subTab === 'list' && (
             loading ? (
-              <div className="h-48 animate-pulse rounded-xl bg-gray-100" />
+              <div className="space-y-px rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="h-9 bg-gray-50" />
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-14 animate-pulse bg-gray-50 border-t border-gray-100" />
+                ))}
+              </div>
             ) : (
               <ExpenseList
                 expenses={expenses}
-                onDelete={deleteExpense}
                 onEdit={setEditingExpense}
                 selectedCategory={selectedCategory}
                 onCategoryChange={setSelectedCategory}
@@ -196,6 +202,7 @@ export function BudgetPage() {
         <ExpenseEditModal
           expense={editingExpense}
           onSave={updateExpense}
+          onDelete={deleteExpense}
           onClose={() => setEditingExpense(null)}
         />
       )}
