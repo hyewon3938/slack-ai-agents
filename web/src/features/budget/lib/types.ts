@@ -12,6 +12,7 @@ export interface ExpenseRow {
   source: string;
   memo: string | null;
   type: 'expense' | 'income';
+  planned_expense_id: number | null;
   created_at?: string;
 }
 
@@ -20,6 +21,8 @@ export interface PlannedExpenseRow {
   year_month: string;
   amount: number;
   memo: string | null;
+  /** 연결된 실제 지출 합계 */
+  used_amount?: number;
   created_at?: string;
 }
 
