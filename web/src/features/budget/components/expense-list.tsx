@@ -6,7 +6,7 @@ import { ko } from 'date-fns/locale';
 import type { ExpenseRow } from '@/features/budget/lib/types';
 import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
-import { TrashIcon, FunnelIcon, ChevronDownIcon } from '@/components/ui/icons';
+import { FunnelIcon, ChevronDownIcon } from '@/components/ui/icons';
 
 /** 카테고리별 색상 맵 */
 const CATEGORY_COLORS: Record<string, string> = {
@@ -38,7 +38,6 @@ function getCategoryColor(category: string): string {
 
 interface ExpenseListProps {
   expenses: ExpenseRow[];
-  onDelete: (id: number) => Promise<void>;
   onEdit: (expense: ExpenseRow) => void;
   selectedCategory: string | null;
   onCategoryChange: (cat: string | null) => void;
@@ -55,8 +54,7 @@ function groupByDate(expenses: ExpenseRow[]): Map<string, ExpenseRow[]> {
   return map;
 }
 
-export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCategoryChange }: ExpenseListProps) {
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChange }: ExpenseListProps) {
   const [filterOpen, setFilterOpen] = useState(false);
 
   const filtered = selectedCategory
@@ -65,16 +63,6 @@ export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCa
 
   const grouped = groupByDate(filtered);
   const sortedDates = [...grouped.keys()].sort((a, b) => b.localeCompare(a));
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('이 지출을 삭제할까요?')) return;
-    setDeletingId(id);
-    try {
-      await onDelete(id);
-    } finally {
-      setDeletingId(null);
-    }
-  };
 
   // 현재 expenses에 실제 존재하는 카테고리만 필터에 표시
   const activeCategories = [...new Set(expenses.map((e) => e.category))];
@@ -166,7 +154,7 @@ export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCa
                             {expense.category}
                           </span>
                           {expense.is_installment && expense.installment_num !== null && expense.installment_total !== null && (
-                            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-600">
+                            <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-500">
                               {expense.installment_num}/{expense.installment_total}
                             </span>
                           )}
@@ -176,19 +164,10 @@ export function ExpenseList({ expenses, onDelete, onEdit, selectedCategory, onCa
                         )}
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className={`text-sm font-semibold ${expense.category === '환불' ? 'text-green-600' : 'text-gray-800'}`}>
-                          {expense.category === '환불' ? '+' : ''}{formatAmount(expense.amount)}
+                        <div className={`text-sm font-semibold ${expense.type === 'income' ? 'text-green-600' : 'text-gray-800'}`}>
+                          {expense.type === 'income' ? '+' : ''}{formatAmount(expense.amount)}
                         </div>
                       </div>
-                      {expense.source !== 'import' && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void handleDelete(expense.id); }}
-                          disabled={deletingId === expense.id}
-                          className="shrink-0 rounded-md p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-400 disabled:opacity-50"
-                        >
-                          <TrashIcon size={15} />
-                        </button>
-                      )}
                     </div>
                   );
                 })}
