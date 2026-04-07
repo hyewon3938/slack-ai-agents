@@ -15,7 +15,7 @@ function barHeight(projection: MonthProjection, maxRemaining: number): number {
 export function RunwayCard() {
   const [runway, setRunway] = useState<RunwayResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showProjections, setShowProjections] = useState(false);
+  const [showProjections, setShowProjections] = useState(true);
 
   const fetchRunway = useCallback(() => {
     setLoading(true);
@@ -68,9 +68,6 @@ export function RunwayCard() {
     targetGapMonths = Math.round(((ry - ty) * 12 + (rm - tm)) * 10) / 10;
   }
 
-  const isDynamicDailyNegative = runway.dynamic_daily < 0;
-  const isDynamicDailyLow = runway.dynamic_daily >= 0 && runway.dynamic_daily < 5000;
-
   return (
     <div className="space-y-3">
       {/* 1. 실제 런웨이 카드 */}
@@ -100,64 +97,7 @@ export function RunwayCard() {
         )}
       </div>
 
-      {/* 2. 이번 달 예산 카드 */}
-      {(runway.free_per_month !== null || runway.avg_variable_monthly > 0) && (
-        <div className={`rounded-xl border p-4 shadow-sm ${
-          isDynamicDailyNegative
-            ? 'border-red-200 bg-red-50'
-            : isDynamicDailyLow
-              ? 'border-amber-100 bg-amber-50'
-              : 'border-green-100 bg-green-50'
-        }`}>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs text-gray-500">이번 달 자유 예산{runway.free_per_month === null ? ' (3개월 평균)' : ''}</span>
-            <span className="text-sm font-semibold text-gray-700">{formatAmount(runway.free_per_month ?? runway.avg_variable_monthly)}</span>
-          </div>
-
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs text-gray-500">남은 자유 예산</span>
-            <span className={`text-lg font-bold ${runway.month_budget_remaining < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-              {formatAmount(runway.month_budget_remaining)}
-            </span>
-          </div>
-
-          {/* 일일 자유 예산 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-gray-500">오늘 자유 예산</div>
-              <div className={`text-2xl font-bold ${isDynamicDailyNegative ? 'text-red-600' : isDynamicDailyLow ? 'text-amber-600' : 'text-gray-900'}`}>
-                {isDynamicDailyNegative ? '-' : ''}{formatAmount(Math.abs(runway.dynamic_daily))}
-              </div>
-              {isDynamicDailyNegative && (
-                <div className="text-xs text-red-500 mt-0.5">
-                  이번 달 {formatAmount(Math.abs(runway.month_budget_remaining))} 초과 — 남은 {runway.cycle_remaining_days}일 최대한 아껴봐
-                </div>
-              )}
-            </div>
-            <div className="text-right text-xs text-gray-400">
-              <div>{runway.cycle_elapsed}일 경과</div>
-              <div>남은 {runway.cycle_remaining_days}일</div>
-            </div>
-          </div>
-
-          {/* 진행 바 */}
-          <div className="mt-2 h-1.5 rounded-full bg-gray-200 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${isDynamicDailyNegative ? 'bg-red-400' : 'bg-green-500'}`}
-              style={{ width: `${Math.min(100, (runway.cycle_elapsed / runway.cycle_days) * 100)}%` }}
-            />
-          </div>
-          <div className="mt-1 flex justify-between text-[10px] text-gray-400">
-            <span>지출: {formatAmount(runway.flexible_spent)}</span>
-            {runway.current_month_income > 0 && (
-              <span className="text-green-600">수입: +{formatAmount(runway.current_month_income)}</span>
-            )}
-            <span>{runway.cycle_days}일 주기</span>
-          </div>
-        </div>
-      )}
-
-      {/* 3. 월별 시뮬레이션 */}
+      {/* 2. 월별 시뮬레이션 */}
       {projections.length > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <button
