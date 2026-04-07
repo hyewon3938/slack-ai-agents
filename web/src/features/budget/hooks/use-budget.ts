@@ -56,11 +56,12 @@ export function useBudget() {
         }
       };
 
-      const [expData, sumData, assetData, fixedData] = await Promise.all([
+      const [expData, sumData, assetData, fixedData, runwayData] = await Promise.all([
         fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?from=${from}&to=${to}`),
         fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
         fetchJson<{ data: AssetRow[] }>('/api/budget/assets'),
         fetchJson<{ data: FixedCostRow[] }>('/api/budget/fixed-costs'),
+        fetchJson<{ data: { free_per_month: number | null; dynamic_daily: number } }>('/api/budget/runway'),
       ]);
 
       // 핵심 데이터(지출, 요약) 실패 시 1회 재시도
@@ -70,11 +71,23 @@ export function useBudget() {
           !sumData ? fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`) : Promise.resolve(sumData),
         ]);
         if (retryExp) setExpenses(retryExp.data);
-        if (retrySum) setSummary(retrySum.data);
+        if (retrySum) {
+          const sum = retrySum.data;
+          if (runwayData?.data.free_per_month != null) {
+            sum.auto_budget = runwayData.data.free_per_month;
+            sum.auto_daily = runwayData.data.dynamic_daily;
+          }
+          setSummary(sum);
+        }
         if (!retryExp && !retrySum) setError('데이터 조회 실패 — 새로고침 해주세요');
       } else {
         setExpenses(expData.data);
-        setSummary(sumData.data);
+        const sum = sumData.data;
+        if (runwayData?.data.free_per_month != null) {
+          sum.auto_budget = runwayData.data.free_per_month;
+          sum.auto_daily = runwayData.data.dynamic_daily;
+        }
+        setSummary(sum);
       }
 
       if (assetData) setAssets(assetData.data);
@@ -113,10 +126,12 @@ export function useBudget() {
       const { from, to } = getBillingRange(selectedMonth);
       if (data.date >= from && data.date <= to) {
         setExpenses((prev) => [newExpense, ...prev]);
-        // 요약 재조회
+        // 요약 재조회 (auto_budget/auto_daily 유지)
         void fetch(`/api/expenses/summary?yearMonth=${selectedMonth}`)
           .then((r) => r.json())
-          .then((d: { data: MonthSummary }) => setSummary(d.data));
+          .then((d: { data: MonthSummary }) =>
+            setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily } : d.data),
+          );
       }
       return newExpense;
     },
@@ -132,7 +147,9 @@ export function useBudget() {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
     void fetch(`/api/expenses/summary?yearMonth=${selectedMonth}`)
       .then((r) => r.json())
-      .then((d: { data: MonthSummary }) => setSummary(d.data));
+      .then((d: { data: MonthSummary }) =>
+        setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily } : d.data),
+      );
   }, [selectedMonth]);
 
   const updateExpense = useCallback(
@@ -150,7 +167,9 @@ export function useBudget() {
       setExpenses((prev) => prev.map((e) => (e.id === id ? data : e)));
       void fetch(`/api/expenses/summary?yearMonth=${selectedMonth}`)
         .then((r) => r.json())
-        .then((d: { data: MonthSummary }) => setSummary(d.data));
+        .then((d: { data: MonthSummary }) =>
+          setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily } : d.data),
+        );
     },
     [selectedMonth],
   );
