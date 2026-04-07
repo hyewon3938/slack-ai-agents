@@ -10,6 +10,7 @@ import { ExpenseEditModal } from './expense-edit-modal';
 import { CategoryChart } from './category-chart';
 import { RunwayCard } from './runway-card';
 import { BudgetSettingsPage } from './budget-settings-page';
+import { PlannedExpenseList } from './planned-expense-list';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
 
 /** 결제주기 날짜 범위 계산 (표시용) */
@@ -127,6 +128,11 @@ export function BudgetPage() {
               <MonthSummaryCard summary={summary} />
             </div>
           ) : null}
+
+          {/* 예정 지출 */}
+          <div className="mb-4">
+            <PlannedExpenseList yearMonth={selectedMonth} />
+          </div>
 
           {/* 지출 추가 폼 */}
           {subTab === 'list' && (

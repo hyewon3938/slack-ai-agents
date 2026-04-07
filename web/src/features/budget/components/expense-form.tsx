@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { ExpenseRow } from '@/features/budget/lib/types';
-import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 
 interface ExpenseFormProps {
@@ -11,17 +11,25 @@ interface ExpenseFormProps {
     amount: number;
     category: string;
     description?: string | null;
+    type?: 'expense' | 'income';
   }) => Promise<ExpenseRow>;
 }
 
 export function ExpenseForm({ onAdd }: ExpenseFormProps) {
   const today = new Date().toISOString().slice(0, 10);
+  const [entryType, setEntryType] = useState<'expense' | 'income'>('expense');
   const [date, setDate] = useState(today);
   const [amountStr, setAmountStr] = useState('');
   const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleTypeChange = (type: 'expense' | 'income') => {
+    setEntryType(type);
+    // 타입 변경 시 카테고리를 해당 타입의 첫 번째로 초기화
+    setCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +41,7 @@ export function ExpenseForm({ onAdd }: ExpenseFormProps) {
     }
     setLoading(true);
     try {
-      await onAdd({ date, amount, category, description: description || null });
+      await onAdd({ date, amount, category, description: description || null, type: entryType });
       setAmountStr('');
       setDescription('');
       setDate(today);
@@ -50,12 +58,37 @@ export function ExpenseForm({ onAdd }: ExpenseFormProps) {
     setAmountStr(raw ? num.toLocaleString('ko-KR') : '');
   };
 
+  const currentCategories = entryType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+
   return (
     <form onSubmit={(e) => void handleSubmit(e)} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-gray-700">
-        <PlusIcon size={16} />
-        지출 추가
-      </h2>
+      {/* 지출 / 수입 토글 */}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="flex rounded-lg border border-gray-200 p-0.5">
+          <button
+            type="button"
+            onClick={() => handleTypeChange('expense')}
+            className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+              entryType === 'expense' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            지출
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTypeChange('income')}
+            className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+              entryType === 'income' ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            수입
+          </button>
+        </div>
+        <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-700">
+          <PlusIcon size={14} />
+          {entryType === 'expense' ? '지출 추가' : '수입 추가'}
+        </h2>
+      </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {/* 날짜 */}
@@ -92,7 +125,7 @@ export function ExpenseForm({ onAdd }: ExpenseFormProps) {
             onChange={(e) => setCategory(e.target.value)}
             className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-400 focus:outline-none"
           >
-            {EXPENSE_CATEGORIES.map((c) => (
+            {currentCategories.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
@@ -121,10 +154,12 @@ export function ExpenseForm({ onAdd }: ExpenseFormProps) {
       <button
         type="submit"
         disabled={loading}
-        className="mt-3 ml-auto flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+        className={`mt-3 ml-auto flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50 ${
+          entryType === 'expense' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+        }`}
       >
         <PlusIcon size={13} />
-        {loading ? '추가 중...' : '추가'}
+        {loading ? '추가 중...' : entryType === 'expense' ? '추가' : '수입 기록'}
       </button>
     </form>
   );
