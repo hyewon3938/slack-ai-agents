@@ -2,7 +2,7 @@
 
 import type { MonthSummary } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
-import { BanknotesIcon, ClockIcon, ExclamationTriangleIcon, CheckCircleIcon } from '@/components/ui/icons';
+import { BanknotesIcon, ClockIcon, CheckCircleIcon } from '@/components/ui/icons';
 
 interface MonthSummaryCardProps {
   summary: MonthSummary;
@@ -21,9 +21,9 @@ function ProgressBar({ value, max, danger }: { value: number; max: number; dange
 }
 
 export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
-  // 자동 예산만 사용 (수동 예산 제거됨)
   const totalBudget = summary.auto_budget;
-  const autoDailyBudget = summary.auto_daily;
+  const dailyBudget = summary.auto_daily;
+  const monthRemaining = summary.month_budget_remaining;
 
   // 결제주기: 전월 16일 ~ 당월 15일
   const today = new Date();
@@ -42,33 +42,64 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       : totalDays;
   const daysLeft = totalDays - daysPassed;
 
-  const isOverBudget = totalBudget !== null && summary.flexible_spent > totalBudget;
-  const budgetRemaining = totalBudget !== null ? totalBudget - summary.flexible_spent : null;
-
-  // 자동 일일 예산만 사용
-  const displayDaily = autoDailyBudget;
+  // 현재 달이고 남은 예산 데이터가 있는 경우: "남은 예산" 뷰
+  const hasRemainingView = isCurrentCycle && monthRemaining !== null && dailyBudget !== null;
+  const isRemainingNegative = hasRemainingView && monthRemaining! < 0;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-700">{month}월 대금 요약</h2>
-        {totalBudget !== null && (
-          isOverBudget ? (
-            <span className="flex items-center gap-1 text-xs text-red-500">
-              <ExclamationTriangleIcon size={14} />
-              예산 초과
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-xs text-green-600">
-              <CheckCircleIcon size={14} />
-              예산 내
-            </span>
-          )
+        {hasRemainingView && !isRemainingNegative && (
+          <span className="flex items-center gap-1 text-xs text-green-600">
+            <CheckCircleIcon size={14} />
+            관리 중
+          </span>
         )}
       </div>
 
-      {/* 예산 진행 */}
-      {totalBudget !== null ? (
+      {/* 현재 달: 남은 예산 중심 뷰 */}
+      {hasRemainingView ? (
+        <div className="mb-4">
+          {/* 하루 자유 예산 (가장 중요한 숫자) */}
+          <div className="mb-3 rounded-lg bg-gray-50 px-3 py-3">
+            <div className="text-xs text-gray-500 mb-1">하루 자유 예산</div>
+            <div className={`text-2xl font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}>
+              {isRemainingNegative ? '-' : ''}{formatAmount(Math.abs(dailyBudget!))}
+            </div>
+            {isRemainingNegative && (
+              <div className="mt-1 text-xs text-red-500">
+                이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일 최대한 아껴봐
+              </div>
+            )}
+          </div>
+
+          {/* 남은 예산 바 */}
+          <div className="flex items-end justify-between mb-1">
+            <span className="flex items-center gap-1 text-xs text-gray-500">
+              <BanknotesIcon size={13} />
+              남은 자유 예산
+            </span>
+            <span className={`text-sm font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}>
+              {isRemainingNegative ? '-' : ''}{formatAmount(Math.abs(monthRemaining!))}
+            </span>
+          </div>
+          {!isRemainingNegative && totalBudget !== null && (
+            <>
+              <ProgressBar
+                value={totalBudget - monthRemaining!}
+                max={totalBudget}
+                danger={monthRemaining! < totalBudget * 0.1}
+              />
+              <div className="mt-1 flex justify-between text-xs text-gray-400">
+                <span>월 예산 {formatAmount(totalBudget)}</span>
+                <span>남은 {daysLeft}일</span>
+              </div>
+            </>
+          )}
+        </div>
+      ) : totalBudget !== null ? (
+        /* 다른 달: 월 예산 기준 뷰 */
         <div className="mb-4">
           <div className="mb-1 flex items-end justify-between">
             <span className="flex items-center gap-1 text-xs text-gray-500">
@@ -77,17 +108,22 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
             </span>
             <span className="text-lg font-bold text-gray-900">{formatAmount(summary.flexible_spent)}</span>
           </div>
-          <ProgressBar value={summary.flexible_spent} max={totalBudget} danger={isOverBudget} />
+          <ProgressBar
+            value={summary.flexible_spent}
+            max={totalBudget}
+            danger={summary.flexible_spent > totalBudget}
+          />
           <div className="mt-1 flex justify-between text-xs text-gray-400">
             <span>예산 {formatAmount(totalBudget)}</span>
-            <span className={isOverBudget ? 'font-medium text-red-500' : 'text-gray-500'}>
-              {isOverBudget
-                ? `${formatAmount(Math.abs(budgetRemaining ?? 0))} 초과`
-                : `${formatAmount(budgetRemaining ?? 0)} 남음`}
+            <span>
+              {summary.flexible_spent > totalBudget
+                ? `${formatAmount(summary.flexible_spent - totalBudget)} 초과`
+                : `${formatAmount(totalBudget - summary.flexible_spent)} 남음`}
             </span>
           </div>
         </div>
       ) : (
+        /* 예산 미설정 */
         <div className="mb-4">
           <div className="mb-1 flex items-end justify-between">
             <span className="text-xs text-gray-500">자유 지출</span>
@@ -101,24 +137,17 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
 
       {/* 핵심 지표 */}
       <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
-        {/* 일일 예산 */}
         <div className="text-center">
           <div className="text-xs text-gray-400">하루 예산</div>
-          {displayDaily !== null ? (
-            <>
-              <div className="text-sm font-semibold text-gray-800">
-                {formatAmount(displayDaily)}
-              </div>
-              {summary.auto_daily !== null && (
-                <div className="text-[10px] text-gray-400">자동</div>
-              )}
-            </>
+          {dailyBudget !== null ? (
+            <div className={`text-sm font-semibold ${dailyBudget < 0 ? 'text-red-500' : 'text-gray-800'}`}>
+              {formatAmount(Math.abs(dailyBudget))}
+            </div>
           ) : (
             <div className="text-sm text-gray-300">-</div>
           )}
         </div>
 
-        {/* 할부 */}
         <div className="text-center">
           <div className="text-xs text-gray-400">할부</div>
           {summary.installment_total > 0 ? (
@@ -130,14 +159,12 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
           )}
         </div>
 
-        {/* 남은 날 */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-0.5 text-xs text-gray-400">
             <ClockIcon size={12} />
             남은 날
           </div>
           <div className="text-sm font-semibold text-gray-800">{daysLeft}일</div>
-          <div className="text-[10px] text-gray-400">{daysPassed}일 경과</div>
         </div>
       </div>
 
@@ -145,7 +172,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       <div className="mt-3 space-y-1">
         {summary.income_total > 0 && (
           <div className="rounded-lg bg-green-50 px-3 py-2 text-xs text-green-600">
-            수입 +{formatAmount(summary.income_total)} (예산에 반영됨)
+            수입 +{formatAmount(summary.income_total)}
           </div>
         )}
         {summary.planned_total > 0 && (

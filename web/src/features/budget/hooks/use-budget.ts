@@ -59,6 +59,7 @@ export function useBudget() {
       interface RunwayResponse {
         free_per_month: number | null;
         dynamic_daily: number;
+        month_budget_remaining: number;
         target_date: string | null;
         cycle_days: number;
       }
@@ -89,9 +90,10 @@ export function useBudget() {
 
         sum.auto_budget = rd.free_per_month;
 
-        // 현재 달: 동적 일일 예산 (남은 예산/남은 일수)
+        // 현재 달: 동적 일일 예산 + 남은 예산
         if (month === currentBilling) {
           sum.auto_daily = rd.dynamic_daily;
+          sum.month_budget_remaining = rd.month_budget_remaining;
         } else {
           // 다른 달: 월 예산 / 해당 주기 일수 (정적)
           const [year, mon] = month.split('-').map(Number);
