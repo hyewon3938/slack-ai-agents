@@ -65,6 +65,9 @@ export function useBudget() {
     month_budget_remaining: number;
     target_date: string | null;
     cycle_days: number;
+    today_budget: number;
+    today_flex_spent: number;
+    today_remaining: number;
   }
 
   /** 런웨이 → 해당 월에 맞는 auto_budget/auto_daily 계산 */
@@ -85,6 +88,9 @@ export function useBudget() {
     if (month === currentBilling) {
       sum.auto_daily = rd.dynamic_daily;
       sum.month_budget_remaining = rd.month_budget_remaining;
+      sum.today_budget = rd.today_budget;
+      sum.today_flex_spent = rd.today_flex_spent;
+      sum.today_remaining = rd.today_remaining;
     } else {
       const [year, mon] = month.split('-').map(Number);
       const prevMon = mon === 1 ? 12 : mon - 1;
@@ -184,7 +190,7 @@ export function useBudget() {
         void fetchWithTimeout(`/api/expenses/summary?yearMonth=${selectedMonth}`)
           .then((r) => r.json())
           .then((d: { data: MonthSummary }) =>
-            setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily, month_budget_remaining: prev.month_budget_remaining } : d.data),
+            setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily, month_budget_remaining: prev.month_budget_remaining, today_budget: prev.today_budget, today_flex_spent: prev.today_flex_spent, today_remaining: prev.today_remaining } : d.data),
           )
           .catch(() => { /* 재조회 실패 시 기존 데이터 유지 */ });
       }
@@ -203,7 +209,7 @@ export function useBudget() {
     void fetchWithTimeout(`/api/expenses/summary?yearMonth=${selectedMonth}`)
       .then((r) => r.json())
       .then((d: { data: MonthSummary }) =>
-        setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily, month_budget_remaining: prev.month_budget_remaining } : d.data),
+        setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily, month_budget_remaining: prev.month_budget_remaining, today_budget: prev.today_budget, today_flex_spent: prev.today_flex_spent, today_remaining: prev.today_remaining } : d.data),
       )
       .catch(() => { /* 재조회 실패 시 기존 데이터 유지 */ });
   }, [selectedMonth]);
@@ -224,7 +230,7 @@ export function useBudget() {
       void fetch(`/api/expenses/summary?yearMonth=${selectedMonth}`)
         .then((r) => r.json())
         .then((d: { data: MonthSummary }) =>
-          setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily } : d.data),
+          setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily, month_budget_remaining: prev.month_budget_remaining, today_budget: prev.today_budget, today_flex_spent: prev.today_flex_spent, today_remaining: prev.today_remaining } : d.data),
         );
     },
     [selectedMonth],
