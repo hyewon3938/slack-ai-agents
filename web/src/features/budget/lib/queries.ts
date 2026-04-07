@@ -650,6 +650,12 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const now = new Date();
   const billingMonth = getCurrentBillingMonth(now);
 
+  // 예산 시작일: 목표 기간을 처음 설정한 날 (이전 지출은 과거 취급)
+  const budgetStartRow = await queryOne<{ updated_at: string }>(
+    'SELECT updated_at::text FROM budget_settings WHERE user_id = $1',
+    [userId],
+  );
+
   const [effectiveData, fixedCosts, installmentRows, variableRows, allPlanned] = await Promise.all([
     getEffectiveAvailable(userId),
     queryFixedCosts(userId),
@@ -702,14 +708,25 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const todayDate = new Date(`${todayStr}T00:00:00`);
   const cycleFromDate = new Date(`${cycleFrom}T00:00:00`);
-  const cycleElapsed = Math.max(
-    0,
-    Math.min(cycleDays, Math.round((todayDate.getTime() - cycleFromDate.getTime()) / 86400000) + 1),
-  );
-  const cycleRemainingDays = Math.max(0, cycleDays - cycleElapsed);
+  const cycleToDate = new Date(`${cycleTo}T00:00:00`);
 
-  // 현재 주기 자유 지출
-  // 일반 자유 지출 (예정 지출 연결 건 제외)
+  // 예산 시작일: 목표 기간 설정일. 이전 지출은 과거 취급
+  const budgetStartStr = budgetStartRow?.updated_at
+    ? budgetStartRow.updated_at.slice(0, 10)
+    : cycleFrom;
+  const budgetStartDate = new Date(`${budgetStartStr}T00:00:00`);
+
+  // 지출 추적 시작일: max(주기시작, 예산시작)
+  const trackingFrom = budgetStartDate > cycleFromDate ? budgetStartStr : cycleFrom;
+  const trackingFromDate = new Date(`${trackingFrom}T00:00:00`);
+
+  // 남은 일수: 추적 시작 ~ 주기 끝 기준
+  const budgetDays = Math.max(1, Math.round((cycleToDate.getTime() - trackingFromDate.getTime()) / 86400000) + 1);
+  const daysSinceStart = Math.max(0, Math.round((todayDate.getTime() - trackingFromDate.getTime()) / 86400000) + 1);
+  const cycleElapsed = daysSinceStart;
+  const cycleRemainingDays = Math.max(0, budgetDays - daysSinceStart);
+
+  // 현재 주기 자유 지출 (예산 시작일 이후만)
   const flexResult = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
@@ -717,9 +734,9 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        AND category NOT IN ('통신비', '공과금', '리커밋 사업', '리커밋 택배')
        AND COALESCE(type, 'expense') = 'expense'
        AND planned_expense_id IS NULL`,
-    [userId, cycleFrom, todayStr < cycleTo ? todayStr : cycleTo],
+    [userId, trackingFrom, todayStr < cycleTo ? todayStr : cycleTo],
   );
-  // 예정 지출 초과분: 연결된 지출 중 예정 금액을 초과한 부분은 자유 지출에 포함
+  // 예정 지출 초과분
   const overflowResult = await query<{ overflow: string }>(
     `SELECT COALESCE(SUM(GREATEST(used - budget, 0)), 0) as overflow
      FROM (
@@ -730,7 +747,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        WHERE p.user_id = $1
        GROUP BY p.id, p.amount
      ) sub`,
-    [userId, cycleFrom, todayStr < cycleTo ? todayStr : cycleTo],
+    [userId, trackingFrom, todayStr < cycleTo ? todayStr : cycleTo],
   );
   const plannedOverflow = Number(overflowResult.rows[0]?.overflow ?? 0);
   const flexibleSpent = Number(flexResult.rows[0]?.total ?? 0) + plannedOverflow;
@@ -795,8 +812,10 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
       totalRemainingDays += calcCycleDays(fFrom, fTo);
     }
 
-    // 이번 달 자유 예산 = freePerMonth + 이번 달 수입 (예정지출은 이미 locked에 포함)
-    const thisMonthFree = (freePerMonth ?? 0) + currentMonthIncome;
+    // 이번 달 자유 예산: 남은 일수 비율로 프로레이션
+    // (첫 달은 예산 시작일 이후 기간만 해당)
+    const proratedBudget = Math.round((freePerMonth ?? 0) * budgetDays / cycleDays);
+    const thisMonthFree = proratedBudget + currentMonthIncome;
     monthBudgetRemaining = thisMonthFree - flexibleSpent;
     dynamicDaily = cycleRemainingDays > 0
       ? Math.round(monthBudgetRemaining / cycleRemainingDays)
@@ -866,7 +885,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     free_per_month: freePerMonth,
     dynamic_daily: dynamicDaily,
     month_budget_remaining: monthBudgetRemaining,
-    cycle_days: cycleDays,
+    cycle_days: budgetDays,
     cycle_remaining_days: cycleRemainingDays,
     cycle_elapsed: cycleElapsed,
     flexible_spent: flexibleSpent,
