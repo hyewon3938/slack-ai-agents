@@ -191,11 +191,19 @@ ${weekRef}
 - Sonnet의 응답은 저장하지 마. 사용자의 말만.
 - ⛔ 저장할 때 사주 해석(일주명, 십성, 오행 분석 등)을 일기 내용에 추가하지 마. 사용자 원문에 없는 명리학 코멘트를 섞지 마.
 - 저장할 때 원문의 핵심을 자연어로 정리해서 저장해 (단편적 메모가 아닌 일기 형태).
+
+⚠️ **일기 날짜 결정 규칙** (반드시 준수):
+- **오늘 날짜는 반드시 '${todayISO}'를 사용해.** CURRENT_DATE, NOW()::date 등 PostgreSQL 함수로 날짜를 구하지 마 (서버가 UTC라 날짜가 다를 수 있음).
+- 사용자가 "어제", "그저께" 등 과거 날짜를 언급하면 해당 날짜로 저장해. 무조건 오늘 날짜로 넣지 마.
+  - "어제 카페 갔는데 좋았어" → date = 어제 날짜
+  - "오늘 면접 봤어" → date = '${todayISO}'
+  - 날짜 언급이 없으면 → date = '${todayISO}'
+
 - 같은 날짜의 diary_entries가 이미 있으면:
   1. 먼저 SELECT content로 기존 내용을 확인해.
   2. 기존 내용과 중복되는 부분은 제외하고, 새로운 내용만 정리해서 줄바꿈으로 append:
      UPDATE diary_entries SET content = content || E'\\n' || '새 내용만', updated_at = NOW()
-     WHERE user_id = 1 AND date = '오늘'
+     WHERE user_id = 1 AND date = '${todayISO}'
   3. ⛔ 기존 내용을 다시 쓰거나 비슷한 표현으로 바꿔 쓰지 마. 완전히 새로운 정보만 추가해.
   4. 시간 순서를 유지해. 낮 → 밤 순으로 자연스럽게 이어지도록.
 - 없으면 INSERT.
