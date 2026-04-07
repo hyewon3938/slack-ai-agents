@@ -21,7 +21,8 @@ export async function GET(request: Request) {
 
     const targetDate = await queryTargetDate(userId);
     return NextResponse.json({ data: { target_date: targetDate } });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '설정 조회 실패' }, { status: 500 });
   }
 }
@@ -38,7 +39,8 @@ export async function PUT(request: Request) {
     }
     await upsertTargetDate(userId, td ?? null);
     return NextResponse.json({ data: { target_date: td ?? null } });
-  } catch {
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '설정 저장 실패' }, { status: 500 });
   }
 }

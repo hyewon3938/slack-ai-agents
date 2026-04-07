@@ -3,6 +3,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ExpenseRow, MonthSummary, AssetRow, FixedCostRow } from '@/features/budget/lib/types';
 
+const FETCH_TIMEOUT_MS = 8000;
+
+/** 타임아웃 포함 fetch wrapper */
+async function fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** 현재 결제주기의 대금 월 반환. 16일 이후면 다음달 대금. */
 function getCurrentBillingMonth(): string {
   const now = new Date();
@@ -48,7 +61,7 @@ export function useBudget() {
       // 개별 요청 실패 시에도 나머지는 정상 처리 (DB 연결 불안정 대응)
       const fetchJson = async <T,>(url: string): Promise<T | null> => {
         try {
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url);
           if (!res.ok) return null;
           return (await res.json()) as T;
         } catch {
@@ -164,11 +177,12 @@ export function useBudget() {
       if (data.date >= from && data.date <= to) {
         setExpenses((prev) => [newExpense, ...prev]);
         // 요약 재조회 (auto_budget/auto_daily 유지)
-        void fetch(`/api/expenses/summary?yearMonth=${selectedMonth}`)
+        void fetchWithTimeout(`/api/expenses/summary?yearMonth=${selectedMonth}`)
           .then((r) => r.json())
           .then((d: { data: MonthSummary }) =>
-            setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily } : d.data),
-          );
+            setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily, month_budget_remaining: prev.month_budget_remaining } : d.data),
+          )
+          .catch(() => { /* 재조회 실패 시 기존 데이터 유지 */ });
       }
       return newExpense;
     },
@@ -182,11 +196,12 @@ export function useBudget() {
       throw new Error(err.error ?? '지출 삭제 실패');
     }
     setExpenses((prev) => prev.filter((e) => e.id !== id));
-    void fetch(`/api/expenses/summary?yearMonth=${selectedMonth}`)
+    void fetchWithTimeout(`/api/expenses/summary?yearMonth=${selectedMonth}`)
       .then((r) => r.json())
       .then((d: { data: MonthSummary }) =>
-        setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily } : d.data),
-      );
+        setSummary((prev) => prev ? { ...d.data, auto_budget: prev.auto_budget, auto_daily: prev.auto_daily, month_budget_remaining: prev.month_budget_remaining } : d.data),
+      )
+      .catch(() => { /* 재조회 실패 시 기존 데이터 유지 */ });
   }, [selectedMonth]);
 
   const updateExpense = useCallback(

@@ -19,7 +19,8 @@ export async function GET(request: Request) {
 
     const data = await queryMonthSummary(userId, yearMonth);
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Expense API]', request.url, err);
     return NextResponse.json({ error: '요약 조회 실패' }, { status: 500 });
   }
 }

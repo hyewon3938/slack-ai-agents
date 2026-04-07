@@ -26,7 +26,8 @@ export async function GET(request: Request) {
 
     const data = await queryExpenses(userId, from, to, category);
     return NextResponse.json({ data });
-  } catch {
+  } catch (err) {
+    console.error('[Expense API]', request.url, err);
     return NextResponse.json({ error: '지출 조회 실패' }, { status: 500 });
   }
 }
@@ -76,7 +77,8 @@ export async function POST(request: Request) {
       planned_expense_id: body.planned_expense_id ?? null,
     });
     return NextResponse.json({ data }, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error('[Expense API]', request.url, err);
     return NextResponse.json({ error: '지출 추가 실패' }, { status: 500 });
   }
 }
