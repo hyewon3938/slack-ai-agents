@@ -8,10 +8,12 @@ import { XMarkIcon } from '@/components/ui/icons';
 interface ExpenseEditModalProps {
   expense: ExpenseRow;
   onSave: (id: number, updates: { date: string; amount: number; category: string; description: string | null }) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
   onClose: () => void;
 }
 
-export function ExpenseEditModal({ expense, onSave, onClose }: ExpenseEditModalProps) {
+export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: ExpenseEditModalProps) {
+  const [deleting, setDeleting] = useState(false);
   const [date, setDate] = useState(expense.date);
   const [amountStr, setAmountStr] = useState(expense.amount.toLocaleString('ko-KR'));
   const [category, setCategory] = useState(expense.category);
@@ -142,21 +144,35 @@ export function ExpenseEditModal({ expense, onSave, onClose }: ExpenseEditModalP
           )}
 
           {/* Buttons */}
-          <div className="flex items-center justify-end gap-2 pt-1">
+          <div className="flex items-center justify-between pt-1">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:text-gray-700"
+              disabled={deleting}
+              onClick={() => {
+                if (!confirm('이 내역을 삭제할까요?')) return;
+                setDeleting(true);
+                void onDelete(expense.id).then(onClose).finally(() => setDeleting(false));
+              }}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
             >
-              취소
+              {deleting ? '삭제 중...' : '삭제'}
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? '저장 중...' : '저장'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:text-gray-700"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? '저장 중...' : '저장'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
