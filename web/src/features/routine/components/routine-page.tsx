@@ -71,7 +71,6 @@ export function RoutinePage() {
       </div>
     );
   }
-
   return (
     <div className="flex flex-1 flex-col">
       {/* 탭 바 */}
