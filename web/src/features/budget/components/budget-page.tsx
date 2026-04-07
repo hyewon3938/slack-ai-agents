@@ -12,6 +12,8 @@ import { RunwayCard } from './runway-card';
 import { BudgetSettingsPage } from './budget-settings-page';
 import { PlannedExpenseList } from './planned-expense-list';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
+import { TopTabs, PillTabs } from '@/components/ui/tabs';
+import { TabsSkeleton, CardSkeleton, ListSkeleton } from '@/components/ui/skeleton';
 
 /** 결제주기 날짜 범위 계산 (표시용) */
 function getBillingRangeLabel(yearMonth: string): string {
@@ -63,6 +65,17 @@ function MonthNavigator({
 type TopTab = 'manage' | 'runway' | 'settings';
 type SubTab = 'list' | 'chart';
 
+const TOP_TABS: { id: TopTab; label: string }[] = [
+  { id: 'manage', label: '관리' },
+  { id: 'runway', label: '분석' },
+  { id: 'settings', label: '설정' },
+];
+
+const SUB_TABS: { id: SubTab; label: string }[] = [
+  { id: 'list', label: '지출' },
+  { id: 'chart', label: '카테고리' },
+];
+
 export function BudgetPage() {
   const {
     selectedMonth, setSelectedMonth,
@@ -75,37 +88,10 @@ export function BudgetPage() {
   const [subTab, setSubTab] = useState<SubTab>('list');
   const [editingExpense, setEditingExpense] = useState<ExpenseRow | null>(null);
 
-  const topTabs: { id: TopTab; label: string }[] = [
-    { id: 'manage', label: '관리' },
-    { id: 'runway', label: '분석' },
-    { id: 'settings', label: '설정' },
-  ];
-
-  const subTabs: { id: SubTab; label: string }[] = [
-    { id: 'list', label: '지출' },
-    { id: 'chart', label: '카테고리' },
-  ];
-
   return (
     <div className="flex flex-1 flex-col">
       {/* 상단 탭 바 */}
-      <div className="border-b border-gray-200 bg-white px-4 pt-2">
-        <div className="mx-auto flex max-w-2xl gap-1">
-          {topTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setTopTab(tab.id)}
-              className={`rounded-t-lg px-4 py-2 text-xs font-medium transition ${
-                topTab === tab.id
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'border-b-2 border-transparent text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <TopTabs tabs={TOP_TABS} active={topTab} onChange={setTopTab} maxWidth="max-w-2xl" />
 
       {/* 관리 탭 */}
       {topTab === 'manage' && (
@@ -122,8 +108,8 @@ export function BudgetPage() {
 
           {/* 월간 요약 (항상 표시) */}
           {loading ? (
-            <div className="mb-4 space-y-3">
-              <div className="h-52 animate-pulse rounded-xl bg-gray-100" />
+            <div className="mb-4">
+              <CardSkeleton className="h-52" />
             </div>
           ) : summary ? (
             <div className="mb-4">
@@ -144,29 +130,12 @@ export function BudgetPage() {
           )}
 
           {/* 서브 탭 */}
-          <div className="mb-3 flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-            {subTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setSubTab(tab.id)}
-                className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
-                  subTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <PillTabs tabs={SUB_TABS} active={subTab} onChange={setSubTab} className="mb-3" />
 
           {/* 서브 탭 내용 */}
           {subTab === 'list' && (
             loading ? (
-              <div className="space-y-px rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <div className="h-9 bg-gray-50" />
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-14 animate-pulse bg-gray-50 border-t border-gray-100" />
-                ))}
-              </div>
+              <ListSkeleton rows={6} rowHeight="h-14" />
             ) : (
               <ExpenseList
                 expenses={expenses}
