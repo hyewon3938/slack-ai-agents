@@ -111,6 +111,7 @@ export function useBudget() {
       description?: string | null;
       payment_method?: string;
       type?: 'expense' | 'income';
+      planned_expense_id?: number | null;
     }): Promise<ExpenseRow> => {
       const res = await fetch('/api/expenses', {
         method: 'POST',

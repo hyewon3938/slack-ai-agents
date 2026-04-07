@@ -66,8 +66,24 @@ export function PlannedExpenseList({ yearMonth }: PlannedExpenseListProps) {
   };
 
   const totalPlanned = items.reduce((s, i) => s + i.amount, 0);
+  const totalUsed = items.reduce((s, i) => s + (i.used_amount ?? 0), 0);
 
   if (loading) return null;
+
+  // 항목이 없고 추가 폼도 안 열려 있으면 컴팩트하게 표시
+  if (items.length === 0 && !showForm) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border border-dashed border-gray-200 px-4 py-2.5">
+        <span className="text-xs text-gray-400">예정 지출 없음</span>
+        <button
+          onClick={() => setShowForm(true)}
+          className="rounded-md px-2 py-1 text-xs text-blue-500 hover:bg-blue-50 transition"
+        >
+          + 추가
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -75,7 +91,9 @@ export function PlannedExpenseList({ yearMonth }: PlannedExpenseListProps) {
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-gray-700">예정 지출</h2>
           {totalPlanned > 0 && (
-            <span className="text-xs text-gray-400">{formatAmount(totalPlanned)}</span>
+            <span className="text-xs text-gray-400">
+              {formatAmount(totalUsed)} / {formatAmount(totalPlanned)}
+            </span>
           )}
         </div>
         <button
@@ -104,7 +122,7 @@ export function PlannedExpenseList({ yearMonth }: PlannedExpenseListProps) {
             />
             <input
               type="text"
-              placeholder="메모 (선택)"
+              placeholder="메모 (예: 영화제, 여행)"
               value={memoInput}
               onChange={(e) => setMemoInput(e.target.value)}
               className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
@@ -121,30 +139,59 @@ export function PlannedExpenseList({ yearMonth }: PlannedExpenseListProps) {
       )}
 
       {/* 목록 */}
-      {items.length === 0 ? (
-        <div className="px-4 py-3 text-xs text-gray-400">
-          이번 달 예정된 지출이 없습니다.
-        </div>
-      ) : (
-        <div className="divide-y divide-gray-100">
-          {items.map((item) => (
-            <div key={item.id} className="flex items-center justify-between px-4 py-2.5">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-gray-800">{formatAmount(item.amount)}</span>
-                {item.memo && (
-                  <span className="text-xs text-gray-400">{item.memo}</span>
-                )}
+      <div className="divide-y divide-gray-100">
+        {items.map((item) => {
+          const used = item.used_amount ?? 0;
+          const remaining = item.amount - used;
+          const pct = item.amount > 0 ? Math.min((used / item.amount) * 100, 100) : 0;
+          const isOver = used > item.amount;
+
+          return (
+            <div key={item.id} className="px-4 py-2.5">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  {item.memo && (
+                    <span className="text-sm font-medium text-gray-700">{item.memo}</span>
+                  )}
+                  <span className="text-sm text-gray-500">{formatAmount(item.amount)}</span>
+                </div>
+                <button
+                  onClick={() => void handleDelete(item.id)}
+                  className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500 transition"
+                >
+                  <XMarkIcon size={14} />
+                </button>
               </div>
-              <button
-                onClick={() => void handleDelete(item.id)}
-                className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500 transition"
-              >
-                <XMarkIcon size={14} />
-              </button>
+              {/* 사용 현황 바 */}
+              {used > 0 && (
+                <>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className={`h-full rounded-full transition-all ${isOver ? 'bg-red-400' : 'bg-blue-400'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+                    <span>사용 {formatAmount(used)}</span>
+                    <span className={isOver ? 'text-red-500' : ''}>
+                      {isOver ? `${formatAmount(Math.abs(remaining))} 초과` : `${formatAmount(remaining)} 남음`}
+                    </span>
+                  </div>
+                </>
+              )}
+              {used === 0 && (
+                <div className="text-[10px] text-gray-400">아직 사용 내역 없음</div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
+
+      <div className="border-t border-gray-100 px-4 py-2">
+        <p className="text-[10px] text-gray-400">
+          지출 기록 시 예정 지출을 선택하면 일일 예산에 영향 없이 별도 관리됩니다.
+        </p>
+      </div>
     </div>
   );
 }

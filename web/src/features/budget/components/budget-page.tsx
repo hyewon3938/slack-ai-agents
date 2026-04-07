@@ -137,7 +137,7 @@ export function BudgetPage() {
           {/* 지출 추가 폼 */}
           {subTab === 'list' && (
             <div className="mb-4">
-              <ExpenseForm onAdd={addExpense} />
+              <ExpenseForm onAdd={addExpense} yearMonth={selectedMonth} />
             </div>
           )}
 
