@@ -2,6 +2,7 @@
 
 import type { MonthSummary } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
+import { getTodayISO } from '@/lib/kst';
 import { BanknotesIcon, ClockIcon, CheckCircleIcon } from '@/components/ui/icons';
 
 interface MonthSummaryCardProps {
@@ -26,7 +27,8 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const monthRemaining = summary.month_budget_remaining;
 
   // 결제주기: 전월 16일 ~ 당월 15일
-  const today = new Date();
+  const todayISO = getTodayISO();
+  const today = new Date(`${todayISO}T12:00:00`);
   const [year, month] = summary.year_month.split('-').map(Number);
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevYear = month === 1 ? year - 1 : year;
