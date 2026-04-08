@@ -648,33 +648,43 @@ export async function calcBudgetPreview(
   const targetMonths = (ty - by) * 12 + (tm - bm) + 1;
   if (targetMonths <= 0) return null;
 
-  const [effectiveData, fixedCosts, installmentRows, allPlanned] = await Promise.all([
+  const [effectiveData, fixedCosts, installmentRows, allPlanned, budgetStartRowPreview] = await Promise.all([
     getEffectiveAvailable(userId),
     queryFixedCosts(userId),
-    query<{ installment_group: string; installment_num: number; installment_total: number; amount: number }>(
+    query<{ installment_group: string; installment_num: number; installment_total: number; amount: number; group_created_at: string }>(
       `SELECT DISTINCT ON (installment_group)
-         installment_group, installment_num, installment_total, amount
-       FROM expenses
+         installment_group, installment_num, installment_total, amount,
+         (SELECT MIN(created_at) FROM expenses e2 WHERE e2.installment_group = e.installment_group)::text as group_created_at
+       FROM expenses e
        WHERE user_id = $1 AND is_installment = true AND installment_group IS NOT NULL
        ORDER BY installment_group, date DESC, created_at DESC`,
       [userId],
     ),
     queryPlannedExpenses(userId),
+    queryOne<{ updated_at: string }>('SELECT updated_at::text FROM budget_settings WHERE user_id = $1', [userId]),
   ]);
 
   // 실시간 가용자금 기반
   const budgetBase = effectiveData.effective;
   const fixedMonthly = fixedCosts.filter((fc) => fc.active).reduce((s, fc) => s + fc.amount, 0);
+  const previewBudgetStartAt = budgetStartRowPreview?.updated_at ?? null;
   const installments = installmentRows.rows
     .filter((r) => r.installment_total > r.installment_num)
-    .map((r) => ({ amount: r.amount, remaining: r.installment_total - r.installment_num }));
+    .map((r) => ({
+      amount: r.amount,
+      remaining: r.installment_total - r.installment_num,
+      isNew: previewBudgetStartAt !== null && r.group_created_at >= previewBudgetStartAt,
+    }));
 
   // 미래 잠긴 돈 (현재 달은 남은 비율만)
+  // 신규 할부(isNew)는 month 0에서 locked 제외 (결제일은 자유 지출로 반영)
   let totalLocked = 0;
   const totalDaysArr: number[] = [];
   for (let i = 0; i < targetMonths; i++) {
     const month = addBillingMonths(billingMonth, i);
-    const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
+    const installmentSum = installments
+      .filter((inst) => inst.remaining > i && (i > 0 || !inst.isNew))
+      .reduce((s, inst) => s + inst.amount, 0);
     const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
     const monthLocked = fixedMonthly + installmentSum + plannedSum;
     const { from: mf, to: mt } = getBillingRange(month);
@@ -702,11 +712,13 @@ export async function calcBudgetPreview(
   // 일일 예산 추정
   const dailyEstimate = Math.round(dailyFree);
 
-  // 월별 브레이크다운
+  // 월별 브레이크다운 (신규 할부는 month 0에서 locked 제외)
   const monthBreakdown: MonthBudgetPreview[] = [];
   for (let i = 0; i < targetMonths; i++) {
     const month = addBillingMonths(billingMonth, i);
-    const installmentSum = installments.filter((inst) => inst.remaining > i).reduce((s, inst) => s + inst.amount, 0);
+    const installmentSum = installments
+      .filter((inst) => inst.remaining > i && (i > 0 || !inst.isNew))
+      .reduce((s, inst) => s + inst.amount, 0);
     const plannedSum = allPlanned.filter((p) => p.year_month === month).reduce((s, p) => s + p.amount, 0);
     const locked = fixedMonthly + installmentSum + plannedSum;
     const { from: bFrom, to: bTo } = getBillingRange(month);
@@ -739,10 +751,11 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const [effectiveData, fixedCosts, installmentRows, variableRows, allPlanned] = await Promise.all([
     getEffectiveAvailable(userId),
     queryFixedCosts(userId),
-    query<{ installment_group: string; installment_num: number; installment_total: number; amount: number }>(
+    query<{ installment_group: string; installment_num: number; installment_total: number; amount: number; group_created_at: string }>(
       `SELECT DISTINCT ON (installment_group)
-         installment_group, installment_num, installment_total, amount
-       FROM expenses
+         installment_group, installment_num, installment_total, amount,
+         (SELECT MIN(created_at) FROM expenses e2 WHERE e2.installment_group = e.installment_group)::text as group_created_at
+       FROM expenses e
        WHERE user_id = $1 AND is_installment = true AND installment_group IS NOT NULL
        ORDER BY installment_group, date DESC, created_at DESC`,
       [userId],
@@ -769,11 +782,14 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const avgVariableMonthly = Math.round(Number(variableRows.rows[0]?.avg_monthly ?? 0));
 
   // 할부 프로젝션: 그룹별 남은 회차와 월 금액
+  // isNew: 예산 시작일 이후 생성된 할부 → 결제일은 자유 지출, 미래 회차만 locked
+  const budgetStartAt = budgetStartRow?.updated_at ?? null;
   const installments = installmentRows.rows
     .filter((r) => r.installment_total > r.installment_num)
     .map((r) => ({
       amount: r.amount,
       remaining: r.installment_total - r.installment_num,
+      isNew: budgetStartAt !== null && r.group_created_at >= budgetStartAt,
     }));
 
   // ─── 목표 기간 기반 계산 ───
@@ -806,11 +822,15 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   const cycleRemainingDays = Math.max(0, budgetDays - daysSinceStart);
 
   // 현재 주기 자유 지출 + 예정 초과 + 수입 + 오늘 자유 지출 (단일 쿼리로 통합)
+  // 신규 할부(예산 시작일 이후 생성): 자유 지출에 포함 ($7: budgetStartAt)
+  // budgetStartAt이 null이면 '9999-12-31T00:00:00Z'로 폴백 → 모든 할부가 구 할부로 처리됨
   const endDate = todayStr < cycleTo ? todayStr : cycleTo;
+  const budgetStartAtParam = budgetStartAt ?? '9999-12-31T00:00:00Z';
   const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string; today_flex: string }>(
     `SELECT
        COALESCE((SELECT SUM(amount) FROM expenses
-         WHERE user_id=$1 AND date>=$2 AND date<=$3 AND is_installment=false
+         WHERE user_id=$1 AND date>=$2 AND date<=$3
+           AND (is_installment=false OR (is_installment=true AND created_at>=$7))
            AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
            AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
        ), 0)::text as flex,
@@ -823,11 +843,12 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
          WHERE user_id=$1 AND date>=$4 AND date<=$5 AND COALESCE(type,'expense')='income'
        ), 0)::text as income,
        COALESCE((SELECT SUM(amount) FROM expenses
-         WHERE user_id=$1 AND date=$6 AND is_installment=false
+         WHERE user_id=$1 AND date=$6
+           AND (is_installment=false OR (is_installment=true AND created_at>=$7))
            AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
            AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
        ), 0)::text as today_flex`,
-    [userId, trackingFrom, endDate, cycleFrom, cycleTo, todayStr],
+    [userId, trackingFrom, endDate, cycleFrom, cycleTo, todayStr, budgetStartAtParam],
   );
   const flexibleSpent = Number(cycleMetrics?.flex ?? 0) + Number(cycleMetrics?.overflow ?? 0);
   const currentMonthIncome = Number(cycleMetrics?.income ?? 0);
@@ -858,11 +879,12 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     targetMonths = (ty - by) * 12 + (tm - bm) + 1;
     if (targetMonths > 0) {
       // 미래 잠긴 돈: 현재 달은 남은 비율만, 나머지는 전체
+      // 신규 할부(isNew)는 결제일이 자유 지출에 반영되므로 month 0(현재 달)에서는 locked에서 제외
       let totalLocked = 0;
       for (let i = 0; i < targetMonths; i++) {
         const month = addBillingMonths(billingMonth, i);
         const installmentSum = installments
-          .filter((inst) => inst.remaining > i)
+          .filter((inst) => inst.remaining > i && (i > 0 || !inst.isNew))
           .reduce((s, inst) => s + inst.amount, 0);
         const plannedSum = allPlanned
           .filter((p) => p.year_month === month)
