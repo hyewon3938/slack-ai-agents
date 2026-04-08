@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
-import { updateRoutineTemplate, deleteRoutineTemplate } from '@/features/routine/lib/queries';
+import { getTodayISO, addDays } from '@/lib/kst';
+import {
+  updateRoutineTemplate,
+  deleteRoutineTemplate,
+  createInactivePeriod,
+  closeOpenInactivePeriod,
+} from '@/features/routine/lib/queries';
 
 export async function PATCH(
   request: Request,
@@ -12,18 +18,30 @@ export async function PATCH(
 
   try {
     const { id } = await params;
+    const numId = Number(id);
     const body = (await request.json()) as Partial<{
       name: string;
       time_slot: string | null;
       frequency: string | null;
       active: boolean;
+      start_date: string;
     }>;
 
-    const data = await updateRoutineTemplate(userId, Number(id), body);
+    const data = await updateRoutineTemplate(userId, numId, body);
     if (!data) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
+
+    // active 토글 시 비활성 기간 자동 관리
+    if (body.active === false) {
+      // 비활성화 → 오늘부터 비활성 기간 시작
+      await createInactivePeriod(userId, numId, getTodayISO(), null);
+    } else if (body.active === true) {
+      // 재개 → 열린 비활성 기간을 어제로 종료
+      await closeOpenInactivePeriod(userId, numId, addDays(getTodayISO(), -1));
+    }
 
     revalidateTag('routines', 'seconds');
     revalidateTag('routine-records', 'seconds');
+    revalidateTag('routine-stats', 'seconds');
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '루틴 수정 실패' }, { status: 500 });
