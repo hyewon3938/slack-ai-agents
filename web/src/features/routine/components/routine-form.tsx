@@ -42,7 +42,12 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
     setSaving(true);
     try {
       const data: RoutineFormData = { name: name.trim(), time_slot: timeSlot, frequency };
+      // 수정 모드: 변경된 경우에만 전송
       if (template && startDate && startDate !== template.start_date) {
+        data.start_date = startDate;
+      }
+      // 생성 모드: startDate가 있으면 전송
+      if (!template && startDate) {
         data.start_date = startDate;
       }
       await onSubmit(data);
@@ -111,19 +116,19 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
         </div>
       </div>
 
-      {/* 시작일 (수정 모드에서만) */}
-      {template && (
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">시작일</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
-          />
-          <p className="mt-1 text-xs text-gray-400">시작일 이전 기록은 통계에서 제외돼</p>
-        </div>
-      )}
+      {/* 시작일 */}
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700">시작일</label>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+        />
+        <p className="mt-1 text-xs text-gray-400">
+          {template ? '시작일 이전 기록은 통계에서 제외돼' : '간격 빈도(격일 등)는 시작일 기준으로 주기가 정해져'}
+        </p>
+      </div>
 
       {/* 비활성 기간 (수정 모드에서만) */}
       {template && <InactivePeriodList templateId={template.id} />}
