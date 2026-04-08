@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { updateExpense, deleteExpense } from '@/features/budget/lib/queries';
-import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 
-const VALID_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
+const VALID_CATEGORIES = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();

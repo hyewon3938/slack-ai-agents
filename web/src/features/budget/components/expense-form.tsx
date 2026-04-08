@@ -6,6 +6,7 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/typ
 import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 import { formatAmount } from '@/lib/types';
 import { Input, Select } from '@/components/ui/input';
+import { getTodayISO } from '@/lib/kst';
 
 interface ExpenseFormProps {
   onAdd: (data: {
@@ -25,7 +26,7 @@ interface ExpenseFormProps {
 const INSTALLMENT_OPTIONS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayISO();
   const [entryType, setEntryType] = useState<'expense' | 'income'>('expense');
   const [date, setDate] = useState(today);
   const [amountStr, setAmountStr] = useState('');

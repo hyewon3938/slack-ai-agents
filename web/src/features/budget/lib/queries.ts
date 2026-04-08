@@ -844,7 +844,12 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   // flexibleSpent는 예산 시작일(budget_settings.updated_at) 이후만 추적
   // 미래 월 예산 안정화: 이번 달 자유 지출을 더해서 "이번 달 시작 시점" 가용자금으로 복원
   // 이번 달 지출은 "이번 달 예산을 소비한 것"이지, 전체 가용자금을 영구적으로 깎은 것이 아님
-  const budgetBase = totalAvailable + flexibleSpent;
+  //
+  // 수입 이중 반영 방지:
+  // totalAvailable에 이미 incomeSince로 수입이 포함되어 있으므로,
+  // currentMonthIncome을 빼서 전체 월 분배에서 제외한다.
+  // 수입은 thisMonthFree에서 이번 달에만 직접 반영된다. (line 909)
+  const budgetBase = totalAvailable + flexibleSpent - currentMonthIncome;
 
   if (validTarget) {
     const [ty, tm] = validTarget.split('-').map(Number);
