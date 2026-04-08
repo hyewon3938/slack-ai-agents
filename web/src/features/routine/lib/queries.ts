@@ -26,14 +26,21 @@ export async function queryRoutineTemplates(userId: number): Promise<RoutineTemp
 /** 템플릿 생성 */
 export async function createRoutineTemplate(
   userId: number,
-  data: { name: string; time_slot: string | null; frequency: string | null },
+  data: { name: string; time_slot: string | null; frequency: string | null; start_date?: string },
 ): Promise<RoutineTemplateRow> {
-  const row = await queryOne<RoutineTemplateRow>(
-    `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active)
-     VALUES ($1, $2, $3, $4, true)
-     RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
-    [userId, data.name, data.time_slot, data.frequency],
-  );
+  const row = data.start_date
+    ? await queryOne<RoutineTemplateRow>(
+        `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active, start_date)
+         VALUES ($1, $2, $3, $4, true, $5)
+         RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
+        [userId, data.name, data.time_slot, data.frequency, data.start_date],
+      )
+    : await queryOne<RoutineTemplateRow>(
+        `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active)
+         VALUES ($1, $2, $3, $4, true)
+         RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
+        [userId, data.name, data.time_slot, data.frequency],
+      );
   if (!row) throw new Error('createRoutineTemplate: INSERT returned no rows');
   return row;
 }
@@ -133,19 +140,30 @@ function parseIntervalDays(frequency: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function shouldCreateToday(frequency: string | null, lastDate: string | null, today: string): boolean {
+function shouldCreateToday(frequency: string | null, lastDate: string | null, today: string, startDate?: string): boolean {
   if (!frequency || frequency === '매일') return true;
+
+  // 간격 빈도(격일, N일마다): start_date 기준 모듈러 연산
+  const interval = parseIntervalDays(frequency);
+  if (interval && startDate) {
+    const gap = daysBetween(startDate, today);
+    return gap >= 0 && gap % interval === 0;
+  }
+
+  // 주1회: 기존 gap 기반 유지
   if (!lastDate) return true;
   const gap = daysBetween(lastDate, today);
   if (frequency === '주1회') return gap >= 7;
-  const interval = parseIntervalDays(frequency);
-  return interval ? gap >= interval : true;
+
+  // 간격 빈도인데 startDate 없는 경우 (폴백)
+  if (interval) return gap >= interval;
+  return true;
 }
 
 /** 오늘 기록 자동 생성 (아직 없는 active 템플릿만) */
 export async function ensureTodayRecords(userId: number, date: string): Promise<number> {
-  const { rows: templates } = await query<{ id: number; frequency: string | null }>(
-    `SELECT id, frequency FROM routine_templates WHERE active = true AND deleted_at IS NULL AND user_id = $1`,
+  const { rows: templates } = await query<{ id: number; frequency: string | null; start_date: string }>(
+    `SELECT id, frequency, start_date::text FROM routine_templates WHERE active = true AND deleted_at IS NULL AND user_id = $1`,
     [userId],
   );
 
@@ -167,7 +185,7 @@ export async function ensureTodayRecords(userId: number, date: string): Promise<
   let created = 0;
   for (const t of templates) {
     if (existingIds.has(t.id)) continue;
-    if (!shouldCreateToday(t.frequency, lastDateMap.get(t.id) ?? null, date)) continue;
+    if (!shouldCreateToday(t.frequency, lastDateMap.get(t.id) ?? null, date, t.start_date)) continue;
     await query(
       `INSERT INTO routine_records (user_id, template_id, date, completed) VALUES ($1, $2, $3, false)`,
       [userId, t.id, date],
@@ -373,4 +391,66 @@ export async function queryRoutineHeatmap(
     inactivePeriods: periodsResult.rows,
     startDate: templateResult?.start_date ?? from,
   };
+}
+
+// ─── 백필 ────────────────────────────────────────────
+
+/** 날짜에 일수 더하기 (KST 기준) */
+function addDaysISO(dateStr: string, days: number): string {
+  const date = new Date(dateStr + 'T00:00:00+09:00');
+  date.setDate(date.getDate() + days);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** 과거 start_date부터 오늘까지 빈도에 맞는 기록을 백필 (최대 30일) */
+export async function backfillRecords(
+  userId: number,
+  templateId: number,
+  startDate: string,
+  frequency: string | null,
+  today: string,
+): Promise<number> {
+  if (startDate >= today) return 0;
+
+  const maxBackfillDays = 30;
+  const totalGap = daysBetween(startDate, today);
+  if (totalGap > maxBackfillDays) return 0;
+
+  // 이미 존재하는 기록 확인
+  const { rows: existing } = await query<{ date: string }>(
+    `SELECT date::text FROM routine_records WHERE user_id = $1 AND template_id = $2 AND date BETWEEN $3 AND $4`,
+    [userId, templateId, startDate, today],
+  );
+  const existingDates = new Set(existing.map((r) => r.date));
+
+  const interval = parseIntervalDays(frequency ?? '');
+  let created = 0;
+
+  if (interval) {
+    // 간격 빈도: start_date부터 interval 간격으로 생성 (오늘 제외 — ensureTodayRecords가 처리)
+    for (let d = 0; d < totalGap; d += interval) {
+      const date = addDaysISO(startDate, d);
+      if (!existingDates.has(date)) {
+        await query(
+          `INSERT INTO routine_records (user_id, template_id, date, completed) VALUES ($1, $2, $3, false)`,
+          [userId, templateId, date],
+        );
+        created++;
+      }
+    }
+  } else {
+    // 매일/주1회: start_date 기록만 생성
+    if (!existingDates.has(startDate)) {
+      await query(
+        `INSERT INTO routine_records (user_id, template_id, date, completed) VALUES ($1, $2, $3, false)`,
+        [userId, templateId, startDate],
+      );
+      created++;
+    }
+  }
+
+  return created;
 }

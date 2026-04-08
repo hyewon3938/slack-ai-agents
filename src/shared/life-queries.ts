@@ -13,6 +13,7 @@ export interface RoutineTemplateRow {
   name: string;
   time_slot: string;
   frequency: string;
+  start_date: string;
 }
 
 export interface RoutineRecordRow {
@@ -71,15 +72,23 @@ export const shouldCreateToday = (
   frequency: string,
   lastDate: string | null,
   today: string,
+  startDate?: string,
 ): boolean => {
   if (frequency === '매일') return true;
+
+  // 간격 빈도(격일, N일마다): start_date 기준 모듈러 연산
+  const intervalDays = parseIntervalDays(frequency);
+  if (intervalDays && startDate) {
+    const gap = daysBetween(startDate, today);
+    return gap >= 0 && gap % intervalDays === 0;
+  }
+
+  // 주1회: 기존 gap 기반 유지
   if (!lastDate) return true;
-
   const gap = daysBetween(lastDate, today);
-
   if (frequency === '주1회') return gap >= 7;
 
-  const intervalDays = parseIntervalDays(frequency);
+  // 간격 빈도인데 startDate 없는 경우 (폴백)
   if (intervalDays) return gap >= intervalDays;
 
   return true;
@@ -99,7 +108,7 @@ export const frequencyBadge = (frequency: string): string => {
 export const queryActiveTemplates = async (): Promise<RoutineTemplateRow[]> =>
   (
     await query<RoutineTemplateRow>(
-      'SELECT id, name, time_slot, frequency FROM routine_templates WHERE active = true AND user_id = 1 ORDER BY id',
+      'SELECT id, name, time_slot, frequency, start_date::text FROM routine_templates WHERE active = true AND user_id = 1 ORDER BY id',
     )
   ).rows;
 
