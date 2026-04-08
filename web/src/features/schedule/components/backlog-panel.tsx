@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { getCategoryStyle } from '@/lib/types';
+import { getTodayISO } from '@/lib/kst';
 import { useBacklog } from '@/features/schedule/hooks/use-backlog';
 import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/features/schedule/components/schedule-form';
@@ -31,8 +32,7 @@ export function BacklogPanel() {
   );
 
   const handleAddToToday = (id: number) => {
-    const today = new Date().toISOString().slice(0, 10);
-    handleAssignDate(id, today);
+    handleAssignDate(id, getTodayISO());
   };
 
   if (loading) {

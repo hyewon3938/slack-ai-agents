@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
+import { getTodayISO } from '@/lib/kst';
 import { StatusBadge } from './status-badge';
 
 interface ScheduleCardProps {
@@ -77,7 +78,7 @@ export function ScheduleCard({
     <div
       onClick={handleCardClick}
       className={`cursor-pointer rounded-lg border p-3 transition hover:shadow-sm ${STATUS_BG[schedule.status] ?? 'bg-white'} ${
-        !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') && schedule.status === 'todo'
+        !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(getTodayISO() + 'T12:00:00+09:00') && schedule.status === 'todo'
           ? 'border-red-300'
           : 'border-gray-200'
       }`}
