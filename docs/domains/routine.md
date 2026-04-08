@@ -11,6 +11,7 @@ routine_templates:
   time_slot TEXT,        -- '낮' | '밤'
   frequency TEXT,        -- '매일' | '격일' | '3일마다' | '주1회'
   active BOOLEAN,
+  start_date DATE,       -- 통계 기산 시작일 (기본값: 생성일)
   deleted_at TIMESTAMPTZ,  -- soft delete
   created_at TIMESTAMPTZ
 
@@ -24,6 +25,15 @@ routine_records:
   completed_at TIMESTAMPTZ,  -- 완료 시점
   memo TEXT,
   created_at TIMESTAMPTZ
+
+-- 루틴 비활성 기간
+routine_inactive_periods:
+  id SERIAL PK,
+  template_id INTEGER FK -> routine_templates.id,
+  user_id INTEGER,
+  start_date DATE,
+  end_date DATE,             -- NULL = 현재 비활성 중
+  created_at TIMESTAMPTZ
 ```
 
 ## API 엔드포인트
@@ -32,11 +42,16 @@ routine_records:
 |--------|------|------|
 | GET | `/api/routines` | 템플릿 목록 조회 (deleted_at IS NULL) |
 | POST | `/api/routines` | 템플릿 생성 |
-| PATCH | `/api/routines/[id]` | 템플릿 수정 (name, time_slot, frequency, active) |
+| PATCH | `/api/routines/[id]` | 템플릿 수정 (name, time_slot, frequency, active, start_date) |
 | DELETE | `/api/routines/[id]` | 템플릿 삭제 (soft delete: active=false + deleted_at=NOW()) |
 | GET | `/api/routines/records?date=` | 날짜별 기록 조회 (템플릿 JOIN) |
 | PATCH | `/api/routines/records/[id]` | 기록 토글 (completed) 또는 메모 수정 |
 | GET | `/api/routines/stats?from=&to=` | 기간별 달성률 통계 |
+| GET | `/api/routines/[id]/inactive-periods` | 비활성 기간 목록 조회 |
+| POST | `/api/routines/[id]/inactive-periods` | 비활성 기간 생성 |
+| PATCH | `/api/routines/[id]/inactive-periods/[periodId]` | 비활성 기간 수정 |
+| DELETE | `/api/routines/[id]/inactive-periods/[periodId]` | 비활성 기간 삭제 |
+| GET | `/api/routines/[id]/heatmap?year=&month=` | 루틴별 월간 히트맵 데이터 |
 
 ## 웹 컴포넌트 구조
 
@@ -48,8 +63,10 @@ features/routine/
 │   ├── routine-stats.tsx         # 통계 뷰 (기간별 + 루틴별 달성률)
 │   ├── routine-list.tsx          # 템플릿 관리 뷰
 │   ├── routine-card.tsx          # 루틴 카드 UI
-│   ├── routine-form.tsx          # 템플릿 생성/수정 폼
+│   ├── routine-form.tsx          # 템플릿 생성/수정 폼 (시작일 + 비활성 기간 포함)
 │   ├── routine-record-detail.tsx # 기록 상세 (메모 편집)
+│   ├── routine-heatmap.tsx       # 루틴별 월간 히트맵 (동그라미 캘린더)
+│   ├── inactive-period-list.tsx  # 비활성 기간 관리 UI
 │   ├── date-nav.tsx              # 날짜 네비게이션 (이전/오늘/다음)
 │   ├── view-toggle.tsx           # 뷰 전환 (checklist/stats/manage)
 │   ├── monthly-heatmap.tsx       # 월간 히트맵
@@ -57,7 +74,7 @@ features/routine/
 ├── hooks/
 │   └── use-routines.ts           # 상태 관리 + CRUD + 폴링
 └── lib/
-    ├── types.ts                  # RoutineTemplateRow, RoutineRecordRow, 통계 타입
+    ├── types.ts                  # RoutineTemplateRow, RoutineInactivePeriod, 통계 타입
     └── queries.ts                # 서버 사이드 DB 쿼리
 ```
 
@@ -77,20 +94,33 @@ features/routine/
 - soft delete된 템플릿(deleted_at IS NOT NULL)은 제외
 
 ### 히트맵
-- **월간 히트맵**: 달성률 기반 색상 표시
+- **월간 히트맵**: 달성률 기반 색상 표시 (전체 달성률 집계)
 - **연간 히트맵**: GitHub contribution 스타일, 최근 365일 데이터
+- **루틴별 월간 히트맵**: 동그라미 캘린더 — 완료(초록)/미완료(빨간 테두리)/비활성(회색) 구분
 
 ### 통계
 - **일별 달성률**: `RoutineDayStat` — date별 total/completed/rate
 - **루틴별 달성률**: `RoutinePerStat` — 템플릿별 total/completed/rate/days_active
   - 전체 기간: active 루틴만 표시
   - 기간 선택: 비활성 포함 (해당 기간에 기록이 있으면)
-  - `days_active`: 생성일 이후 경과 일수
+  - `days_active`: `start_date` 이후 경과 일수 (비활성 기간 일수 차감)
+
+### 시작일 (start_date)
+- `start_date` 기준으로 통계 계산 (이전 기록은 제외)
+- 관리 탭 루틴 수정 모달에서 직접 수정 가능
+- 기본값: 루틴 생성일 (created_at::date)
+
+### 비활성 기간
+- 루틴별로 여러 비활성 기간 설정 가능 (`routine_inactive_periods` 테이블)
+- 비활성 기간 내 기록은 달성률/일수 카운트에서 제외 (NOT EXISTS 서브쿼리)
+- **자동 연동**: 관리 탭에서 ⏸ 비활성화 클릭 → 오늘부터 비활성 기간 자동 생성
+- **자동 연동**: 관리 탭에서 ▶ 재개 클릭 → 어제까지로 비활성 기간 자동 종료
+- 수동 추가/수정/삭제 가능 (루틴 수정 모달 내 `InactivePeriodList`)
 
 ### 뷰 모드
 - `checklist`: 일별 체크리스트 (기본 뷰)
-- `stats`: 달성률 통계 + 히트맵
-- `manage`: 템플릿 생성/수정/삭제
+- `stats`: 달성률 통계 + 히트맵 (루틴 클릭 시 개별 히트맵 인라인 표시)
+- `manage`: 템플릿 생성/수정/삭제 (시작일 + 비활성 기간 관리 포함)
 
 ### Optimistic Update
 - 체크리스트 토글 시 즉시 UI 반영 (`mutatingRef`로 폴링 충돌 방지)
@@ -113,6 +143,6 @@ features/routine/
   - 09:05 — 낮 루틴 체크리스트
   - 23:55 — 밤 루틴 + 하루 종합 리뷰
 - **달성률 분석 규칙**:
-  - `routine_templates.created_at` 확인 필수: 생성일 이전 기간은 달성률 계산에서 제외
-  - SQL 조건: `AND r.date >= t.created_at::date`
+  - `routine_templates.start_date` 확인 필수: 시작일 이전 기간은 달성률 계산에서 제외
+  - SQL 조건: `AND r.date >= t.start_date`
 - **루틴 메모**: `routine_records.memo` — Slack에서 메모 추가/수정 가능

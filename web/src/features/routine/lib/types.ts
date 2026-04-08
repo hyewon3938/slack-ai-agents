@@ -5,6 +5,7 @@ export interface RoutineTemplateRow {
   time_slot: string | null; // '낮' | '밤'
   frequency: string | null; // '매일' | '격일' | '주1회' | 'N일마다'
   active: boolean;
+  start_date?: string;
   created_at?: string;
 }
 
@@ -38,6 +39,27 @@ export interface RoutinePerStat {
   completed: number;
   rate: number; // 0~100
   days_active: number; // 생성 이후 경과 일수
+}
+
+/** 루틴 비활성 기간 */
+export interface RoutineInactivePeriod {
+  id: number;
+  template_id: number;
+  start_date: string;
+  end_date: string | null; // null = 현재 비활성 중
+}
+
+/** 루틴별 히트맵 일별 데이터 */
+export interface RoutineHeatmapDay {
+  date: string;
+  completed: boolean;
+}
+
+/** 루틴 히트맵 API 응답 */
+export interface RoutineHeatmapData {
+  records: RoutineHeatmapDay[];
+  inactivePeriods: RoutineInactivePeriod[];
+  startDate: string;
 }
 
 /** 빈도 옵션 */

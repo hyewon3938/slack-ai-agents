@@ -5,6 +5,7 @@ import type { RoutineDayStat, RoutinePerStat } from '@/features/routine/lib/type
 import { getTodayISO, addDays, getDayName } from '@/lib/kst';
 import { MonthlyHeatmap } from './monthly-heatmap';
 import { YearlyHeatmap } from './yearly-heatmap';
+import { RoutineHeatmap } from './routine-heatmap';
 
 interface RoutineStatsProps {
   stats: RoutineDayStat[];
@@ -33,7 +34,7 @@ export function RoutineStats({ stats, yearlyStats, fetchStats, selectedDate }: R
   );
 }
 
-// ─── 루틴별 달성률 (기간 선택 포함) ─────────────────
+// ─── 루틴별 달성률 (기간 선택 + 히트맵) ─────────────
 
 function PerRoutineSection() {
   const today = getTodayISO();
@@ -42,6 +43,7 @@ function PerRoutineSection() {
   const [to, setTo] = useState(today);
   const [perStats, setPerStats] = useState<RoutinePerStat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRoutine, setSelectedRoutine] = useState<{ id: number; name: string } | null>(null);
 
   const fetchPerRoutine = useCallback(async (f?: string, t?: string) => {
     const params = f && t ? `&from=${f}&to=${t}` : '';
@@ -54,20 +56,21 @@ function PerRoutineSection() {
     }
   }, []);
 
-  // 초기 로드: 전체 기간
   useEffect(() => {
     fetchPerRoutine().finally(() => setLoading(false));
   }, [fetchPerRoutine]);
 
   const handlePeriodChange = async (p: 'all' | 'custom') => {
     setPeriod(p);
-    if (p === 'all') {
-      await fetchPerRoutine();
-    }
+    if (p === 'all') await fetchPerRoutine();
   };
 
   const handleSearch = async () => {
     await fetchPerRoutine(from, to);
+  };
+
+  const handleRoutineClick = (id: number, name: string) => {
+    setSelectedRoutine((prev) => (prev?.id === id ? null : { id, name }));
   };
 
   const avgRate = perStats.length > 0
@@ -137,27 +140,39 @@ function PerRoutineSection() {
       ) : perStats.length === 0 ? (
         <p className="py-4 text-center text-sm text-gray-400">루틴 기록이 없어</p>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-1.5">
           {perStats.map((s) => (
-            <div key={s.template_id} className="flex items-center gap-3">
-              <div className="w-24 shrink-0 md:w-32">
-                <div className="truncate text-sm font-medium text-gray-800" title={s.name}>
-                  {s.name}
+            <div key={s.template_id}>
+              <button
+                onClick={() => handleRoutineClick(s.template_id, s.name)}
+                className={`flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-50 ${
+                  selectedRoutine?.id === s.template_id ? 'bg-blue-50 ring-1 ring-blue-200' : ''
+                }`}
+              >
+                <div className="w-24 shrink-0 md:w-32">
+                  <div className="truncate text-sm font-medium text-gray-800" title={s.name}>
+                    {s.name}
+                  </div>
+                  <div className="text-xs text-gray-400">{s.days_active}일째</div>
                 </div>
-                <div className="text-xs text-gray-400">
-                  {s.days_active}일째
+                <div className="relative h-5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full transition-all"
+                    style={{ width: `${s.rate}%`, backgroundColor: rateColor(s.rate) }}
+                  />
                 </div>
-              </div>
-              <div className="relative h-5 flex-1 overflow-hidden rounded-full bg-gray-100">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full transition-all"
-                  style={{ width: `${s.rate}%`, backgroundColor: rateColor(s.rate) }}
-                />
-              </div>
-              <span className="w-20 shrink-0 text-right text-xs text-gray-500">
-                {s.completed}/{s.total}
-                <span className="ml-1 font-semibold text-gray-700">{s.rate}%</span>
-              </span>
+                <span className="w-20 shrink-0 text-right text-xs text-gray-500">
+                  {s.completed}/{s.total}
+                  <span className="ml-1 font-semibold text-gray-700">{s.rate}%</span>
+                </span>
+              </button>
+
+              {/* 선택된 루틴 히트맵 (인라인 펼침) */}
+              {selectedRoutine?.id === s.template_id && (
+                <div className="mt-1 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+                  <RoutineHeatmap templateId={s.template_id} templateName={s.name} />
+                </div>
+              )}
             </div>
           ))}
         </div>

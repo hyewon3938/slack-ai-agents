@@ -1,12 +1,20 @@
 import { query, queryOne } from '@/lib/db';
-import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat, RoutinePerStat } from '@/features/routine/lib/types';
+import type {
+  RoutineTemplateRow,
+  RoutineRecordRow,
+  RoutineDayStat,
+  RoutinePerStat,
+  RoutineInactivePeriod,
+  RoutineHeatmapDay,
+  RoutineHeatmapData,
+} from '@/features/routine/lib/types';
 
 // ─── 템플릿 CRUD ─────────────────────────────────────
 
 /** 모든 템플릿 조회 (삭제된 항목 제외, active 먼저 정렬) */
 export async function queryRoutineTemplates(userId: number): Promise<RoutineTemplateRow[]> {
   const { rows } = await query<RoutineTemplateRow>(
-    `SELECT id, name, time_slot, frequency, active, created_at::text
+    `SELECT id, name, time_slot, frequency, active, start_date::text, created_at::text
      FROM routine_templates
      WHERE user_id = $1 AND deleted_at IS NULL
      ORDER BY active DESC, time_slot, name`,
@@ -23,7 +31,7 @@ export async function createRoutineTemplate(
   const row = await queryOne<RoutineTemplateRow>(
     `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active)
      VALUES ($1, $2, $3, $4, true)
-     RETURNING id, name, time_slot, frequency, active, created_at::text`,
+     RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
     [userId, data.name, data.time_slot, data.frequency],
   );
   if (!row) throw new Error('createRoutineTemplate: INSERT returned no rows');
@@ -31,7 +39,7 @@ export async function createRoutineTemplate(
 }
 
 /** 템플릿 수정 */
-const TEMPLATE_COLUMNS = new Set(['name', 'time_slot', 'frequency', 'active']);
+const TEMPLATE_COLUMNS = new Set(['name', 'time_slot', 'frequency', 'active', 'start_date']);
 
 export async function updateRoutineTemplate(
   userId: number,
@@ -48,7 +56,7 @@ export async function updateRoutineTemplate(
     `UPDATE routine_templates
      SET ${setClauses.join(', ')}
      WHERE id = $1 AND user_id = $2
-     RETURNING id, name, time_slot, frequency, active, created_at::text`,
+     RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
     [id, userId, ...values],
   );
 }
@@ -171,7 +179,7 @@ export async function ensureTodayRecords(userId: number, date: string): Promise<
 
 // ─── 통계 ────────────────────────────────────────────
 
-/** 기간별 달성률 통계 */
+/** 기간별 달성률 통계 (비활성 기간 제외) */
 export async function queryRoutineStats(
   userId: number,
   from: string,
@@ -188,6 +196,12 @@ export async function queryRoutineStats(
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
      WHERE r.user_id = $1 AND r.date BETWEEN $2 AND $3
+       AND NOT EXISTS (
+         SELECT 1 FROM routine_inactive_periods ip
+         WHERE ip.template_id = r.template_id
+           AND r.date >= ip.start_date
+           AND (ip.end_date IS NULL OR r.date <= ip.end_date)
+       )
      GROUP BY r.date
      ORDER BY r.date`,
     [userId, from, to],
@@ -195,13 +209,15 @@ export async function queryRoutineStats(
   return rows;
 }
 
-/** 루틴별 달성률 — 전체: active만, 기간 선택: 비활성 포함 (기록 있으면) */
+/** 루틴별 달성률 — 비활성 기간 제외, start_date 기준 */
 export async function queryRoutinePerStats(
   userId: number,
   from?: string,
   to?: string,
 ): Promise<RoutinePerStat[]> {
   const hasRange = from && to;
+  const toExpr = hasRange ? '$3::date' : 'CURRENT_DATE';
+
   const { rows } = await query<RoutinePerStat>(
     `SELECT r.template_id,
             t.name,
@@ -212,14 +228,149 @@ export async function queryRoutinePerStats(
               THEN ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / COUNT(*) * 100)::int
               ELSE 0
             END AS rate,
-            GREATEST(1, (CURRENT_DATE - LEAST(MIN(r.date), t.created_at::date)) + 1)::int AS days_active
+            GREATEST(1, (${toExpr} - t.start_date) + 1
+              - COALESCE((
+                SELECT SUM(
+                  LEAST(COALESCE(ip.end_date, ${toExpr}), ${toExpr})
+                  - GREATEST(ip.start_date, t.start_date) + 1
+                )
+                FROM routine_inactive_periods ip
+                WHERE ip.template_id = t.id
+                  AND GREATEST(ip.start_date, t.start_date) <= LEAST(COALESCE(ip.end_date, ${toExpr}), ${toExpr})
+              ), 0))::int AS days_active
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
      WHERE r.user_id = $1 AND t.deleted_at IS NULL
+       AND r.date >= t.start_date
+       AND NOT EXISTS (
+         SELECT 1 FROM routine_inactive_periods ip
+         WHERE ip.template_id = r.template_id
+           AND r.date >= ip.start_date
+           AND (ip.end_date IS NULL OR r.date <= ip.end_date)
+       )
        ${hasRange ? 'AND r.date BETWEEN $2 AND $3' : 'AND t.active = true'}
-     GROUP BY r.template_id, t.name, t.time_slot, t.created_at
+     GROUP BY r.template_id, t.name, t.time_slot, t.start_date
      ORDER BY rate DESC, t.name`,
     hasRange ? [userId, from, to] : [userId],
   );
   return rows;
+}
+
+// ─── 비활성 기간 CRUD ────────────────────────────────
+
+/** 특정 루틴의 비활성 기간 조회 */
+export async function queryInactivePeriods(
+  userId: number,
+  templateId: number,
+): Promise<RoutineInactivePeriod[]> {
+  const { rows } = await query<RoutineInactivePeriod>(
+    `SELECT id, template_id, start_date::text, end_date::text
+     FROM routine_inactive_periods
+     WHERE user_id = $1 AND template_id = $2
+     ORDER BY start_date DESC`,
+    [userId, templateId],
+  );
+  return rows;
+}
+
+/** 비활성 기간 생성 */
+export async function createInactivePeriod(
+  userId: number,
+  templateId: number,
+  startDate: string,
+  endDate: string | null,
+): Promise<RoutineInactivePeriod> {
+  const row = await queryOne<RoutineInactivePeriod>(
+    `INSERT INTO routine_inactive_periods (user_id, template_id, start_date, end_date)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, template_id, start_date::text, end_date::text`,
+    [userId, templateId, startDate, endDate],
+  );
+  if (!row) throw new Error('createInactivePeriod: INSERT returned no rows');
+  return row;
+}
+
+/** 비활성 기간 수정 */
+export async function updateInactivePeriod(
+  userId: number,
+  periodId: number,
+  startDate: string,
+  endDate: string | null,
+): Promise<RoutineInactivePeriod | null> {
+  return queryOne<RoutineInactivePeriod>(
+    `UPDATE routine_inactive_periods
+     SET start_date = $3, end_date = $4
+     WHERE id = $1 AND user_id = $2
+     RETURNING id, template_id, start_date::text, end_date::text`,
+    [periodId, userId, startDate, endDate],
+  );
+}
+
+/** 비활성 기간 삭제 */
+export async function deleteInactivePeriod(
+  userId: number,
+  periodId: number,
+): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM routine_inactive_periods WHERE id = $1 AND user_id = $2`,
+    [periodId, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** 열린 비활성 기간 종료 (재개 시) */
+export async function closeOpenInactivePeriod(
+  userId: number,
+  templateId: number,
+  endDate: string,
+): Promise<void> {
+  await query(
+    `UPDATE routine_inactive_periods
+     SET end_date = $3
+     WHERE user_id = $1 AND template_id = $2 AND end_date IS NULL`,
+    [userId, templateId, endDate],
+  );
+}
+
+// ─── 루틴별 히트맵 ───────────────────────────────────
+
+/** 루틴별 월간 히트맵 데이터 (기록 + 비활성 기간 + 시작일) */
+export async function queryRoutineHeatmap(
+  userId: number,
+  templateId: number,
+  year: number,
+  month: number,
+): Promise<RoutineHeatmapData> {
+  const from = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  const [recordsResult, periodsResult, templateResult] = await Promise.all([
+    query<RoutineHeatmapDay>(
+      `SELECT date::text, completed
+       FROM routine_records
+       WHERE user_id = $1 AND template_id = $2 AND date BETWEEN $3 AND $4
+       ORDER BY date`,
+      [userId, templateId, from, to],
+    ),
+    query<RoutineInactivePeriod>(
+      `SELECT id, template_id, start_date::text, end_date::text
+       FROM routine_inactive_periods
+       WHERE user_id = $1 AND template_id = $2
+         AND start_date <= $4
+         AND (end_date IS NULL OR end_date >= $3)
+       ORDER BY start_date`,
+      [userId, templateId, from, to],
+    ),
+    queryOne<{ start_date: string }>(
+      `SELECT start_date::text FROM routine_templates WHERE id = $1 AND user_id = $2`,
+      [templateId, userId],
+    ),
+  ]);
+
+  return {
+    records: recordsResult.rows,
+    inactivePeriods: periodsResult.rows,
+    startDate: templateResult?.start_date ?? from,
+  };
 }

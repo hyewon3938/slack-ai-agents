@@ -3,10 +3,18 @@
 import { useState } from 'react';
 import type { RoutineTemplateRow } from '@/features/routine/lib/types';
 import { ROUTINE_FREQUENCIES, ROUTINE_TIME_SLOTS } from '@/features/routine/lib/types';
+import { InactivePeriodList } from './inactive-period-list';
+
+interface RoutineFormData {
+  name: string;
+  time_slot: string | null;
+  frequency: string | null;
+  start_date?: string;
+}
 
 interface RoutineFormProps {
   template?: RoutineTemplateRow;
-  onSubmit: (data: { name: string; time_slot: string | null; frequency: string | null }) => void;
+  onSubmit: (data: RoutineFormData) => void;
   onDelete?: () => void;
   onClose: () => void;
 }
@@ -16,6 +24,7 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
   const [name, setName] = useState(template?.name ?? '');
   const [timeSlot, setTimeSlot] = useState(template?.time_slot ?? '낮');
   const [frequency, setFrequency] = useState(template?.frequency ?? '매일');
+  const [startDate, setStartDate] = useState(template?.start_date ?? '');
   const [saving, setSaving] = useState(false);
 
   const isDirty = () => {
@@ -23,7 +32,8 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
     return (
       name !== template.name ||
       timeSlot !== template.time_slot ||
-      frequency !== template.frequency
+      frequency !== template.frequency ||
+      startDate !== (template.start_date ?? '')
     );
   };
 
@@ -31,7 +41,11 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await onSubmit({ name: name.trim(), time_slot: timeSlot, frequency });
+      const data: RoutineFormData = { name: name.trim(), time_slot: timeSlot, frequency };
+      if (template && startDate && startDate !== template.start_date) {
+        data.start_date = startDate;
+      }
+      await onSubmit(data);
     } finally {
       setSaving(false);
     }
@@ -96,6 +110,23 @@ export function RoutineForm({ template, onSubmit, onDelete, onClose }: RoutineFo
           ))}
         </div>
       </div>
+
+      {/* 시작일 (수정 모드에서만) */}
+      {template && (
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">시작일</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-gray-400">시작일 이전 기록은 통계에서 제외돼</p>
+        </div>
+      )}
+
+      {/* 비활성 기간 (수정 모드에서만) */}
+      {template && <InactivePeriodList templateId={template.id} />}
 
       {/* 버튼 */}
       <div className="flex gap-2 pt-2">
