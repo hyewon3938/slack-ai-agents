@@ -181,7 +181,7 @@ export const createTodayRecords = async (today: string): Promise<number> => {
     const shouldCreate =
       t.frequency === '매일'
         ? true
-        : shouldCreateToday(t.frequency, await queryLastRecordDate(t.id), today);
+        : shouldCreateToday(t.frequency, await queryLastRecordDate(t.id), today, t.start_date);
 
     if (shouldCreate) {
       try {
