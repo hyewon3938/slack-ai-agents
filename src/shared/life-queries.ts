@@ -177,6 +177,22 @@ export const queryTodaySchedules = async (today: string): Promise<ScheduleRow[]>
     )
   ).rows;
 
+/** 오늘 완료된 일정 (task 타입만, event 제외) */
+export const queryCompletedSchedules = async (today: string): Promise<ScheduleRow[]> =>
+  (
+    await query<ScheduleRow>(
+      `SELECT s.id, s.title, s.date::text, s.end_date::text, s.status,
+              s.category, c.type AS category_type, s.memo, s.important
+       FROM schedules s
+       LEFT JOIN categories c ON c.name = s.category AND c.user_id = 1
+       WHERE s.status = 'done' AND s.user_id = 1
+         AND COALESCE(c.type, 'task') = 'task'
+         AND (s.date = $1 OR (s.date <= $1 AND s.end_date >= $1))
+       ORDER BY s.title`,
+      [today],
+    )
+  ).rows;
+
 /** 백로그 일정 조회 (날짜 미지정 항목, categories JOIN) */
 export const queryBacklogSchedules = async (): Promise<ScheduleRow[]> =>
   (
