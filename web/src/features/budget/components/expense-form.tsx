@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { ExpenseRow, PlannedExpenseRow } from '@/features/budget/lib/types';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_EXCLUDED_CATEGORIES } from '@/features/budget/lib/types';
 import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 import { formatAmount } from '@/lib/types';
 import { Input, Select } from '@/components/ui/input';
@@ -18,6 +18,7 @@ interface ExpenseFormProps {
     planned_expense_id?: number | null;
     payment_method?: string;
     installment_months?: number;
+    exclude_from_budget?: boolean;
   }) => Promise<ExpenseRow>;
   /** 현재 보고 있는 결제주기 월 (예정 지출 목록용) */
   yearMonth?: string;
@@ -36,6 +37,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpenseRow[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'카드' | '현금'>('카드');
   const [installmentMonths, setInstallmentMonths] = useState<number>(1);
+  const [excludeFromBudget, setExcludeFromBudget] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,8 +52,16 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
 
   const handleTypeChange = (type: 'expense' | 'income') => {
     setEntryType(type);
-    // 타입 변경 시 카테고리를 해당 타입의 첫 번째로 초기화
-    setCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
+    const firstCat = type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0];
+    setCategory(firstCat);
+    setExcludeFromBudget(type === 'expense' ? BUDGET_EXCLUDED_CATEGORIES.has(firstCat) : false);
+  };
+
+  const handleCategoryChange = (cat: string) => {
+    setCategory(cat);
+    if (entryType === 'expense') {
+      setExcludeFromBudget(BUDGET_EXCLUDED_CATEGORIES.has(cat));
+    }
   };
 
   const handlePaymentMethodChange = (method: '카드' | '현금') => {
@@ -79,12 +89,14 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         planned_expense_id: selectedPlanned,
         payment_method: entryType === 'expense' ? paymentMethod : '기타',
         installment_months: entryType === 'expense' && paymentMethod === '카드' ? installmentMonths : undefined,
+        exclude_from_budget: entryType === 'expense' ? excludeFromBudget : false,
       });
       setAmountStr('');
       setDescription('');
       setDate(today);
       setSelectedPlanned(null);
       setInstallmentMonths(1);
+      setExcludeFromBudget(BUDGET_EXCLUDED_CATEGORIES.has(EXPENSE_CATEGORIES[0]));
     } catch (err) {
       setError(err instanceof Error ? err.message : '추가 실패');
     } finally {
@@ -157,7 +169,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
 
         {/* 카테고리 */}
         <div className="col-span-1">
-          <Select label="카테고리" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <Select label="카테고리" value={category} onChange={(e) => handleCategoryChange(e.target.value)}>
             {currentCategories.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
@@ -226,6 +238,31 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
               월 {formatAmount(monthlyPreview)} × {installmentMonths}개월
             </p>
           )}
+
+          {/* 예산 포함/제외 토글 */}
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">예산</label>
+            <div className="flex rounded-lg border border-gray-200 p-0.5">
+              <button
+                type="button"
+                onClick={() => setExcludeFromBudget(false)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  !excludeFromBudget ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                포함
+              </button>
+              <button
+                type="button"
+                onClick={() => setExcludeFromBudget(true)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  excludeFromBudget ? 'bg-gray-500 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                제외
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
