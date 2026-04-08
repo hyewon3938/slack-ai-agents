@@ -8,7 +8,6 @@ import { createLifeAgent } from './agents/life/index.js';
 import { registerLifeActions } from './agents/life/actions.js';
 import { registerHomeTab } from './agents/life/home.js';
 import { createInsightAgent } from './agents/insight/index.js';
-import { createMoneyAgent } from './agents/money/index.js';
 import { CronScheduler } from './cron/life-cron.js';
 import { setPostModifyHook } from './shared/sql-tools.js';
 
@@ -39,12 +38,6 @@ const startApp = async (): Promise<void> => {
   if (CONFIG.channels.insight) {
     const insightAgent = createInsightAgent(llmClient);
     registerAgent(CONFIG.channels.insight, insightAgent);
-  }
-
-  // Money Agent (#money 채널 — 지출/예산 관리)
-  if (CONFIG.channels.money) {
-    const moneyAgent = createMoneyAgent(llmClient);
-    registerAgent(CONFIG.channels.money, moneyAgent);
   }
 
   // 크론 스케줄러 (DB 기반 동적 스케줄) — Gemini Flash로 비용 절감
