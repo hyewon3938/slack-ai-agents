@@ -104,11 +104,11 @@ export interface MonthProjection {
   remaining: number;      // 남은 가용자금
 }
 
-/** 예산 계산에서 제외할 카테고리 (고정비/사업비 — 자유 지출에 포함 안 됨) */
-export const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배']);
+/** 예산 계산에서 제외할 카테고리 (고정비 — 자유 지출에 포함 안 됨) */
+export const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금']);
 
 /** 예산 계산에서 제외할 카테고리 SQL 조건 */
-export const EXCLUDED_CATEGORIES_SQL = "'통신비', '공과금', '리커밋 사업', '리커밋 택배'";
+export const EXCLUDED_CATEGORIES_SQL = "'통신비', '공과금'";
 
 /** 하루 최소 자유 예산 경고 기준 (원) */
 export const MIN_DAILY_BUDGET = 10000;
