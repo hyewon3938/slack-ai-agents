@@ -46,7 +46,7 @@ export function RoutinePage() {
   );
 
   const handleFormSubmit = useCallback(
-    async (data: { name: string; time_slot: string | null; frequency: string | null }) => {
+    async (data: { name: string; time_slot: string | null; frequency: string | null; start_date?: string }) => {
       if (editingTemplate) {
         await handleUpdateTemplate(editingTemplate.id, data);
       } else {
