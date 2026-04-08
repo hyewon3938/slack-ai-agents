@@ -13,6 +13,12 @@ const DAY_HEADERS = ['일', '월', '화', '수', '목', '금', '토'];
 
 type DayStatus = 'completed' | 'missed' | 'inactive' | 'future' | 'before';
 
+function rateColor(rate: number): string {
+  if (rate >= 70) return '#16a34a';
+  if (rate >= 30) return '#d97706';
+  return '#dc2626';
+}
+
 export function RoutineHeatmap({ templateId, templateName }: RoutineHeatmapProps) {
   const today = getTodayISO();
   const [year, setYear] = useState(() => Number(today.slice(0, 4)));
@@ -101,12 +107,6 @@ export function RoutineHeatmap({ templateId, templateName }: RoutineHeatmapProps
     }
     return grid;
   }, [year, month]);
-
-  function rateColor(rate: number): string {
-    if (rate >= 70) return '#16a34a';
-    if (rate >= 30) return '#d97706';
-    return '#dc2626';
-  }
 
   return (
     <div className="space-y-3">
