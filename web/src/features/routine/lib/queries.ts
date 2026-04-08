@@ -235,7 +235,7 @@ export async function queryRoutinePerStats(
                   - GREATEST(ip.start_date, t.start_date) + 1
                 )
                 FROM routine_inactive_periods ip
-                WHERE ip.template_id = t.id
+                WHERE ip.template_id = r.template_id
                   AND GREATEST(ip.start_date, t.start_date) <= LEAST(COALESCE(ip.end_date, ${toExpr}), ${toExpr})
               ), 0))::int AS days_active
      FROM routine_records r
