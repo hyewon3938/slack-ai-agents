@@ -8,6 +8,7 @@ import type { ScheduleRow } from '@/features/schedule/lib/types';
 import { compareSchedulePriority } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
+import { getTodayISO } from '@/lib/kst';
 import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedule/lib/calendar-utils';
 import { StatusBadge } from './status-badge';
 import { DroppableDay } from './droppable-day';
@@ -320,7 +321,7 @@ function WeekSpanBar({
     !isDone &&
     span.schedule.date &&
     new Date(span.schedule.date + 'T12:00:00+09:00') <
-      new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00+09:00') &&
+      new Date(getTodayISO() + 'T12:00:00+09:00') &&
     span.schedule.status === 'todo';
 
   const handleStatusClick = (e: React.MouseEvent) => {
