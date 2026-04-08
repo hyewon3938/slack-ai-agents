@@ -14,6 +14,8 @@ export interface ExpenseRow {
   type: 'expense' | 'income';
   planned_expense_id: number | null;
   created_at?: string;
+  /** 예산 계산에서 제외할지 여부. true면 자유 지출에 포함 안 됨 */
+  exclude_from_budget: boolean;
 }
 
 export interface PlannedExpenseRow {
@@ -104,11 +106,11 @@ export interface MonthProjection {
   remaining: number;      // 남은 가용자금
 }
 
-/** 예산 계산에서 제외할 카테고리 (고정비 — 자유 지출에 포함 안 됨) */
-export const EXCLUDED_CATEGORIES = new Set(['통신비', '공과금']);
-
-/** 예산 계산에서 제외할 카테고리 SQL 조건 */
-export const EXCLUDED_CATEGORIES_SQL = "'통신비', '공과금'";
+/**
+ * 예산 제외 기본 카테고리 (UI 토글 기본값 결정용).
+ * SQL 쿼리에서는 사용하지 않음 — exclude_from_budget 컬럼으로 판단.
+ */
+export const BUDGET_EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배']);
 
 /** 하루 최소 자유 예산 경고 기준 (원) */
 export const MIN_DAILY_BUDGET = 10000;
