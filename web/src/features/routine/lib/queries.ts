@@ -136,6 +136,7 @@ function daysBetween(from: string, to: string): number {
 
 function parseIntervalDays(frequency: string): number | null {
   if (frequency === '격일') return 2;
+  if (frequency === '주1회') return 7;
   const match = /^(\d+)일마다$/.exec(frequency);
   return match ? Number(match[1]) : null;
 }
@@ -143,19 +144,16 @@ function parseIntervalDays(frequency: string): number | null {
 function shouldCreateToday(frequency: string | null, lastDate: string | null, today: string, startDate?: string): boolean {
   if (!frequency || frequency === '매일') return true;
 
-  // 간격 빈도(격일, N일마다): start_date 기준 모듈러 연산
+  // 간격 빈도(격일, N일마다, 주1회): start_date 기준 모듈러 연산
   const interval = parseIntervalDays(frequency);
   if (interval && startDate) {
     const gap = daysBetween(startDate, today);
     return gap >= 0 && gap % interval === 0;
   }
 
-  // 주1회: 기존 gap 기반 유지
+  // startDate 없는 경우 (폴백): gap 기반
   if (!lastDate) return true;
   const gap = daysBetween(lastDate, today);
-  if (frequency === '주1회') return gap >= 7;
-
-  // 간격 빈도인데 startDate 없는 경우 (폴백)
   if (interval) return gap >= interval;
   return true;
 }

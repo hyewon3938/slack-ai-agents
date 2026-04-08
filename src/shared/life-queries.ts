@@ -60,9 +60,10 @@ const daysBetween = (from: string, to: string): number => {
   return Math.round((toDate.getTime() - fromDate.getTime()) / msPerDay);
 };
 
-/** N일마다 패턴에서 일수 추출 (예: '3일마다' → 3, '격일' → 2) */
+/** 빈도에서 간격 일수 추출 (예: '3일마다' → 3, '격일' → 2, '주1회' → 7) */
 const parseIntervalDays = (frequency: string): number | null => {
   if (frequency === '격일') return 2;
+  if (frequency === '주1회') return 7;
   const match = /^(\d+)일마다$/.exec(frequency);
   return match ? Number(match[1]) : null;
 };
@@ -83,12 +84,9 @@ export const shouldCreateToday = (
     return gap >= 0 && gap % intervalDays === 0;
   }
 
-  // 주1회: 기존 gap 기반 유지
+  // startDate 없는 경우 (폴백): gap 기반
   if (!lastDate) return true;
   const gap = daysBetween(lastDate, today);
-  if (frequency === '주1회') return gap >= 7;
-
-  // 간격 빈도인데 startDate 없는 경우 (폴백)
   if (intervalDays) return gap >= intervalDays;
 
   return true;
