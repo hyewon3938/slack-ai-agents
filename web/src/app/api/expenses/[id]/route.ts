@@ -26,6 +26,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if ('date' in body && typeof body.date === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
       return NextResponse.json({ error: 'date 형식이 올바르지 않습니다' }, { status: 400 });
     }
+    if ('exclude_from_budget' in body && typeof body.exclude_from_budget !== 'boolean') {
+      return NextResponse.json({ error: 'exclude_from_budget는 boolean이어야 합니다' }, { status: 400 });
+    }
 
     const data = await updateExpense(userId, id, body);
     if (!data) return NextResponse.json({ error: '지출을 찾을 수 없습니다' }, { status: 404 });
