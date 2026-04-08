@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       type?: 'expense' | 'income';
       planned_expense_id?: number | null;
       installment_months?: number;
+      exclude_from_budget?: boolean;
     };
 
     if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
@@ -69,6 +70,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
     }
 
+    const excludeFromBudget = typeof body.exclude_from_budget === 'boolean' ? body.exclude_from_budget : false;
+
     // 할부 처리 (카드 2~12개월)
     const installmentMonths = body.installment_months ?? 1;
     if (installmentMonths >= 2 && installmentMonths <= 12) {
@@ -81,6 +84,7 @@ export async function POST(request: Request) {
         payment_method: body.payment_method,
         memo: body.memo,
         type: entryType,
+        exclude_from_budget: excludeFromBudget,
       });
       return NextResponse.json({ data }, { status: 201 });
     }
@@ -95,6 +99,7 @@ export async function POST(request: Request) {
       memo: body.memo,
       type: entryType,
       planned_expense_id: body.planned_expense_id ?? null,
+      exclude_from_budget: excludeFromBudget,
     });
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {

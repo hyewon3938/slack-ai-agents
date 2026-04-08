@@ -188,6 +188,7 @@ export function useBudget() {
       type?: 'expense' | 'income';
       planned_expense_id?: number | null;
       installment_months?: number;
+      exclude_from_budget?: boolean;
     }): Promise<ExpenseRow> => {
       const res = await fetch('/api/expenses', {
         method: 'POST',
@@ -221,7 +222,7 @@ export function useBudget() {
   }, [selectedMonth, refreshBudget]);
 
   const updateExpense = useCallback(
-    async (id: number, updates: { date: string; amount: number; category: string; description: string | null }): Promise<void> => {
+    async (id: number, updates: { date: string; amount: number; category: string; description: string | null; exclude_from_budget?: boolean }): Promise<void> => {
       const res = await fetch(`/api/expenses/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

@@ -2,14 +2,14 @@
 
 import { useState } from 'react';
 import type { ExpenseRow } from '@/features/budget/lib/types';
-import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES, BUDGET_EXCLUDED_CATEGORIES } from '@/features/budget/lib/types';
 import { XMarkIcon } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
 
 interface ExpenseEditModalProps {
   expense: ExpenseRow;
-  onSave: (id: number, updates: { date: string; amount: number; category: string; description: string | null }) => Promise<void>;
+  onSave: (id: number, updates: { date: string; amount: number; category: string; description: string | null; exclude_from_budget: boolean }) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onClose: () => void;
 }
@@ -20,6 +20,7 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
   const [amountStr, setAmountStr] = useState(expense.amount.toLocaleString('ko-KR'));
   const [category, setCategory] = useState(expense.category);
   const [description, setDescription] = useState(expense.description ?? '');
+  const [excludeFromBudget, setExcludeFromBudget] = useState(expense.exclude_from_budget);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +28,11 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
     const raw = e.target.value.replace(/[^0-9]/g, '');
     const num = parseInt(raw, 10);
     setAmountStr(raw ? num.toLocaleString('ko-KR') : '');
+  };
+
+  const handleCategoryChange = (cat: string) => {
+    setCategory(cat);
+    setExcludeFromBudget(BUDGET_EXCLUDED_CATEGORIES.has(cat));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,6 +50,7 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
         amount,
         category,
         description: description || null,
+        exclude_from_budget: excludeFromBudget,
       });
       onClose();
     } catch (err) {
@@ -109,7 +116,7 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
           <Select
             label="카테고리"
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={(e) => handleCategoryChange(e.target.value)}
           >
             {EXPENSE_CATEGORIES.map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -124,6 +131,31 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
             onChange={(e) => setDescription(e.target.value)}
             placeholder="메모"
           />
+
+          {/* 예산 포함/제외 토글 */}
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">예산</label>
+            <div className="flex rounded-lg border border-gray-200 p-0.5 w-fit">
+              <button
+                type="button"
+                onClick={() => setExcludeFromBudget(false)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  !excludeFromBudget ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                포함
+              </button>
+              <button
+                type="button"
+                onClick={() => setExcludeFromBudget(true)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  excludeFromBudget ? 'bg-gray-500 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                제외
+              </button>
+            </div>
+          </div>
 
           {/* Error */}
           {error && (

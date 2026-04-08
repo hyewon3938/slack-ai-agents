@@ -10,7 +10,6 @@ import type {
   MonthProjection,
   PlannedExpenseRow,
 } from './types';
-import { EXCLUDED_CATEGORIES, EXCLUDED_CATEGORIES_SQL } from './types';
 
 // ─── 지출 CRUD ───────────────────────────────────────
 
@@ -30,7 +29,8 @@ export async function queryExpenses(
   const { rows } = await query<ExpenseRow>(
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
-            source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text
+            source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
+            COALESCE(exclude_from_budget, false) as exclude_from_budget
      FROM expenses
      WHERE ${conditions.join(' AND ')}
      ORDER BY date DESC, created_at DESC`,
@@ -44,7 +44,8 @@ export async function queryExpense(userId: number, id: number): Promise<ExpenseR
   return queryOne<ExpenseRow>(
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
-            source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text
+            source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
+            COALESCE(exclude_from_budget, false) as exclude_from_budget
      FROM expenses WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
@@ -62,14 +63,16 @@ export async function createExpense(
     memo?: string | null;
     type?: 'expense' | 'income';
     planned_expense_id?: number | null;
+    exclude_from_budget?: boolean;
   },
 ): Promise<ExpenseRow> {
   const row = await queryOne<ExpenseRow>(
-    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type, planned_expense_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8, $9)
+    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type, planned_expense_id, exclude_from_budget)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8, $9, $10)
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
-               source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text`,
+               source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
+               COALESCE(exclude_from_budget, false) as exclude_from_budget`,
     [
       userId,
       data.date,
@@ -80,6 +83,7 @@ export async function createExpense(
       data.memo ?? null,
       data.type ?? 'expense',
       data.planned_expense_id ?? null,
+      data.exclude_from_budget ?? false,
     ],
   );
   if (!row) throw new Error('createExpense: INSERT returned no rows');
@@ -98,12 +102,14 @@ export async function createInstallmentExpenses(
     payment_method?: string;
     memo?: string | null;
     type?: 'expense' | 'income';
+    exclude_from_budget?: boolean;
   },
 ): Promise<ExpenseRow> {
   const monthlyAmount = Math.round(data.totalAmount / data.months);
   // 끝전 보정: 마지막 회차에서 나머지 흡수
   const lastMonthAmount = data.totalAmount - monthlyAmount * (data.months - 1);
   const groupId = crypto.randomUUID();
+  const excludeFromBudget = data.exclude_from_budget ?? false;
 
   let firstRow: ExpenseRow | null = null;
 
@@ -118,11 +124,12 @@ export async function createInstallmentExpenses(
     const row = await queryOne<ExpenseRow>(
       `INSERT INTO expenses (user_id, date, amount, category, description, payment_method,
                              is_installment, installment_num, installment_total, installment_group,
-                             memo, source, type)
-       VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, 'manual', $11)
+                             memo, source, type, exclude_from_budget)
+       VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, 'manual', $11, $12)
        RETURNING id, date::text, amount, category, description, payment_method,
                  is_installment, installment_num, installment_total, installment_group,
-                 source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text`,
+                 source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
+                 COALESCE(exclude_from_budget, false) as exclude_from_budget`,
       [
         userId,
         expDate,
@@ -135,6 +142,7 @@ export async function createInstallmentExpenses(
         groupId,
         data.memo ?? null,
         data.type ?? 'expense',
+        excludeFromBudget,
       ],
     );
     if (i === 0) firstRow = row ?? null;
@@ -145,7 +153,7 @@ export async function createInstallmentExpenses(
 }
 
 /** 지출 수정 (허용 컬럼 화이트리스트) */
-const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type', 'planned_expense_id']);
+const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type', 'planned_expense_id', 'exclude_from_budget']);
 
 export async function updateExpense(
   userId: number,
@@ -162,7 +170,8 @@ export async function updateExpense(
      WHERE id = $1 AND user_id = $2
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
-               source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text`,
+               source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
+            COALESCE(exclude_from_budget, false) as exclude_from_budget`,
     [id, userId, ...values],
   );
 }
@@ -211,18 +220,22 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     count: Number(r.count),
   }));
 
-  // 자유 지출에서 제외할 카테고리 (types.ts에서 import)
+  // 자유 지출 합계 (exclude_from_budget=false인 것만)
+  const variableResult = await queryOne<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+     WHERE user_id = $1 AND date >= $2 AND date <= $3
+       AND exclude_from_budget = false
+       AND COALESCE(type, 'expense') = 'expense'`,
+    [userId, from, to],
+  );
+  const variableTotal = Number(variableResult?.total ?? 0);
 
-  const variableTotal = byCategory
-    .filter((c) => !EXCLUDED_CATEGORIES.has(c.category))
-    .reduce((s, c) => s + c.total, 0);
-
-  // 할부 합계 (가변 카테고리 중 is_installment=true)
+  // 할부 합계 (예산 포함인 것 중 is_installment=true)
   const installmentResult = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND date >= $2 AND date <= $3
        AND is_installment = true
-       AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
+       AND exclude_from_budget = false
        AND COALESCE(type, 'expense') = 'expense'`,
     [userId, from, to],
   );
@@ -760,7 +773,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        ORDER BY installment_group, date DESC, created_at DESC`,
       [userId],
     ),
-    // 최근 3개월 가변 지출 평균 (고정비/사업비/수입 제외)
+    // 최근 3개월 가변 지출 평균 (예산 포함 지출만)
     query<{ avg_monthly: string }>(
       `SELECT COALESCE(AVG(monthly_total), 0) as avg_monthly
        FROM (
@@ -768,7 +781,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
          FROM expenses
          WHERE user_id = $1
            AND date >= NOW() - INTERVAL '3 months'
-           AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
+           AND exclude_from_budget = false
            AND COALESCE(type, 'expense') = 'expense'
          GROUP BY 1
        ) sub`,
@@ -831,7 +844,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$2 AND date<=$3
            AND (is_installment=false OR (is_installment=true AND created_at>=$7))
-           AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
+           AND exclude_from_budget = false
            AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
        ), 0)::text as flex,
        COALESCE((SELECT SUM(GREATEST(used-budget,0)) FROM (
@@ -845,7 +858,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date=$6
            AND (is_installment=false OR (is_installment=true AND created_at>=$7))
-           AND category NOT IN (${EXCLUDED_CATEGORIES_SQL})
+           AND exclude_from_budget = false
            AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
        ), 0)::text as today_flex`,
     [userId, trackingFrom, endDate, cycleFrom, cycleTo, todayStr, budgetStartAtParam],
