@@ -17,6 +17,7 @@ import {
   createRecord,
   shouldCreateToday,
   queryTodaySchedules,
+  queryCompletedSchedules,
   queryNightSleepExists,
   queryNotificationSettings,
   queryActiveReminderTimes,
@@ -24,6 +25,7 @@ import {
   deactivateReminder,
   decrementReminderCount,
 } from '../shared/life-queries.js';
+import { selectAchievements, buildAchievementsMessage } from '../shared/achievements.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
 import { getTodayISO, getYesterdayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
 // personality.ts의 CHARACTER_PROMPT는 에이전트용, 크론은 자체 톤 사용
@@ -85,6 +87,15 @@ const MORNING_SYSTEM_PROMPT = `${CRON_BASE_PROMPT}
 - 삶의 테마나 고민이 있으면 맥락에 맞게 한마디.
 - 운세 정보가 있으면 자연스럽게 하루 조언에 녹여.
 - 일기 내용이 있으면 어제 하루를 돌아보며 연결.`;
+
+const ACHIEVEMENTS_SYSTEM_PROMPT = `${CRON_BASE_PROMPT}
+
+오늘 해낸 일 목록과 일운 정보를 받아서, 1~2문장으로 코멘트를 써줘.
+
+## 규칙
+- 오늘 일운을 자연스럽게 녹여서 "오늘 같은 날에도 이만큼 해냈다"는 프레이밍으로.
+- 목록에 있는 구체적인 활동 중 1~2개를 언급하면서 칭찬해줘.
+- 목록에 없는 내용은 언급하지 마.`;
 
 const NIGHT_SYSTEM_PROMPT = `${CRON_BASE_PROMPT}
 
@@ -385,28 +396,60 @@ const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<vo
   }
 };
 
-/** 밤 일기 리마인더 → #insight 채널 (기존 기록 있으면 내용 표시) */
+/** 밤 인사이트: 오늘 해낸 일 3가지 + 일기 리마인더 → #insight 채널 */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
+const insightNightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
   if (!insightChannel) return;
 
   const today = getTodayISO();
-  const result = await query<{ content: string }>(
+
+  // 1. 해낸 일 3가지: 완료 일정 + 루틴 + 일운 병렬 조회
+  const [doneSchedules, routineRecords, fortuneResult] = await Promise.all([
+    queryCompletedSchedules(today),
+    queryTodayRecords(today),
+    query<{ summary: string | null; advice: string | null }>(
+      `SELECT summary, advice FROM fortune_analyses
+       WHERE user_id = 1 AND date = $1 AND period = 'daily'
+       ORDER BY created_at DESC LIMIT 1`,
+      [today],
+    ),
+  ]);
+
+  const achievements = selectAchievements(doneSchedules, routineRecords);
+
+  if (achievements.length > 0) {
+    const achievementList = achievements
+      .map((a, i) => `${i + 1}. [${a.label}] ${a.content}`)
+      .join('\n');
+    const fortune = fortuneResult.rows[0];
+    const fortuneContext = fortune?.summary ?? '일운 정보 없음';
+
+    const comment = await generateCronMessage(
+      config.llmClient,
+      ACHIEVEMENTS_SYSTEM_PROMPT,
+      `오늘 일운: ${fortuneContext}\n\n오늘 해낸 일:\n${achievementList}`,
+      '오늘도 수고했어. 이만큼 해냈으면 충분해.',
+    );
+
+    await postToChannel(app.client, insightChannel, buildAchievementsMessage(achievements, comment));
+  }
+
+  // 2. 일기 리마인더 (기존 로직)
+  const diaryResult = await query<{ content: string }>(
     `SELECT content FROM diary_entries WHERE user_id = 1 AND date = $1 LIMIT 1`,
     [today],
   );
 
-  const diary = result.rows[0];
-  let text: string;
-  if (diary) {
-    text = `오늘 기록된 일기야:\n\n${diary.content}\n\n더 추가하고 싶은 이야기가 있으면 편하게 남겨.`;
-  } else {
-    text = '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
-  }
+  const diary = diaryResult.rows[0];
+  const diaryText = diary
+    ? `오늘 기록된 일기야:\n\n${diary.content}\n\n더 추가하고 싶은 이야기가 있으면 편하게 남겨.`
+    : '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
 
-  await postToChannel(app.client, insightChannel, text);
-  console.warn(`[Life Cron] 일기 리마인더 전송 (기존 기록: ${diary ? '있음' : '없음'})`);
+  await postToChannel(app.client, insightChannel, diaryText);
+  console.warn(
+    `[Life Cron] 인사이트 밤 전송 완료 (해낸 일: ${achievements.length}건, 일기: ${diary ? '있음' : '없음'})`,
+  );
 };
 
 // ─── 유틸리티 ──────────────────────────────────────────
