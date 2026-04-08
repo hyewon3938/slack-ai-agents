@@ -7,6 +7,7 @@ import { MonthSummaryCard } from './month-summary';
 import { ExpenseForm } from './expense-form';
 import { ExpenseList } from './expense-list';
 import { ExpenseEditModal } from './expense-edit-modal';
+import { IncomeEditModal } from './income-edit-modal';
 import { CategoryChart } from './category-chart';
 import { RunwayCard } from './runway-card';
 import { BudgetSettingsPage } from './budget-settings-page';
@@ -166,8 +167,16 @@ export function BudgetPage() {
         </div>
       )}
 
-      {/* 수정 모달 */}
-      {editingExpense && (
+      {/* 수정 모달: 수입/지출 타입에 따라 분기 */}
+      {editingExpense && editingExpense.type === 'income' && (
+        <IncomeEditModal
+          income={editingExpense}
+          onSave={updateExpense}
+          onDelete={deleteExpense}
+          onClose={() => setEditingExpense(null)}
+        />
+      )}
+      {editingExpense && editingExpense.type !== 'income' && (
         <ExpenseEditModal
           expense={editingExpense}
           onSave={updateExpense}

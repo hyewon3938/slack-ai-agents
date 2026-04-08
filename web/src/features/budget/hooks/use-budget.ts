@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { ExpenseRow, MonthSummary, AssetRow, FixedCostRow } from '@/features/budget/lib/types';
+import { getTodayISO } from '@/lib/kst';
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -18,12 +19,14 @@ async function fetchWithTimeout(url: string, options?: RequestInit): Promise<Res
 
 /** 현재 결제주기의 대금 월 반환. 16일 이후면 다음달 대금. */
 function getCurrentBillingMonth(): string {
-  const now = new Date();
-  if (now.getDate() >= 16) {
-    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+  const today = getTodayISO();
+  const [year, month, day] = today.split('-').map(Number);
+  if (day >= 16) {
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
   }
-  return now.toISOString().slice(0, 7);
+  return `${year}-${String(month).padStart(2, '0')}`;
 }
 
 /**

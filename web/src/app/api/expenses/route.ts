@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { queryExpenses, createExpense, createInstallmentExpenses } from '@/features/budget/lib/queries';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
+import { getTodayISO } from '@/lib/kst';
 
 const VALID_EXPENSE_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
 const VALID_INCOME_CATEGORIES = new Set<string>(INCOME_CATEGORIES);
@@ -13,8 +14,9 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const from = searchParams.get('from') ?? new Date().toISOString().slice(0, 7) + '-01';
-    const to = searchParams.get('to') ?? new Date().toISOString().slice(0, 10);
+    const today = getTodayISO();
+    const from = searchParams.get('from') ?? today.slice(0, 7) + '-01';
+    const to = searchParams.get('to') ?? today;
     const category = searchParams.get('category') ?? undefined;
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
