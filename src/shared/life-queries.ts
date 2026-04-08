@@ -177,7 +177,8 @@ export const queryTodaySchedules = async (today: string): Promise<ScheduleRow[]>
     )
   ).rows;
 
-/** 오늘 완료된 일정 (task 타입만, event 제외) */
+/** 오늘 완료된 일정 (task 타입만, event 제외).
+ *  현재 미사용 — achievements.ts 주석 참고. */
 export const queryCompletedSchedules = async (today: string): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(

@@ -1,7 +1,12 @@
 /**
- * 오늘 해낸 일 선정 로직.
- * 완료 일정 + 루틴 달성률을 카테고리 우선순위 기반으로 분석하여
- * 최대 3가지 핵심 성과를 선정한다.
+ * 오늘 해낸 일 선정 로직 (규칙 기반, 현재 미사용).
+ *
+ * 현재 이 기능은 Scheduled Task(nightly-achievements)가 Opus로 처리 중.
+ * Claude 구독 종료 등으로 Scheduled Task를 못 쓰게 되면,
+ * life-cron.ts의 insightNightTask에서 이 모듈을 import하여
+ * API 기반(Sonnet)으로 전환할 수 있도록 남겨둔 코드.
+ *
+ * 사용법: PR #184의 insightNightTask 변경 참고 (git log).
  */
 
 import type { ScheduleRow, RoutineRecordRow } from './life-queries.js';
