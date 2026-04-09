@@ -1,5 +1,10 @@
 import pg from 'pg';
 
+// 자체 서명 SSL 인증서 허용 (VM PostgreSQL용, Node.js 24 호환)
+if (process.env.DATABASE_URL?.includes('sslmode=require')) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 const { Pool, types } = pg;
 
 // DATE/TIMESTAMP를 문자열 그대로 반환 (JavaScript Date 변환 방지)
