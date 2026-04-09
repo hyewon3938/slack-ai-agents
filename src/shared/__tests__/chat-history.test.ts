@@ -31,7 +31,7 @@ describe('ChatHistory', () => {
   });
 
   it('최대 쌍 수를 초과하면 오래된 것부터 제거한다', () => {
-    const h = new ChatHistory(2); // 최대 2쌍
+    const h = new ChatHistory({ maxPairs: 2 }); // 최대 2쌍
 
     h.add('ch1', '메시지1', '응답1');
     h.add('ch1', '메시지2', '응답2');
@@ -65,7 +65,7 @@ describe('ChatHistory', () => {
   });
 
   it('슬라이딩 윈도우가 정확히 maxPairs개를 유지한다', () => {
-    const h = new ChatHistory(3);
+    const h = new ChatHistory({ maxPairs: 3 });
     for (let i = 1; i <= 5; i++) {
       h.add('ch1', `msg${i}`, `reply${i}`);
     }
@@ -76,6 +76,26 @@ describe('ChatHistory', () => {
     expect(msgs[0].content).toBe('msg3');
     expect(msgs[2].content).toBe('msg4');
     expect(msgs[4].content).toBe('msg5');
+  });
+
+  it('메시지가 maxChars를 초과하면 앞부분을 잘라낸다', () => {
+    const h = new ChatHistory({ maxUserChars: 10, maxAssistantChars: 8 });
+    h.add('ch1', '가나다라마바사아자차카', '12345678901234');
+
+    const msgs = h.toMessages('ch1');
+    // user: 11자 → 10자 (…+ 뒤 9자)
+    expect(msgs[0].content).toBe('…다라마바사아자차카');
+    // assistant: 14자 → 8자 (…+ 뒤 7자)
+    expect(msgs[1].content).toBe('…8901234');
+  });
+
+  it('role별 제한이 독립적으로 적용된다', () => {
+    const h = new ChatHistory({ maxUserChars: 5, maxAssistantChars: 100 });
+    h.add('ch1', '짧은 메시지', '이건 긴 응답이지만 제한에 안 걸림');
+
+    const msgs = h.toMessages('ch1');
+    expect(msgs[0].content.length).toBe(5); // user 잘림
+    expect(msgs[1].content).toBe('이건 긴 응답이지만 제한에 안 걸림'); // assistant 유지
   });
 
   it('toMessages가 올바른 role을 반환한다', () => {

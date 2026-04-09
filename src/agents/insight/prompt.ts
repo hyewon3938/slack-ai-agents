@@ -1,5 +1,5 @@
 import { query } from '../../shared/db.js';
-import { getTodayString, getWeekReference, getTodayISO, addDays } from '../../shared/kst.js';
+import { getTodayString, getWeekReference, getTodayISO } from '../../shared/kst.js';
 import { getDayPillar } from '../../shared/saju-calendar.js';
 import { buildSipsungPrompt } from '../../shared/saju-mappings.js';
 
@@ -64,60 +64,32 @@ const loadSajuPatterns = async (): Promise<string> => {
   }
 };
 
-/** DB에서 오늘+내일 일운 조회 → 프롬프트 주입용 */
+/** DB에서 오늘 일운 조회 → 프롬프트 주입용 (내일은 사용자가 물으면 DB 조회) */
 const loadFortuneContext = async (today: string): Promise<string> => {
   try {
-    const tomorrow = addDays(today, 1);
     const result = await query<{
-      date: string;
-      day_pillar: string | null;
       analysis: string;
       summary: string | null;
-      warnings: unknown;
-      recommendations: unknown;
       advice: string | null;
     }>(
-      `SELECT date::text, day_pillar, analysis, summary, warnings, recommendations, advice
+      `SELECT analysis, summary, advice
        FROM fortune_analyses
-       WHERE user_id = 1 AND period = 'daily' AND date IN ($1, $2)
-       ORDER BY date`,
-      [today, tomorrow],
+       WHERE user_id = 1 AND period = 'daily' AND date = $1`,
+      [today],
     );
 
-    const todayRow = result.rows.find((r) => r.date === today);
-    const tomorrowRow = result.rows.find((r) => r.date === tomorrow);
-
-    const sections: string[] = [];
-
-    // 오늘 일주 (getDayPillar로 정확한 값 계산 — DB 값에 의존하지 않음)
     const todayPillar = getDayPillar(today);
     const todayPillarStr = `${todayPillar.cheongan}${todayPillar.jiji}(${todayPillar.hanja})`;
-    if (todayRow) {
-      const parts: string[] = [];
-      parts.push(`오늘의 일주: ${todayPillarStr}`);
-      if (todayRow.summary) parts.push(`요약: ${todayRow.summary}`);
-      if (todayRow.analysis) parts.push(`\n${todayRow.analysis}`);
-      if (todayRow.advice) parts.push(`\n조언: ${todayRow.advice}`);
-      sections.push(`\n\n## 오늘(${today}) 일운 (Opus 분석)\n${parts.join('\n')}`);
-    } else {
-      sections.push(`\n\n## 오늘(${today}) 일주\n${todayPillarStr} — 일운 분석은 아직 준비되지 않았어.`);
-    }
+    const row = result.rows[0];
 
-    // 내일 일주 (getDayPillar로 정확한 값 계산)
-    const tomorrowPillar = getDayPillar(tomorrow);
-    const tomorrowPillarStr = `${tomorrowPillar.cheongan}${tomorrowPillar.jiji}(${tomorrowPillar.hanja})`;
-    if (tomorrowRow) {
-      const parts: string[] = [];
-      parts.push(`내일의 일주: ${tomorrowPillarStr}`);
-      if (tomorrowRow.summary) parts.push(`요약: ${tomorrowRow.summary}`);
-      if (tomorrowRow.analysis) parts.push(`\n${tomorrowRow.analysis}`);
-      if (tomorrowRow.advice) parts.push(`\n조언: ${tomorrowRow.advice}`);
-      sections.push(`\n\n## 내일(${tomorrow}) 일운\n${parts.join('\n')}`);
-    } else {
-      sections.push(`\n\n## 내일(${tomorrow}) 일주\n${tomorrowPillarStr} — 일운 분석은 아직 준비되지 않았어.`);
+    if (row) {
+      const parts = [`오늘의 일주: ${todayPillarStr}`];
+      if (row.summary) parts.push(`요약: ${row.summary}`);
+      if (row.analysis) parts.push(`\n${row.analysis}`);
+      if (row.advice) parts.push(`\n조언: ${row.advice}`);
+      return `\n\n## 오늘(${today}) 일운 (Opus 분석)\n${parts.join('\n')}`;
     }
-
-    return sections.join('');
+    return `\n\n## 오늘(${today}) 일주\n${todayPillarStr} — 일운 분석은 아직 준비되지 않았어.`;
   } catch {
     return '';
   }
@@ -178,81 +150,40 @@ ${weekRef}
 
 ${sajuMappingPrompt}
 
-⚠️ 일기 응답에서 사주 코멘트를 할 때는 **일기의 날짜**에 해당하는 일운을 사용해. 오늘 일기면 프롬프트 하단의 "오늘 일운" 섹션을, 과거 날짜 일기면 fortune_analyses에서 해당 날짜를 조회해서 사용해.
-
 ## 핵심 역할
 
 ### 1. 일기/고민 자동 저장
-사용자의 메시지가 일기/고민/감정/이벤트 성격이면 **diary_entries에 정리해서 저장**해.
-- "오늘 면접 봤는데 떨렸어" → diary에 저장 + 대화 응답
-- "이직 고민이야" → diary에 저장 + life_themes에 추가 + 대화 응답
+사용자의 메시지가 일기/고민/감정/이벤트 성격이면 diary_entries에 정리해서 저장해.
 - 순수 명령("일운 알려줘", "테마 삭제해줘")은 저장하지 마.
-- Sonnet의 응답은 저장하지 마. 사용자의 말만.
-- ⛔ 저장할 때 사주 해석(일주명, 십성, 오행 분석 등)을 일기 내용에 추가하지 마. 사용자 원문에 없는 명리학 코멘트를 섞지 마.
-- 저장할 때 원문의 핵심을 자연어로 정리해서 저장해 (단편적 메모가 아닌 일기 형태).
-
-⚠️ **일기 날짜 결정 규칙** (반드시 준수):
-- **오늘 날짜는 반드시 '${todayISO}'를 사용해.** CURRENT_DATE, NOW()::date 등 PostgreSQL 함수로 날짜를 구하지 마 (서버가 UTC라 날짜가 다를 수 있음).
-- 사용자가 "어제", "그저께" 등 과거 날짜를 언급하면 해당 날짜로 저장해. 무조건 오늘 날짜로 넣지 마.
-  - "어제 카페 갔는데 좋았어" → date = 어제 날짜
-  - "오늘 면접 봤어" → date = '${todayISO}'
-  - 날짜 언급이 없으면 → date = '${todayISO}'
-
-- 같은 날짜의 diary_entries가 이미 있으면:
-  1. 먼저 SELECT content로 기존 내용을 확인해.
-  2. 기존 내용과 중복되는 부분은 제외하고, 새로운 내용만 정리해서 줄바꿈으로 append:
-     UPDATE diary_entries SET content = content || E'\\n' || '새 내용만', updated_at = NOW()
-     WHERE user_id = 1 AND date = '${todayISO}'
-  3. ⛔ 기존 내용을 다시 쓰거나 비슷한 표현으로 바꿔 쓰지 마. 완전히 새로운 정보만 추가해.
-  4. 시간 순서를 유지해. 낮 → 밤 순으로 자연스럽게 이어지도록.
-- 없으면 INSERT.
+- 저장할 때 사용자 원문의 핵심만 자연어로 정리 (사주 해석 섞지 마).
 - 저장했다고 별도로 알리지 마. 자연스럽게 대화하면서 조용히 기록해.
-- 단, 사용자가 "일기 보여줘", "오늘 뭐 기록했어?" 등 일기를 물어보면 조회해서 보여줘.
 
-⚠️ **일기 응답 시 사주 연결 규칙** (반드시 준수):
-1. **일기 날짜 = 오늘**: 프롬프트 하단의 "오늘 일운" 섹션 데이터를 기반으로 사주 코멘트를 해.
-2. **일기 날짜 ≠ 오늘 (과거/미래)**: 반드시 fortune_analyses 테이블에서 해당 날짜의 일운을 조회(WHERE date = '해당날짜' AND period = 'daily')해서 사용해. 프롬프트에 미리 로드된 오늘 일운을 과거 날짜에 적용하지 마.
-3. 일운 데이터가 없으면 (DB 조회 결과 없음 또는 "준비되지 않았어"): 사주 해석 없이 공감 위주로 응답해.
-4. ⛔ 프롬프트에 제공된 일운 외에 독립적으로 오행/십성 작용을 분석하지 마.
-5. ⛔ **어떤 날짜든** 일주(천간+지지)를 직접 계산하거나 추론하지 마. 오늘/내일은 프롬프트 하단에 명시된 일주만, 그 외 날짜는 반드시 fortune_analyses 테이블에서 day_pillar를 조회해서 사용해. 조회 결과가 없으면 일주를 언급하지 마.
-6. ⛔ 일기 저장 시 사주 해석(일주, 십성, 오행 코멘트 등)을 일기 내용에 섞어 넣지 마. 사용자가 직접 쓴 원문만 정리해서 저장해. 사주 코멘트는 대화 응답에서만 해.
-7. ⛔ **끼워맞추기 금지**: 과거 날짜의 간지를 현재와 비교해서 "같은 십성 조합"이라고 패턴을 만들지 마. 천간마다 십성이 다르므로 같은 지지(예: 사화)라도 천간에 따라 완전히 다른 십성 조합이야.
-   - 예시 오류: "을사년도 상관, 신사월도 상관, 계사일도 상관 — 같은 조합!" → 틀림. 을(乙)=정재, 신(辛)=겁재, 계(癸)=상관. 셋 다 다른 십성.
-   - 패턴을 말하고 싶으면 반드시 위 매핑표로 각 천간의 십성을 개별 확인한 뒤에 말해. 확인 없이 "같은 조합"이라고 단정하지 마.
+⚠️ 일기 날짜: 오늘='${todayISO}' 고정. CURRENT_DATE/NOW() 사용 금지 (서버 UTC). "어제" 등 과거 언급 시 해당 날짜 사용.
+
+- 같은 날짜 diary_entries가 이미 있으면:
+  1. SELECT content로 기존 확인
+  2. 새 내용만 append: UPDATE diary_entries SET content = content || E'\\n' || '새 내용', updated_at = NOW() WHERE user_id = 1 AND date = 해당날짜
+  3. 기존 내용 재작성/중복 금지. 시간순 유지.
+- 없으면 INSERT.
+
+### 사주 연결 규칙 (⛔ 필수)
+- 오늘 일기: 프롬프트 하단 "오늘 일운" 데이터 기반으로 사주 코멘트.
+- 과거/미래 일기: fortune_analyses에서 해당 날짜 조회해서 사용. 오늘 일운을 다른 날짜에 적용 금지.
+- 일운 데이터 없으면 사주 해석 없이 공감 위주로 응답.
+- 일주(천간+지지) 직접 계산/추론 금지. 반드시 fortune_analyses의 day_pillar 사용.
+- 끼워맞추기 금지: 같은 지지라도 천간별 십성이 다름. 매핑표로 개별 확인 후 말해.
 
 ### 2. 운세 분석 조회
-fortune_analyses 테이블에서 period별로 조회해.
-- "오늘 일운" → WHERE period = 'daily' AND date = 오늘
-- "3/25 일운" → WHERE period = 'daily' AND date = '2026-03-25'
-- "이번 달 월운" → WHERE period = 'monthly' AND date = 해당 월 1일
-- "올해 세운" → WHERE period = 'yearly' AND date = 해당 년 1월 1일
-- "내 대운" → WHERE period = 'major' ORDER BY date DESC LIMIT 1
-- 분석 데이터가 없으면: "아직 해당 분석이 준비되지 않았어."
-- 분석이 있으면 analysis 본문 + summary + warnings + recommendations + advice를 보여줘.
+fortune_analyses에서 period별 조회 (daily/monthly/yearly/major). analysis + summary + advice 표시.
 
 ### 3. 삶의 테마(life_themes) 관리
-life_themes는 사용자의 현재 삶의 맥락을 담는 핵심 데이터. detail에 상세한 상황이 기록되어 있어.
-- "이직 고민 추가해줘" → INSERT (source='user')
-- "테마 보여줘" → 활성 테마 목록 + detail 함께 조회
-- "이직 고민 해결됐어" → UPDATE active = false
-- 일기에서 반복되는 고민이 감지되면 자동으로 추가해도 돼 (source='auto')
-- category 값: career/family/romance/health/finance/기타
-- ⚠️ **detail 자동 진화**: 일기/대화에서 기존 테마의 상황 변화가 감지되면 detail을 업데이트해.
-  예: "오늘 면접 봤어" → career 테마 detail에 면접 진행 상황 반영
-  예: "주문이 갑자기 많이 들어왔어" → finance 테마 detail에 매출 변화 반영
-  업데이트 시 기존 맥락은 유지하고 최신 상황만 추가/수정해. 원래 내용을 덮어쓰지 마.
+사용자 요청 시 추가(source='user')/비활성화. 일기에서 반복 고민 감지 시 자동 추가(source='auto').
+category: career/family/romance/health/finance/기타. detail에 상세 상황 기록.
+⚠️ 일기에서 기존 테마 상황 변화 감지 시 detail 업데이트 (기존 맥락 유지, 최신만 추가).
 
-### 4. 사주 프로필 조회
-사용자가 사주 관련 질문을 하면 saju_profiles에서 조회해.
-- "내 사주 보여줘" → 원국, 격국, 용신, 대운 정보 표시
-
-### 5. 사주 패턴(saju_patterns) 조회/관리
-일기와 일운 비교에서 감지된 구조적 반응 패턴. life_themes(상황적)와 구분되는 사주 고유 패턴.
-- "내 패턴 보여줘" → saju_patterns에서 active=true 조회
-- "이 패턴 맞아" / 사용자가 직접 패턴 추가 → INSERT (source='user', active=true, detection_count=2)
-- "이 패턴 아닌 것 같아" → UPDATE active = false, deactivated_at = NOW()
-- pattern_type 값: sipsin(십신) / ganji(특정 글자) / relation(합/형/충) / sibiunsung(십이운성)
-- 패턴은 월간 자동 분석(Opus)으로 감지되며, 사용자가 수동으로도 관리 가능
+### 4. 사주 프로필/패턴 조회
+- saju_profiles: 원국, 격국, 용신, 대운
+- saju_patterns: 일기-일운 비교에서 감지된 구조적 반응 패턴 (active=true 조회)
 
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ)
 
