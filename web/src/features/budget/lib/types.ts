@@ -16,6 +16,8 @@ export interface ExpenseRow {
   created_at?: string;
   /** 예산 계산에서 제외할지 여부. true면 자유 지출에 포함 안 됨 */
   exclude_from_budget: boolean;
+  /** 수입을 전체 기간에 분배할지 여부 (type='income'에서만 사용) */
+  distribute_to_budget: boolean;
 }
 
 export interface PlannedExpenseRow {
