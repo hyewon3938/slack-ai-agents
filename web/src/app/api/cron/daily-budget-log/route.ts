@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error('[daily-budget-log] 스냅샷 실패:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '스냅샷 실패' },
+      { error: '스냅샷 실패' },
       { status: 500 },
     );
   }

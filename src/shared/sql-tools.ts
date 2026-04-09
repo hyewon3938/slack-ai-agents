@@ -65,6 +65,14 @@ export const SQL_TOOLS: LLMToolDefinition[] = [
 
 // ---- SQL 검증 ----
 
+/** SQL에서 주석과 문자열 리터럴 제거 (보안 검증용 공통 유틸) */
+const stripCommentsAndStrings = (sql: string): string =>
+  sql
+    .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+    .replace(/--[^\n]*/g, '')         // line comments
+    .replace(/'[^']*'/g, '')          // single-quoted strings
+    .replace(/"[^"]*"/g, '');         // double-quoted strings
+
 /** SQL 앞쪽 주석 제거 후 첫 키워드 추출 */
 export const extractFirstKeyword = (sql: string): string => {
   const cleaned = sql
@@ -75,10 +83,10 @@ export const extractFirstKeyword = (sql: string): string => {
   return (match?.[1] ?? '').toUpperCase();
 };
 
-/** 복수 SQL 문 감지 (문자열 리터럴 내 세미콜론 제외) */
+/** 복수 SQL 문 감지 (주석·문자열 리터럴 내 세미콜론 제외) */
 export const hasMultipleStatements = (sql: string): boolean => {
-  const withoutStrings = sql.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
-  const parts = withoutStrings.split(';').filter((s) => s.trim().length > 0);
+  const stripped = stripCommentsAndStrings(sql);
+  const parts = stripped.split(';').filter((s) => s.trim().length > 0);
   return parts.length > 1;
 };
 
@@ -105,8 +113,8 @@ export const validateSelectQuery = (sql: string): string | null => {
 
 /** DELETE/UPDATE 문에 WHERE 절이 있는지 검증 */
 export const hasWhereClause = (sql: string): boolean => {
-  const withoutStrings = sql.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
-  return /\bWHERE\b/i.test(withoutStrings);
+  const stripped = stripCommentsAndStrings(sql);
+  return /\bWHERE\b/i.test(stripped);
 };
 
 /** 변경 쿼리 검증. 통과 시 null, 실패 시 에러 메시지 반환 */
@@ -204,20 +212,25 @@ const USER_ID_EXEMPT_TABLES = new Set([
 
 /**
  * SQL에 user_id 필터가 포함되어 있는지 검증.
- * 면제 테이블만 참조하는 쿼리 및 information_schema 쿼리는 통과.
+ * - SELECT/UPDATE/DELETE: WHERE user_id = 값 조건 필요
+ * - INSERT: 컬럼 목록에 user_id 포함 여부 확인
+ * - 면제 테이블만 참조하는 쿼리 및 information_schema 쿼리는 통과.
  * 통과 시 null, 실패 시 에러 메시지 반환.
  */
 export const validateUserIdFilter = (sql: string): string | null => {
-  const withoutStrings = sql.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
-
-  // user_id 참조가 있으면 OK
-  if (/\buser_id\b/i.test(withoutStrings)) return null;
+  const stripped = stripCommentsAndStrings(sql);
 
   // information_schema 쿼리는 OK (get_schema 도구용)
-  if (/\binformation_schema\b/i.test(withoutStrings)) return null;
+  if (/\binformation_schema\b/i.test(stripped)) return null;
+
+  // user_id = 값 형태의 조건이 있으면 OK (WHERE/AND/SET 등)
+  if (/\buser_id\s*=/i.test(stripped)) return null;
+
+  // INSERT: 컬럼 목록에 user_id가 있으면 OK
+  if (extractFirstKeyword(stripped) === 'INSERT' && /\buser_id\b/i.test(stripped)) return null;
 
   // FROM/JOIN/INTO/UPDATE 뒤의 테이블명 추출
-  const tableMatches = withoutStrings.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+(\w+)/gi);
+  const tableMatches = stripped.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+(\w+)/gi);
   const tables = [...tableMatches].map((m) => (m[1] ?? '').toLowerCase());
 
   // 추출된 테이블이 모두 면제 대상이면 OK
@@ -294,13 +307,8 @@ export const executeSQLTool = async (
       const error = validateModifyQuery(sql) ?? validateUserIdFilter(sql) ?? validateCustomInstruction(sql);
       if (error) return JSON.stringify({ error });
 
-      const keyword = extractFirstKeyword(sql);
-
-      // DELETE/UPDATE: 트랜잭션 + row 수 제한 (대량 삭제/변경 방지)
-      const result =
-        keyword === 'DELETE' || keyword === 'UPDATE'
-          ? await queryWithRowLimit(sql, SQL_TIMEOUT_MS, MAX_MODIFY_ROWS)
-          : await queryWithClient(sql, SQL_TIMEOUT_MS);
+      // INSERT/UPDATE/DELETE 모두 트랜잭션 + row 수 제한 적용 (대량 변경 방지)
+      const result = await queryWithRowLimit(sql, SQL_TIMEOUT_MS, MAX_MODIFY_ROWS);
 
       // fire-and-forget: 훅 실행 (응답 지연 없음)
       if (postModifyHook) {
