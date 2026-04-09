@@ -160,6 +160,34 @@ describe('validateUserIdFilter', () => {
   });
 });
 
+describe('hasMultipleStatements — 주석 우회 방어', () => {
+  it('블록 주석 안에 숨긴 세미콜론은 무시한다', () => {
+    expect(hasMultipleStatements('SELECT 1 /* ; */ FROM schedules')).toBe(false);
+  });
+
+  it('라인 주석 안에 숨긴 세미콜론은 무시한다', () => {
+    expect(hasMultipleStatements('SELECT 1 -- ;\n FROM schedules')).toBe(false);
+  });
+
+  it('주석 뒤에 실제 두 번째 문이 있으면 true', () => {
+    expect(hasMultipleStatements('SELECT 1; -- comment\n SELECT 2')).toBe(true);
+  });
+});
+
+describe('validateUserIdFilter — 강화된 검증', () => {
+  it('SELECT 절에 user_id 컬럼만 있고 WHERE에 없으면 거부한다', () => {
+    expect(validateUserIdFilter('SELECT user_id FROM expenses')).not.toBeNull();
+  });
+
+  it('user_id 주석 우회 시도를 차단한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM expenses /* WHERE user_id = 1 */')).not.toBeNull();
+  });
+
+  it('WHERE user_id = 값 조건이 있으면 통과한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM expenses WHERE user_id = 1 AND amount > 0')).toBeNull();
+  });
+});
+
 describe('validateCustomInstruction', () => {
   it('custom_instructions가 없는 쿼리는 통과한다', () => {
     expect(validateCustomInstruction('INSERT INTO schedules (title, user_id) VALUES (\'test\', 1)')).toBeNull();
@@ -263,7 +291,9 @@ describe('executeSQLTool', () => {
   it('modify_db: INSERT 결과를 반환한다', async () => {
     mockClientQuery
       .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // SET statement_timeout
-      .mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 }); // INSERT RETURNING
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 }) // INSERT RETURNING
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
 
     const result = await executeSQLTool('modify_db', {
       sql: "INSERT INTO schedules (title, user_id) VALUES ('test', 1) RETURNING id",
