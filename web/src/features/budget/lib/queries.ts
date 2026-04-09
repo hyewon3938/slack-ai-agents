@@ -701,10 +701,48 @@ export async function calcBudgetPreview(
     queryOne<{ updated_at: string }>('SELECT updated_at::text FROM budget_settings WHERE user_id = $1', [userId]),
   ]);
 
-  // 실시간 가용자금 기반
-  const budgetBase = effectiveData.effective;
+  // ─── 런웨이와 동일한 budgetBase 계산 ───
+  // flexibleSpent를 더해서 "이번 달 시작 시점" 가용자금으로 복원하고,
+  // currentMonthIncome을 빼서 수입은 이번 달에만 반영 (미래 달 예산 부풀림 방지)
   const fixedMonthly = fixedCosts.filter((fc) => fc.active).reduce((s, fc) => s + fc.amount, 0);
   const previewBudgetStartAt = budgetStartRowPreview?.updated_at ?? null;
+
+  // 지출 추적 범위 (런웨이와 동일)
+  const { from: cycleFrom, to: cycleTo } = getBillingRange(billingMonth);
+  const cycleDays = calcCycleDays(cycleFrom, cycleTo);
+  const todayISOStr = getTodayISO();
+  const budgetStartStr = previewBudgetStartAt ? previewBudgetStartAt.slice(0, 10) : cycleFrom;
+  const trackingFrom = budgetStartStr > cycleFrom ? budgetStartStr : cycleFrom;
+  const trackingFromDate = new Date(`${trackingFrom}T00:00:00`);
+  const cycleToDate = new Date(`${cycleTo}T00:00:00`);
+  const budgetDays = Math.max(1, Math.round((cycleToDate.getTime() - trackingFromDate.getTime()) / 86400000) + 1);
+
+  // 이번 달 자유 지출 + 수입 조회
+  const endDate = todayISOStr < cycleTo ? todayISOStr : cycleTo;
+  const budgetStartAtParam = previewBudgetStartAt ?? '9999-12-31T00:00:00Z';
+  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string }>(
+    `SELECT
+       COALESCE((SELECT SUM(amount) FROM expenses
+         WHERE user_id=$1 AND date>=$2 AND date<=$3
+           AND (is_installment=false OR (is_installment=true AND created_at>=$6))
+           AND exclude_from_budget = false
+           AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
+       ), 0)::text as flex,
+       COALESCE((SELECT SUM(GREATEST(used-budget,0)) FROM (
+         SELECT p.amount as budget, COALESCE(SUM(e.amount),0) as used
+         FROM planned_expenses p LEFT JOIN expenses e ON e.planned_expense_id=p.id AND e.date>=$2 AND e.date<=$3
+         WHERE p.user_id=$1 GROUP BY p.id, p.amount
+       ) sub), 0)::text as overflow,
+       COALESCE((SELECT SUM(amount) FROM expenses
+         WHERE user_id=$1 AND date>=$4 AND date<=$5 AND COALESCE(type,'expense')='income'
+       ), 0)::text as income`,
+    [userId, trackingFrom, endDate, cycleFrom, cycleTo, budgetStartAtParam],
+  );
+  const flexibleSpent = Number(cycleMetrics?.flex ?? 0) + Number(cycleMetrics?.overflow ?? 0);
+  const currentMonthIncome = Number(cycleMetrics?.income ?? 0);
+
+  const budgetBase = effectiveData.effective + flexibleSpent - currentMonthIncome;
+
   const installments = installmentRows.rows
     .filter((r) => r.installment_total > r.installment_num)
     .map((r) => ({
@@ -713,7 +751,7 @@ export async function calcBudgetPreview(
       isNew: previewBudgetStartAt !== null && r.group_created_at >= previewBudgetStartAt,
     }));
 
-  // 미래 잠긴 돈 (현재 달은 남은 비율만)
+  // 미래 잠긴 돈 (현재 달은 남은 비율만 — 런웨이와 동일하게 budgetDays/cycleDays 사용)
   // 신규 할부(isNew)는 month 0에서 locked 제외 (결제일은 자유 지출로 반영)
   let totalLocked = 0;
   const totalDaysArr: number[] = [];
@@ -727,12 +765,10 @@ export async function calcBudgetPreview(
     const { from: mf, to: mt } = getBillingRange(month);
     const mDays = calcCycleDays(mf, mt);
     if (i === 0) {
-      // 현재 달: 남은 비율
-      const todayISOStr = getTodayISO();
-      const remaining = Math.max(1, Math.round((new Date(`${mt}T00:00:00`).getTime() - new Date(`${todayISOStr}T00:00:00`).getTime()) / 86400000) + 1);
-      const ratio = mDays > 0 ? remaining / mDays : 0;
+      // 현재 달: budgetDays/cycleDays 비율 (런웨이와 동일)
+      const ratio = cycleDays > 0 ? budgetDays / cycleDays : 0;
       totalLocked += Math.round(monthLocked * ratio);
-      totalDaysArr.push(remaining);
+      totalDaysArr.push(budgetDays);
     } else {
       totalLocked += monthLocked;
       totalDaysArr.push(mDays);
@@ -742,9 +778,7 @@ export async function calcBudgetPreview(
   const totalFree = Math.max(0, budgetBase - totalLocked);
   const sumDays = totalDaysArr.reduce((s, d) => s + d, 0);
   const dailyFree = sumDays > 0 ? totalFree / sumDays : 0;
-  const { from: curFrom, to: curTo } = getBillingRange(billingMonth);
-  const curCycleDays = calcCycleDays(curFrom, curTo);
-  const freePerMonth = Math.round(dailyFree * curCycleDays);
+  const freePerMonth = Math.round(dailyFree * cycleDays);
 
   // 일일 예산 추정
   const dailyEstimate = Math.round(dailyFree);
