@@ -3,6 +3,7 @@ import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { createCategory } from '@/features/schedule/lib/queries';
 import { getCachedCategories } from '@/lib/cache';
+import { validateFields } from '@/lib/validation';
 
 const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
 
@@ -31,6 +32,13 @@ export async function POST(request: Request) {
 
     if (!body.name?.trim()) {
       return NextResponse.json({ error: '이름을 입력해줘' }, { status: 400 });
+    }
+    const lengthError = validateFields([
+      [body.name, 'name'],
+      [body.color, 'color'],
+    ]);
+    if (lengthError) {
+      return NextResponse.json({ error: lengthError }, { status: 400 });
     }
     if (body.type && !VALID_CATEGORY_TYPES.has(body.type)) {
       return NextResponse.json({ error: '유효하지 않은 카테고리 유형' }, { status: 400 });
