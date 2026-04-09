@@ -41,20 +41,20 @@ describe('getWeekReference', () => {
 
 describe('buildLifeSystemPrompt', () => {
   it('캐릭터 프롬프트를 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     expect(prompt).toContain('잔소리꾼');
     expect(prompt).toContain('친한 친구');
   });
 
   it('오늘 날짜와 주간 참조표를 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     expect(prompt).toMatch(/오늘: \d{4}-\d{2}-\d{2}/);
     expect(prompt).toContain('이번 주:');
     expect(prompt).toContain('다음 주:');
   });
 
   it('DB 스키마 정보를 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     expect(prompt).toContain('schedules');
     expect(prompt).toContain('routine_templates');
     expect(prompt).toContain('routine_records');
@@ -65,7 +65,7 @@ describe('buildLifeSystemPrompt', () => {
   });
 
   it('일정 조회 3대 필수 규칙을 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     // 기간 일정 WHERE 패턴
     expect(prompt).toContain('date <= ');
     expect(prompt).toContain('end_date >= ');
@@ -78,28 +78,28 @@ describe('buildLifeSystemPrompt', () => {
   });
 
   it('일정 표시 포맷을 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     expect(prompt).toContain('카테고리별로 그룹화');
     expect(prompt).toContain('►');
     expect(prompt).toContain('★');
   });
 
   it('커스텀 지시사항 관리 규칙을 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     expect(prompt).toContain("source='user'");
     expect(prompt).toContain("source='auto'");
     expect(prompt).toContain('커스텀 지시사항');
   });
 
   it('변경 후 응답 규칙과 백로그 관리를 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     expect(prompt).toContain('3대 필수 규칙으로 조회');
     expect(prompt).toContain('백로그');
     expect(prompt).toContain('date IS NULL');
   });
 
   it('생활 맥락과 잔소리 가이드를 포함한다', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     expect(prompt).toContain('현재 생활 맥락');
     expect(prompt).toContain('잔소리 가이드');
     expect(prompt).toContain('수면 부족');
@@ -107,7 +107,7 @@ describe('buildLifeSystemPrompt', () => {
   });
 
   it('220줄 이내의 간결한 프롬프트', async () => {
-    const prompt = await buildLifeSystemPrompt('C123');
+    const prompt = await buildLifeSystemPrompt('C123', 1);
     const lineCount = prompt.split('\n').length;
     expect(lineCount).toBeLessThan(220);
   });
