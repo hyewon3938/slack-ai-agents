@@ -39,7 +39,8 @@ export async function queryExpenses(
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
             source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
-            COALESCE(exclude_from_budget, false) as exclude_from_budget
+            COALESCE(exclude_from_budget, false) as exclude_from_budget,
+            COALESCE(distribute_to_budget, false) as distribute_to_budget
      FROM expenses
      WHERE ${conditions.join(' AND ')}
      ORDER BY date DESC, created_at DESC`,
@@ -54,7 +55,8 @@ export async function queryExpense(userId: number, id: number): Promise<ExpenseR
     `SELECT id, date::text, amount, category, description, payment_method,
             is_installment, installment_num, installment_total, installment_group,
             source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
-            COALESCE(exclude_from_budget, false) as exclude_from_budget
+            COALESCE(exclude_from_budget, false) as exclude_from_budget,
+            COALESCE(distribute_to_budget, false) as distribute_to_budget
      FROM expenses WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
@@ -73,15 +75,17 @@ export async function createExpense(
     type?: 'expense' | 'income';
     planned_expense_id?: number | null;
     exclude_from_budget?: boolean;
+    distribute_to_budget?: boolean;
   },
 ): Promise<ExpenseRow> {
   const row = await queryOne<ExpenseRow>(
-    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type, planned_expense_id, exclude_from_budget)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8, $9, $10)
+    `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type, planned_expense_id, exclude_from_budget, distribute_to_budget)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8, $9, $10, $11)
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
                source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
-               COALESCE(exclude_from_budget, false) as exclude_from_budget`,
+               COALESCE(exclude_from_budget, false) as exclude_from_budget,
+               COALESCE(distribute_to_budget, false) as distribute_to_budget`,
     [
       userId,
       data.date,
@@ -93,6 +97,7 @@ export async function createExpense(
       data.type ?? 'expense',
       data.planned_expense_id ?? null,
       data.exclude_from_budget ?? false,
+      data.distribute_to_budget ?? false,
     ],
   );
   if (!row) throw new Error('createExpense: INSERT returned no rows');
@@ -162,7 +167,7 @@ export async function createInstallmentExpenses(
 }
 
 /** 지출 수정 (허용 컬럼 화이트리스트) */
-const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type', 'planned_expense_id', 'exclude_from_budget']);
+const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type', 'planned_expense_id', 'exclude_from_budget', 'distribute_to_budget']);
 
 export async function updateExpense(
   userId: number,
@@ -180,7 +185,8 @@ export async function updateExpense(
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
                source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
-            COALESCE(exclude_from_budget, false) as exclude_from_budget`,
+            COALESCE(exclude_from_budget, false) as exclude_from_budget,
+            COALESCE(distribute_to_budget, false) as distribute_to_budget`,
     [id, userId, ...values],
   );
 }
@@ -710,6 +716,7 @@ export async function calcBudgetPreview(
        ) sub), 0)::text as overflow,
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$4 AND date<=$5 AND COALESCE(type,'expense')='income'
+           AND COALESCE(distribute_to_budget, false) = false
        ), 0)::text as income`,
     [userId, trackingFrom, endDate, cycleFrom, cycleTo, budgetStartAtParam],
   );
@@ -863,6 +870,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
        ) sub), 0)::text as overflow,
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$4 AND date<=$5 AND COALESCE(type,'expense')='income'
+           AND COALESCE(distribute_to_budget, false) = false
        ), 0)::text as income,
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date=$6
