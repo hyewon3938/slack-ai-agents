@@ -9,7 +9,7 @@ import { Input, Select } from '@/components/ui/input';
 
 interface IncomeEditModalProps {
   income: ExpenseRow;
-  onSave: (id: number, updates: { date: string; amount: number; category: string; description: string | null }) => Promise<void>;
+  onSave: (id: number, updates: { date: string; amount: number; category: string; description: string | null; distribute_to_budget: boolean }) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onClose: () => void;
 }
@@ -20,6 +20,7 @@ export function IncomeEditModal({ income, onSave, onDelete, onClose }: IncomeEdi
   const [amountStr, setAmountStr] = useState(income.amount.toLocaleString('ko-KR'));
   const [category, setCategory] = useState(income.category);
   const [description, setDescription] = useState(income.description ?? '');
+  const [distributeToBudget, setDistributeToBudget] = useState(income.distribute_to_budget);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +45,7 @@ export function IncomeEditModal({ income, onSave, onDelete, onClose }: IncomeEdi
         amount,
         category,
         description: description || null,
+        distribute_to_budget: distributeToBudget,
       });
       onClose();
     } catch (err) {
@@ -115,6 +117,31 @@ export function IncomeEditModal({ income, onSave, onDelete, onClose }: IncomeEdi
             onChange={(e) => setDescription(e.target.value)}
             placeholder="메모"
           />
+
+          {/* 예산 반영 */}
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">예산 반영</label>
+            <div className="flex rounded-lg border border-gray-200 p-0.5">
+              <button
+                type="button"
+                onClick={() => setDistributeToBudget(false)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  !distributeToBudget ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                이번 달
+              </button>
+              <button
+                type="button"
+                onClick={() => setDistributeToBudget(true)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  distributeToBudget ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                전체 분배
+              </button>
+            </div>
+          </div>
 
           {/* Error */}
           {error && (

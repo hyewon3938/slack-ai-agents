@@ -16,6 +16,8 @@ export interface ExpenseRow {
   created_at?: string;
   /** 예산 계산에서 제외할지 여부. true면 자유 지출에 포함 안 됨 */
   exclude_from_budget: boolean;
+  /** 수입을 전체 기간에 분배할지 여부 (type='income'에서만 사용) */
+  distribute_to_budget: boolean;
 }
 
 export interface PlannedExpenseRow {
@@ -92,6 +94,15 @@ export interface MonthSummary {
   today_remaining: number | null;
   by_category: CategoryStat[];
   daily_avg: number;
+}
+
+/** 일별 예산 로그 (스냅샷) */
+export interface DailyBudgetLog {
+  date: string;
+  billing_month: string;
+  budget: number;   // 그날 할당 예산
+  spent: number;    // 그날 자유 지출
+  saved: number;    // budget - spent (음수 = 초과)
 }
 
 /** 월별 시뮬레이션 프로젝션 */
