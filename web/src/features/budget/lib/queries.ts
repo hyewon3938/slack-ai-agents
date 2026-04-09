@@ -998,3 +998,75 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     today_remaining: todayRemaining,
   };
 }
+
+// ─── 일별 예산 로그 ──────────────────────────────────────
+
+export interface DailyBudgetLog {
+  date: string;
+  billing_month: string;
+  budget: number;
+  spent: number;
+  saved: number;
+}
+
+export interface DailyBudgetLogSummary {
+  logs: DailyBudgetLog[];
+  total_saved: number;     // 해당 월 누적 세이브 (음수 = 누적 초과)
+  days_logged: number;     // 기록된 일수
+  avg_daily_saved: number; // 일평균 세이브
+}
+
+/** 오늘의 예산 스냅샷 저장 (Vercel cron에서 호출) */
+export async function saveDailyBudgetLog(
+  userId: number,
+): Promise<{ date: string; budget: number; spent: number; saved: number }> {
+  const today = getTodayISO();
+
+  // 목표 기간 조회 → queryRunway에 전달
+  const settings = await queryOne<{ target_date: string | null }>(
+    'SELECT target_date FROM budget_settings WHERE user_id = $1',
+    [userId],
+  );
+  const runway = await queryRunway(userId, settings?.target_date ?? undefined);
+
+  const budget = runway.today_budget;
+  const spent = runway.today_flex_spent;
+  const saved = budget - spent;
+  const now = new Date(`${today}T12:00:00`);
+  const billingMonth = getCurrentBillingMonth(now);
+
+  // UPSERT: 같은 날 다시 실행해도 최신 값으로 갱신
+  await query(
+    `INSERT INTO daily_budget_logs (user_id, date, billing_month, budget, spent, saved)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (user_id, date)
+     DO UPDATE SET budget = $4, spent = $5, saved = $6, billing_month = $3`,
+    [userId, today, billingMonth, budget, spent, saved],
+  );
+
+  return { date: today, budget, spent, saved };
+}
+
+/** billing_month 기준 일별 예산 로그 조회 */
+export async function queryDailyBudgetLogs(
+  userId: number,
+  billingMonth: string,
+): Promise<DailyBudgetLogSummary> {
+  const { rows } = await query<DailyBudgetLog>(
+    `SELECT date::text, billing_month, budget, spent, saved
+     FROM daily_budget_logs
+     WHERE user_id = $1 AND billing_month = $2
+     ORDER BY date DESC`,
+    [userId, billingMonth],
+  );
+
+  const totalSaved = rows.reduce((s, r) => s + r.saved, 0);
+  const daysLogged = rows.length;
+
+  return {
+    logs: rows,
+    total_saved: totalSaved,
+    days_logged: daysLogged,
+    avg_daily_saved: daysLogged > 0 ? Math.round(totalSaved / daysLogged) : 0,
+  };
+}
