@@ -8,6 +8,7 @@ import {
   ensureCategoryExists,
 } from '@/features/schedule/lib/queries';
 import { isValidStatus } from '@/features/schedule/lib/types';
+import { validateFields } from '@/lib/validation';
 
 export async function GET(
   _request: Request,
@@ -51,6 +52,16 @@ export async function PATCH(
       memo: string | null;
       important: boolean;
     }>;
+
+    const lengthError = validateFields([
+      [body.title, 'title'],
+      [body.memo, 'memo'],
+      [body.category, 'category'],
+      [body.subcategory, 'subcategory'],
+    ]);
+    if (lengthError) {
+      return NextResponse.json({ error: lengthError }, { status: 400 });
+    }
 
     if (body.status !== undefined && !isValidStatus(body.status)) {
       return NextResponse.json({ error: '유효하지 않은 상태값이야' }, { status: 400 });
