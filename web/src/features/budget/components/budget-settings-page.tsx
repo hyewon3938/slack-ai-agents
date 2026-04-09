@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { FixedCostRow, AssetRow } from '@/features/budget/lib/types';
-import { MIN_DAILY_BUDGET } from '@/features/budget/lib/types';
+import { MIN_DAILY_BUDGET, FIXED_COST_CATEGORIES } from '@/features/budget/lib/types';
 import type { MonthBudgetPreview } from '@/features/budget/lib/queries';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
@@ -12,9 +12,11 @@ import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 function FixedCostItem({
   cost,
   onUpdate,
+  onDelete,
 }: {
   cost: FixedCostRow;
   onUpdate: (id: number, updates: Record<string, unknown>) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -70,9 +72,18 @@ function FixedCostItem({
               className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
             <span className="text-xs text-gray-400">일</span>
           </div>
-          <div className="flex justify-end gap-1.5">
-            <button onClick={() => setEditing(false)} disabled={saving} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
-            <button onClick={() => void handleSave()} disabled={saving} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
+          <div className="flex justify-between">
+            <button
+              onClick={() => { if (confirm('이 고정지출을 삭제할까?')) void onDelete(cost.id); }}
+              disabled={saving}
+              className="text-xs text-red-400 hover:text-red-600"
+            >
+              삭제
+            </button>
+            <div className="flex gap-1.5">
+              <button onClick={() => setEditing(false)} disabled={saving} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
+              <button onClick={() => void handleSave()} disabled={saving} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
+            </div>
           </div>
         </div>
       ) : (
@@ -85,6 +96,74 @@ function FixedCostItem({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── 고정비 추가 폼 ──────────────────────────────────
+
+function FixedCostAddForm({ onAdd }: { onAdd: (data: { name: string; amount: number; category?: string; day_of_month?: number | null }) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('');
+  const [dayOfMonth, setDayOfMonth] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    const a = Number(amount.replace(/,/g, ''));
+    if (!name.trim() || isNaN(a) || a <= 0) return;
+    const day = dayOfMonth ? Number(dayOfMonth) : null;
+    if (day !== null && (isNaN(day) || day < 1 || day > 31)) return;
+    setSaving(true);
+    try {
+      await onAdd({ name: name.trim(), amount: a, category: category || undefined, day_of_month: day });
+      setName(''); setAmount(''); setCategory(''); setDayOfMonth('');
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full border-t border-gray-100 px-4 py-2.5 text-left text-xs text-blue-500 hover:bg-blue-50"
+      >
+        + 고정지출 추가
+      </button>
+    );
+  }
+
+  return (
+    <div className="border-t border-gray-100 px-4 py-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <input type="text" placeholder="이름" value={name} onChange={(e) => setName(e.target.value)}
+          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none" autoFocus />
+      </div>
+      <div className="flex items-center gap-2">
+        <input type="text" inputMode="numeric" placeholder="금액" value={amount} onChange={(e) => setAmount(e.target.value)}
+          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none" />
+        <input type="number" min="1" max="31" placeholder="결제일" value={dayOfMonth} onChange={(e) => setDayOfMonth(e.target.value)}
+          className="w-20 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none" />
+      </div>
+      <div className="flex items-center gap-2">
+        <select value={category} onChange={(e) => setCategory(e.target.value)}
+          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-700 focus:border-blue-400 focus:outline-none">
+          <option value="">카테고리 선택</option>
+          {FIXED_COST_CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex justify-end gap-1.5">
+        <button onClick={() => setOpen(false)} className="rounded-md px-3 py-1 text-xs text-gray-400 hover:bg-gray-100">취소</button>
+        <button onClick={() => void handleSubmit()} disabled={saving || !name.trim() || !amount}
+          className="rounded-md bg-blue-600 px-3 py-1 text-xs text-white disabled:opacity-40 hover:bg-blue-700">
+          {saving ? '추가 중...' : '추가'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -359,6 +438,17 @@ export function BudgetSettingsPage() {
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
 
+  const handleAddFixedCost = async (data: { name: string; amount: number; category?: string; day_of_month?: number | null }) => {
+    const res = await fetch('/api/budget/fixed-costs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('고정비 추가 실패');
+    const { data: newCost } = (await res.json()) as { data: FixedCostRow };
+    setFixedCosts((prev) => [...prev, newCost]);
+  };
+
   const handleUpdateFixedCost = async (id: number, updates: Record<string, unknown>) => {
     const res = await fetch(`/api/budget/fixed-costs/${id}`, {
       method: 'PATCH',
@@ -368,6 +458,12 @@ export function BudgetSettingsPage() {
     if (!res.ok) throw new Error('고정비 수정 실패');
     const { data } = (await res.json()) as { data: FixedCostRow };
     setFixedCosts((prev) => prev.map((c) => (c.id === id ? data : c)));
+  };
+
+  const handleDeleteFixedCost = async (id: number) => {
+    const res = await fetch(`/api/budget/fixed-costs/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('고정비 삭제 실패');
+    setFixedCosts((prev) => prev.filter((c) => c.id !== id));
   };
 
   const handleUpdateAsset = async (id: number, balance: number, available_amount: number) => {
@@ -414,7 +510,7 @@ export function BudgetSettingsPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {activeCosts.map((cost) => (
-              <FixedCostItem key={cost.id} cost={cost} onUpdate={handleUpdateFixedCost} />
+              <FixedCostItem key={cost.id} cost={cost} onUpdate={handleUpdateFixedCost} onDelete={handleDeleteFixedCost} />
             ))}
 
             {inactiveCosts.length > 0 && (
@@ -432,6 +528,8 @@ export function BudgetSettingsPage() {
             )}
           </div>
         )}
+
+        <FixedCostAddForm onAdd={handleAddFixedCost} />
 
         <div className="border-t border-gray-100 px-4 py-2.5">
           <p className="text-xs text-gray-400">
