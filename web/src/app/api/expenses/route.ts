@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth';
 import { queryExpenses, createExpense, createInstallmentExpenses } from '@/features/budget/lib/queries';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { getTodayISO } from '@/lib/kst';
+import { validateFields } from '@/lib/validation';
 
 const VALID_EXPENSE_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
 const VALID_INCOME_CATEGORIES = new Set<string>(INCOME_CATEGORIES);
@@ -68,6 +69,15 @@ export async function POST(request: Request) {
     const validSet = entryType === 'income' ? VALID_INCOME_CATEGORIES : VALID_EXPENSE_CATEGORIES;
     if (!body.category || !validSet.has(body.category)) {
       return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
+    }
+
+    const lengthError = validateFields([
+      [body.description, 'description'],
+      [body.memo, 'memo'],
+      [body.payment_method, 'paymentMethod'],
+    ]);
+    if (lengthError) {
+      return NextResponse.json({ error: lengthError }, { status: 400 });
     }
 
     const excludeFromBudget = typeof body.exclude_from_budget === 'boolean' ? body.exclude_from_budget : false;

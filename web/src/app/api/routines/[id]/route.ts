@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { getTodayISO, addDays } from '@/lib/kst';
+import { validateFields } from '@/lib/validation';
 import {
   updateRoutineTemplate,
   deleteRoutineTemplate,
@@ -26,6 +27,15 @@ export async function PATCH(
       active: boolean;
       start_date: string;
     }>;
+
+    const lengthError = validateFields([
+      [body.name, 'name'],
+      [body.time_slot, 'timeSlot'],
+      [body.frequency, 'frequency'],
+    ]);
+    if (lengthError) {
+      return NextResponse.json({ error: lengthError }, { status: 400 });
+    }
 
     const data = await updateRoutineTemplate(userId, numId, body);
     if (!data) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });

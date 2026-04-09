@@ -1,10 +1,11 @@
 import type { LLMToolDefinition } from './llm.js';
-import { query, queryWithClient } from './db.js';
+import { query, queryWithClient, queryWithRowLimit } from './db.js';
 
 // ---- 상수 ----
 
 const SQL_TIMEOUT_MS = 10_000;
 const SCHEMA_CACHE_TTL_MS = 5 * 60 * 1000; // 5분
+const MAX_MODIFY_ROWS = 50; // 한 번에 변경 가능한 최대 행 수
 
 // ---- SQL 도구 정의 ----
 
@@ -102,6 +103,12 @@ export const validateSelectQuery = (sql: string): string | null => {
   return null;
 };
 
+/** DELETE/UPDATE 문에 WHERE 절이 있는지 검증 */
+export const hasWhereClause = (sql: string): boolean => {
+  const withoutStrings = sql.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
+  return /\bWHERE\b/i.test(withoutStrings);
+};
+
 /** 변경 쿼리 검증. 통과 시 null, 실패 시 에러 메시지 반환 */
 export const validateModifyQuery = (sql: string): string | null => {
   if (hasMultipleStatements(sql)) {
@@ -113,7 +120,10 @@ export const validateModifyQuery = (sql: string): string | null => {
   }
   const ALLOWED = new Set(['INSERT', 'UPDATE', 'DELETE']);
   if (!ALLOWED.has(keyword)) {
-    return `modify_db는 INSERT/UPDATE/DELETE만 실행할 수 있어. (입력: ${keyword})`;
+    return `modify_db는 INSERT/UPDATE/DELETE만 실행할 수 없어. (입력: ${keyword})`;
+  }
+  if ((keyword === 'DELETE' || keyword === 'UPDATE') && !hasWhereClause(sql)) {
+    return `${keyword} 문에는 반드시 WHERE 절이 필요해. 전체 행 변경은 허용되지 않아.`;
   }
   return null;
 };
@@ -219,7 +229,13 @@ export const executeSQLTool = async (
       const error = validateModifyQuery(sql);
       if (error) return JSON.stringify({ error });
 
-      const result = await queryWithClient(sql, SQL_TIMEOUT_MS);
+      const keyword = extractFirstKeyword(sql);
+
+      // DELETE/UPDATE: 트랜잭션 + row 수 제한 (대량 삭제/변경 방지)
+      const result =
+        keyword === 'DELETE' || keyword === 'UPDATE'
+          ? await queryWithRowLimit(sql, SQL_TIMEOUT_MS, MAX_MODIFY_ROWS)
+          : await queryWithClient(sql, SQL_TIMEOUT_MS);
 
       // fire-and-forget: 훅 실행 (응답 지연 없음)
       if (postModifyHook) {

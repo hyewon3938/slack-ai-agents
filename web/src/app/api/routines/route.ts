@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { getCachedRoutineTemplates } from '@/lib/cache';
 import { createRoutineTemplate, backfillRecords } from '@/features/routine/lib/queries';
 import { getTodayISO } from '@/lib/kst';
+import { validateFields } from '@/lib/validation';
 
 export async function GET() {
   const userId = await requireAuth();
@@ -31,6 +32,14 @@ export async function POST(request: Request) {
 
     if (!body.name?.trim()) {
       return NextResponse.json({ error: '루틴 이름을 입력해줘' }, { status: 400 });
+    }
+    const lengthError = validateFields([
+      [body.name, 'name'],
+      [body.time_slot, 'timeSlot'],
+      [body.frequency, 'frequency'],
+    ]);
+    if (lengthError) {
+      return NextResponse.json({ error: lengthError }, { status: 400 });
     }
     if (body.start_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.start_date)) {
       return NextResponse.json({ error: 'start_date 형식이 올바르지 않습니다 (YYYY-MM-DD)' }, { status: 400 });
