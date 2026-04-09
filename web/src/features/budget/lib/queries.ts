@@ -378,8 +378,8 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
     if (existing) continue;
 
     await queryOne(
-      `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, source, memo, type)
-       VALUES ($1, $2, $3, $4, $5, '카드', 'fixed', $6, 'expense')
+      `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, source, memo, type, exclude_from_budget)
+       VALUES ($1, $2, $3, $4, $5, '카드', 'fixed', $6, 'expense', true)
        RETURNING id`,
       [userId, expenseDate, fc.amount, fc.category ?? '기타', fc.name, `고정비 자동 기록 (fixed_cost_id: ${fc.id})`],
     );
