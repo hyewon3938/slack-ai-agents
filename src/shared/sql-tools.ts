@@ -193,6 +193,71 @@ const getSchemaInfo = async (tableName?: string): Promise<string> => {
   return output;
 };
 
+// ---- 보안 검증 ----
+
+/** user_id 컬럼이 없는 테이블 (user_id 필터 검증 면제) */
+const USER_ID_EXEMPT_TABLES = new Set([
+  'sleep_events',
+  'notification_settings',
+  'categories',
+]);
+
+/**
+ * SQL에 user_id 필터가 포함되어 있는지 검증.
+ * 면제 테이블만 참조하는 쿼리 및 information_schema 쿼리는 통과.
+ * 통과 시 null, 실패 시 에러 메시지 반환.
+ */
+export const validateUserIdFilter = (sql: string): string | null => {
+  const withoutStrings = sql.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
+
+  // user_id 참조가 있으면 OK
+  if (/\buser_id\b/i.test(withoutStrings)) return null;
+
+  // information_schema 쿼리는 OK (get_schema 도구용)
+  if (/\binformation_schema\b/i.test(withoutStrings)) return null;
+
+  // FROM/JOIN/INTO/UPDATE 뒤의 테이블명 추출
+  const tableMatches = withoutStrings.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+(\w+)/gi);
+  const tables = [...tableMatches].map((m) => (m[1] ?? '').toLowerCase());
+
+  // 추출된 테이블이 모두 면제 대상이면 OK
+  if (tables.length > 0 && tables.every((t) => USER_ID_EXEMPT_TABLES.has(t))) {
+    return null;
+  }
+
+  return '보안 규칙: 이 쿼리에는 user_id 조건이 필요해. WHERE user_id = 1을 추가해줘.';
+};
+
+/** custom_instructions INSERT 시 시스템 프롬프트 우회 시도 감지 */
+const DANGEROUS_INSTRUCTION_PATTERNS = [
+  /ignore\s+(previous|all|above|system)/i,
+  /disregard/i,
+  /override\s+(system|rule|instruction)/i,
+  /forget\s+(previous|all|everything)/i,
+  /you\s+are\s+now/i,
+  /new\s+instructions?:/i,
+];
+
+/**
+ * custom_instructions 테이블 INSERT 시 위험 키워드 감지.
+ * 통과 시 null, 실패 시 에러 메시지 반환.
+ */
+export const validateCustomInstruction = (sql: string): string | null => {
+  if (!/\bcustom_instructions\b/i.test(sql)) return null;
+  if (!/\bINSERT\b/i.test(sql)) return null;
+
+  // 문자열 리터럴 내용 추출
+  const literals = [...sql.matchAll(/'([^']*)'/g)].map((m) => m[1] ?? '');
+  for (const literal of literals) {
+    for (const pattern of DANGEROUS_INSTRUCTION_PATTERNS) {
+      if (pattern.test(literal)) {
+        return '보안 경고: 지시사항에 시스템 규칙을 우회하려는 표현이 포함되어 있어 등록할 수 없어.';
+      }
+    }
+  }
+  return null;
+};
+
 // ---- Post-modify 훅 ----
 
 export type PostModifyHook = (sql: string) => void | Promise<void>;
@@ -217,7 +282,7 @@ export const executeSQLTool = async (
   switch (name) {
     case 'query_db': {
       const sql = args['sql'] as string;
-      const error = validateSelectQuery(sql);
+      const error = validateSelectQuery(sql) ?? validateUserIdFilter(sql);
       if (error) return JSON.stringify({ error });
 
       const result = await queryWithClient(sql, SQL_TIMEOUT_MS);
@@ -226,7 +291,7 @@ export const executeSQLTool = async (
 
     case 'modify_db': {
       const sql = args['sql'] as string;
-      const error = validateModifyQuery(sql);
+      const error = validateModifyQuery(sql) ?? validateUserIdFilter(sql) ?? validateCustomInstruction(sql);
       if (error) return JSON.stringify({ error });
 
       const keyword = extractFirstKeyword(sql);
