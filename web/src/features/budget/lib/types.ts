@@ -94,6 +94,15 @@ export interface MonthSummary {
   daily_avg: number;
 }
 
+/** 일별 예산 로그 (스냅샷) */
+export interface DailyBudgetLog {
+  date: string;
+  billing_month: string;
+  budget: number;   // 그날 할당 예산
+  spent: number;    // 그날 자유 지출
+  saved: number;    // budget - spent (음수 = 초과)
+}
+
 /** 월별 시뮬레이션 프로젝션 */
 export interface MonthProjection {
   month: string;          // YYYY-MM (결제주기 기준)
