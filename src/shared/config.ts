@@ -43,4 +43,7 @@ export const CONFIG = {
   db: {
     url: requireEnv('DATABASE_URL'),
   },
+  dbProxy: {
+    apiKey: process.env['DB_PROXY_API_KEY'] ?? '',
+  },
 } as const;

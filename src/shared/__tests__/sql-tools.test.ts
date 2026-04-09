@@ -188,6 +188,24 @@ describe('validateUserIdFilter — 강화된 검증', () => {
   });
 });
 
+describe('validateUserIdFilter — user_id 값 제한', () => {
+  it('user_id = 1은 통과한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1')).toBeNull();
+  });
+
+  it('user_id = 2는 거부한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 2')).not.toBeNull();
+  });
+
+  it('user_id = 99는 거부한다', () => {
+    expect(validateUserIdFilter('UPDATE schedules SET title = \'x\' WHERE user_id = 99')).not.toBeNull();
+  });
+
+  it('user_id 없는 DELETE는 거부한다', () => {
+    expect(validateUserIdFilter('DELETE FROM schedules WHERE id IN (SELECT id FROM schedules)')).not.toBeNull();
+  });
+});
+
 describe('validateCustomInstruction', () => {
   it('custom_instructions가 없는 쿼리는 통과한다', () => {
     expect(validateCustomInstruction('INSERT INTO schedules (title, user_id) VALUES (\'test\', 1)')).toBeNull();
