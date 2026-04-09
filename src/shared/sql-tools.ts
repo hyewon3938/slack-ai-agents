@@ -211,13 +211,13 @@ const USER_ID_EXEMPT_TABLES = new Set([
 ]);
 
 /**
- * SQL에 user_id = 1 필터가 정확히 포함되어 있는지 검증.
- * - SELECT/UPDATE/DELETE: user_id = 1 조건 필수 (다른 user_id 값 차단)
- * - INSERT: user_id 컬럼에 1 값 포함 여부 확인
+ * SQL에 user_id = {userId} 필터가 정확히 포함되어 있는지 검증.
+ * - SELECT/UPDATE/DELETE: user_id = {userId} 조건 필수 (다른 user_id 값 차단)
+ * - INSERT: user_id 컬럼 포함 여부 확인
  * - 면제 테이블만 참조하는 쿼리 및 information_schema 쿼리는 통과.
  * 통과 시 null, 실패 시 에러 메시지 반환.
  */
-export const validateUserIdFilter = (sql: string): string | null => {
+export const validateUserIdFilter = (sql: string, userId: number): string | null => {
   const stripped = stripCommentsAndStrings(sql);
 
   // information_schema 쿼리는 OK (get_schema 도구용)
@@ -234,21 +234,22 @@ export const validateUserIdFilter = (sql: string): string | null => {
 
   const keyword = extractFirstKeyword(stripped);
 
-  // INSERT: user_id 컬럼 + 값 1이 포함되어야 함
+  // INSERT: user_id 컬럼이 포함되어야 함
   if (keyword === 'INSERT') {
     if (/\buser_id\b/i.test(stripped)) return null;
     return '보안 규칙: INSERT에 user_id 컬럼을 포함해줘.';
   }
 
-  // SELECT/UPDATE/DELETE: user_id = 1 정확히 매칭 (다른 숫자 차단)
-  if (/\buser_id\s*=\s*1\b/i.test(stripped)) return null;
+  // SELECT/UPDATE/DELETE: user_id = {userId} 정확히 매칭 (다른 숫자 차단)
+  const exactPattern = new RegExp(`\\buser_id\\s*=\\s*${userId}\\b`, 'i');
+  if (exactPattern.test(stripped)) return null;
 
   // user_id = (다른 값) 시도 감지
   if (/\buser_id\s*=/i.test(stripped)) {
-    return '보안 규칙: user_id = 1만 허용돼. 다른 user_id 값은 사용할 수 없어.';
+    return `보안 규칙: user_id = ${userId}만 허용돼. 다른 user_id 값은 사용할 수 없어.`;
   }
 
-  return '보안 규칙: 이 쿼리에는 user_id = 1 조건이 필요해.';
+  return `보안 규칙: 이 쿼리에는 user_id = ${userId} 조건이 필요해.`;
 };
 
 /** custom_instructions INSERT 시 시스템 프롬프트 우회 시도 감지 */
@@ -309,15 +310,17 @@ const logSQLExecution = (tool: string, sql: string, result: { rowCount?: number 
 /**
  * SQL 도구 실행기.
  * agent-loop의 executeToolCall 시그니처: (name, args) => Promise<string>
+ * userId: 현재 사용자의 DB user_id (기본값 1)
  */
 export const executeSQLTool = async (
   name: string,
   args: Record<string, unknown>,
+  userId: number = 1,
 ): Promise<string> => {
   switch (name) {
     case 'query_db': {
       const sql = args['sql'] as string;
-      const error = validateSelectQuery(sql) ?? validateUserIdFilter(sql);
+      const error = validateSelectQuery(sql) ?? validateUserIdFilter(sql, userId);
       if (error) {
         logSQLExecution('query_db', sql, { error });
         return JSON.stringify({ error });
@@ -330,7 +333,7 @@ export const executeSQLTool = async (
 
     case 'modify_db': {
       const sql = args['sql'] as string;
-      const error = validateModifyQuery(sql) ?? validateUserIdFilter(sql) ?? validateCustomInstruction(sql);
+      const error = validateModifyQuery(sql) ?? validateUserIdFilter(sql, userId) ?? validateCustomInstruction(sql);
       if (error) {
         logSQLExecution('modify_db', sql, { error });
         return JSON.stringify({ error });

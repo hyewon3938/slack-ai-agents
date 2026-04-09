@@ -31,6 +31,8 @@ import {
   postponeSchedule,
 } from '../life-queries.js';
 
+const TEST_USER_ID = 1;
+
 beforeEach(async () => {
   vi.clearAllMocks();
   mockConnect.mockResolvedValue({ release: vi.fn() });
@@ -107,10 +109,10 @@ describe('queryActiveTemplates', () => {
       rows: [{ id: 1, name: '운동', time_slot: '낮', frequency: '매일' }],
     });
 
-    const result = await queryActiveTemplates();
+    const result = await queryActiveTemplates(TEST_USER_ID);
     expect(result).toHaveLength(1);
     expect(result[0]?.name).toBe('운동');
-    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('routine_templates'), undefined);
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('routine_templates'), [TEST_USER_ID]);
   });
 });
 
@@ -130,11 +132,12 @@ describe('queryTodayRecords', () => {
       ],
     });
 
-    const result = await queryTodayRecords('2026-03-08');
+    const result = await queryTodayRecords('2026-03-08', TEST_USER_ID);
     expect(result).toHaveLength(1);
     expect(result[0]?.name).toBe('운동');
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('JOIN routine_templates'), [
       '2026-03-08',
+      TEST_USER_ID,
     ]);
   });
 });
@@ -145,7 +148,7 @@ describe('queryExistingTemplateIds', () => {
       rows: [{ template_id: 1 }, { template_id: 3 }],
     });
 
-    const result = await queryExistingTemplateIds('2026-03-08');
+    const result = await queryExistingTemplateIds('2026-03-08', TEST_USER_ID);
     expect(result).toBeInstanceOf(Set);
     expect(result.has(1)).toBe(true);
     expect(result.has(3)).toBe(true);
@@ -156,13 +159,13 @@ describe('queryExistingTemplateIds', () => {
 describe('queryLastRecordDate', () => {
   it('마지막 기록 날짜 반환', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ date: '2026-03-06' }] });
-    const result = await queryLastRecordDate(1);
+    const result = await queryLastRecordDate(1, TEST_USER_ID);
     expect(result).toBe('2026-03-06');
   });
 
   it('기록 없으면 null', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const result = await queryLastRecordDate(999);
+    const result = await queryLastRecordDate(999, TEST_USER_ID);
     expect(result).toBeNull();
   });
 });
@@ -170,11 +173,12 @@ describe('queryLastRecordDate', () => {
 describe('createRecord', () => {
   it('INSERT 후 id 반환', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] });
-    const id = await createRecord(1, '2026-03-08');
+    const id = await createRecord(1, '2026-03-08', TEST_USER_ID);
     expect(id).toBe(42);
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO routine_records'), [
       1,
       '2026-03-08',
+      TEST_USER_ID,
     ]);
   });
 });
@@ -182,8 +186,8 @@ describe('createRecord', () => {
 describe('completeRecord', () => {
   it('UPDATE completed = true 실행', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    await completeRecord(42);
-    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('completed = true'), [42]);
+    await completeRecord(42, TEST_USER_ID);
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('completed = true'), [42, TEST_USER_ID]);
   });
 });
 
@@ -205,7 +209,7 @@ describe('queryTodaySchedules', () => {
       ],
     });
 
-    const result = await queryTodaySchedules('2026-03-08');
+    const result = await queryTodaySchedules('2026-03-08', TEST_USER_ID);
     expect(result).toHaveLength(1);
     expect(result[0]?.title).toBe('회의');
   });
@@ -214,10 +218,11 @@ describe('queryTodaySchedules', () => {
 describe('updateScheduleStatus', () => {
   it('상태 업데이트 SQL 실행', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    await updateScheduleStatus(1, 'done');
+    await updateScheduleStatus(1, 'done', TEST_USER_ID);
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE schedules'), [
       'done',
       1,
+      TEST_USER_ID,
     ]);
   });
 });
@@ -225,10 +230,11 @@ describe('updateScheduleStatus', () => {
 describe('postponeSchedule', () => {
   it('날짜 변경 + status → todo', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    await postponeSchedule(1, '2026-03-09');
+    await postponeSchedule(1, '2026-03-09', TEST_USER_ID);
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'todo'"), [
       '2026-03-09',
       1,
+      TEST_USER_ID,
     ]);
   });
 });

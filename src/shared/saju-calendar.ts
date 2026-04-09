@@ -653,7 +653,8 @@ const runCLI = async (): Promise<void> => {
       month_pillar: string;
       hour_pillar: string;
     }>(
-      'SELECT day_pillar, year_pillar, month_pillar, hour_pillar FROM saju_profiles WHERE user_id = 1',
+      'SELECT day_pillar, year_pillar, month_pillar, hour_pillar FROM saju_profiles WHERE user_id = $1',
+      [1],
     );
     if (rows.length === 0) throw new Error('사주 프로필 미등록');
 

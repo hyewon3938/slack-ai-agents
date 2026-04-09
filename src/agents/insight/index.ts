@@ -7,6 +7,7 @@ import { ChatHistory } from '../../shared/chat-history.js';
 import { buildInsightSystemPrompt } from './prompt.js';
 import { queryOne } from '../../shared/db.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
+import { resolveUserId } from '../../shared/user-resolver.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
@@ -43,6 +44,7 @@ const formatFortune = (row: FortuneRow): string => {
 const tryFortuneFastPath = async (
   trimmed: string,
   say: Parameters<AgentHandler>[1],
+  userId: number,
 ): Promise<boolean> => {
   let sql: string;
   let params: unknown[];
@@ -51,34 +53,34 @@ const tryFortuneFastPath = async (
   if (DAILY_FORTUNE_RE.test(trimmed)) {
     const today = getTodayISO();
     sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = 1 AND period = 'daily' AND date = $1`;
-    params = [today];
+           FROM fortune_analyses WHERE user_id = $1 AND period = 'daily' AND date = $2`;
+    params = [userId, today];
     label = '오늘 일운';
   } else if (TOMORROW_FORTUNE_RE.test(trimmed)) {
     const tomorrow = addDays(getTodayISO(), 1);
     sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = 1 AND period = 'daily' AND date = $1`;
-    params = [tomorrow];
+           FROM fortune_analyses WHERE user_id = $1 AND period = 'daily' AND date = $2`;
+    params = [userId, tomorrow];
     label = '내일 일운';
   } else if (MONTHLY_FORTUNE_RE.test(trimmed)) {
     const today = getTodayISO();
     const monthFirst = today.slice(0, 7) + '-01';
     sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = 1 AND period = 'monthly' AND date = $1`;
-    params = [monthFirst];
+           FROM fortune_analyses WHERE user_id = $1 AND period = 'monthly' AND date = $2`;
+    params = [userId, monthFirst];
     label = '이번 달 월운';
   } else if (YEARLY_FORTUNE_RE.test(trimmed)) {
     const today = getTodayISO();
     const yearFirst = today.slice(0, 4) + '-01-01';
     sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = 1 AND period = 'yearly' AND date = $1`;
-    params = [yearFirst];
+           FROM fortune_analyses WHERE user_id = $1 AND period = 'yearly' AND date = $2`;
+    params = [userId, yearFirst];
     label = '올해 세운';
   } else if (MAJOR_FORTUNE_RE.test(trimmed)) {
     sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = 1 AND period = 'major'
+           FROM fortune_analyses WHERE user_id = $1 AND period = 'major'
            ORDER BY date DESC LIMIT 1`;
-    params = [];
+    params = [userId];
     label = '대운';
   } else {
     return false;
@@ -115,8 +117,16 @@ export const createInsightAgent = (llmClient: LLMClient): AgentHandler => {
     const channelId = message.channel;
     const trimmed = text.trim();
 
+    // Slack user → DB userId 해석
+    const slackUserId = ('user' in message ? message.user : undefined) ?? '';
+    const userId = await resolveUserId(slackUserId);
+    if (userId === null) {
+      await sendMessage(say, '등록되지 않은 사용자야. 관리자에게 문의해줘.');
+      return;
+    }
+
     // ── fast path: 운세 조회 ──
-    if (await tryFortuneFastPath(trimmed, say)) return;
+    if (await tryFortuneFastPath(trimmed, say, userId)) return;
 
     // ── LLM 에이전트 루프 ──
     try {
@@ -125,9 +135,9 @@ export const createInsightAgent = (llmClient: LLMClient): AgentHandler => {
         text,
         {
           label: 'Insight Agent',
-          buildSystemPrompt: () => buildInsightSystemPrompt(),
+          buildSystemPrompt: () => buildInsightSystemPrompt(userId),
           getTools: async () => SQL_TOOLS,
-          executeToolCall: executeSQLTool,
+          executeToolCall: (name, args) => executeSQLTool(name, args, userId),
           historyMessages: history.toMessages(channelId),
         },
       );

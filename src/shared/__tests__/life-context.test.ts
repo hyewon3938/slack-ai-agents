@@ -48,7 +48,7 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
     'routine_records.*routine_templates.*date =': [],
     'AVG.*daily_rate': [],
     // schedule
-    "status != 'cancelled'.*end_date.*\\$1\\)": [{ total: '0', incomplete: '0' }],
+    "status != 'cancelled'.*end_date.*\\$2\\)": [{ total: '0', incomplete: '0' }],
     'date.*\\+ 1.*end_date': [{ count: '0' }],
     "status = 'todo'.*date < ": [{ count: '0' }],
     "date IS NULL.*status = 'todo'": [{ count: '0' }],
@@ -78,7 +78,7 @@ describe('buildLifeContext', () => {
   it('수면 데이터 없으면 수면 항목 생략 (conversation)', async () => {
     setupQueryMock();
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).not.toContain('수면:');
   });
 
@@ -96,13 +96,13 @@ describe('buildLifeContext', () => {
       'bedtime.*>= \'12:00\'': [{ nap_count: '1' }],
       'routine_records.*routine_templates.*date =': [{ total: '8', completed: '3' }],
       'AVG.*daily_rate': [{ avg_rate: '72' }],
-      "status != 'cancelled'.*end_date.*\\$1\\)": [{ total: '5', incomplete: '3' }],
+      "status != 'cancelled'.*end_date.*\\$2\\)": [{ total: '5', incomplete: '3' }],
       'date.*\\+ 1.*end_date': [{ count: '2' }],
       "status = 'todo'.*date < ": [{ count: '1' }],
       "date IS NULL.*status = 'todo'": [{ count: '13' }],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
 
     // 수면
     expect(result).toContain('5시간 30분');
@@ -132,11 +132,11 @@ describe('buildLifeContext', () => {
       'AS is_late': [{ date: '2026-03-08', is_late: false }],
       'routine_records.*routine_templates.*date =': [{ total: '10', completed: '8' }],
       'AVG.*daily_rate': [{ avg_rate: '75' }],
-      "status != 'cancelled'.*end_date.*\\$1\\)": [{ total: '3', incomplete: '3' }],
+      "status != 'cancelled'.*end_date.*\\$2\\)": [{ total: '3', incomplete: '3' }],
       "date IS NULL.*status = 'todo'": [{ count: '5' }],
     });
 
-    const result = await buildLifeContext('morning');
+    const result = await buildLifeContext('morning', 1);
 
     // morning에서는 '어제' 기준 루틴
     expect(result).toContain('어제 8/10 완료 (80%)');
@@ -151,16 +151,16 @@ describe('buildLifeContext', () => {
   it('수면 미기록 + morning이면 "수면 미기록" 표시', async () => {
     setupQueryMock();
 
-    const result = await buildLifeContext('morning');
+    const result = await buildLifeContext('morning', 1);
     expect(result).toContain('수면 미기록');
   });
 
   it('일정이 모두 완료면 미완료 수 생략', async () => {
     setupQueryMock({
-      "status != 'cancelled'.*end_date.*\\$1\\)": [{ total: '3', incomplete: '0' }],
+      "status != 'cancelled'.*end_date.*\\$2\\)": [{ total: '3', incomplete: '0' }],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toContain('오늘 3건');
     expect(result).not.toContain('미완료');
   });
@@ -170,7 +170,7 @@ describe('buildLifeContext', () => {
       "date IS NULL.*status = 'todo'": [{ count: '7' }],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toContain('백로그 7건');
   });
 
@@ -185,7 +185,7 @@ describe('buildLifeContext', () => {
       ],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toContain('2일 연속 자정 이후 취침');
   });
 
@@ -198,7 +198,7 @@ describe('buildLifeContext', () => {
       ],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).not.toContain('자정 이후');
   });
 
@@ -210,7 +210,7 @@ describe('buildLifeContext', () => {
       ],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).not.toContain('자정 이후');
   });
 
@@ -223,7 +223,7 @@ describe('buildLifeContext', () => {
       ],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toContain('일기:');
     expect(result).toContain('오늘: 오늘 면접 봤는데 긴장했다.');
   });
@@ -235,7 +235,7 @@ describe('buildLifeContext', () => {
       ],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toContain('...');
   });
 
@@ -246,7 +246,7 @@ describe('buildLifeContext', () => {
       ],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toContain('삶의 테마:');
     expect(result).toContain('[career] 이직 준비: 기술 면접 준비 중');
   });
@@ -258,7 +258,7 @@ describe('buildLifeContext', () => {
       ],
     });
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toContain('오늘 운세:');
     expect(result).toContain('편관 운이 들어오는 날');
     expect(result).toContain('조언: 무리하지 마');
@@ -267,7 +267,7 @@ describe('buildLifeContext', () => {
   it('DB 오류 시 빈 문자열 반환', async () => {
     mockQuery.mockRejectedValue(new Error('DB connection lost'));
 
-    const result = await buildLifeContext('conversation');
+    const result = await buildLifeContext('conversation', 1);
     expect(result).toBe('');
   });
 });
