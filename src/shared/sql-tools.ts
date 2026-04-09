@@ -211,9 +211,9 @@ const USER_ID_EXEMPT_TABLES = new Set([
 ]);
 
 /**
- * SQL에 user_id 필터가 포함되어 있는지 검증.
- * - SELECT/UPDATE/DELETE: WHERE user_id = 값 조건 필요
- * - INSERT: 컬럼 목록에 user_id 포함 여부 확인
+ * SQL에 user_id = 1 필터가 정확히 포함되어 있는지 검증.
+ * - SELECT/UPDATE/DELETE: user_id = 1 조건 필수 (다른 user_id 값 차단)
+ * - INSERT: user_id 컬럼에 1 값 포함 여부 확인
  * - 면제 테이블만 참조하는 쿼리 및 information_schema 쿼리는 통과.
  * 통과 시 null, 실패 시 에러 메시지 반환.
  */
@@ -222,12 +222,6 @@ export const validateUserIdFilter = (sql: string): string | null => {
 
   // information_schema 쿼리는 OK (get_schema 도구용)
   if (/\binformation_schema\b/i.test(stripped)) return null;
-
-  // user_id = 값 형태의 조건이 있으면 OK (WHERE/AND/SET 등)
-  if (/\buser_id\s*=/i.test(stripped)) return null;
-
-  // INSERT: 컬럼 목록에 user_id가 있으면 OK
-  if (extractFirstKeyword(stripped) === 'INSERT' && /\buser_id\b/i.test(stripped)) return null;
 
   // FROM/JOIN/INTO/UPDATE 뒤의 테이블명 추출
   const tableMatches = stripped.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+(\w+)/gi);
@@ -238,7 +232,23 @@ export const validateUserIdFilter = (sql: string): string | null => {
     return null;
   }
 
-  return '보안 규칙: 이 쿼리에는 user_id 조건이 필요해. WHERE user_id = 1을 추가해줘.';
+  const keyword = extractFirstKeyword(stripped);
+
+  // INSERT: user_id 컬럼 + 값 1이 포함되어야 함
+  if (keyword === 'INSERT') {
+    if (/\buser_id\b/i.test(stripped)) return null;
+    return '보안 규칙: INSERT에 user_id 컬럼을 포함해줘.';
+  }
+
+  // SELECT/UPDATE/DELETE: user_id = 1 정확히 매칭 (다른 숫자 차단)
+  if (/\buser_id\s*=\s*1\b/i.test(stripped)) return null;
+
+  // user_id = (다른 값) 시도 감지
+  if (/\buser_id\s*=/i.test(stripped)) {
+    return '보안 규칙: user_id = 1만 허용돼. 다른 user_id 값은 사용할 수 없어.';
+  }
+
+  return '보안 규칙: 이 쿼리에는 user_id = 1 조건이 필요해.';
 };
 
 /** custom_instructions INSERT 시 시스템 프롬프트 우회 시도 감지 */
@@ -282,6 +292,18 @@ export const setPostModifyHook = (hook: PostModifyHook): void => {
   postModifyHook = hook;
 };
 
+// ---- 감사 로그 ----
+
+/** SQL 실행 로그 (도구명, SQL 앞부분, 결과 요약) */
+const logSQLExecution = (tool: string, sql: string, result: { rowCount?: number | null; error?: string }): void => {
+  const truncatedSQL = sql.length > 200 ? sql.slice(0, 200) + '...' : sql;
+  if (result.error) {
+    console.warn(`[SQL Audit] BLOCKED ${tool}: ${truncatedSQL} → ${result.error}`);
+  } else {
+    console.log(`[SQL Audit] ${tool}: ${truncatedSQL} → ${result.rowCount ?? 0} rows`);
+  }
+};
+
 // ---- SQL 도구 실행기 ----
 
 /**
@@ -296,19 +318,27 @@ export const executeSQLTool = async (
     case 'query_db': {
       const sql = args['sql'] as string;
       const error = validateSelectQuery(sql) ?? validateUserIdFilter(sql);
-      if (error) return JSON.stringify({ error });
+      if (error) {
+        logSQLExecution('query_db', sql, { error });
+        return JSON.stringify({ error });
+      }
 
       const result = await queryWithClient(sql, SQL_TIMEOUT_MS);
+      logSQLExecution('query_db', sql, { rowCount: result.rowCount });
       return JSON.stringify({ rows: result.rows, rowCount: result.rowCount });
     }
 
     case 'modify_db': {
       const sql = args['sql'] as string;
       const error = validateModifyQuery(sql) ?? validateUserIdFilter(sql) ?? validateCustomInstruction(sql);
-      if (error) return JSON.stringify({ error });
+      if (error) {
+        logSQLExecution('modify_db', sql, { error });
+        return JSON.stringify({ error });
+      }
 
       // INSERT/UPDATE/DELETE 모두 트랜잭션 + row 수 제한 적용 (대량 변경 방지)
       const result = await queryWithRowLimit(sql, SQL_TIMEOUT_MS, MAX_MODIFY_ROWS);
+      logSQLExecution('modify_db', sql, { rowCount: result.rowCount });
 
       // fire-and-forget: 훅 실행 (응답 지연 없음)
       if (postModifyHook) {

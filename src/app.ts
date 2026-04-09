@@ -10,6 +10,7 @@ import { registerHomeTab } from './agents/life/home.js';
 import { createInsightAgent } from './agents/insight/index.js';
 import { CronScheduler } from './cron/life-cron.js';
 import { setPostModifyHook } from './shared/sql-tools.js';
+import { startDBProxy } from './db-proxy.js';
 
 const app = new App({
   token: CONFIG.slack.botToken,
@@ -53,6 +54,9 @@ const startApp = async (): Promise<void> => {
       cronScheduler.reload();
     }
   });
+
+  // DB 프록시 서버 (웹 대시보드용 — Vercel → HTTPS → VM → DB)
+  startDBProxy();
 
   await app.start();
   // eslint-disable-next-line no-console
