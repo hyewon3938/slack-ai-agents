@@ -1,6 +1,29 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+
+function InfoTooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-[10px] text-gray-500"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={() => setShow((v) => !v)}
+      >
+        ?
+      </button>
+      {show && (
+        <span className="absolute bottom-6 left-1/2 z-10 w-48 -translate-x-1/2 rounded-lg bg-gray-800 px-3 py-2 text-[11px] leading-relaxed text-white shadow-lg">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
 import type { DailyBudgetLog } from '@/features/budget/lib/types';
 
 interface DailyBudgetLogProps {
@@ -54,6 +77,7 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
         <div className={`text-lg font-bold ${totalSaved >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
           {totalSaved >= 0 ? '+' : ''}
           {formatAmount(totalSaved)} {totalSaved >= 0 ? '세이브' : '초과'}
+          <InfoTooltip text="예산 대비 절약/초과 금액의 합산이야. 실제 다음 달로 이월되는 금액과는 다를 수 있어" />
         </div>
         <div className="mt-1 flex gap-3 text-xs text-gray-500">
           <span>
@@ -65,6 +89,7 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
         {runwayImpactDays !== null && runwayImpactDays > 0 && (
           <div className="mt-2 text-xs text-gray-400">
             런웨이 약 {runwayImpactDays}일 {totalSaved >= 0 ? '연장' : '단축'} 효과
+            <InfoTooltip text="일일 예산 기준 대략적인 추정치야. 고정비 변동 등에 따라 실제와 다를 수 있어" />
           </div>
         )}
       </div>
