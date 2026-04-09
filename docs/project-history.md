@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-04-09: 예산 계산 리팩토링 + 단위 테스트 (#200, PR #201)
+
+`queries.ts`에서 `calcBudgetPreview`와 `queryRunway`가 공유하던 \~115줄의 중복 계산 로직을 순수 함수로 추출했다. TDD로 개발: 테스트 먼저 작성 → 공통 함수 추출 → 테스트 통과 확인.
+
+- `budget-calc.ts` 신규: 빌링 유틸 4개(addBillingMonths, getCurrentBillingMonth, getBillingRange, calcCycleDays) + `calculateBudgetAllocation` 순수 함수
+- `budget-calc.test.ts` 신규: 28개 단위 테스트 (빌링 유틸 + 예산 배분 핵심 케이스)
+- `queries.ts` -155줄: 중복 locked 루프 제거, 공통 함수 호출로 대체
+- 동작 변경 없는 리팩토링 — API 응답값 동일 유지
+
+---
+
 ## 2026-04-07: 결제수단 선택 + 카드 할부 입력 (#179, PR #180)
 
 지출 입력 폼에 결제수단 선택 및 카드 할부 기능을 추가했다.
