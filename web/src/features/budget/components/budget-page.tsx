@@ -83,6 +83,7 @@ export function BudgetPage() {
     expenses, summary,
     loading, error,
     addExpense, deleteExpense, updateExpense,
+    refresh,
   } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [topTab, setTopTab] = useState<TopTab>('manage');
@@ -163,7 +164,7 @@ export function BudgetPage() {
       {/* 설정 탭 */}
       {topTab === 'settings' && (
         <div className="mx-auto w-full max-w-2xl px-4 py-4">
-          <BudgetSettingsPage />
+          <BudgetSettingsPage onSettingsChange={refresh} />
         </div>
       )}
 
