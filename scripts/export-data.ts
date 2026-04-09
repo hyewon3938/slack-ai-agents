@@ -5,7 +5,7 @@
 import pg from 'pg';
 
 const pool = new pg.Pool({
-  connectionString: 'postgresql://agent:REDACTED_PASSWORD@localhost:5432/slack_ai_agents',
+  connectionString: 'postgresql://agent:agent_password@localhost:5432/slack_ai_agents',
 });
 
 const TABLES = [

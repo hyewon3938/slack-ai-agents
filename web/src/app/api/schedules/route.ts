@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { createSchedule, ensureCategoryExists } from '@/features/schedule/lib/queries';
 import { getCachedSchedulesByRange, getCachedBacklogSchedules } from '@/lib/cache';
 import { isValidStatus } from '@/features/schedule/lib/types';
+import { validateFields } from '@/lib/validation';
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -53,6 +54,16 @@ export async function POST(request: Request) {
 
     if (!body.title?.trim()) {
       return NextResponse.json({ error: '제목을 입력해줘' }, { status: 400 });
+    }
+
+    const lengthError = validateFields([
+      [body.title, 'title'],
+      [body.memo, 'memo'],
+      [body.category, 'category'],
+      [body.subcategory, 'subcategory'],
+    ]);
+    if (lengthError) {
+      return NextResponse.json({ error: lengthError }, { status: 400 });
     }
 
     if (body.status !== undefined && !isValidStatus(body.status)) {

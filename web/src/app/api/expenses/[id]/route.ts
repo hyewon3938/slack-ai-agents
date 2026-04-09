@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { updateExpense, deleteExpense } from '@/features/budget/lib/queries';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
+import { validateFields } from '@/lib/validation';
 
 const VALID_CATEGORIES = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
 
@@ -28,6 +29,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if ('exclude_from_budget' in body && typeof body.exclude_from_budget !== 'boolean') {
       return NextResponse.json({ error: 'exclude_from_budget는 boolean이어야 합니다' }, { status: 400 });
+    }
+
+    const lengthError = validateFields([
+      [body.description, 'description'],
+      [body.memo, 'memo'],
+      [body.payment_method, 'paymentMethod'],
+    ]);
+    if (lengthError) {
+      return NextResponse.json({ error: lengthError }, { status: 400 });
     }
 
     const data = await updateExpense(userId, id, body);

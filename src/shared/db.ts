@@ -74,6 +74,35 @@ export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResu
   }
 };
 
+/** 트랜잭션 내 쿼리 실행 — rowCount가 maxRows 초과 시 ROLLBACK (SQL 도구 보안용) */
+export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
+  text: string,
+  timeoutMs: number,
+  maxRows: number,
+): Promise<pg.QueryResult<T>> => {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query(`SET statement_timeout = '${timeoutMs}'`);
+    await client.query('BEGIN');
+    const result = await client.query<T>(text);
+    if (result.rowCount !== null && result.rowCount > maxRows) {
+      await client.query('ROLLBACK');
+      throw new Error(
+        `쿼리가 ${result.rowCount}행에 영향 (최대 ${maxRows}행). ROLLBACK 완료. 조건을 더 좁혀줘.`,
+      );
+    }
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {/* 무시 */});
+    throw err;
+  } finally {
+    await client.query(`SET statement_timeout = '0'`).catch(() => {/* 무시 */});
+    client.release();
+  }
+};
+
 /** 연결 풀 종료 */
 export const disconnectDB = async (): Promise<void> => {
   if (!pool) return;
