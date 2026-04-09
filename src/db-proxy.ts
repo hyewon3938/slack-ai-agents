@@ -48,6 +48,17 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // GET /health — 헬스체크 (인증 불필요)
+  if (req.method === 'GET' && req.url === '/health') {
+    try {
+      await query('SELECT 1');
+      jsonResponse(res, 200, { status: 'ok', db: 'connected' });
+    } catch {
+      jsonResponse(res, 503, { status: 'error', db: 'disconnected' });
+    }
+    return;
+  }
+
   // POST /api/db/query 만 허용
   if (req.method !== 'POST' || req.url !== '/api/db/query') {
     jsonResponse(res, 404, { error: 'Not found' });
