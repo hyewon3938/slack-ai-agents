@@ -5,7 +5,7 @@ const PUBLIC_PATHS = ['/login', '/api/auth'];
 
 export function middleware(request: NextRequest) {
   // 로컬 개발용 인증 바이패스
-  if (process.env.BYPASS_AUTH === 'true') {
+  if (process.env.BYPASS_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     return NextResponse.next();
   }
 
