@@ -11,8 +11,24 @@ let pool: pg.Pool | null = null;
 
 const getPool = (): pg.Pool => {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
-    const useSSL = connectionString?.includes('sslmode=require');
+    const rawUrl = process.env.DATABASE_URL ?? '';
+    const useSSL = rawUrl.includes('sslmode=require');
+
+    // SSL을 Node.js TLS 스택(ssl config)으로 제어하기 위해
+    // sslmode, uselibpqcompat 파라미터를 URL에서 제거.
+    // uselibpqcompat=true는 libpq SSL을 사용하게 해서 rejectUnauthorized: false가 적용되지 않음.
+    let connectionString = rawUrl;
+    if (useSSL) {
+      try {
+        const url = new URL(rawUrl);
+        url.searchParams.delete('sslmode');
+        url.searchParams.delete('uselibpqcompat');
+        connectionString = url.toString();
+      } catch {
+        // URL 파싱 실패 시 원본 사용
+      }
+    }
+
     pool = new Pool({
       connectionString,
       max: 3,
