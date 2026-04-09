@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import type { DailyBudgetLog } from '@/features/budget/lib/types';
 
 function InfoTooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
@@ -24,7 +25,6 @@ function InfoTooltip({ text }: { text: string }) {
     </span>
   );
 }
-import type { DailyBudgetLog } from '@/features/budget/lib/types';
 
 interface DailyBudgetLogProps {
   yearMonth: string;
