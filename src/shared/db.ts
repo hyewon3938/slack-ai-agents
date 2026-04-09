@@ -65,11 +65,11 @@ export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResu
   const p = getPool();
   const client = await p.connect();
   try {
-    await client.query('SET statement_timeout = $1', [String(timeoutMs)]);
+    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
     const result = await client.query<T>(text);
     return result;
   } finally {
-    await client.query('SET statement_timeout = $1', ['0']).catch(() => {/* 무시 */});
+    await client.query('SET statement_timeout = 0').catch(() => {/* 무시 */});
     client.release();
   }
 };
@@ -83,7 +83,7 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
   const p = getPool();
   const client = await p.connect();
   try {
-    await client.query('SET statement_timeout = $1', [String(timeoutMs)]);
+    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
     await client.query('BEGIN');
     const result = await client.query<T>(text);
     if (result.rowCount !== null && result.rowCount > maxRows) {
@@ -98,7 +98,7 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
     await client.query('ROLLBACK').catch(() => {/* 무시 */});
     throw err;
   } finally {
-    await client.query('SET statement_timeout = $1', ['0']).catch(() => {/* 무시 */});
+    await client.query('SET statement_timeout = 0').catch(() => {/* 무시 */});
     client.release();
   }
 };
