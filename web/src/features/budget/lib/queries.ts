@@ -333,6 +333,30 @@ export async function updateFixedCost(
   );
 }
 
+/** 고정비 생성 */
+export async function createFixedCost(
+  userId: number,
+  data: { name: string; amount: number; category?: string; day_of_month?: number | null },
+): Promise<FixedCostRow> {
+  const row = await queryOne<FixedCostRow>(
+    `INSERT INTO fixed_costs (user_id, name, amount, category, day_of_month)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo`,
+    [userId, data.name, data.amount, data.category ?? null, data.day_of_month ?? null],
+  );
+  if (!row) throw new Error('createFixedCost: INSERT returned no rows');
+  return row;
+}
+
+/** 고정비 삭제 */
+export async function deleteFixedCost(userId: number, id: number): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM fixed_costs WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 /**
  * 고정비 자동 기록: 결제일(day_of_month)이 설정된 활성 고정비에 대해
  * 해당 결제주기 내에 지출 기록이 없으면 자동 생성.
