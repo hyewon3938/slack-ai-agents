@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 // ─── DB mock ────────────────────────────────────────────────────────────────
@@ -58,11 +58,8 @@ describe('DB Proxy Server', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    // 매 테스트마다 핸들러를 직접 가져와 테스트 서버 구성
-    const { startDBProxy } = await import('../db-proxy.js');
-
-    // startDBProxy는 포트를 고정하므로, 여기서는 handleRequest 로직만 직접 테스트
-    // 대신 실제 서버를 동적 포트로 띄워서 테스트
+    // startDBProxy는 포트를 고정하므로, handleRequest 로직만 직접 테스트
+    // 실제 서버를 동적 포트로 띄워서 테스트
     const { createServer: createHttpServer } = await import('node:http');
     const { query: dbQuery } = await import('../shared/db.js');
     const { CONFIG: config } = await import('../shared/config.js');
