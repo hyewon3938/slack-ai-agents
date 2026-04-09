@@ -7,11 +7,12 @@ import { buildLifeContext } from '../../shared/life-context.js';
 const MAX_CUSTOM_INSTRUCTIONS = 20;
 
 /** DB에서 커스텀 지시사항 조회 (카테고리별 그룹화, active만, 상한 적용) */
-const loadCustomInstructions = async (): Promise<string> => {
+const loadCustomInstructions = async (userId: number): Promise<string> => {
   try {
     // 상한 초과 시 오래된 auto 지시사항 비활성화
     const countResult = await query<{ cnt: string }>(
-      `SELECT COUNT(*) as cnt FROM custom_instructions WHERE active = true AND user_id = 1`,
+      `SELECT COUNT(*) as cnt FROM custom_instructions WHERE active = true AND user_id = $1`,
+      [userId],
     );
     const total = Number(countResult.rows[0]?.cnt ?? 0);
     if (total > MAX_CUSTOM_INSTRUCTIONS) {
@@ -20,16 +21,17 @@ const loadCustomInstructions = async (): Promise<string> => {
         `UPDATE custom_instructions SET active = false
          WHERE id IN (
            SELECT id FROM custom_instructions
-           WHERE active = true AND source = 'auto' AND user_id = 1
-           ORDER BY created_at ASC LIMIT $1
+           WHERE active = true AND source = 'auto' AND user_id = $1
+           ORDER BY created_at ASC LIMIT $2
          )`,
-        [excess],
+        [userId, excess],
       );
     }
 
     const result = await query<{ instruction: string; category: string }>(
       `SELECT instruction, category FROM custom_instructions
-       WHERE active = true AND user_id = 1 ORDER BY category, created_at`,
+       WHERE active = true AND user_id = $1 ORDER BY category, created_at`,
+      [userId],
     );
     if (result.rows.length === 0) return '';
 
@@ -52,12 +54,12 @@ const loadCustomInstructions = async (): Promise<string> => {
 };
 
 /** v2 통합 에이전트 시스템 프롬프트 */
-export const buildLifeSystemPrompt = async (channelId: string): Promise<string> => {
+export const buildLifeSystemPrompt = async (channelId: string, userId: number): Promise<string> => {
   const today = getTodayString();
   void channelId; // 향후 채널별 설정 확장용
   const [customInstructions, lifeContext] = await Promise.all([
-    loadCustomInstructions(),
-    buildLifeContext('conversation'),
+    loadCustomInstructions(userId),
+    buildLifeContext('conversation', userId),
   ]);
 
   const weekRef = getWeekReference();
@@ -96,10 +98,10 @@ ${lifeContext}
 - reminders: title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[], 0=일~6=토), days_of_month(INTEGER[], 1~31), repeat_interval(1=매주·매월, 2=격주·격월), reference_date(격주/격월 기준일), active
 
 ## ⚠️ user_id 필터 (절대 규칙)
-모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = 1 조건을 포함해.
-- SELECT: WHERE user_id = 1 AND ...
-- INSERT: user_id 컬럼에 1 포함
-- UPDATE/DELETE: WHERE user_id = 1 AND ...
+모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = ${userId} 조건을 포함해.
+- SELECT: WHERE user_id = ${userId} AND ...
+- INSERT: user_id 컬럼에 ${userId} 포함
+- UPDATE/DELETE: WHERE user_id = ${userId} AND ...
 이 규칙은 sleep_events, notification_settings, reminders를 제외한 모든 테이블에 적용.
 
 ## 일정 조회 SQL — 3대 필수 규칙
