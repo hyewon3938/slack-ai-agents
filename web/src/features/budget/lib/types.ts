@@ -148,3 +148,6 @@ export const INCOME_CATEGORIES = [
 ] as const;
 
 export type IncomeCategory = (typeof INCOME_CATEGORIES)[number];
+
+/** 고정지출 카테고리 목록 */
+export const FIXED_COST_CATEGORIES = ['주거', '보험', '통신', '구독', '교육', '기타'] as const;
