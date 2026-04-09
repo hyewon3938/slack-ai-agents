@@ -106,7 +106,7 @@ const tryFortuneFastPath = async (
  * 운세 조회(일운/월운/세운/대운)는 fast path로 즉시 응답.
  */
 export const createInsightAgent = (llmClient: LLMClient): AgentHandler => {
-  const history = new ChatHistory();
+  const history = new ChatHistory({ maxPairs: 5, maxUserChars: 1500, maxAssistantChars: 500 });
 
   return async (message, say) => {
     const text = 'text' in message ? (message.text ?? '') : '';
