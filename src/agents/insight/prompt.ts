@@ -1,6 +1,7 @@
 import { query } from '../../shared/db.js';
 import { getTodayString, getWeekReference, getTodayISO, addDays } from '../../shared/kst.js';
 import { getDayPillar } from '../../shared/saju-calendar.js';
+import { buildSipsungPrompt } from '../../shared/saju-mappings.js';
 
 /** DB에서 사주 프로필 요약 조회 (profile_summary) */
 const loadProfileContext = async (): Promise<string> => {
@@ -122,17 +123,37 @@ const loadFortuneContext = async (today: string): Promise<string> => {
   }
 };
 
+/**
+ * DB에서 사주 프로필의 일간(day_pillar) 조회 후 십성 매핑 프롬프트 생성
+ * day_pillar는 "경신(庚申)" 형태 — 첫 글자가 일간(천간)
+ */
+const loadSajuMappingPrompt = async (): Promise<string> => {
+  try {
+    const result = await query<{ day_pillar: string | null }>(
+      `SELECT day_pillar FROM saju_profiles WHERE user_id = 1 LIMIT 1`,
+    );
+    const dayPillar = result.rows[0]?.day_pillar;
+    if (!dayPillar) return '';
+    const ilgan = dayPillar.charAt(0);
+    return buildSipsungPrompt(ilgan);
+  } catch {
+    return '';
+  }
+};
+
 /** insight 에이전트 시스템 프롬프트 */
 export const buildInsightSystemPrompt = async (): Promise<string> => {
   const today = getTodayString();
   const todayISO = getTodayISO();
   const weekRef = getWeekReference();
-  const [lifeThemes, sajuPatterns, fortuneContext, profileContext] = await Promise.all([
-    loadLifeThemes(),
-    loadSajuPatterns(),
-    loadFortuneContext(todayISO),
-    loadProfileContext(),
-  ]);
+  const [lifeThemes, sajuPatterns, fortuneContext, profileContext, sajuMappingPrompt] =
+    await Promise.all([
+      loadLifeThemes(),
+      loadSajuPatterns(),
+      loadFortuneContext(todayISO),
+      loadProfileContext(),
+      loadSajuMappingPrompt(),
+    ]);
 
   return `너는 개인 일기 관리자이자 명리학 운세 전달자야.
 사용자의 일기와 고민을 기록하고, fortune_analyses에 저장된 Opus 분석을 바탕으로 사주적 관점을 연결해주는 역할이야.
@@ -155,45 +176,8 @@ export const buildInsightSystemPrompt = async (): Promise<string> => {
 오늘: ${today}
 ${weekRef}
 
-## 사용자 원국 — 경금(庚) 일간
+${sajuMappingPrompt}
 
-### 십성 매핑 (천간)
-갑(甲)=편재, 을(乙)=정재, 병(丙)=편관, 정(丁)=정관
-무(戊)=편인, 기(己)=정인, 경(庚)=비견, 신(辛)=겁재
-임(壬)=식신, 계(癸)=상관
-
-### 십성 매핑 (지지 본기)
-자(子)=상관, 축(丑)=정인, 인(寅)=편재, 묘(卯)=정재
-진(辰)=편인, 사(巳)=편관, 오(午)=정관, 미(未)=정인
-신(申)=비견, 유(酉)=겁재, 술(戌)=편인, 해(亥)=식신
-
-### 오행 상생상극 (필수 참조 — 이 외의 관계는 존재하지 않아)
-상생: 목→화→토→금→수→목 (목생화, 화생토, 토생금, 금생수, 수생목)
-상극: 목→토, 토→수, 수→화, 화→금, 금→목 (목극토, 토극수, 수극화, 화극금, 금극목)
-⛔ "토생수", "금생화", "수생토" 같은 관계는 없어. 반드시 위 순환만 참조해.
-
-### 천간 오행·음양
-갑(양목) 을(음목) 병(양화) 정(음화) 무(양토) 기(음토) 경(양금) 신(음금) 임(양수) 계(음수)
-
-### 편(偏) vs 정(正) 구분
-일간과 같은 음양 = 편(偏), 다른 음양 = 정(正).
-경금(庚)=양금이므로: 양간(갑병무경임)과 만나면 편, 음간(을정기신계)과 만나면 정.
-예: 무토(양토)→편인, 기토(음토)→정인. 축(丑)의 본기=기토(음토)이므로 축=정인 (편인 아님!)
-
-### 십성 핵심 의미 (편 vs 정 혼동 주의)
-- 비견: 나와 같은 기운. 경쟁, 독립, 자존심, 고집
-- 겁재: 빼앗는 기운. 승부욕, 과감함, 충동, 과시
-- 식신: 내가 생(같은 음양). 여유, 먹거리, 편안한 표현, 복
-- 상관: 내가 생(다른 음양). 날카로움, 비판, 예술적 재능, 반항
-- 편재: 내가 극(같은 음양). 큰 돈, 유동적, 투자, 사업, 아버지
-- 정재: 내가 극(다른 음양). 안정적 수입, 월급, 저축, 절약, 아내
-- 편관: 나를 극(같은 음양). 압박, 스트레스, 권력, 강한 통제, 위험
-- 정관: 나를 극(다른 음양). 질서, 규율, 직장, 명예, 책임감
-- 편인: 나를 생(같은 음양). 비정통 학문, 편벽된 사고, 독창성, 잡학, 고독
-- 정인: 나를 생(다른 음양). 정통 학문, 어머니, 자격증, 보호, 안정, 인자함
-⛔ 편인과 정인은 전혀 다른 십성. 편인=독창적/편벽적/고독, 정인=안정적/정통적/보호.
-
-⚠️ 명리학 용어 사용 시 반드시 위 매핑표와 오행 상생상극을 참조해. 직접 추론하지 마.
 ⚠️ 일기 응답에서 사주 코멘트를 할 때는 **일기의 날짜**에 해당하는 일운을 사용해. 오늘 일기면 프롬프트 하단의 "오늘 일운" 섹션을, 과거 날짜 일기면 fortune_analyses에서 해당 날짜를 조회해서 사용해.
 
 ## 핵심 역할
