@@ -405,7 +405,7 @@ function TargetDateCard({
 
 // ─── 메인 설정 페이지 ─────────────────────────────────
 
-export function BudgetSettingsPage() {
+export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: () => void }) {
   const [fixedCosts, setFixedCosts] = useState<FixedCostRow[]>([]);
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [savedTarget, setSavedTarget] = useState<string | null>(null);
@@ -447,6 +447,7 @@ export function BudgetSettingsPage() {
     if (!res.ok) throw new Error('고정비 추가 실패');
     const { data: newCost } = (await res.json()) as { data: FixedCostRow };
     setFixedCosts((prev) => [...prev, newCost]);
+    onSettingsChange?.();
   };
 
   const handleUpdateFixedCost = async (id: number, updates: Record<string, unknown>) => {
@@ -458,12 +459,14 @@ export function BudgetSettingsPage() {
     if (!res.ok) throw new Error('고정비 수정 실패');
     const { data } = (await res.json()) as { data: FixedCostRow };
     setFixedCosts((prev) => prev.map((c) => (c.id === id ? data : c)));
+    onSettingsChange?.();
   };
 
   const handleDeleteFixedCost = async (id: number) => {
     const res = await fetch(`/api/budget/fixed-costs/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('고정비 삭제 실패');
     setFixedCosts((prev) => prev.filter((c) => c.id !== id));
+    onSettingsChange?.();
   };
 
   const handleUpdateAsset = async (id: number, balance: number, available_amount: number) => {
@@ -475,6 +478,7 @@ export function BudgetSettingsPage() {
     if (!res.ok) throw new Error('자산 수정 실패');
     const { data } = (await res.json()) as { data: AssetRow };
     setAssets((prev) => prev.map((a) => (a.id === id ? data : a)));
+    onSettingsChange?.();
   };
 
   const activeCosts = fixedCosts.filter((c) => c.active);
@@ -495,7 +499,7 @@ export function BudgetSettingsPage() {
       {/* 목표 기간 설정 */}
       <TargetDateCard
         savedTarget={savedTarget}
-        onSaved={(target) => setSavedTarget(target)}
+        onSaved={(target) => { setSavedTarget(target); onSettingsChange?.(); }}
       />
 
       {/* 고정 지출 */}
