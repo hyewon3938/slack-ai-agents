@@ -9,6 +9,7 @@ import { ExpenseList } from './expense-list';
 import { ExpenseEditModal } from './expense-edit-modal';
 import { IncomeEditModal } from './income-edit-modal';
 import { CategoryChart } from './category-chart';
+import { DailyBudgetLogView } from './daily-budget-log';
 import { RunwayCard } from './runway-card';
 import { BudgetSettingsPage } from './budget-settings-page';
 import { PlannedExpenseList } from './planned-expense-list';
@@ -64,7 +65,7 @@ function MonthNavigator({
 }
 
 type TopTab = 'manage' | 'runway' | 'settings';
-type SubTab = 'list' | 'chart';
+type SubTab = 'list' | 'daily' | 'chart';
 
 const TOP_TABS: { id: TopTab; label: string }[] = [
   { id: 'manage', label: '관리' },
@@ -74,6 +75,7 @@ const TOP_TABS: { id: TopTab; label: string }[] = [
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'list', label: '지출' },
+  { id: 'daily', label: '일별 현황' },
   { id: 'chart', label: '카테고리' },
 ];
 
@@ -146,6 +148,13 @@ export function BudgetPage() {
                 onCategoryChange={setSelectedCategory}
               />
             )
+          )}
+
+          {subTab === 'daily' && (
+            <DailyBudgetLogView
+              yearMonth={selectedMonth}
+              todayBudget={summary?.today_budget ?? null}
+            />
           )}
 
           {subTab === 'chart' && summary && (
