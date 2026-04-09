@@ -17,6 +17,7 @@ import type {
   CategoryStat,
   MonthProjection,
   PlannedExpenseRow,
+  DailyBudgetLog,
 } from './types';
 
 // ─── 지출 CRUD ───────────────────────────────────────
@@ -1001,13 +1002,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
 
 // ─── 일별 예산 로그 ──────────────────────────────────────
 
-export interface DailyBudgetLog {
-  date: string;
-  billing_month: string;
-  budget: number;
-  spent: number;
-  saved: number;
-}
+export type { DailyBudgetLog };
 
 export interface DailyBudgetLogSummary {
   logs: DailyBudgetLog[];
