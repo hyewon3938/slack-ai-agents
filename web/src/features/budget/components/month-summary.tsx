@@ -187,7 +187,11 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
         <div className="text-center">
           <div className="text-xs text-gray-400">하루 예산</div>
-          {dailyBudget !== null ? (
+          {(isCurrentCycle && todayBudget !== null) ? (
+            <div className={`text-sm font-semibold ${todayBudget < 0 ? 'text-red-500' : 'text-gray-800'}`}>
+              {formatAmount(Math.abs(todayBudget))}
+            </div>
+          ) : dailyBudget !== null ? (
             <div className={`text-sm font-semibold ${dailyBudget < 0 ? 'text-red-500' : 'text-gray-800'}`}>
               {formatAmount(Math.abs(dailyBudget))}
             </div>
