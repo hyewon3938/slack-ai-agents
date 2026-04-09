@@ -19,6 +19,7 @@ interface ExpenseFormProps {
     payment_method?: string;
     installment_months?: number;
     exclude_from_budget?: boolean;
+    distribute_to_budget?: boolean;
   }) => Promise<ExpenseRow>;
   /** 현재 보고 있는 결제주기 월 (예정 지출 목록용) */
   yearMonth?: string;
@@ -38,6 +39,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const [paymentMethod, setPaymentMethod] = useState<'카드' | '현금'>('카드');
   const [installmentMonths, setInstallmentMonths] = useState<number>(1);
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
+  const [distributeToBudget, setDistributeToBudget] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +57,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     const firstCat = type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0];
     setCategory(firstCat);
     setExcludeFromBudget(type === 'expense' ? BUDGET_EXCLUDED_CATEGORIES.has(firstCat) : false);
+    if (type === 'income') setDistributeToBudget(false);
   };
 
   const handleCategoryChange = (cat: string) => {
@@ -90,6 +93,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         payment_method: entryType === 'expense' ? paymentMethod : '기타',
         installment_months: entryType === 'expense' && paymentMethod === '카드' ? installmentMonths : undefined,
         exclude_from_budget: entryType === 'expense' ? excludeFromBudget : false,
+        distribute_to_budget: entryType === 'income' ? distributeToBudget : false,
       });
       setAmountStr('');
       setDescription('');
@@ -97,6 +101,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
       setSelectedPlanned(null);
       setInstallmentMonths(1);
       setExcludeFromBudget(BUDGET_EXCLUDED_CATEGORIES.has(EXPENSE_CATEGORIES[0]));
+      setDistributeToBudget(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : '추가 실패');
     } finally {
@@ -263,6 +268,38 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 수입 전체 분배 토글 (수입 모드 전용) */}
+      {entryType === 'income' && (
+        <div className="mt-2">
+          <label className="mb-1 block text-xs text-gray-500">예산 반영</label>
+          <div className="flex rounded-lg border border-gray-200 p-0.5">
+            <button
+              type="button"
+              onClick={() => setDistributeToBudget(false)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                !distributeToBudget ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              이번 달
+            </button>
+            <button
+              type="button"
+              onClick={() => setDistributeToBudget(true)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                distributeToBudget ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              전체 분배
+            </button>
+          </div>
+          {distributeToBudget && (
+            <p className="mt-1 text-[10px] text-gray-400">
+              수입이 목표 기간 전체에 균등 분배됩니다
+            </p>
+          )}
         </div>
       )}
 
