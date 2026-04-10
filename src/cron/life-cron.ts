@@ -26,7 +26,11 @@ import {
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
 import { getTodayISO, getYesterdayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
-import { DEFAULT_USER_ID } from '../shared/user-resolver.js';
+import {
+  DEFAULT_USER_ID,
+  queryAllUserMappings,
+  type UserMapping,
+} from '../shared/user-resolver.js';
 // personality.ts의 CHARACTER_PROMPT는 에이전트용, 크론은 자체 톤 사용
 import {
   buildFilteredRoutineBlocks,
@@ -40,12 +44,62 @@ import {
 // 복원 시: import { pickMorningNudge, pickNightNudge } from '../shared/insights.js';
 import { weeklyReportTask } from './weekly-report.js';
 import { buildLifeContext } from '../shared/life-context.js';
-import { publishHomeView, getCachedHomeUserId } from '../agents/life/home.js';
+import { publishHomeView } from '../agents/life/home.js';
 
 export interface LifeCronConfig {
   channelId: string;
   llmClient: LLMClient;
 }
+
+// ─── 멀티유저 루프 헬퍼 ─────────────────────────────────
+
+/**
+ * 크론 전송 채널 결정:
+ * 1) 매핑의 전용 채널(life/insight) → 사용
+ * 2) NULL이면 slackUserId 반환 → Slack이 자동으로 해당 유저와의 DM으로 전송
+ */
+const resolveCronChannel = (mapping: UserMapping, type: 'life' | 'insight'): string => {
+  const channel = type === 'life' ? mapping.lifeChannelId : mapping.insightChannelId;
+  return channel ?? mapping.slackUserId;
+};
+
+/**
+ * 크론 태스크 공통 유저 루프 헬퍼.
+ * - 매핑이 비어있으면 DEFAULT_USER_ID + config.channelId로 1회 실행 (하위 호환)
+ * - 매핑 존재 시 각 유저별로 handler 호출, 유저별 에러는 격리
+ */
+const forEachUser = async (
+  config: LifeCronConfig,
+  type: 'life' | 'insight',
+  label: string,
+  handler: (userId: number, channelId: string) => Promise<void>,
+): Promise<void> => {
+  const mappings = await queryAllUserMappings();
+
+  if (mappings.length === 0) {
+    const fallbackChannel =
+      type === 'life' ? config.channelId : (process.env['INSIGHT_CHANNEL_ID'] ?? '');
+    if (!fallbackChannel) return;
+    try {
+      await handler(DEFAULT_USER_ID, fallbackChannel);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Life Cron] ${label} 폴백 실행 실패: ${msg}`);
+    }
+    return;
+  }
+
+  for (const mapping of mappings) {
+    const channelId = resolveCronChannel(mapping, type);
+    if (!channelId) continue;
+    try {
+      await handler(mapping.userId, channelId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Life Cron] ${label} 유저 ${mapping.userId} 처리 실패: ${msg}`);
+    }
+  }
+};
 
 // ─── LLM 메시지 생성 ────────────────────────────────────
 
@@ -203,23 +257,25 @@ export const createTodayRecords = async (today: string, userId: number = DEFAULT
 /** 수면 기록 체크 — 기록 유무와 관계없이 항상 알림 전송 */
 const sleepCheckTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const hasRecord = await queryNightSleepExists(today, DEFAULT_USER_ID);
-
-  const text = hasRecord ? buildSleepRecordedText('morning') : buildSleepReminderText('morning');
-  await postToChannel(app.client, config.channelId, text);
-  console.warn(`[Life Cron] 수면 체크 알림 전송 (기록: ${hasRecord ? '있음' : '없음'})`);
+  await forEachUser(config, 'life', '수면 체크', async (userId, channelId) => {
+    const hasRecord = await queryNightSleepExists(today, userId);
+    const text = hasRecord ? buildSleepRecordedText('morning') : buildSleepReminderText('morning');
+    await postToChannel(app.client, channelId, text);
+    console.warn(`[Life Cron] 수면 체크 알림 전송 (유저=${userId}, 기록: ${hasRecord ? '있음' : '없음'})`);
+  });
 };
 
 /** 오늘 일정 텍스트 알림 */
 const morningScheduleTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const schedules = await queryTodaySchedules(today, DEFAULT_USER_ID);
-
-  if (schedules.length > 0) {
-    const text = buildScheduleText(schedules, today);
-    await postToChannel(app.client, config.channelId, text);
-    console.warn('[Life Cron] 아침 일정 알림 전송');
-  }
+  await forEachUser(config, 'life', '아침 일정', async (userId, channelId) => {
+    const schedules = await queryTodaySchedules(today, userId);
+    if (schedules.length > 0) {
+      const text = buildScheduleText(schedules, today);
+      await postToChannel(app.client, channelId, text);
+      console.warn(`[Life Cron] 아침 일정 알림 전송 (유저=${userId})`);
+    }
+  });
 };
 
 /** 기록 생성 + 어제 리뷰(LLM) + 아침 루틴 체크리스트 */
@@ -227,187 +283,188 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const yesterday = getYesterdayISO();
 
-  // 1. 오늘 기록 생성
-  const created = await createTodayRecords(today);
+  await forEachUser(config, 'life', '아침 알림', async (userId, channelId) => {
+    // 1. 오늘 기록 생성
+    const created = await createTodayRecords(today, userId);
 
-  // 2. 생활 맥락 + 어제 통계 → Sonnet 통합 인사
-  const yesterdayRecords = await queryTodayRecords(yesterday, DEFAULT_USER_ID);
-  const stats = calcRoutineStats(yesterdayRecords);
-  const lifeContext = await buildLifeContext('morning', DEFAULT_USER_ID);
+    // 2. 어제 통계 + 생활 맥락 → Sonnet 통합 인사
+    const yesterdayRecords = await queryTodayRecords(yesterday, userId);
+    const stats = calcRoutineStats(yesterdayRecords);
+    const lifeContext = await buildLifeContext('morning', userId);
 
-  const slotText = Object.entries(stats.slotBreakdown)
-    .map(([s, d]) => `${s} ${d.rate}%`)
-    .join(', ');
+    const slotText = Object.entries(stats.slotBreakdown)
+      .map(([s, d]) => `${s} ${d.rate}%`)
+      .join(', ');
 
-  const baseContext =
-    yesterdayRecords.length > 0
-      ? `어제 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${stats.weakestSlot ? `\n가장 약한 시간대: ${stats.weakestSlot}` : ''}`
-      : '어제 루틴 기록이 없어.';
+    const baseContext =
+      yesterdayRecords.length > 0
+        ? `어제 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${stats.weakestSlot ? `\n가장 약한 시간대: ${stats.weakestSlot}` : ''}`
+        : '어제 루틴 기록이 없어.';
 
-  const context = `아침 인사 생성해줘.\n${baseContext}${lifeContext}`;
+    const context = `아침 인사 생성해줘.\n${baseContext}${lifeContext}`;
 
-  const greeting = await generateCronMessage(
-    config.llmClient,
-    MORNING_SYSTEM_PROMPT,
-    context,
-    stats.rate > 0
-      ? `어제 루틴 ${stats.rate}%. 오늘도 힘내자!`
-      : '좋은 아침! 오늘도 같이 힘내보자.',
-  );
+    const greeting = await generateCronMessage(
+      config.llmClient,
+      MORNING_SYSTEM_PROMPT,
+      context,
+      stats.rate > 0
+        ? `어제 루틴 ${stats.rate}%. 오늘도 힘내자!`
+        : '좋은 아침! 오늘도 같이 힘내보자.',
+    );
 
-  // 3. 인사 메시지 (별도 메시지로 보존 — chat.update 대상 아님)
-  try {
-    await postToChannel(app.client, config.channelId, greeting);
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`[Life Cron] 아침 인사 메시지 전송 실패: ${msg}`);
-  }
-
-  // 4. 낮 루틴 체크리스트 (chat.update 대상 — 인사와 분리)
-  const todayRecords = await queryTodayRecords(today, DEFAULT_USER_ID);
-  const hasDay = todayRecords.some((r) => r.time_slot === '낮');
-
-  if (hasDay) {
-    const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['낮']);
-    await postBlockMessage(app.client, config.channelId, text, blocks);
-  }
-
-  // 5. 앱홈 갱신 (날짜 전환 반영)
-  const userId = getCachedHomeUserId();
-  if (userId) {
+    // 3. 인사 메시지 (별도 메시지로 보존 — chat.update 대상 아님)
     try {
-      await publishHomeView(app.client, userId);
-      console.warn('[Life Cron] 앱홈 갱신 완료');
+      await postToChannel(app.client, channelId, greeting);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Life Cron] 앱홈 갱신 실패: ${msg}`);
+      console.error(`[Life Cron] 아침 인사 메시지 전송 실패 (유저=${userId}): ${msg}`);
+    }
+
+    // 4. 낮 루틴 체크리스트 (chat.update 대상 — 인사와 분리)
+    const todayRecords = await queryTodayRecords(today, userId);
+    const hasDay = todayRecords.some((r) => r.time_slot === '낮');
+
+    if (hasDay) {
+      const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['낮']);
+      await postBlockMessage(app.client, channelId, text, blocks);
+    }
+
+    console.warn(`[Life Cron] 아침 알림 완료 (유저=${userId}, 기록 ${created}개 생성)`);
+  });
+
+  // 5. 앱홈 갱신 — 모든 등록 유저의 Slack user ID 순회
+  const mappings = await queryAllUserMappings();
+  for (const mapping of mappings) {
+    try {
+      await publishHomeView(app.client, mapping.slackUserId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Life Cron] 앱홈 갱신 실패 (${mapping.slackUserId}): ${msg}`);
     }
   }
-
-  console.warn(`[Life Cron] 아침 알림 완료 (기록 ${created}개 생성)`);
 };
 
 /** 밤: 전체 루틴 요약 + LLM 마무리 */
 const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const records = await queryTodayRecords(today, DEFAULT_USER_ID);
 
-  if (records.length === 0) return;
+  await forEachUser(config, 'life', '밤 요약', async (userId, channelId) => {
+    const records = await queryTodayRecords(today, userId);
+    if (records.length === 0) return;
 
-  // 루틴 통계 + 생활 맥락 → Sonnet 통합 마무리 메시지
-  const stats = calcRoutineStats(records);
-  const lifeContext = await buildLifeContext('night', DEFAULT_USER_ID);
-  const slotText = Object.entries(stats.slotBreakdown)
-    .map(([s, d]) => `${s} ${d.rate}%`)
-    .join(', ');
+    const stats = calcRoutineStats(records);
+    const lifeContext = await buildLifeContext('night', userId);
+    const slotText = Object.entries(stats.slotBreakdown)
+      .map(([s, d]) => `${s} ${d.rate}%`)
+      .join(', ');
 
-  const context = `밤 마무리 메시지 생성해줘.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${lifeContext}`;
+    const context = `밤 마무리 메시지 생성해줘.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${lifeContext}`;
 
-  const fallback =
-    stats.completed === stats.total
-      ? '오늘 루틴 다 했어! 수고했어, 푹 쉬어.'
-      : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`;
+    const fallback =
+      stats.completed === stats.total
+        ? '오늘 루틴 다 했어! 수고했어, 푹 쉬어.'
+        : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`;
 
-  const summary = await generateCronMessage(
-    config.llmClient,
-    NIGHT_SYSTEM_PROMPT,
-    context,
-    fallback,
-  );
+    const summary = await generateCronMessage(
+      config.llmClient,
+      NIGHT_SYSTEM_PROMPT,
+      context,
+      fallback,
+    );
 
-  // 루틴 체크리스트 (chat.update 대상) — 마무리 메시지와 분리
-  try {
-    const { text, blocks } = buildRoutineBlocks(records, today);
-    await postBlockMessage(app.client, config.channelId, text, blocks);
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`[Life Cron] 밤 루틴 체크리스트 전송 실패: ${msg}`);
-  }
+    try {
+      const { text, blocks } = buildRoutineBlocks(records, today);
+      await postBlockMessage(app.client, channelId, text, blocks);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Life Cron] 밤 루틴 체크리스트 전송 실패 (유저=${userId}): ${msg}`);
+    }
 
-  // LLM 마무리 메시지 (별도 메시지로 보존)
-  try {
-    const summaryText = summary || fallback;
-    await postToChannel(app.client, config.channelId, summaryText);
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`[Life Cron] 밤 마무리 메시지 전송 실패: ${msg}`);
-  }
+    try {
+      const summaryText = summary || fallback;
+      await postToChannel(app.client, channelId, summaryText);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Life Cron] 밤 마무리 메시지 전송 실패 (유저=${userId}): ${msg}`);
+    }
 
-  console.warn(`[Life Cron] 밤 요약 전송 완료`);
+    console.warn(`[Life Cron] 밤 요약 전송 완료 (유저=${userId})`);
+  });
 };
 
 /** 밤 리뷰: 미완료 일정 + 수면 기록 확인 */
 const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
 
-  // 1. 미완료 일정 텍스트
-  const schedules = await queryTodaySchedules(today, DEFAULT_USER_ID);
-  const nightScheduleText = buildNightScheduleText(schedules, today);
-  if (nightScheduleText) {
-    await postToChannel(app.client, config.channelId, nightScheduleText);
-  }
+  await forEachUser(config, 'life', '밤 리뷰', async (userId, channelId) => {
+    const schedules = await queryTodaySchedules(today, userId);
+    const nightScheduleText = buildNightScheduleText(schedules, today);
+    if (nightScheduleText) {
+      await postToChannel(app.client, channelId, nightScheduleText);
+    }
 
-  // 2. 수면 기록 확인 (마지막에 — 묻히지 않게)
-  const hasRecord = await queryNightSleepExists(today, DEFAULT_USER_ID);
-  const sleepText = hasRecord ? buildSleepRecordedText('night') : buildSleepReminderText('night');
-  await postToChannel(app.client, config.channelId, sleepText);
+    const hasRecord = await queryNightSleepExists(today, userId);
+    const sleepText = hasRecord ? buildSleepRecordedText('night') : buildSleepReminderText('night');
+    await postToChannel(app.client, channelId, sleepText);
 
-  console.warn(`[Life Cron] 밤 리뷰 전송 완료 (수면기록: ${hasRecord ? '있음' : '없음'})`);
+    console.warn(
+      `[Life Cron] 밤 리뷰 전송 완료 (유저=${userId}, 수면기록: ${hasRecord ? '있음' : '없음'})`,
+    );
+  });
 };
 
 // ─── Insight 크론 태스크 ─────────────────────────────────
 
-/** 아침 일운 분석 알림 → #insight 채널 */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
-  const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
-  if (!insightChannel) return;
-
+/** 아침 일운 분석 알림 → insight 채널 (유저별) */
+const insightMorningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const result = await query(
-    `SELECT analysis, summary FROM fortune_analyses WHERE user_id = $1 AND date = $2 AND period = 'daily' ORDER BY created_at DESC LIMIT 1`,
-    [DEFAULT_USER_ID, today],
-  );
 
-  if (result.rows.length > 0) {
-    const fortune = result.rows[0] as { analysis: string; summary: string | null };
-    const text = fortune.summary
-      ? `${fortune.summary}\n\n${fortune.analysis}`
-      : fortune.analysis;
-    await postToChannel(app.client, insightChannel, text);
-    console.warn('[Life Cron] 일운 분석 알림 전송 완료');
-  } else {
-    await postToChannel(
-      app.client,
-      insightChannel,
-      '오늘의 일운 분석이 아직 준비되지 않았어. 곧 업데이트될 거야.',
+  await forEachUser(config, 'insight', '일운 분석 알림', async (userId, channelId) => {
+    const result = await query(
+      `SELECT analysis, summary FROM fortune_analyses
+       WHERE user_id = $1 AND date = $2 AND period = 'daily'
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId, today],
     );
-    console.warn('[Life Cron] 일운 분석 없음 — 대기 메시지 전송');
-  }
+
+    if (result.rows.length > 0) {
+      const fortune = result.rows[0] as { analysis: string; summary: string | null };
+      const text = fortune.summary
+        ? `${fortune.summary}\n\n${fortune.analysis}`
+        : fortune.analysis;
+      await postToChannel(app.client, channelId, text);
+      console.warn(`[Life Cron] 일운 분석 알림 전송 완료 (유저=${userId})`);
+    } else {
+      await postToChannel(
+        app.client,
+        channelId,
+        '오늘의 일운 분석이 아직 준비되지 않았어. 곧 업데이트될 거야.',
+      );
+      console.warn(`[Life Cron] 일운 분석 없음 — 대기 메시지 전송 (유저=${userId})`);
+    }
+  });
 };
 
-/** 밤 일기 리마인더 → #insight 채널 (기존 기록 있으면 내용 표시) */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void> => {
-  const insightChannel = process.env['INSIGHT_CHANNEL_ID'] ?? '';
-  if (!insightChannel) return;
-
+/** 밤 일기 리마인더 → insight 채널 (유저별, 기존 기록 있으면 내용 표시) */
+const insightNightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const result = await query<{ content: string }>(
-    `SELECT content FROM diary_entries WHERE user_id = $1 AND date = $2 LIMIT 1`,
-    [DEFAULT_USER_ID, today],
-  );
 
-  const diary = result.rows[0];
-  let text: string;
-  if (diary) {
-    text = `오늘 기록된 일기야:\n\n${diary.content}\n\n더 추가하고 싶은 이야기가 있으면 편하게 남겨.`;
-  } else {
-    text = '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
-  }
+  await forEachUser(config, 'insight', '일기 리마인더', async (userId, channelId) => {
+    const result = await query<{ content: string }>(
+      `SELECT content FROM diary_entries WHERE user_id = $1 AND date = $2 LIMIT 1`,
+      [userId, today],
+    );
 
-  await postToChannel(app.client, insightChannel, text);
-  console.warn(`[Life Cron] 일기 리마인더 전송 (기존 기록: ${diary ? '있음' : '없음'})`);
+    const diary = result.rows[0];
+    const text = diary
+      ? `오늘 기록된 일기야:\n\n${diary.content}\n\n더 추가하고 싶은 이야기가 있으면 편하게 남겨.`
+      : '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
+
+    await postToChannel(app.client, channelId, text);
+    console.warn(
+      `[Life Cron] 일기 리마인더 전송 (유저=${userId}, 기존 기록: ${diary ? '있음' : '없음'})`,
+    );
+  });
 };
 
 // ─── 유틸리티 ──────────────────────────────────────────

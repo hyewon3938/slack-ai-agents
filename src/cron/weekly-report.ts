@@ -11,7 +11,7 @@ import { query } from '../shared/db.js';
 import { getTodayISO, getKSTDayOfWeek, addDays, formatDateShort } from '../shared/kst.js';
 import { postBlockMessage } from '../shared/slack.js';
 import { CHARACTER_PROMPT } from '../shared/personality.js';
-import { DEFAULT_USER_ID } from '../shared/user-resolver.js';
+import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -492,12 +492,26 @@ export const weeklyReportTask = async (app: App, config: LifeCronConfig): Promis
   const today = getTodayISO();
   const weekStart = addDays(today, -6); // 월요일
   const weekEnd = today; // 일요일
-
-  const data = await aggregateWeeklyReport(weekStart, weekEnd, DEFAULT_USER_ID);
-  const summary = await generateWeeklySummary(config.llmClient, data);
-  const blocks = buildWeeklyReportBlocks(data, summary);
-
   const headerText = `📊 주간 리포트 (${formatDateShort(weekStart)} ~ ${formatDateShort(weekEnd)})`;
-  await postBlockMessage(app.client, config.channelId, headerText, blocks);
-  console.warn('[Life Cron] 주간 리포트 전송 완료');
+
+  const mappings = await queryAllUserMappings();
+
+  const targets =
+    mappings.length > 0
+      ? mappings.map((m) => ({ userId: m.userId, channelId: m.lifeChannelId ?? m.slackUserId }))
+      : [{ userId: DEFAULT_USER_ID, channelId: config.channelId }];
+
+  for (const target of targets) {
+    if (!target.channelId) continue;
+    try {
+      const data = await aggregateWeeklyReport(weekStart, weekEnd, target.userId);
+      const summary = await generateWeeklySummary(config.llmClient, data);
+      const blocks = buildWeeklyReportBlocks(data, summary);
+      await postBlockMessage(app.client, target.channelId, headerText, blocks);
+      console.warn(`[Life Cron] 주간 리포트 전송 완료 (유저=${target.userId})`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Life Cron] 주간 리포트 실패 (유저=${target.userId}): ${msg}`);
+    }
+  }
 };
