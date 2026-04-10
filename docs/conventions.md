@@ -177,6 +177,26 @@ api/{domain}/[id]/route.ts  → GET (단건), PATCH (수정), DELETE (삭제)
 
 ---
 
+## DB 마이그레이션
+
+> 앱 시작 시 `runMigrations()`가 `schema_migrations` 테이블을 기준으로 미적용 파일을 순서대로 실행한다.
+> 재실행 시 중복 에러로 앱 시작이 막히지 않도록 **모든 마이그레이션은 idempotent하게 작성**한다.
+
+### 작성 규칙
+- [ ] `ADD COLUMN` → `ADD COLUMN IF NOT EXISTS`
+- [ ] `CREATE TABLE` → `CREATE TABLE IF NOT EXISTS`
+- [ ] `CREATE INDEX` → `CREATE INDEX IF NOT EXISTS`
+- [ ] `DROP COLUMN` → `DROP COLUMN IF EXISTS`
+- [ ] 데이터 변경(UPDATE/INSERT)은 `ON CONFLICT` 또는 조건부 WHERE로 재실행 안전 확보
+- [ ] 한 파일 안에서 여러 ALTER/INSERT를 섞을 때도 각 문장이 독립적으로 재실행 가능해야 함
+
+### 운영 규칙
+- **수동 실행 금지** — 반드시 마이그레이션 러너를 통해 실행
+- 예외적으로 수동 실행이 불가피하면 **반드시** `schema_migrations`에 해당 파일명을 INSERT
+- 이 규칙이 깨지면 컨테이너 재시작 루프에 빠져 DB Proxy 서버까지 내려간다
+
+---
+
 ## 설계 원칙
 
 | 원칙 | 적용 방식 |
