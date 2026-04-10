@@ -21,6 +21,11 @@ app 서비스는 `image:` 필드 기반으로 재구성.
 - **PR #229**: BuildKit cache mount 경로에서 `yarn cache clean` 호출 시 rmdir EBUSY 발생 → 제거
 - **PR #230**: 빌드 이미지 대상 플랫폼과 배포 서버 런타임 불일치로 실행 포맷 에러 발생 → 러너·플랫폼 옵션을 배포 환경에 맞춰 수정. 교훈: 외부 런타임과 엮인 파이프라인 설계 시 대상 환경의 실제 플랫폼을 설계 전 현장 검증.
 
+### 후속 개선 (PR #233, #234)
+- **이미지 누적 자동 정리**: build-image 잡에 `actions/delete-package-versions@v5` 추가(최근 10개 유지, `latest` 제외). VM 측 `deploy.sh`는 앱 이미지 최신 2개만 보존하여 디스크 사용량 바운드 + 즉시 롤백 여유분 확보.
+- **크리덴셜 로테이션 가이드**: `docs/credentials-internal.md`(gitignored)에 만료일·갱신 절차 기록. GitHub 자동 알림 + 개인 캘린더 이중화 방침 수립.
+- **보안 아키텍처 점검**: DB Proxy API 호스트 포트 바인딩을 `0.0.0.0:3100` → `127.0.0.1:3100`으로 전환. 외부 트래픽이 호스트 Caddy의 TLS 종료를 반드시 거치도록 defense-in-depth 강화. README의 인프라 클레임(테스트 수, 서비스 구성, 사용자 격리 범위 등)과 실제 코드·구성 간 정합성 재점검 및 보정.
+
 자세한 분석: [docs/pipeline-optimization.md](pipeline-optimization.md)
 
 ---
