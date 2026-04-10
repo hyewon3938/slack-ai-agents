@@ -4,13 +4,25 @@
 
 ---
 
-## 2026-04-10: 배포 파이프라인 최적화 (#227, PR #228)
+## 2026-04-10: 배포 파이프라인 최적화 (#227, PR #228/#229/#230)
 
-GitHub Actions ARM 네이티브 러너에서 Docker 이미지를 빌드해 GHCR에 푸시하고,
-배포 대상 서버는 이미지를 pull 하여 재기동하는 구조로 전환. 서버에서 수행하던
-yarn install/build 단계를 제거해 배포 시간을 10\~15분대에서 3\~5분대로 단축.
-BuildKit gha 캐시와 Dockerfile 캐시 마운트를 조합해 의존성 미변경 시 빌드 단계
-재활용. docker-compose app 서비스는 image 필드 기반으로 재구성.
+GitHub Actions에서 Docker 이미지를 빌드해 GHCR에 푸시하고, 배포 대상 서버는 이미지를
+pull 하여 재기동하는 구조로 전환. 서버에서 수행하던 yarn install/build를 제거해
+VM 리소스 경쟁 해소 + 의존성 변경 시 최악 케이스(4\~10분, 간헐적 타임아웃 실패) 제거.
+BuildKit GHA 캐시와 Dockerfile cache mount 조합으로 warm build 최적화. docker-compose
+app 서비스는 `image:` 필드 기반으로 재구성.
+
+**실측:** 이전 Deploy via SSH 스텝은 48\~471초 범위(중앙값 61초, 평균 109초)로 편차가
+컸고 타임아웃 실패도 간헐 발생. 이후 총 파이프라인은 cold cache에서도 약 180초로
+안정화. 중앙값보다 **편차와 최악 케이스 개선**이 핵심 성과.
+
+### 삽질 기록
+- **PR #229**: BuildKit cache mount 경로에서 `yarn cache clean` 호출 시 rmdir EBUSY 발생 → 제거
+- **PR #230**: `platforms: linux/arm64`로 빌드했으나 실제 VM은 x86_64였음 → `linux/amd64`로 수정.
+  설계 단계에서 외부 시스템의 실제 상태 검증 누락이 원인. 교훈: 파이프라인 설계 시 `uname -m`
+  수준 현장 검증을 선제적으로 수행.
+
+자세한 분석: [docs/pipeline-optimization.md](pipeline-optimization.md)
 
 ---
 
