@@ -32,9 +32,53 @@ jobs:
       - name: Build
         run: yarn build
 
-  deploy:
-    name: Deploy to Oracle VM
+  build-image:
+    name: Build and Push Image
     needs: ci
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  deploy:
+    name: Deploy to Server
+    needs: build-image
     runs-on: ubuntu-latest
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -67,7 +111,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 30m
+          command_timeout: 10m
           script: bash ~/deploy.sh
 
       - name: Notify deploy success
@@ -87,9 +131,9 @@ jobs:
             '{blocks: [{type: "section", text: {type: "mrkdwn", text: (":x: *배포 실패* `" + $sha + "`\n<" + $url + "|에러 로그 확인>")}}]}' \
             | curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d @-
 
-  notify-ci-failure:
-    name: Notify CI Failure
-    needs: ci
+  notify-pipeline-failure:
+    name: Notify Pipeline Failure
+    needs: [ci, build-image]
     if: failure()
     runs-on: ubuntu-latest
     env:
@@ -100,7 +144,7 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Notify CI failure
+      - name: Notify pipeline failure
         if: env.SLACK_WEBHOOK_URL != ''
         run: |
           COMMIT_MSG=$(git log -1 --pretty=format:'%s' | jq -Rs '.[:-1]')
@@ -110,5 +154,5 @@ jobs:
             --arg sha "$COMMIT_SHA" \
             --argjson msg "$COMMIT_MSG" \
             --arg url "$ACTIONS_URL" \
-            '{blocks: [{type: "section", text: {type: "mrkdwn", text: (":warning: *CI 실패* (배포 중단)\n`" + $sha + "` " + $msg + "\n<" + $url + "|에러 로그 확인>")}}]}' \
+            '{blocks: [{type: "section", text: {type: "mrkdwn", text: (":warning: *CI/빌드 실패* (배포 중단)\n`" + $sha + "` " + $msg + "\n<" + $url + "|에러 로그 확인>")}}]}' \
             | curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d @-
