@@ -37,7 +37,7 @@ services:
       - "listen_addresses=*"
 
   app:
-    build: .
+    image: ghcr.io/hyewon3938/slack-ai-agents:latest
     container_name: slack-ai-agents
     restart: unless-stopped
     env_file:
