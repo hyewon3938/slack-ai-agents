@@ -201,12 +201,40 @@ describe('validateUserIdFilter — user_id 값 제한', () => {
     expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 2', 2)).toBeNull();
   });
 
+  it('user_id = 1은 userId=2일 때 거부한다 (교차 사용자 차단)', () => {
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1', 2)).not.toBeNull();
+  });
+
+  it('user_id = 1은 userId=10일 때 거부한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1', 10)).not.toBeNull();
+  });
+
+  it('user_id = 2는 userId=10일 때 거부한다', () => {
+    expect(validateUserIdFilter('UPDATE schedules SET title = \'x\' WHERE user_id = 2', 10)).not.toBeNull();
+  });
+
+  it('user_id = 10은 userId=10일 때 통과한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 10', 10)).toBeNull();
+  });
+
   it('user_id = 99는 userId=1일 때 거부한다', () => {
     expect(validateUserIdFilter('UPDATE schedules SET title = \'x\' WHERE user_id = 99', 1)).not.toBeNull();
   });
 
   it('user_id 없는 DELETE는 거부한다', () => {
     expect(validateUserIdFilter('DELETE FROM schedules WHERE id IN (SELECT id FROM schedules)', 1)).not.toBeNull();
+  });
+
+  it('잘못된 user_id 값 에러 메시지에는 호출 시 넘긴 userId가 포함된다', () => {
+    const error = validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1', 7);
+    expect(error).not.toBeNull();
+    expect(error).toContain('user_id = 7');
+  });
+
+  it('user_id 조건 없음 에러 메시지에도 호출 시 넘긴 userId가 포함된다', () => {
+    const error = validateUserIdFilter('SELECT * FROM schedules WHERE id = 1', 5);
+    expect(error).not.toBeNull();
+    expect(error).toContain('user_id = 5');
   });
 });
 
