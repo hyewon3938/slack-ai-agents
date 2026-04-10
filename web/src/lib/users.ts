@@ -1,17 +1,7 @@
 import { query, queryOne } from '@/lib/db';
 import type { KakaoUserInfo } from '@/lib/kakao';
 import { MAX_USERS } from '@/lib/kakao';
-
-/**
- * 가입 허용 카카오 ID 목록 (환경변수 KAKAO_ALLOWED_IDS, 콤마 구분).
- * 미설정 시 가입 차단 (기존 유저만 로그인 가능).
- */
-const ALLOWED_KAKAO_IDS = new Set(
-  (process.env['KAKAO_ALLOWED_IDS'] ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0),
-);
+import { notifyNewSignup } from '@/lib/slack';
 
 export interface UserRow {
   id: number;
@@ -48,11 +38,6 @@ export const findOrCreateUser = async (info: KakaoUserInfo): Promise<UserRow> =>
     return existing;
   }
 
-  // 가입 허용 목록 검증 (allowlist)
-  if (!ALLOWED_KAKAO_IDS.has(String(info.kakaoId))) {
-    throw new Error('NOT_ALLOWED');
-  }
-
   // 가입 제한 확인
   const count = await getUserCount();
   if (count >= MAX_USERS) {
@@ -77,5 +62,17 @@ export const findOrCreateUser = async (info: KakaoUserInfo): Promise<UserRow> =>
 
   const user = result.rows[0];
   if (!user) throw new Error('유저 생성 실패');
+
+  // Slack 알림 (fire-and-forget — 실패해도 가입은 성공)
+  notifyNewSignup({
+    nickname: user.nickname,
+    email: user.email,
+    totalUsers: count + 1,
+    maxUsers: MAX_USERS,
+  }).catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[users] 가입 알림 전송 실패:', message);
+  });
+
   return user;
 };

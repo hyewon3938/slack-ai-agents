@@ -3,7 +3,7 @@
 const KAKAO_CLIENT_ID = process.env.KAKAO_CLIENT_ID ?? '';
 const KAKAO_CLIENT_SECRET = process.env.KAKAO_CLIENT_SECRET;
 
-const MAX_USERS = 10;
+const MAX_USERS = 5;
 
 export const getKakaoAuthUrl = (redirectUri: string, state: string): string => {
   const params = new URLSearchParams({
