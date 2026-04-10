@@ -284,7 +284,7 @@ v1 설계 → 운영 → 한계 인식 → v2 전환 → 웹 대시보드 → v3
 | 03-10\~11 | Next.js 캘린더, DnD, 백로그, 카테고리, PWA, 다층 보안 체계, HTTPS 배포   |
 | 03-12     | **v3 전환**(Vercel+VM PG), UX 개선, CI/CD, **프로액티브 인사이트 시스템** |
 | 04-09     | **보안 아키텍처 구축** — DB 프록시 API, Rate Limiting, SQL 감사 로그, TLS 전 구간 암호화 |
-| 04-10     | **배포 파이프라인 최적화** — GitHub Actions → GHCR 이미지 빌드 → VM pull + 재기동. 의존성 변경 시 배포 최악 케이스(4\~10분 + 타임아웃 실패) 제거, 예측 가능성 확보 |
+| 04-10     | **배포 파이프라인 최적화** — GitHub Actions → GHCR 이미지 빌드 → VM pull + 재기동. Warm cache 상태 총 파이프라인 \~81초로 고정, 의존성 변경 시 배포 최악 케이스(4\~10분 + 타임아웃 실패) 제거, 편차 13배 이상 → 2배 내로 축소 |
 
 > 상세 기록: [docs/project-history.md](docs/project-history.md)
 

@@ -13,8 +13,9 @@ BuildKit GHA 캐시와 Dockerfile cache mount 조합으로 warm build 최적화.
 app 서비스는 `image:` 필드 기반으로 재구성.
 
 **실측:** 이전 Deploy via SSH 스텝은 48\~471초 범위(중앙값 61초, 평균 109초)로 편차가
-컸고 타임아웃 실패도 간헐 발생. 이후 총 파이프라인은 cold cache에서도 약 180초로
-안정화. 중앙값보다 **편차와 최악 케이스 개선**이 핵심 성과.
+컸고 타임아웃 실패도 간헐 발생. 이후 총 파이프라인은 cold cache 180초, warm cache **81초**로
+안정화(PR #231 측정). 중앙값은 기존 수준이지만 **편차 13배 → 2배 내, 최악 케이스 제거**가
+핵심 성과.
 
 ### 삽질 기록
 - **PR #229**: BuildKit cache mount 경로에서 `yarn cache clean` 호출 시 rmdir EBUSY 발생 → 제거
