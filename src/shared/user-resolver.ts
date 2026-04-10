@@ -21,3 +21,35 @@ export const resolveUserId = async (slackUserId: string): Promise<number | null>
   );
   return result.rows[0]?.user_id ?? null;
 };
+
+/** Slack 유저 매핑 전체 레코드 */
+export interface UserMapping {
+  userId: number;
+  slackUserId: string;
+  lifeChannelId: string | null;
+  insightChannelId: string | null;
+}
+
+/**
+ * slack_user_mappings에 등록된 모든 매핑을 조회.
+ * 크론·주간 리포트 멀티유저 루프에서 사용한다.
+ * 등록된 유저가 없으면 빈 배열 반환.
+ */
+export const queryAllUserMappings = async (): Promise<UserMapping[]> => {
+  const result = await query<{
+    user_id: number;
+    slack_user_id: string;
+    life_channel_id: string | null;
+    insight_channel_id: string | null;
+  }>(
+    `SELECT user_id, slack_user_id, life_channel_id, insight_channel_id
+     FROM slack_user_mappings
+     ORDER BY user_id`,
+  );
+  return result.rows.map((row) => ({
+    userId: row.user_id,
+    slackUserId: row.slack_user_id,
+    lifeChannelId: row.life_channel_id,
+    insightChannelId: row.insight_channel_id,
+  }));
+};
