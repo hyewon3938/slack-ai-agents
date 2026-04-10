@@ -7,7 +7,7 @@ import { ChatHistory } from '../../shared/chat-history.js';
 import { buildInsightSystemPrompt } from './prompt.js';
 import { queryOne } from '../../shared/db.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
-import { resolveUserId } from '../../shared/user-resolver.js';
+import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
@@ -117,13 +117,13 @@ export const createInsightAgent = (llmClient: LLMClient): AgentHandler => {
     const channelId = message.channel;
     const trimmed = text.trim();
 
-    // Slack user → DB userId 해석
+    // Slack user → DB userId 해석 (미등록이면 DEFAULT_USER_ID 폴백)
     const slackUserId = ('user' in message ? message.user : undefined) ?? '';
-    const userId = await resolveUserId(slackUserId);
-    if (userId === null) {
-      await sendMessage(say, '등록되지 않은 사용자야. 관리자에게 문의해줘.');
-      return;
+    const resolvedUserId = slackUserId ? await resolveUserId(slackUserId) : null;
+    if (resolvedUserId === null && slackUserId) {
+      console.warn(`[Insight Agent] slack_user_mappings 미등록: ${slackUserId} → DEFAULT_USER_ID 폴백`);
     }
+    const userId = resolvedUserId ?? DEFAULT_USER_ID;
 
     // ── fast path: 운세 조회 ──
     if (await tryFortuneFastPath(trimmed, say, userId)) return;
