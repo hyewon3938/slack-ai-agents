@@ -8,6 +8,13 @@
       "cwd": "/Users/ihyewon/slack-ai-agents/web",
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "svg-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765"],
+      "cwd": "/Users/ihyewon/slack-ai-agents/docs/images",
+      "port": 8765
     }
   ]
 }
