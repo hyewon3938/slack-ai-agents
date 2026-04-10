@@ -3,5 +3,5 @@
 -- 둘 다 nullable이며, NULL이면 slack_user_id로 DM 전송 폴백.
 
 ALTER TABLE slack_user_mappings
-  ADD COLUMN life_channel_id TEXT,
-  ADD COLUMN insight_channel_id TEXT;
+  ADD COLUMN IF NOT EXISTS life_channel_id TEXT,
+  ADD COLUMN IF NOT EXISTS insight_channel_id TEXT;
