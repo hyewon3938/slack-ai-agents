@@ -60,12 +60,26 @@ vi.mock('../../shared/kst.js', () => ({
 
 import { connectDB } from '../../shared/db.js';
 import { CronScheduler, type LifeCronConfig } from '../life-cron.js';
+import type { UserMapping } from '../../shared/user-resolver.js';
 
 /** notification_settings 쿼리 mock 설정 */
-const setupSettingsMock = (settings: Array<{ slot_name: string; label: string; time_value: string; active: boolean }> = []): void => {
+const setupSettingsMock = (
+  settings: Array<{ slot_name: string; label: string; time_value: string; active: boolean }> = [],
+  mappings: UserMapping[] = [],
+): void => {
   mockQuery.mockImplementation((sql: string) => {
     if (/notification_settings/.test(sql)) {
       return Promise.resolve({ rows: settings });
+    }
+    if (/slack_user_mappings/.test(sql)) {
+      return Promise.resolve({
+        rows: mappings.map((m) => ({
+          user_id: m.userId,
+          slack_user_id: m.slackUserId,
+          life_channel_id: m.lifeChannelId,
+          insight_channel_id: m.insightChannelId,
+        })),
+      });
     }
     if (/reminders/.test(sql)) {
       return Promise.resolve({ rows: [] });
