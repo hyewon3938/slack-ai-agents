@@ -124,39 +124,39 @@ describe('validateModifyQuery', () => {
 
 describe('validateUserIdFilter', () => {
   it('user_id 조건이 있는 SELECT는 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1')).toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1', 1)).toBeNull();
   });
 
   it('user_id 조건이 없는 SELECT는 거부한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM schedules WHERE id = 1')).not.toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE id = 1', 1)).not.toBeNull();
   });
 
   it('면제 테이블(categories)만 참조하면 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM categories')).toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM categories', 1)).toBeNull();
   });
 
   it('면제 테이블(notification_settings)만 참조하면 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM notification_settings')).toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM notification_settings', 1)).toBeNull();
   });
 
   it('면제 테이블(sleep_events)만 참조하면 통과한다', () => {
-    expect(validateUserIdFilter('INSERT INTO sleep_events (date, event_time) VALUES ($1, $2)')).toBeNull();
+    expect(validateUserIdFilter('INSERT INTO sleep_events (date, event_time) VALUES ($1, $2)', 1)).toBeNull();
   });
 
   it('information_schema 쿼리는 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM information_schema.columns WHERE table_schema = \'public\'')).toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM information_schema.columns WHERE table_schema = \'public\'', 1)).toBeNull();
   });
 
   it('user_id 조건이 있는 INSERT는 통과한다', () => {
-    expect(validateUserIdFilter('INSERT INTO schedules (title, user_id) VALUES (\'test\', 1)')).toBeNull();
+    expect(validateUserIdFilter('INSERT INTO schedules (title, user_id) VALUES (\'test\', 1)', 1)).toBeNull();
   });
 
   it('user_id 조건이 없는 DELETE는 거부한다', () => {
-    expect(validateUserIdFilter('DELETE FROM schedules WHERE id = 1')).not.toBeNull();
+    expect(validateUserIdFilter('DELETE FROM schedules WHERE id = 1', 1)).not.toBeNull();
   });
 
   it('면제 테이블과 일반 테이블을 함께 참조하면 거부한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM schedules JOIN categories ON schedules.category = categories.name')).not.toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM schedules JOIN categories ON schedules.category = categories.name', 1)).not.toBeNull();
   });
 });
 
@@ -176,33 +176,37 @@ describe('hasMultipleStatements — 주석 우회 방어', () => {
 
 describe('validateUserIdFilter — 강화된 검증', () => {
   it('SELECT 절에 user_id 컬럼만 있고 WHERE에 없으면 거부한다', () => {
-    expect(validateUserIdFilter('SELECT user_id FROM expenses')).not.toBeNull();
+    expect(validateUserIdFilter('SELECT user_id FROM expenses', 1)).not.toBeNull();
   });
 
   it('user_id 주석 우회 시도를 차단한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM expenses /* WHERE user_id = 1 */')).not.toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM expenses /* WHERE user_id = 1 */', 1)).not.toBeNull();
   });
 
   it('WHERE user_id = 값 조건이 있으면 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM expenses WHERE user_id = 1 AND amount > 0')).toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM expenses WHERE user_id = 1 AND amount > 0', 1)).toBeNull();
   });
 });
 
 describe('validateUserIdFilter — user_id 값 제한', () => {
   it('user_id = 1은 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1')).toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 1', 1)).toBeNull();
   });
 
-  it('user_id = 2는 거부한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 2')).not.toBeNull();
+  it('user_id = 2는 userId=1일 때 거부한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 2', 1)).not.toBeNull();
   });
 
-  it('user_id = 99는 거부한다', () => {
-    expect(validateUserIdFilter('UPDATE schedules SET title = \'x\' WHERE user_id = 99')).not.toBeNull();
+  it('user_id = 2는 userId=2일 때 통과한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM schedules WHERE user_id = 2', 2)).toBeNull();
+  });
+
+  it('user_id = 99는 userId=1일 때 거부한다', () => {
+    expect(validateUserIdFilter('UPDATE schedules SET title = \'x\' WHERE user_id = 99', 1)).not.toBeNull();
   });
 
   it('user_id 없는 DELETE는 거부한다', () => {
-    expect(validateUserIdFilter('DELETE FROM schedules WHERE id IN (SELECT id FROM schedules)')).not.toBeNull();
+    expect(validateUserIdFilter('DELETE FROM schedules WHERE id IN (SELECT id FROM schedules)', 1)).not.toBeNull();
   });
 });
 

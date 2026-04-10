@@ -4,10 +4,11 @@ import { getDayPillar } from '../../shared/saju-calendar.js';
 import { buildSipsungPrompt } from '../../shared/saju-mappings.js';
 
 /** DB에서 사주 프로필 요약 조회 (profile_summary) */
-const loadProfileContext = async (): Promise<string> => {
+const loadProfileContext = async (userId: number): Promise<string> => {
   try {
     const result = await query<{ profile_summary: string | null }>(
-      `SELECT profile_summary FROM saju_profiles WHERE user_id = 1 LIMIT 1`,
+      `SELECT profile_summary FROM saju_profiles WHERE user_id = $1 LIMIT 1`,
+      [userId],
     );
     const summary = result.rows[0]?.profile_summary;
     if (!summary) return '';
@@ -18,11 +19,12 @@ const loadProfileContext = async (): Promise<string> => {
 };
 
 /** DB에서 활성 life_themes 조회 */
-const loadLifeThemes = async (): Promise<string> => {
+const loadLifeThemes = async (userId: number): Promise<string> => {
   try {
     const result = await query<{ theme: string; category: string; detail: string }>(
       `SELECT theme, category, detail FROM life_themes
-       WHERE active = true AND user_id = 1 ORDER BY category, created_at`,
+       WHERE active = true AND user_id = $1 ORDER BY category, created_at`,
+      [userId],
     );
     if (result.rows.length === 0) return '';
 
@@ -36,7 +38,7 @@ const loadLifeThemes = async (): Promise<string> => {
 };
 
 /** DB에서 활성 saju_patterns 조회 */
-const loadSajuPatterns = async (): Promise<string> => {
+const loadSajuPatterns = async (userId: number): Promise<string> => {
   try {
     const result = await query<{
       pattern_type: string;
@@ -47,8 +49,9 @@ const loadSajuPatterns = async (): Promise<string> => {
     }>(
       `SELECT pattern_type, trigger_element, description, confidence, detection_count
        FROM saju_patterns
-       WHERE active = true AND user_id = 1
+       WHERE active = true AND user_id = $1
        ORDER BY detection_count DESC, created_at`,
+      [userId],
     );
     if (result.rows.length === 0) return '';
 
@@ -65,7 +68,7 @@ const loadSajuPatterns = async (): Promise<string> => {
 };
 
 /** DB에서 오늘 일운 조회 → 프롬프트 주입용 (내일은 사용자가 물으면 DB 조회) */
-const loadFortuneContext = async (today: string): Promise<string> => {
+const loadFortuneContext = async (today: string, userId: number): Promise<string> => {
   try {
     const result = await query<{
       analysis: string;
@@ -74,8 +77,8 @@ const loadFortuneContext = async (today: string): Promise<string> => {
     }>(
       `SELECT analysis, summary, advice
        FROM fortune_analyses
-       WHERE user_id = 1 AND period = 'daily' AND date = $1`,
-      [today],
+       WHERE user_id = $1 AND period = 'daily' AND date = $2`,
+      [userId, today],
     );
 
     const todayPillar = getDayPillar(today);
@@ -99,10 +102,11 @@ const loadFortuneContext = async (today: string): Promise<string> => {
  * DB에서 사주 프로필의 일간(day_pillar) 조회 후 십성 매핑 프롬프트 생성
  * day_pillar는 "경신(庚申)" 형태 — 첫 글자가 일간(천간)
  */
-const loadSajuMappingPrompt = async (): Promise<string> => {
+const loadSajuMappingPrompt = async (userId: number): Promise<string> => {
   try {
     const result = await query<{ day_pillar: string | null }>(
-      `SELECT day_pillar FROM saju_profiles WHERE user_id = 1 LIMIT 1`,
+      `SELECT day_pillar FROM saju_profiles WHERE user_id = $1 LIMIT 1`,
+      [userId],
     );
     const dayPillar = result.rows[0]?.day_pillar;
     if (!dayPillar) return '';
@@ -114,17 +118,17 @@ const loadSajuMappingPrompt = async (): Promise<string> => {
 };
 
 /** insight 에이전트 시스템 프롬프트 */
-export const buildInsightSystemPrompt = async (): Promise<string> => {
+export const buildInsightSystemPrompt = async (userId: number): Promise<string> => {
   const today = getTodayString();
   const todayISO = getTodayISO();
   const weekRef = getWeekReference();
   const [lifeThemes, sajuPatterns, fortuneContext, profileContext, sajuMappingPrompt] =
     await Promise.all([
-      loadLifeThemes(),
-      loadSajuPatterns(),
-      loadFortuneContext(todayISO),
-      loadProfileContext(),
-      loadSajuMappingPrompt(),
+      loadLifeThemes(userId),
+      loadSajuPatterns(userId),
+      loadFortuneContext(todayISO, userId),
+      loadProfileContext(userId),
+      loadSajuMappingPrompt(userId),
     ]);
 
   return `너는 개인 일기 관리자이자 명리학 운세 전달자야.
@@ -162,7 +166,7 @@ ${sajuMappingPrompt}
 
 - 같은 날짜 diary_entries가 이미 있으면:
   1. SELECT content로 기존 확인
-  2. 새 내용만 append: UPDATE diary_entries SET content = content || E'\\n' || '새 내용', updated_at = NOW() WHERE user_id = 1 AND date = 해당날짜
+  2. 새 내용만 append: UPDATE diary_entries SET content = content || E'\\n' || '새 내용', updated_at = NOW() WHERE user_id = ${userId} AND date = 해당날짜
   3. 기존 내용 재작성/중복 금지. 시간순 유지.
 - 없으면 INSERT.
 
@@ -194,6 +198,6 @@ category: career/family/romance/health/finance/기타. detail에 상세 상황 �
 - saju_patterns: user_id, pattern_type(sipsin/ganji/relation/sibiunsung), trigger_element, description, evidence(JSONB), active, detection_count, first_detected, last_detected, activated_at, deactivated_at, source(auto/user), confidence(high/medium/low), updated_at
 
 ## ⚠️ user_id 필터 (절대 규칙)
-모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = 1 조건을 포함해.
+모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = ${userId} 조건을 포함해.
 ${profileContext}${lifeThemes}${sajuPatterns}${fortuneContext}`;
 };

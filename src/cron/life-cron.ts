@@ -26,6 +26,7 @@ import {
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
 import { getTodayISO, getYesterdayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
+import { DEFAULT_USER_ID } from '../shared/user-resolver.js';
 // personality.ts의 CHARACTER_PROMPT는 에이전트용, 크론은 자체 톤 사용
 import {
   buildFilteredRoutineBlocks,
@@ -170,9 +171,9 @@ export const calcRoutineStats = (records: RoutineRecordRow[]): RoutineStats => {
 // ─── 루틴 기록 생성 ─────────────────────────────────────
 
 /** 활성 템플릿 → 빈도 체크 → 오늘 기록 생성 */
-export const createTodayRecords = async (today: string): Promise<number> => {
-  const templates = await queryActiveTemplates();
-  const existingIds = await queryExistingTemplateIds(today);
+export const createTodayRecords = async (today: string, userId: number = DEFAULT_USER_ID): Promise<number> => {
+  const templates = await queryActiveTemplates(userId);
+  const existingIds = await queryExistingTemplateIds(today, userId);
 
   const candidates = templates.filter((t) => !existingIds.has(t.id));
 
@@ -181,11 +182,11 @@ export const createTodayRecords = async (today: string): Promise<number> => {
     const shouldCreate =
       t.frequency === '매일'
         ? true
-        : shouldCreateToday(t.frequency, await queryLastRecordDate(t.id), today, t.start_date);
+        : shouldCreateToday(t.frequency, await queryLastRecordDate(t.id, userId), today, t.start_date);
 
     if (shouldCreate) {
       try {
-        await createRecord(t.id, today);
+        await createRecord(t.id, today, userId);
         created++;
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -202,7 +203,7 @@ export const createTodayRecords = async (today: string): Promise<number> => {
 /** 수면 기록 체크 — 기록 유무와 관계없이 항상 알림 전송 */
 const sleepCheckTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const hasRecord = await queryNightSleepExists(today);
+  const hasRecord = await queryNightSleepExists(today, DEFAULT_USER_ID);
 
   const text = hasRecord ? buildSleepRecordedText('morning') : buildSleepReminderText('morning');
   await postToChannel(app.client, config.channelId, text);
@@ -212,7 +213,7 @@ const sleepCheckTask = async (app: App, config: LifeCronConfig): Promise<void> =
 /** 오늘 일정 텍스트 알림 */
 const morningScheduleTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const schedules = await queryTodaySchedules(today);
+  const schedules = await queryTodaySchedules(today, DEFAULT_USER_ID);
 
   if (schedules.length > 0) {
     const text = buildScheduleText(schedules, today);
@@ -230,9 +231,9 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const created = await createTodayRecords(today);
 
   // 2. 생활 맥락 + 어제 통계 → Sonnet 통합 인사
-  const yesterdayRecords = await queryTodayRecords(yesterday);
+  const yesterdayRecords = await queryTodayRecords(yesterday, DEFAULT_USER_ID);
   const stats = calcRoutineStats(yesterdayRecords);
-  const lifeContext = await buildLifeContext('morning');
+  const lifeContext = await buildLifeContext('morning', DEFAULT_USER_ID);
 
   const slotText = Object.entries(stats.slotBreakdown)
     .map(([s, d]) => `${s} ${d.rate}%`)
@@ -263,7 +264,7 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   }
 
   // 4. 낮 루틴 체크리스트 (chat.update 대상 — 인사와 분리)
-  const todayRecords = await queryTodayRecords(today);
+  const todayRecords = await queryTodayRecords(today, DEFAULT_USER_ID);
   const hasDay = todayRecords.some((r) => r.time_slot === '낮');
 
   if (hasDay) {
@@ -289,13 +290,13 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
 /** 밤: 전체 루틴 요약 + LLM 마무리 */
 const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const records = await queryTodayRecords(today);
+  const records = await queryTodayRecords(today, DEFAULT_USER_ID);
 
   if (records.length === 0) return;
 
   // 루틴 통계 + 생활 맥락 → Sonnet 통합 마무리 메시지
   const stats = calcRoutineStats(records);
-  const lifeContext = await buildLifeContext('night');
+  const lifeContext = await buildLifeContext('night', DEFAULT_USER_ID);
   const slotText = Object.entries(stats.slotBreakdown)
     .map(([s, d]) => `${s} ${d.rate}%`)
     .join(', ');
@@ -340,14 +341,14 @@ const nightReviewTask = async (app: App, config: LifeCronConfig): Promise<void> 
   const today = getTodayISO();
 
   // 1. 미완료 일정 텍스트
-  const schedules = await queryTodaySchedules(today);
+  const schedules = await queryTodaySchedules(today, DEFAULT_USER_ID);
   const nightScheduleText = buildNightScheduleText(schedules, today);
   if (nightScheduleText) {
     await postToChannel(app.client, config.channelId, nightScheduleText);
   }
 
   // 2. 수면 기록 확인 (마지막에 — 묻히지 않게)
-  const hasRecord = await queryNightSleepExists(today);
+  const hasRecord = await queryNightSleepExists(today, DEFAULT_USER_ID);
   const sleepText = hasRecord ? buildSleepRecordedText('night') : buildSleepReminderText('night');
   await postToChannel(app.client, config.channelId, sleepText);
 
@@ -364,8 +365,8 @@ const insightMorningTask = async (app: App, _config: LifeCronConfig): Promise<vo
 
   const today = getTodayISO();
   const result = await query(
-    `SELECT analysis, summary FROM fortune_analyses WHERE user_id = 1 AND date = $1 AND period = 'daily' ORDER BY created_at DESC LIMIT 1`,
-    [today],
+    `SELECT analysis, summary FROM fortune_analyses WHERE user_id = $1 AND date = $2 AND period = 'daily' ORDER BY created_at DESC LIMIT 1`,
+    [DEFAULT_USER_ID, today],
   );
 
   if (result.rows.length > 0) {
@@ -393,8 +394,8 @@ const insightNightTask = async (app: App, _config: LifeCronConfig): Promise<void
 
   const today = getTodayISO();
   const result = await query<{ content: string }>(
-    `SELECT content FROM diary_entries WHERE user_id = 1 AND date = $1 LIMIT 1`,
-    [today],
+    `SELECT content FROM diary_entries WHERE user_id = $1 AND date = $2 LIMIT 1`,
+    [DEFAULT_USER_ID, today],
   );
 
   const diary = result.rows[0];

@@ -17,6 +17,7 @@ import {
 } from '../../shared/life-queries.js';
 import { updateMessage } from '../../shared/slack.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
+import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {
   ROUTINE_ACTION_ID,
   SCHEDULE_ACTION_ID,
@@ -31,6 +32,15 @@ import {
   buildScheduleBlocks,
 } from './blocks.js';
 import { publishHomeView } from './home.js';
+
+/** Slack body에서 userId 해석 (미등록이면 DEFAULT_USER_ID 폴백) */
+const resolveBodyUserId = async (body: { user?: string | { id: string } }): Promise<number> => {
+  const slackUserId = body.user
+    ? (typeof body.user === 'string' ? body.user : body.user.id)
+    : '';
+  if (!slackUserId) return DEFAULT_USER_ID;
+  return (await resolveUserId(slackUserId)) ?? DEFAULT_USER_ID;
+};
 
 /** v2 Life Agent 액션 핸들러 등록 */
 export const registerLifeActions = (app: App): void => {
@@ -47,11 +57,12 @@ export const registerLifeActions = (app: App): void => {
     const { recordId, date, filter } = parseButtonValue(rawValue);
 
     try {
-      await completeRecord(recordId);
+      const userId = await resolveBodyUserId(body);
+      await completeRecord(recordId, userId);
 
       // 버튼에 인코딩된 날짜 사용 (자정 이후 클릭 시에도 원래 날짜 기준 조회)
       const today = date ?? getTodayISO();
-      const records = await queryTodayRecords(today);
+      const records = await queryTodayRecords(today, userId);
 
       const { text, blocks } = filter
         ? buildFilteredRoutineBlocks(records, today, filter.targetSlots, filter.incompleteFrom)
@@ -67,11 +78,11 @@ export const registerLifeActions = (app: App): void => {
       }
 
       // Home 탭 갱신
-      const userId = 'user' in body && body.user
+      const slackUserId = 'user' in body && body.user
         ? (typeof body.user === 'string' ? body.user : body.user.id)
         : undefined;
-      if (userId) {
-        await publishHomeView(client, userId).catch(() => {});
+      if (slackUserId) {
+        await publishHomeView(client, slackUserId).catch(() => {});
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -93,23 +104,25 @@ export const registerLifeActions = (app: App): void => {
     const { scheduleId, newStatus, targetDate } = parseOverflowValue(rawValue);
 
     try {
+      const userId = await resolveBodyUserId(body);
+
       if (newStatus === DELETE_ACTION) {
-        await deleteSchedule(scheduleId);
+        await deleteSchedule(scheduleId, userId);
       } else if (newStatus === TOGGLE_IMPORTANT_ACTION) {
-        await toggleScheduleImportant(scheduleId);
+        await toggleScheduleImportant(scheduleId, userId);
       } else if (newStatus === POSTPONE_ACTION) {
         const tomorrow = addDays(targetDate, 1);
-        await postponeSchedule(scheduleId, tomorrow);
+        await postponeSchedule(scheduleId, tomorrow, userId);
       } else if (newStatus === MOVE_TO_TODAY_ACTION) {
-        await moveScheduleToDate(scheduleId, getTodayISO());
+        await moveScheduleToDate(scheduleId, getTodayISO(), userId);
       } else {
-        await updateScheduleStatus(scheduleId, newStatus);
+        await updateScheduleStatus(scheduleId, newStatus, userId);
       }
 
       const isBacklog = targetDate === 'backlog';
       const items = isBacklog
-        ? await queryBacklogSchedules()
-        : await queryTodaySchedules(targetDate);
+        ? await queryBacklogSchedules(userId)
+        : await queryTodaySchedules(targetDate, userId);
       const { text, blocks } = isBacklog
         ? buildScheduleBlocks(items, 'backlog', undefined, { backlog: true })
         : buildScheduleBlocks(items, targetDate);
@@ -124,11 +137,11 @@ export const registerLifeActions = (app: App): void => {
       }
 
       // Home 탭 갱신
-      const userId = 'user' in body && body.user
+      const slackUserId = 'user' in body && body.user
         ? (typeof body.user === 'string' ? body.user : body.user.id)
         : undefined;
-      if (userId) {
-        await publishHomeView(client, userId).catch(() => {});
+      if (slackUserId) {
+        await publishHomeView(client, slackUserId).catch(() => {});
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);

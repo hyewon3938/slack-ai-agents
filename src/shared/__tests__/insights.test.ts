@@ -82,7 +82,7 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '스트레칭하기', streak: '3' }],
     });
 
-    const result = defined(await detectStreak('2026-03-15'));
+    const result = defined(await detectStreak('2026-03-15', 1));
     expect(result.type).toBe('streak');
     expect(result.message).toContain('스트레칭하기');
     expect(result.message).toContain('3일');
@@ -94,7 +94,7 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '유산균 먹기', streak: '7' }],
     });
 
-    const result = defined(await detectStreak('2026-03-15'));
+    const result = defined(await detectStreak('2026-03-15', 1));
     expect(result.priority).toBe(14); // 7 * 2
   });
 
@@ -103,14 +103,14 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '스트레칭하기', streak: '2' }],
     });
 
-    const result = await detectStreak('2026-03-15');
+    const result = await detectStreak('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
   it('데이터 없으면 null', async () => {
     setupQueryMock();
 
-    const result = await detectStreak('2026-03-15');
+    const result = await detectStreak('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
@@ -119,7 +119,7 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '스트레칭하기', streak: '4' }],
     });
 
-    const result = await detectStreak('2026-03-15');
+    const result = await detectStreak('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
@@ -128,7 +128,7 @@ describe('detectStreak', () => {
       'grp = 0': [{ name: '스트레칭하기', streak: '5' }],
     });
 
-    const result = defined(await detectStreak('2026-03-15'));
+    const result = defined(await detectStreak('2026-03-15', 1));
     expect(result.message).toContain('5일');
   });
 });
@@ -145,7 +145,7 @@ describe('detectSleepTrend', () => {
       ],
     });
 
-    const result = defined(await detectSleepTrend('2026-03-15'));
+    const result = defined(await detectSleepTrend('2026-03-15', 1));
     expect(result.type).toBe('sleepTrend');
     expect(result.timing).toBe('night');
     expect(result.priority).toBe(8);
@@ -161,7 +161,7 @@ describe('detectSleepTrend', () => {
       ],
     });
 
-    const result = defined(await detectSleepTrend('2026-03-15'));
+    const result = defined(await detectSleepTrend('2026-03-15', 1));
     expect(result.priority).toBe(4); // 증가는 낮은 우선순위
     expect(result.message).toContain('늘고');
   });
@@ -175,7 +175,7 @@ describe('detectSleepTrend', () => {
       ],
     });
 
-    const result = await detectSleepTrend('2026-03-15');
+    const result = await detectSleepTrend('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
@@ -187,7 +187,7 @@ describe('detectSleepTrend', () => {
       ],
     });
 
-    const result = await detectSleepTrend('2026-03-15');
+    const result = await detectSleepTrend('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
@@ -200,7 +200,7 @@ describe('detectSleepTrend', () => {
       ],
     });
 
-    const result = await detectSleepTrend('2026-03-15');
+    const result = await detectSleepTrend('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -217,7 +217,7 @@ describe('detectSlotGap', () => {
       ],
     });
 
-    const result = defined(await detectSlotGap('2026-03-15'));
+    const result = defined(await detectSlotGap('2026-03-15', 1));
     expect(result.type).toBe('slotGap');
     expect(result.timing).toBe('night');
     expect(result.message).toContain('낮');
@@ -234,7 +234,7 @@ describe('detectSlotGap', () => {
       ],
     });
 
-    const result = await detectSlotGap('2026-03-15');
+    const result = await detectSlotGap('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
@@ -245,7 +245,7 @@ describe('detectSlotGap', () => {
       ],
     });
 
-    const result = await detectSlotGap('2026-03-15');
+    const result = await detectSlotGap('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -258,7 +258,7 @@ describe('detectWeekComparison', () => {
       'this_week.*last_week': [{ this_rate: 82, last_rate: 65 }],
     });
 
-    const result = defined(await detectWeekComparison('2026-03-15'));
+    const result = defined(await detectWeekComparison('2026-03-15', 1));
     expect(result.type).toBe('weekComparison');
     expect(result.timing).toBe('morning');
     expect(result.priority).toBe(6); // 차이 ≥10
@@ -271,7 +271,7 @@ describe('detectWeekComparison', () => {
       'this_week.*last_week': [{ this_rate: 55, last_rate: 72 }],
     });
 
-    const result = defined(await detectWeekComparison('2026-03-15'));
+    const result = defined(await detectWeekComparison('2026-03-15', 1));
     expect(result.timing).toBe('night');
     expect(result.message).toContain('55%');
     expect(result.message).toContain('72%');
@@ -282,7 +282,7 @@ describe('detectWeekComparison', () => {
       'this_week.*last_week': [{ this_rate: 72, last_rate: 70 }],
     });
 
-    const result = await detectWeekComparison('2026-03-15');
+    const result = await detectWeekComparison('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
@@ -291,7 +291,7 @@ describe('detectWeekComparison', () => {
       'this_week.*last_week': [{ this_rate: 72, last_rate: null }],
     });
 
-    const result = await detectWeekComparison('2026-03-15');
+    const result = await detectWeekComparison('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -304,7 +304,7 @@ describe('detectOverdue', () => {
       "status = 'todo'.*date < ": [{ overdue_count: 5 }],
     });
 
-    const result = defined(await detectOverdue('2026-03-15'));
+    const result = defined(await detectOverdue('2026-03-15', 1));
     expect(result.type).toBe('overdueAlert');
     expect(result.timing).toBe('morning');
     expect(result.priority).toBe(7);
@@ -316,7 +316,7 @@ describe('detectOverdue', () => {
       "status = 'todo'.*date < ": [{ overdue_count: 2 }],
     });
 
-    const result = await detectOverdue('2026-03-15');
+    const result = await detectOverdue('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
@@ -325,7 +325,7 @@ describe('detectOverdue', () => {
       "status = 'todo'.*date < ": [{ overdue_count: 0 }],
     });
 
-    const result = await detectOverdue('2026-03-15');
+    const result = await detectOverdue('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -346,7 +346,7 @@ describe('pickMorningNudge', () => {
       ],
     });
 
-    const result = await pickMorningNudge('2026-03-15');
+    const result = await pickMorningNudge('2026-03-15', 1);
     expect(result).not.toBeNull();
     // overdue(7) > streak 5일(10) → streak이 높음
     expect(result).toContain('유산균 먹기');
@@ -361,7 +361,7 @@ describe('pickMorningNudge', () => {
       ],
     });
 
-    const result = await pickMorningNudge('2026-03-15');
+    const result = await pickMorningNudge('2026-03-15', 1);
     // slotGap은 night only → 아침에는 null
     expect(result).toBeNull();
   });
@@ -369,7 +369,7 @@ describe('pickMorningNudge', () => {
   it('모든 감지가 임계값 미달이면 null', async () => {
     setupQueryMock();
 
-    const result = await pickMorningNudge('2026-03-15');
+    const result = await pickMorningNudge('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -390,7 +390,7 @@ describe('pickNightNudge', () => {
       ],
     });
 
-    const result = await pickNightNudge('2026-03-15');
+    const result = await pickNightNudge('2026-03-15', 1);
     expect(result).not.toBeNull();
     // sleepTrend(8) > slotGap(5)
     expect(result).toContain('줄고');
@@ -399,7 +399,7 @@ describe('pickNightNudge', () => {
   it('모든 감지가 임계값 미달이면 null', async () => {
     setupQueryMock();
 
-    const result = await pickNightNudge('2026-03-15');
+    const result = await pickNightNudge('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -410,17 +410,17 @@ describe('에러 처리', () => {
   it('DB 오류 시 각 감지 함수는 null 반환', async () => {
     mockQuery.mockRejectedValue(new Error('DB connection lost'));
 
-    expect(await detectStreak('2026-03-15')).toBeNull();
-    expect(await detectSleepTrend('2026-03-15')).toBeNull();
-    expect(await detectSlotGap('2026-03-15')).toBeNull();
-    expect(await detectWeekComparison('2026-03-15')).toBeNull();
-    expect(await detectOverdue('2026-03-15')).toBeNull();
+    expect(await detectStreak('2026-03-15', 1)).toBeNull();
+    expect(await detectSleepTrend('2026-03-15', 1)).toBeNull();
+    expect(await detectSlotGap('2026-03-15', 1)).toBeNull();
+    expect(await detectWeekComparison('2026-03-15', 1)).toBeNull();
+    expect(await detectOverdue('2026-03-15', 1)).toBeNull();
   });
 
   it('DB 오류 시 pickMorningNudge는 null 반환', async () => {
     mockQuery.mockRejectedValue(new Error('DB connection lost'));
 
-    const result = await pickMorningNudge('2026-03-15');
+    const result = await pickMorningNudge('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });

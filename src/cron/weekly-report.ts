@@ -11,6 +11,7 @@ import { query } from '../shared/db.js';
 import { getTodayISO, getKSTDayOfWeek, addDays, formatDateShort } from '../shared/kst.js';
 import { postBlockMessage } from '../shared/slack.js';
 import { CHARACTER_PROMPT } from '../shared/personality.js';
+import { DEFAULT_USER_ID } from '../shared/user-resolver.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ interface SleepAggRow {
 export const aggregateWeeklySleep = async (
   weekStart: string,
   weekEnd: string,
+  userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklySleepData> => {
   try {
     const result = await query<SleepAggRow>(
@@ -76,6 +78,7 @@ export const aggregateWeeklySleep = async (
         WHERE sleep_type = 'night'
           AND date BETWEEN $1 AND $2
           AND duration_minutes IS NOT NULL
+          AND user_id = $3
       )
       SELECT
         ROUND(AVG(duration_minutes))::int AS avg_duration,
@@ -85,7 +88,7 @@ export const aggregateWeeklySleep = async (
         (SELECT date FROM sleep ORDER BY duration_minutes ASC LIMIT 1) AS worst_date,
         (SELECT duration_minutes FROM sleep ORDER BY duration_minutes ASC LIMIT 1) AS worst_duration
       FROM sleep`,
-      [weekStart, weekEnd],
+      [weekStart, weekEnd, userId],
     );
 
     const row = result.rows[0];
@@ -126,6 +129,7 @@ interface RoutineNameRow {
 export const aggregateWeeklyRoutine = async (
   weekStart: string,
   weekEnd: string,
+  userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklyRoutineData> => {
   const empty: WeeklyRoutineData = {
     thisWeekRate: 0, thisWeekCompleted: 0, thisWeekTotal: 0,
@@ -143,18 +147,18 @@ export const aggregateWeeklyRoutine = async (
             / NULLIF(COUNT(*), 0) * 100)::int AS this_week_rate
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
-        WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
+        WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date AND r.user_id = $3
       ),
       last_week AS (
         SELECT ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
           / NULLIF(COUNT(*), 0) * 100)::int AS last_week_rate
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
-        WHERE r.date BETWEEN ($1::date - 7) AND ($1::date - 1) AND r.date >= t.created_at::date
+        WHERE r.date BETWEEN ($1::date - 7) AND ($1::date - 1) AND r.date >= t.created_at::date AND r.user_id = $3
       )
       SELECT this_week_total, this_week_done, this_week_rate, last_week_rate
       FROM this_week, last_week`,
-      [weekStart, weekEnd],
+      [weekStart, weekEnd, userId],
     );
 
     const rate = rateResult.rows[0];
@@ -167,10 +171,10 @@ export const aggregateWeeklyRoutine = async (
           / NULLIF(COUNT(*), 0) * 100)::int AS rate
       FROM routine_records r
       JOIN routine_templates t ON r.template_id = t.id
-      WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
+      WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date AND r.user_id = $3
       GROUP BY t.time_slot
       ORDER BY rate DESC`,
-      [weekStart, weekEnd],
+      [weekStart, weekEnd, userId],
     );
 
     // 루틴별 달성률 (best/worst) — 주간 시작일 이전에 생성된 루틴만 포함
@@ -182,10 +186,11 @@ export const aggregateWeeklyRoutine = async (
       JOIN routine_templates t ON r.template_id = t.id
       WHERE r.date BETWEEN $1 AND $2
         AND t.created_at::date < $1::date
+        AND r.user_id = $3
       GROUP BY t.id, t.name
       HAVING COUNT(*) >= 2
       ORDER BY rate DESC`,
-      [weekStart, weekEnd],
+      [weekStart, weekEnd, userId],
     );
 
     const routines = routineResult.rows;
@@ -226,6 +231,7 @@ interface OverdueRow {
 export const aggregateWeeklySchedule = async (
   weekStart: string,
   weekEnd: string,
+  userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklyScheduleData> => {
   const empty: WeeklyScheduleData = {
     completedCount: 0, incompleteCount: 0, cancelledCount: 0,
@@ -241,8 +247,9 @@ export const aggregateWeeklySchedule = async (
       FROM schedules s
       LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
       WHERE s.date BETWEEN $1 AND $2
-        AND COALESCE(c.type, 'task') = 'task'`,
-      [weekStart, weekEnd],
+        AND COALESCE(c.type, 'task') = 'task'
+        AND s.user_id = $3`,
+      [weekStart, weekEnd, userId],
     );
 
     const summary = summaryResult.rows[0] ?? empty;
@@ -253,9 +260,10 @@ export const aggregateWeeklySchedule = async (
       LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
       WHERE s.date BETWEEN $1 AND $2
         AND COALESCE(c.type, 'task') = 'task'
+        AND s.user_id = $3
       GROUP BY s.category
       ORDER BY count DESC`,
-      [weekStart, weekEnd],
+      [weekStart, weekEnd, userId],
     );
 
     const overdueResult = await query<OverdueRow>(
@@ -263,8 +271,9 @@ export const aggregateWeeklySchedule = async (
       FROM schedules s
       LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
       WHERE s.status = 'todo' AND s.date < $1 AND s.date IS NOT NULL
-        AND COALESCE(c.type, 'task') = 'task'`,
-      [weekEnd],
+        AND COALESCE(c.type, 'task') = 'task'
+        AND s.user_id = $2`,
+      [weekEnd, userId],
     );
 
     return {
@@ -289,6 +298,7 @@ interface CorrelationRow {
 export const aggregateSleepRoutineCorrelation = async (
   weekStart: string,
   weekEnd: string,
+  userId: number = DEFAULT_USER_ID,
 ): Promise<SleepRoutineCorrelation> => {
   try {
     const result = await query<CorrelationRow>(
@@ -298,6 +308,7 @@ export const aggregateSleepRoutineCorrelation = async (
         WHERE sleep_type = 'night'
           AND date BETWEEN $1 AND $2
           AND duration_minutes IS NOT NULL
+          AND user_id = $3
       ),
       daily_routine AS (
         SELECT r.date,
@@ -305,7 +316,7 @@ export const aggregateSleepRoutineCorrelation = async (
             / NULLIF(COUNT(*), 0) * 100)::int AS rate
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
-        WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
+        WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date AND r.user_id = $3
         GROUP BY r.date
       )
       SELECT
@@ -315,7 +326,7 @@ export const aggregateSleepRoutineCorrelation = async (
         (SELECT ROUND(AVG(r.rate))::int FROM daily_routine r
           JOIN daily_sleep s ON r.date = s.date
           WHERE s.duration_minutes < 360) AS bad_sleep_rate`,
-      [weekStart, weekEnd],
+      [weekStart, weekEnd, userId],
     );
 
     const row = result.rows[0];
@@ -333,12 +344,13 @@ export const aggregateSleepRoutineCorrelation = async (
 export const aggregateWeeklyReport = async (
   weekStart: string,
   weekEnd: string,
+  userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklyReportData> => {
   const [sleep, routine, schedule, correlation] = await Promise.all([
-    aggregateWeeklySleep(weekStart, weekEnd),
-    aggregateWeeklyRoutine(weekStart, weekEnd),
-    aggregateWeeklySchedule(weekStart, weekEnd),
-    aggregateSleepRoutineCorrelation(weekStart, weekEnd),
+    aggregateWeeklySleep(weekStart, weekEnd, userId),
+    aggregateWeeklyRoutine(weekStart, weekEnd, userId),
+    aggregateWeeklySchedule(weekStart, weekEnd, userId),
+    aggregateSleepRoutineCorrelation(weekStart, weekEnd, userId),
   ]);
 
   return { sleep, routine, schedule, correlation, weekStart, weekEnd };
@@ -481,7 +493,7 @@ export const weeklyReportTask = async (app: App, config: LifeCronConfig): Promis
   const weekStart = addDays(today, -6); // 월요일
   const weekEnd = today; // 일요일
 
-  const data = await aggregateWeeklyReport(weekStart, weekEnd);
+  const data = await aggregateWeeklyReport(weekStart, weekEnd, DEFAULT_USER_ID);
   const summary = await generateWeeklySummary(config.llmClient, data);
   const blocks = buildWeeklyReportBlocks(data, summary);
 

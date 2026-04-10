@@ -30,7 +30,7 @@ interface StreakRow {
   streak: string;
 }
 
-export const detectStreak = async (today: string): Promise<Insight | null> => {
+export const detectStreak = async (today: string, userId: number): Promise<Insight | null> => {
   try {
     const result = await query<StreakRow>(
       `WITH daily AS (
@@ -39,6 +39,7 @@ export const detectStreak = async (today: string): Promise<Insight | null> => {
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.date BETWEEN ($1::date - 30) AND $1
           AND t.active = true AND t.frequency = '매일'
+          AND r.user_id = $2
         ORDER BY r.template_id, r.date DESC
       ),
       streaks AS (
@@ -56,7 +57,7 @@ export const detectStreak = async (today: string): Promise<Insight | null> => {
       SELECT name, streak::text FROM streaks
       WHERE streak >= 3
       ORDER BY streak DESC LIMIT 1`,
-      [today],
+      [today, userId],
     );
 
     const row = result.rows[0];
@@ -83,7 +84,7 @@ interface SleepTrendRow {
   duration_minutes: number;
 }
 
-export const detectSleepTrend = async (today: string): Promise<Insight | null> => {
+export const detectSleepTrend = async (today: string, userId: number): Promise<Insight | null> => {
   try {
     const result = await query<SleepTrendRow>(
       `SELECT date::text, duration_minutes
@@ -91,9 +92,10 @@ export const detectSleepTrend = async (today: string): Promise<Insight | null> =
        WHERE sleep_type = 'night'
          AND date BETWEEN ($1::date - 3) AND $1
          AND duration_minutes IS NOT NULL
+         AND user_id = $2
        ORDER BY date DESC
        LIMIT 3`,
-      [today],
+      [today, userId],
     );
 
     if (result.rows.length < 3) return null;
@@ -135,7 +137,7 @@ interface SlotRow {
   rate: number;
 }
 
-export const detectSlotGap = async (today: string): Promise<Insight | null> => {
+export const detectSlotGap = async (today: string, userId: number): Promise<Insight | null> => {
   try {
     const result = await query<SlotRow>(
       `SELECT t.time_slot,
@@ -147,10 +149,11 @@ export const detectSlotGap = async (today: string): Promise<Insight | null> => {
        JOIN routine_templates t ON r.template_id = t.id
        WHERE r.date BETWEEN ($1::date - 6) AND $1
          AND r.date >= t.created_at::date
+         AND r.user_id = $2
        GROUP BY t.time_slot
        HAVING COUNT(*) >= 3
        ORDER BY rate`,
-      [today],
+      [today, userId],
     );
 
     if (result.rows.length < 2) return null;
@@ -179,7 +182,7 @@ interface WeekCompRow {
   last_rate: number | null;
 }
 
-export const detectWeekComparison = async (today: string): Promise<Insight | null> => {
+export const detectWeekComparison = async (today: string, userId: number): Promise<Insight | null> => {
   try {
     const result = await query<WeekCompRow>(
       `WITH this_week AS (
@@ -187,18 +190,18 @@ export const detectWeekComparison = async (today: string): Promise<Insight | nul
           / NULLIF(COUNT(*), 0) * 100)::int AS rate
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
-        WHERE r.date BETWEEN ($1::date - 6) AND $1 AND r.date >= t.created_at::date
+        WHERE r.date BETWEEN ($1::date - 6) AND $1 AND r.date >= t.created_at::date AND r.user_id = $2
       ),
       last_week AS (
         SELECT ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
           / NULLIF(COUNT(*), 0) * 100)::int AS rate
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
-        WHERE r.date BETWEEN ($1::date - 13) AND ($1::date - 7) AND r.date >= t.created_at::date
+        WHERE r.date BETWEEN ($1::date - 13) AND ($1::date - 7) AND r.date >= t.created_at::date AND r.user_id = $2
       )
       SELECT this_week.rate AS this_rate, last_week.rate AS last_rate
       FROM this_week, last_week`,
-      [today],
+      [today, userId],
     );
 
     const row = result.rows[0];
@@ -227,13 +230,13 @@ interface OverdueRow {
   overdue_count: number;
 }
 
-export const detectOverdue = async (today: string): Promise<Insight | null> => {
+export const detectOverdue = async (today: string, userId: number): Promise<Insight | null> => {
   try {
     const result = await query<OverdueRow>(
       `SELECT COUNT(*)::int AS overdue_count
        FROM schedules
-       WHERE status = 'todo' AND date < $1 AND date IS NOT NULL`,
-      [today],
+       WHERE status = 'todo' AND date < $1 AND date IS NOT NULL AND user_id = $2`,
+      [today, userId],
     );
 
     const count = result.rows[0]?.overdue_count ?? 0;
@@ -252,19 +255,19 @@ export const detectOverdue = async (today: string): Promise<Insight | null> => {
 
 // ─── 통합 감지 + 넛지 선택 ──────────────────────────────
 
-const detectAll = async (today: string): Promise<Insight[]> => {
+const detectAll = async (today: string, userId: number): Promise<Insight[]> => {
   const results = await Promise.all([
-    detectStreak(today),
-    detectSleepTrend(today),
-    detectSlotGap(today),
-    detectWeekComparison(today),
-    detectOverdue(today),
+    detectStreak(today, userId),
+    detectSleepTrend(today, userId),
+    detectSlotGap(today, userId),
+    detectWeekComparison(today, userId),
+    detectOverdue(today, userId),
   ]);
   return results.filter((r): r is Insight => r !== null);
 };
 
-const pickByTiming = async (today: string, timing: InsightTiming): Promise<string | null> => {
-  const all = await detectAll(today);
+const pickByTiming = async (today: string, userId: number, timing: InsightTiming): Promise<string | null> => {
+  const all = await detectAll(today, userId);
   const candidates = all.filter((i) => i.timing === timing);
   if (candidates.length === 0) return null;
 
@@ -273,9 +276,9 @@ const pickByTiming = async (today: string, timing: InsightTiming): Promise<strin
 };
 
 /** 아침 크론용: 아침 타이밍 인사이트 중 최고 우선순위 1개 */
-export const pickMorningNudge = (today: string): Promise<string | null> =>
-  pickByTiming(today, 'morning');
+export const pickMorningNudge = (today: string, userId: number): Promise<string | null> =>
+  pickByTiming(today, userId, 'morning');
 
 /** 밤 크론용: 밤 타이밍 인사이트 중 최고 우선순위 1개 */
-export const pickNightNudge = (today: string): Promise<string | null> =>
-  pickByTiming(today, 'night');
+export const pickNightNudge = (today: string, userId: number): Promise<string | null> =>
+  pickByTiming(today, userId, 'night');

@@ -16,6 +16,7 @@ export type ContextTiming = 'morning' | 'night' | 'conversation';
 interface DateParams {
   today: string;
   yesterday: string;
+  userId: number;
 }
 
 interface SleepRow {
@@ -57,16 +58,16 @@ const fmtDuration = (minutes: number): string => {
 
 /** 오늘 날짜의 밤잠 + 아침잠(bedtime < 12:00 낮잠) 합산 */
 const queryLastNight = async (
-  { today }: DateParams,
+  { today, userId }: DateParams,
   timing: ContextTiming,
 ): Promise<string | null> => {
   const result = await query<SleepRow>(
     `SELECT date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
      FROM sleep_records
-     WHERE date = $1 AND user_id = 1
+     WHERE date = $1 AND user_id = $2
        AND (sleep_type = 'night' OR (sleep_type = 'nap' AND bedtime::time < '12:00'))
      ORDER BY CASE sleep_type WHEN 'night' THEN 0 ELSE 1 END`,
-    [today],
+    [today, userId],
   );
 
   if (result.rows.length === 0) {
@@ -97,7 +98,7 @@ const queryLastNight = async (
 };
 
 /** 7일 평균 수면 시간 (데이터 2건 이상일 때만) */
-const queryWeekAvg = async ({ today }: DateParams): Promise<string | null> => {
+const queryWeekAvg = async ({ today, userId }: DateParams): Promise<string | null> => {
   const weekAvg = await query<SleepAvgRow>(
     `SELECT ROUND(AVG(duration_minutes))::text as avg_duration,
             ROUND(AVG(
@@ -108,8 +109,8 @@ const queryWeekAvg = async ({ today }: DateParams): Promise<string | null> => {
             ), 1)::text as avg_bedtime_hour,
             COUNT(*)::text as count
      FROM sleep_records
-     WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND duration_minutes IS NOT NULL AND user_id = 1`,
-    [today],
+     WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND duration_minutes IS NOT NULL AND user_id = $2`,
+    [today, userId],
   );
 
   const avgRow = weekAvg.rows[0];
@@ -122,15 +123,15 @@ const queryWeekAvg = async ({ today }: DateParams): Promise<string | null> => {
 };
 
 /** 최근 연속 자정 이후 취침 패턴 (실제 연속 일수만 카운트) */
-const queryLateNightPattern = async ({ today }: DateParams): Promise<string | null> => {
+const queryLateNightPattern = async ({ today, userId }: DateParams): Promise<string | null> => {
   const result = await query<{ date: string; is_late: boolean }>(
     `SELECT date::text,
             (bedtime::time >= '00:00' AND bedtime::time < '06:00') AS is_late
      FROM sleep_records
-     WHERE sleep_type = 'night' AND date >= ($1::date - 14) AND bedtime IS NOT NULL AND user_id = 1
+     WHERE sleep_type = 'night' AND date >= ($1::date - 14) AND bedtime IS NOT NULL AND user_id = $2
      ORDER BY date DESC
      LIMIT 10`,
-    [today],
+    [today, userId],
   );
 
   let consecutive = 0;
@@ -142,13 +143,13 @@ const queryLateNightPattern = async ({ today }: DateParams): Promise<string | nu
 };
 
 /** 오늘 낮잠 횟수 (아침잠 bedtime < 12:00 제외) */
-const queryNaps = async ({ today }: DateParams): Promise<string | null> => {
+const queryNaps = async ({ today, userId }: DateParams): Promise<string | null> => {
   const naps = await query<{ nap_count: string }>(
     `SELECT COUNT(*)::text as nap_count
      FROM sleep_records
-     WHERE sleep_type = 'nap' AND date = $1 AND user_id = 1
+     WHERE sleep_type = 'nap' AND date = $1 AND user_id = $2
        AND (bedtime IS NULL OR bedtime::time >= '12:00')`,
-    [today],
+    [today, userId],
   );
 
   const napCount = Number(naps.rows[0]?.nap_count ?? 0);
@@ -183,9 +184,10 @@ const querySleepContext = async (dates: DateParams, timing: ContextTiming): Prom
 /** 오늘/어제 달성률 + 7일 평균 */
 const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Promise<string> => {
   const parts: string[] = [];
+  const { today, userId } = dates;
 
   // 아침에는 어제 기준, 나머지는 오늘 기준
-  const targetDate = timing === 'morning' ? dates.yesterday : dates.today;
+  const targetDate = timing === 'morning' ? dates.yesterday : today;
   const label = timing === 'morning' ? '어제' : '오늘';
 
   const dayStats = await query<RoutineDayRow>(
@@ -193,8 +195,8 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
             COUNT(*) FILTER (WHERE r.completed)::text as completed
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
-     WHERE r.date = $1 AND r.user_id = 1`,
-    [targetDate],
+     WHERE r.date = $1 AND r.user_id = $2`,
+    [targetDate, userId],
   );
 
   const row = dayStats.rows[0];
@@ -212,10 +214,10 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
        SELECT r.date,
               COUNT(*) FILTER (WHERE r.completed)::float / NULLIF(COUNT(*), 0) * 100 as daily_rate
        FROM routine_records r
-       WHERE r.date >= ($1::date - 7) AND r.date < $1 AND r.user_id = 1
+       WHERE r.date >= ($1::date - 7) AND r.date < $1 AND r.user_id = $2
        GROUP BY r.date
      ) sub`,
-    [dates.today],
+    [today, userId],
   );
 
   const avgRate = weekAvg.rows[0]?.avg_rate;
@@ -229,7 +231,7 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
 // ─── 일정 맥락 ──────────────────────────────────────────
 
 /** 오늘/내일 일정 수 + 밀린 일정 + 백로그 */
-const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
+const queryScheduleContext = async ({ today, userId }: DateParams): Promise<string> => {
   const parts: string[] = [];
 
   // 오늘 일정 (전체 + 미완료 — event 타입은 미완료에서 제외)
@@ -241,9 +243,9 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
             )::text as incomplete
      FROM schedules s
      LEFT JOIN categories c ON c.name = s.category
-     WHERE s.status != 'cancelled' AND s.user_id = 1
-       AND (s.date = $1 OR (s.date <= $1 AND s.end_date >= $1))`,
-    [today],
+     WHERE s.status != 'cancelled' AND s.user_id = $1
+       AND (s.date = $2 OR (s.date <= $2 AND s.end_date >= $2))`,
+    [userId, today],
   );
 
   const todayRow = todayResult.rows[0];
@@ -263,9 +265,9 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   const tomorrowResult = await query<ScheduleCountRow>(
     `SELECT COUNT(*)::text as count
      FROM schedules
-     WHERE status != 'cancelled' AND user_id = 1
-       AND (date = ($1::date + 1) OR (date <= ($1::date + 1) AND end_date >= ($1::date + 1)))`,
-    [today],
+     WHERE status != 'cancelled' AND user_id = $1
+       AND (date = ($2::date + 1) OR (date <= ($2::date + 1) AND end_date >= ($2::date + 1)))`,
+    [userId, today],
   );
   const tomorrowCount = Number(tomorrowResult.rows[0]?.count ?? 0);
   if (tomorrowCount > 0) {
@@ -277,9 +279,9 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
     `SELECT COUNT(*)::text as count
      FROM schedules s
      LEFT JOIN categories c ON c.name = s.category
-     WHERE s.status = 'todo' AND s.date < $1 AND s.date IS NOT NULL AND s.user_id = 1
+     WHERE s.status = 'todo' AND s.date < $2 AND s.date IS NOT NULL AND s.user_id = $1
        AND COALESCE(c.type, 'task') = 'task'`,
-    [today],
+    [userId, today],
   );
   const overdueCount = Number(overdueResult.rows[0]?.count ?? 0);
   if (overdueCount > 0) {
@@ -290,7 +292,8 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
   const backlogResult = await query<ScheduleCountRow>(
     `SELECT COUNT(*)::text as count
      FROM schedules
-     WHERE date IS NULL AND status = 'todo' AND user_id = 1`,
+     WHERE date IS NULL AND status = 'todo' AND user_id = $1`,
+    [userId],
   );
   const backlogCount = Number(backlogResult.rows[0]?.count ?? 0);
   if (backlogCount > 0) {
@@ -304,17 +307,17 @@ const queryScheduleContext = async ({ today }: DateParams): Promise<string> => {
 
 /** 최근 일기 (morning/conversation: 오늘+어제, night: 오늘만, 각 200자 제한) */
 const queryDiaryContext = async (
-  { today, yesterday }: DateParams,
+  { today, yesterday, userId }: DateParams,
   timing: ContextTiming,
 ): Promise<string> => {
   // 밤 리뷰에서 어제 일기를 포함하면 LLM이 어제 활동을 오늘로 혼동함
   const dates = timing === 'night' ? [today] : [today, yesterday];
-  const placeholders = dates.map((_, i) => `$${i + 1}`).join(', ');
+  const placeholders = dates.map((_, i) => `$${i + 2}`).join(', ');
 
   const result = await query<{ date: string; content: string }>(
     `SELECT date::text, content FROM diary_entries
-     WHERE user_id = 1 AND date IN (${placeholders}) ORDER BY date DESC`,
-    dates,
+     WHERE user_id = $1 AND date IN (${placeholders}) ORDER BY date DESC`,
+    [userId, ...dates],
   );
 
   if (result.rows.length === 0) return '';
@@ -330,10 +333,11 @@ const queryDiaryContext = async (
 // ─── 삶의 테마 맥락 ─────────────────────────────────────
 
 /** 활성 삶의 테마 (상위 5개, detail 80자 제한) */
-const queryLifeThemesContext = async (): Promise<string> => {
+const queryLifeThemesContext = async (userId: number): Promise<string> => {
   const result = await query<{ theme: string; category: string; detail: string | null }>(
     `SELECT theme, category, detail FROM life_themes
-     WHERE active = true AND user_id = 1 ORDER BY mention_count DESC LIMIT 5`,
+     WHERE active = true AND user_id = $1 ORDER BY mention_count DESC LIMIT 5`,
+    [userId],
   );
 
   if (result.rows.length === 0) return '';
@@ -347,12 +351,12 @@ const queryLifeThemesContext = async (): Promise<string> => {
 // ─── 운세 맥락 ──────────────────────────────────────────
 
 /** 오늘 일운 요약 (summary + advice만) */
-const queryFortuneContext = async ({ today }: DateParams): Promise<string> => {
+const queryFortuneContext = async ({ today, userId }: DateParams): Promise<string> => {
   const result = await query<{ summary: string | null; advice: string | null }>(
     `SELECT summary, advice FROM fortune_analyses
-     WHERE user_id = 1 AND date = $1 AND period = 'daily'
+     WHERE user_id = $1 AND date = $2 AND period = 'daily'
      ORDER BY created_at DESC LIMIT 1`,
-    [today],
+    [userId, today],
   );
 
   const row = result.rows[0];
@@ -371,11 +375,12 @@ const queryFortuneContext = async ({ today }: DateParams): Promise<string> => {
  * 타이밍에 따라 데이터 부재 처리가 달라진다.
  * 데이터가 전혀 없으면 빈 문자열 반환.
  */
-export const buildLifeContext = async (timing: ContextTiming = 'conversation'): Promise<string> => {
+export const buildLifeContext = async (timing: ContextTiming = 'conversation', userId: number): Promise<string> => {
   try {
     const dates: DateParams = {
       today: getTodayISO(),
       yesterday: getYesterdayISO(),
+      userId,
     };
 
     const [sleep, routine, schedule, diary, themes, fortune] = await Promise.all([
@@ -383,7 +388,7 @@ export const buildLifeContext = async (timing: ContextTiming = 'conversation'): 
       queryRoutineContext(dates, timing),
       queryScheduleContext(dates),
       queryDiaryContext(dates, timing),
-      queryLifeThemesContext(),
+      queryLifeThemesContext(userId),
       queryFortuneContext(dates),
     ]);
 

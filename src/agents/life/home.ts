@@ -18,6 +18,7 @@ import {
   querySleepForHome,
   querySleepEventsForHome,
 } from '../../shared/life-queries.js';
+import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import { createTodayRecords } from '../../cron/life-cron.js';
 
 // ─── userId 캐시 (크론 능동 갱신용) ─────────────────
@@ -32,17 +33,18 @@ export const getCachedHomeUserId = (): string | null => cachedUserId;
 /** Home 탭 뷰 발행 */
 export const publishHomeView = async (
   client: WebClient,
-  userId: string,
+  slackUserId: string,
 ): Promise<void> => {
   const today = getEffectiveTodayISO();
+  const dbUserId = (await resolveUserId(slackUserId)) ?? DEFAULT_USER_ID;
 
   // 오늘 루틴 레코드 보장 (없으면 생성)
-  await createTodayRecords(today);
+  await createTodayRecords(today, dbUserId);
 
   const [records, schedules, sleepRecords, sleepEvents] = await Promise.all([
-    queryTodayRecords(today),
-    queryTodaySchedules(today),
-    querySleepForHome(today),
+    queryTodayRecords(today, dbUserId),
+    queryTodaySchedules(today, dbUserId),
+    querySleepForHome(today, dbUserId),
     querySleepEventsForHome(today),
   ]);
 
@@ -104,7 +106,7 @@ export const publishHomeView = async (
   });
 
   await client.views.publish({
-    user_id: userId,
+    user_id: slackUserId,
     view: {
       type: 'home',
       blocks,
