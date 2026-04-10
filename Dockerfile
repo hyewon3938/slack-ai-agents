@@ -20,8 +20,7 @@ WORKDIR /app
 
 COPY package.json yarn.lock ./
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
-    yarn install --frozen-lockfile --production \
-    && yarn cache clean
+    yarn install --frozen-lockfile --production
 
 COPY --from=builder /app/dist ./dist
 COPY db/ ./db/
