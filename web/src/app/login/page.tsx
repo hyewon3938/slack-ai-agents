@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 
 const ERROR_MESSAGES: Record<string, string> = {
   max_users: '현재 가입 인원이 가득 찼어요',
+  not_allowed: '가입이 허용되지 않은 계정이에요',
   auth_failed: '로그인에 실패했어요. 다시 시도해주세요',
   invalid_state: '잘못된 요청이에요. 다시 시도해주세요',
   invalid_request: '잘못된 요청이에요',

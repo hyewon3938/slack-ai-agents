@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "repository": "https://github.com/hyewon3938/slack-ai-agents.git",
-  "author": "hyewon3938 <hyewon3938@naver.com>",
+  "author": "hyewon3938",
   "license": "MIT",
   "scripts": {
     "build": "tsc",

@@ -2,6 +2,17 @@ import { query, queryOne } from '@/lib/db';
 import type { KakaoUserInfo } from '@/lib/kakao';
 import { MAX_USERS } from '@/lib/kakao';
 
+/**
+ * 가입 허용 카카오 ID 목록 (환경변수 KAKAO_ALLOWED_IDS, 콤마 구분).
+ * 미설정 시 가입 차단 (기존 유저만 로그인 가능).
+ */
+const ALLOWED_KAKAO_IDS = new Set(
+  (process.env['KAKAO_ALLOWED_IDS'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0),
+);
+
 export interface UserRow {
   id: number;
   kakao_id: string; // BIGINT → string in JS
@@ -35,6 +46,11 @@ export const findOrCreateUser = async (info: KakaoUserInfo): Promise<UserRow> =>
       existing.nickname = info.nickname;
     }
     return existing;
+  }
+
+  // 가입 허용 목록 검증 (allowlist)
+  if (!ALLOWED_KAKAO_IDS.has(String(info.kakaoId))) {
+    throw new Error('NOT_ALLOWED');
   }
 
   // 가입 제한 확인

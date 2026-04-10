@@ -49,6 +49,9 @@ export async function GET(request: Request) {
     if (message === 'MAX_USERS_REACHED') {
       return NextResponse.redirect(new URL('/login?error=max_users', request.url));
     }
+    if (message === 'NOT_ALLOWED') {
+      return NextResponse.redirect(new URL('/login?error=not_allowed', request.url));
+    }
 
     return NextResponse.redirect(new URL('/login?error=auth_failed', request.url));
   }

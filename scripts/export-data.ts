@@ -4,9 +4,13 @@
  */
 import pg from 'pg';
 
-const pool = new pg.Pool({
-  connectionString: 'postgresql://agent:agent_password@localhost:5432/slack_ai_agents',
-});
+const connectionString = process.env['DATABASE_URL'];
+if (!connectionString) {
+  console.error('DATABASE_URL 환경변수 필요');
+  process.exit(1);
+}
+
+const pool = new pg.Pool({ connectionString });
 
 const TABLES = [
   'routine_templates',
