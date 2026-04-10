@@ -76,6 +76,14 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      - name: Prune old GHCR image versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ github.event.repository.name }}
+          package-type: container
+          min-versions-to-keep: 10
+          ignore-versions: '^latest$'
+
   deploy:
     name: Deploy to Server
     needs: build-image

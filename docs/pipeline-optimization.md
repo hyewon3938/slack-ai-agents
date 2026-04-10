@@ -145,8 +145,22 @@ GitHub Actions (ubuntu-latest)
 
 ### 4. CI/빌드 통합 관측성
 
-- 이전: 실제 프로덕션 빌드 로그가 VM SSH 액션 안에 묻혀 있어 실패 원인 추적이 번거로움
+- 이전: 실제 프로덕션 빌드 로그가 SSH 액션 안에 묻혀 있어 실패 원인 추적이 번거로움
 - 이후: build-image job이 독립되어 Actions UI에서 빌드 단계별 시간/로그 확인
+
+### 5. 이미지 누적 관리
+
+GHCR은 push 시마다 새 SHA 태그 이미지가 생성되어 무제한 누적된다. 방치하면 레지스트리 용량이 계속 증가하고 롤백 대상 선택도 번거로워진다. 두 레벨에서 자동 정리한다:
+
+**GHCR (원격 레지스트리)**
+- `actions/delete-package-versions@v5`를 build-image job 마지막 스텝에 배치
+- `min-versions-to-keep: 10` — 최근 10개 이미지 보존 (롤백 여유분)
+- `ignore-versions: '^latest$'` — `latest` 태그는 항상 제외 (현재 배포 중인 이미지 보호)
+
+**배포 서버 (로컬 Docker)**
+- 매 배포 끝에 `docker image prune -f`로 dangling 이미지 제거
+- 추가로 앱 이미지 최신 2개(현재 + 직전 버전)만 남기고 나머지 삭제
+- 디스크 사용량 바운드 + 즉시 롤백 가능한 직전 버전 보존의 균형
 
 ---
 
@@ -218,6 +232,12 @@ build-image:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         provenance: false
+    - uses: actions/delete-package-versions@v5
+      with:
+        package-name: ${{ github.event.repository.name }}
+        package-type: container
+        min-versions-to-keep: 10
+        ignore-versions: '^latest$'
 ```
 
 - `permissions` 잡 스코프 최소화 (`contents: read`, `packages: write`)
@@ -234,34 +254,63 @@ app:
   ...
 ```
 
-### 서버 측 `~/deploy.sh` (VM 전용, 저장소에 포함 안 함)
+### 배포 서버 측 `deploy.sh` (서버 전용, 저장소에 포함 안 함)
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-cd ~/slack-ai-agents
-git fetch origin main && git reset --hard origin/main
+
+cd <repo-path>
+
+# docker-compose.yml 및 마이그레이션 스크립트 등 빌드 외 리소스 동기화
+git fetch origin main
+git reset --hard origin/main
+
+# 새 이미지 pull (인증은 ~/.docker/config.json에 저장되어 있음)
 docker compose pull app
+
+# app 컨테이너만 교체 (db는 건드리지 않음)
 docker compose up -d app
+
+# dangling 이미지 제거
 docker image prune -f
+
+# 앱 이미지는 latest + 직전 버전 1개만 유지 (롤백 여유분)
+APP_IMAGE="ghcr.io/<owner>/<repo>"
+KEEP=2
+mapfile -t OLD_IMAGES < <(
+  docker images "$APP_IMAGE" --format "{{.ID}} {{.Tag}} {{.CreatedAt}}" \
+    | grep -v " latest " \
+    | sort -k3 -r \
+    | awk "NR>$KEEP {print \$1}"
+)
+if [ "${#OLD_IMAGES[@]}" -gt 0 ]; then
+  docker rmi "${OLD_IMAGES[@]}" || true
+fi
 ```
 
 - `git reset --hard`는 유지: `docker-compose.yml`, 마이그레이션 스크립트 등 저장소 리소스 동기화 목적
 - `docker compose build` 제거
 - `docker image prune -f`: 교체된 dangling 이미지 정리 (볼륨/네트워크는 건드리지 않음)
+- 앱 이미지 2개 유지 정책으로 디스크 사용량 바운드 + 즉시 롤백 가능
 
 ---
 
 ## 수동 사전 작업 (1회)
 
-본 파이프라인이 동작하려면 VM에 1회 사전 작업이 필요하다:
+본 파이프라인이 동작하려면 배포 서버에 1회 사전 작업이 필요하다:
 
-1. GitHub PAT 또는 기존 `gh` CLI 토큰에 `read:packages` 스코프 추가
-2. VM에서 `docker login ghcr.io` 수행 → `~/.docker/config.json` 저장 (권한 600 설정 권장)
-3. `~/deploy.sh`를 위 "pull + up -d" 버전으로 교체
+1. **GHCR pull 전용 크리덴셜 발급** — `read:packages` 스코프 하나만 부여한 전용 토큰. 다른 스코프와 섞지 않는다. 만료일은 1년 이내로 설정한다.
+2. 배포 서버에서 `docker login ghcr.io` 수행 → `~/.docker/config.json` 저장 (파일 권한 `600`로 제한)
+3. `deploy.sh`를 "pull + up -d" 버전으로 교체
 4. 첫 이미지 푸시 후 GHCR 패키지 visibility를 **Private**으로 설정 (웹 UI에서만 가능)
 
-> PAT/서버 경로 등은 저장소에 커밋하지 않는다.
+### 크리덴셜 로테이션
+
+- 만료일 관리는 GitHub 자동 만료 알림(이메일/웹) + 별도 개인 캘린더 리마인더의 이중화로 운영한다.
+- 만료되면 동일 스코프로 재발급 → 배포 서버에서 `docker login ghcr.io` 재수행.
+- 로테이션 작업 자체는 수 분 내로 끝나지만, 놓치면 배포가 즉시 중단되므로 선제 알림이 중요하다.
+- 크리덴셜 값과 서버 경로/주소는 저장소에 커밋하지 않는다.
 
 ---
 
@@ -276,16 +325,11 @@ error Error: EBUSY: resource busy or locked, rmdir '/usr/local/share/.cache/yarn
 
 BuildKit cache mount 디렉토리는 컨테이너 내부에서 rmdir 불가. `yarn cache clean`은 cache mount와 호환되지 않으며, 애초에 cache mount는 이미지 레이어에 포함되지 않아 clean 자체가 불필요. 제거로 해결.
 
-### PR #230: 아키텍처 미스매치
+### PR #230: 빌드 플랫폼 미스매치
 
-배포는 성공했으나 컨테이너가 재시작 루프:
-```
-exec /usr/local/bin/docker-entrypoint.sh: exec format error
-```
+배포는 성공했으나 컨테이너가 재시작 루프에 빠졌다. 빌드 이미지의 대상 플랫폼이 실제 배포 서버의 런타임과 맞지 않아 실행 포맷 에러가 발생했다. 빌드 러너와 플랫폼 옵션을 배포 환경과 일치시켜 해결.
 
-빌드 플랫폼(`linux/arm64`)과 VM 아키텍처(`x86_64`) 불일치. 설계 단계에서 프로젝트 메모리의 "Oracle Cloud Free Tier ARM VM"이라는 표기를 그대로 신뢰하고 `ubuntu-24.04-arm` 러너를 선택했는데, 실제 VM은 x86_64였다. `runs-on: ubuntu-latest` + `platforms: linux/amd64`로 수정.
-
-**교훈**: 외부 시스템(서버, 클라우드 등)과 엮인 파이프라인 설계 시 `uname -m` 수준의 현장 검증을 선제적으로 수행하는 루틴을 추가해야 한다. 메모리에 적힌 정보가 최신 상태라고 가정하지 말 것.
+**교훈**: 외부 런타임과 엮인 파이프라인 설계 시 대상 환경의 실제 플랫폼/아키텍처를 설계 전 현장 검증하는 루틴을 선제적으로 추가해야 한다. 문서에 적힌 환경 정보가 최신 상태라고 가정하지 말 것.
 
 ---
 
