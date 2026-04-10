@@ -19,5 +19,6 @@ pg-ssl/
 docs/developer-profile.md
 docs/work-log.md
 docs/budget-internal.md
+docs/credentials-internal.md
 .env.vercel
 .vercel/

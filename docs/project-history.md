@@ -19,9 +19,7 @@ app 서비스는 `image:` 필드 기반으로 재구성.
 
 ### 삽질 기록
 - **PR #229**: BuildKit cache mount 경로에서 `yarn cache clean` 호출 시 rmdir EBUSY 발생 → 제거
-- **PR #230**: `platforms: linux/arm64`로 빌드했으나 실제 VM은 x86_64였음 → `linux/amd64`로 수정.
-  설계 단계에서 외부 시스템의 실제 상태 검증 누락이 원인. 교훈: 파이프라인 설계 시 `uname -m`
-  수준 현장 검증을 선제적으로 수행.
+- **PR #230**: 빌드 이미지 대상 플랫폼과 배포 서버 런타임 불일치로 실행 포맷 에러 발생 → 러너·플랫폼 옵션을 배포 환경에 맞춰 수정. 교훈: 외부 런타임과 엮인 파이프라인 설계 시 대상 환경의 실제 플랫폼을 설계 전 현장 검증.
 
 자세한 분석: [docs/pipeline-optimization.md](pipeline-optimization.md)
 
