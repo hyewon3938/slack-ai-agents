@@ -106,6 +106,18 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('백로그');
   });
 
+  it('수면 레코드 변경 규칙을 포함한다', async () => {
+    const prompt = await buildLifeSystemPrompt('C123', 1);
+    // UPDATE/DELETE sleep_type 필터 규칙
+    expect(prompt).toContain('sleep_type 필터');
+    // INSERT 전 중복 확인 규칙
+    expect(prompt).toContain('INSERT 전');
+    // 날짜 이동 UPDATE 규칙
+    expect(prompt).toContain('날짜 이동');
+    // 사용자 언급 없는 INSERT 금지
+    expect(prompt).toContain('직접 언급하지 않은');
+  });
+
   it('220줄 이내의 간결한 프롬프트', async () => {
     const prompt = await buildLifeSystemPrompt('C123', 1);
     const lineCount = prompt.split('\n').length;

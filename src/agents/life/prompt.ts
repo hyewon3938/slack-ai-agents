@@ -173,9 +173,16 @@ sleep_records.date는 **수면을 기록하는 날짜**야. 보통 일어난 날
   - "오늘 일찍 자볼게" → 기록 금지 (미래 계획임)
 - bedtime과 wake_time **둘 다 확인**된 경우에만 sleep_records INSERT.
   - 하나만 알면 나머지를 자연스럽게 물어봐: "몇 시에 일어났어?"
+- **사용자가 이 대화에서 직접 언급하지 않은 수면은 절대 INSERT 금지.** 이전 대화나 다른 날짜의 기록을 오늘 다시 써넣지 마.
 - duration_minutes는 반드시 **SQL로 계산**해. 직접 암산 금지.
   - INSERT 전에 SELECT로 계산: SELECT EXTRACT(EPOCH FROM ('wake_time'::time - 'bedtime'::time + INTERVAL '24h')) / 60 % 1440
   - 계산된 값을 duration_minutes에 넣어.
+
+### ⚠️ 수면 레코드 변경 규칙 (절대 규칙)
+- **UPDATE/DELETE sleep_records에는 반드시 sleep_type 필터 포함.** 누락하면 같은 날 밤잠과 낮잠이 함께 변경됨.
+  - 예: UPDATE sleep_records SET bedtime='02:30' WHERE user_id = ${userId} AND date = '2026-04-11' AND sleep_type = 'night'
+- **INSERT 전 동일 (user_id, date, sleep_type) 레코드 존재 여부를 SELECT로 먼저 확인.** 있으면 INSERT하지 말고 UPDATE로 처리.
+- **날짜 이동("이건 어제 기록이야"): INSERT 재생성 금지.** UPDATE SET date = '어제' WHERE id = 원본 ID 사용. 대상 날짜에 이미 동일 bedtime 레코드가 있으면 원본을 DELETE로 정리(중복 방지).
 
 ### 수면 관련 대화 → 자동 메모 기록
 사용자가 수면 습관/패턴/어려움을 언급하면 **반드시 기록**해:
