@@ -61,14 +61,18 @@ const loadSajuPatterns = async (userId: number): Promise<string> => {
           `- [${r.pattern_type}] ${r.trigger_element}: ${r.description} (${r.detection_count}회 감지, ${r.confidence ?? '미평가'})`,
       )
       .join('\n');
-    return `\n\n## 확인된 개인 패턴 (saju_patterns)\n${lines}`;
+    return `\n\n## 확인된 개인 패턴 (saju_patterns)\n※ 아래 설명에 등장하는 천간/지지/합충 표현은 **패턴 성격 설명**일 뿐, 오늘의 일주와는 무관해. 거기서 일주를 역산하지 마.\n${lines}`;
   } catch {
     return '';
   }
 };
 
 /** DB에서 오늘 일운 조회 → 프롬프트 주입용 (내일은 사용자가 물으면 DB 조회) */
-const loadFortuneContext = async (today: string, userId: number): Promise<string> => {
+const loadFortuneContext = async (
+  today: string,
+  todayPillarStr: string,
+  userId: number,
+): Promise<string> => {
   try {
     const result = await query<{
       analysis: string;
@@ -81,8 +85,6 @@ const loadFortuneContext = async (today: string, userId: number): Promise<string
       [userId, today],
     );
 
-    const todayPillar = getDayPillar(today);
-    const todayPillarStr = `${todayPillar.cheongan}${todayPillar.jiji}(${todayPillar.hanja})`;
     const row = result.rows[0];
 
     if (row) {
@@ -90,6 +92,7 @@ const loadFortuneContext = async (today: string, userId: number): Promise<string
       if (row.summary) parts.push(`요약: ${row.summary}`);
       if (row.analysis) parts.push(`\n${row.analysis}`);
       if (row.advice) parts.push(`\n조언: ${row.advice}`);
+      parts.push(`\n⚠️ 위 분석은 오늘 일주 *${todayPillarStr}* 기준이야. 다른 일주로 재해석 금지.`);
       return `\n\n## 오늘(${today}) 일운 (Opus 분석)\n${parts.join('\n')}`;
     }
     return `\n\n## 오늘(${today}) 일주\n${todayPillarStr} — 일운 분석은 아직 준비되지 않았어.`;
@@ -122,11 +125,14 @@ export const buildInsightSystemPrompt = async (userId: number): Promise<string> 
   const today = getTodayString();
   const todayISO = getTodayISO();
   const weekRef = getWeekReference();
+  const todayPillar = getDayPillar(todayISO);
+  const todayPillarStr = `${todayPillar.cheongan}${todayPillar.jiji}(${todayPillar.hanja})`;
+
   const [lifeThemes, sajuPatterns, fortuneContext, profileContext, sajuMappingPrompt] =
     await Promise.all([
       loadLifeThemes(userId),
       loadSajuPatterns(userId),
-      loadFortuneContext(todayISO, userId),
+      loadFortuneContext(todayISO, todayPillarStr, userId),
       loadProfileContext(userId),
       loadSajuMappingPrompt(userId),
     ]);
@@ -150,6 +156,7 @@ export const buildInsightSystemPrompt = async (userId: number): Promise<string> 
 - 리스트: • 또는 - 사용 가능.
 
 오늘: ${today}
+오늘 일주: ${todayPillarStr} ⛔ 절대 불변 — 다른 일주로 바꿔 말하지 마
 ${weekRef}
 
 ${sajuMappingPrompt}
@@ -171,10 +178,11 @@ ${sajuMappingPrompt}
 - 없으면 INSERT.
 
 ### 사주 연결 규칙 (⛔ 필수)
-- 오늘 일기: 프롬프트 하단 "오늘 일운" 데이터 기반으로 사주 코멘트.
-- 과거/미래 일기: fortune_analyses에서 해당 날짜 조회해서 사용. 오늘 일운을 다른 날짜에 적용 금지.
+- ⛔ **오늘 일주는 프롬프트 상단 "오늘 일주:"에 박힌 값만 사용**. 다른 일주로 바꿔 말하지 마. 계산/추론 금지.
+- ⛔ **saju_patterns 설명에 등장하는 천간/지지/합충 표현(예: 정화/병화/사해충/진술충)은 패턴 성격 설명일 뿐, 오늘의 일주와 무관**. 거기서 역산해서 일주를 만들어내지 마.
+- 오늘 일기 사주 코멘트: 프롬프트 하단 "오늘 일운" 데이터 기반으로만.
+- 과거/미래 일기: fortune_analyses에서 해당 날짜 조회해서 day_pillar 사용. 오늘 일운을 다른 날짜에 적용 금지.
 - 일운 데이터 없으면 사주 해석 없이 공감 위주로 응답.
-- 일주(천간+지지) 직접 계산/추론 금지. 반드시 fortune_analyses의 day_pillar 사용.
 - 끼워맞추기 금지: 같은 지지라도 천간별 십성이 다름. 매핑표로 개별 확인 후 말해.
 
 ### 2. 운세 분석 조회
