@@ -5,13 +5,13 @@ import { unsealData } from 'iron-session';
 const PUBLIC_PATHS = ['/login', '/api/auth', '/api/cron'];
 const SESSION_COOKIE = 'life-dashboard-session';
 
-/** Next.js 16 — middleware는 기본 Node.js 런타임에서 동작 */
+/** Next.js 16 — proxy는 기본 Node.js 런타임에서 동작 */
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
 
-/** 미들웨어 — 세션 쿠키 서명 검증 + 보안 헤더 */
-export async function middleware(request: NextRequest) {
+/** Proxy — 세션 쿠키 서명 검증 + 보안 헤더 */
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 보안 헤더 (모든 응답에 적용)
