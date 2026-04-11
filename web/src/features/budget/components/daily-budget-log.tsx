@@ -70,7 +70,7 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
       : null;
 
   return (
-    <div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       {/* 누적 요약 카드 */}
       <div className="mb-4 rounded-xl bg-gray-50 p-4">
         <div className="mb-1 text-xs text-gray-500">이번 달 현황</div>
@@ -131,16 +131,22 @@ function formatAmount(amount: number): string {
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-2">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-100" />
-      ))}
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="space-y-2">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-100" />
+        ))}
+      </div>
     </div>
   );
 }
 
 function EmptyState() {
   return (
-    <div className="py-12 text-center text-sm text-gray-400">아직 기록된 예산 현황이 없어</div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="py-12 text-center text-sm text-gray-400">
+        아직 기록된 예산 현황이 없어
+      </div>
+    </div>
   );
 }
