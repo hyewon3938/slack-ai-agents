@@ -5,6 +5,8 @@ import {
   getBillingRange,
   calcCycleDays,
   calculateBudgetAllocation,
+  calculateTodayAllocation,
+  resolveSnapshotDate,
 } from '../budget-calc';
 import type { BudgetCalcInput } from '../budget-calc';
 
@@ -194,5 +196,132 @@ describe('calculateBudgetAllocation', () => {
     expect(result.monthlyLocked[1].days).toBe(30);
     // month 2 = '2026-06': 5/16 ~ 6/15 → 31일
     expect(result.monthlyLocked[2].days).toBe(31);
+  });
+});
+
+// ─── calculateTodayAllocation ──────────────────────────────
+//
+// 핵심 버그 재현:
+//   - 이번 달이 이미 초과된 상태(monthBudgetRemaining < 0)에서
+//     오늘 예산이 음수로 나와 "오늘 초과 = 오늘 지출 + 이전 누적 빚"이 되어버림.
+//   - 사용자는 오늘 49680원 썼는데 오늘 초과 53103원으로 표시됨 (-3423 carry-over 포함).
+//   - 카피라이트: 오늘 예산은 0원으로 클램프하고, 오늘 초과는 순수하게 오늘 지출만 반영.
+
+describe('calculateTodayAllocation', () => {
+  test('정상 케이스: 남은 예산 양수 → 균등 분배', () => {
+    const result = calculateTodayAllocation({
+      monthBudgetRemaining: 40_000,
+      todayFlexSpent: 10_000,
+      cycleRemainingDays: 3, // 오늘 포함 4일
+    });
+    // budgetBeforeToday = 40000 + 10000 = 50000
+    // todayBudget = 50000 / 4 = 12500
+    expect(result.todayBudget).toBe(12_500);
+    expect(result.todayRemaining).toBe(2_500); // 12500 - 10000
+  });
+
+  test('오늘 아직 지출 없음 → 예산 = 남은예산 / 남은일수', () => {
+    const result = calculateTodayAllocation({
+      monthBudgetRemaining: 40_000,
+      todayFlexSpent: 0,
+      cycleRemainingDays: 3,
+    });
+    expect(result.todayBudget).toBe(10_000);
+    expect(result.todayRemaining).toBe(10_000);
+  });
+
+  test('주기 마지막 날(cycleRemainingDays=0) → todayIncludedDays=1', () => {
+    const result = calculateTodayAllocation({
+      monthBudgetRemaining: 20_000,
+      todayFlexSpent: 5_000,
+      cycleRemainingDays: 0,
+    });
+    // budgetBeforeToday = 25000, 1일에 전부
+    expect(result.todayBudget).toBe(25_000);
+    expect(result.todayRemaining).toBe(20_000);
+  });
+
+  test('🐛 bug fix: 이번 달이 이미 초과된 상태에서 오늘 예산은 0으로 클램프', () => {
+    // 실제 재현 값: monthRemaining=-63372, todayFlexSpent=49680, cycleRemainingDays=3
+    // budgetBeforeToday = -63372 + 49680 = -13692 → 예전엔 -3423원/day → today_remaining -53103
+    const result = calculateTodayAllocation({
+      monthBudgetRemaining: -63_372,
+      todayFlexSpent: 49_680,
+      cycleRemainingDays: 3,
+    });
+    expect(result.todayBudget).toBe(0);
+    // 오늘 초과 = 오늘 지출 그대로 (이전 누적 빚은 분리)
+    expect(result.todayRemaining).toBe(-49_680);
+  });
+
+  test('🐛 bug fix: 월 초과 + 오늘 미지출 → 오늘 예산 0, 남음 0', () => {
+    const result = calculateTodayAllocation({
+      monthBudgetRemaining: -13_692,
+      todayFlexSpent: 0,
+      cycleRemainingDays: 3,
+    });
+    expect(result.todayBudget).toBe(0);
+    expect(result.todayRemaining).toBe(0);
+  });
+
+  test('cycleRemainingDays 음수 방어 → 에러 안 나고 0 또는 양수', () => {
+    const result = calculateTodayAllocation({
+      monthBudgetRemaining: 10_000,
+      todayFlexSpent: 0,
+      cycleRemainingDays: -1,
+    });
+    // todayIncludedDays 방어: 최소 1
+    expect(result.todayBudget).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ─── resolveSnapshotDate ──────────────────────────────
+//
+// 핵심 버그 재현:
+//   - Vercel cron `50 14 * * *` (14:50 UTC = 23:50 KST) 로 예약했지만
+//     실제 fire는 15:03:19 UTC (드리프트 13분) → KST 00:03 → getTodayISO()가
+//     다음날 반환 → 스냅샷이 다음날 date로 저장되는 문제.
+//   - 해결: nowUtc에서 1시간 버퍼를 뺀 anchor 시점의 KST 날짜를 반환.
+
+describe('resolveSnapshotDate', () => {
+  test('정시 발화 (14:50 UTC) → KST 23:50 → 당일(KST)', () => {
+    const now = new Date('2026-04-11T14:50:00Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-04-11');
+  });
+
+  test('🐛 실제 재현: 14:50 예약 → 15:03 UTC fire → 여전히 KST 당일(4/11)', () => {
+    const now = new Date('2026-04-11T15:03:19Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-04-11');
+  });
+
+  test('드리프트 30분 → 여전히 당일', () => {
+    const now = new Date('2026-04-11T15:20:00Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-04-11');
+  });
+
+  test('드리프트 50분 → 여전히 당일 (1시간 버퍼 내)', () => {
+    const now = new Date('2026-04-11T15:40:00Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-04-11');
+  });
+
+  test('월말 경계: 4/30 23:50 KST 예약 → 정상 발화 → 4/30', () => {
+    const now = new Date('2026-04-30T14:50:00Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-04-30');
+  });
+
+  test('월말 경계: 4/30 14:50 예약 → 15:10 드리프트 → 여전히 4/30', () => {
+    const now = new Date('2026-04-30T15:10:00Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-04-30');
+  });
+
+  test('연말 경계: 12/31 23:50 KST 정시 발화 → 12/31', () => {
+    const now = new Date('2026-12-31T14:50:00Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-12-31');
+  });
+
+  test('명시적 KST 정오 → 당일 그대로 (버퍼 차감해도 같은 날)', () => {
+    // 12:00 KST = 03:00 UTC → anchor 02:00 UTC → 11:00 KST 같은 날
+    const now = new Date('2026-04-11T03:00:00Z');
+    expect(resolveSnapshotDate(now)).toBe('2026-04-11');
   });
 });
