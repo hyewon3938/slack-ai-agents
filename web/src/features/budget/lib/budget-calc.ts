@@ -165,3 +165,79 @@ export function calculateBudgetAllocation(input: BudgetCalcInput): BudgetCalcRes
 
   return { budgetBase, freePerMonth, dailyFree, totalLocked, monthlyLocked };
 }
+
+// ─── 오늘 할당 계산 ──────────────────────────────────────
+
+/** 오늘 할당 계산 입력 */
+export interface TodayAllocationInput {
+  /** 이번 주기 남은 자유 예산 (음수 = 이미 초과) */
+  monthBudgetRemaining: number;
+  /** 오늘 자유 지출 (today 날짜의 expense 합) */
+  todayFlexSpent: number;
+  /** 오늘 제외한 남은 일수 */
+  cycleRemainingDays: number;
+}
+
+/** 오늘 할당 계산 결과 */
+export interface TodayAllocationResult {
+  /** 오늘 쓸 수 있는 예산 (누적 빚과 분리, 0 이상으로 클램프) */
+  todayBudget: number;
+  /** 오늘 남음(양수) / 초과(음수) — 오늘 지출만 반영 */
+  todayRemaining: number;
+}
+
+/**
+ * 오늘 할당 예산/남음 계산 (순수 함수)
+ *
+ * 핵심 원리:
+ * - budgetBeforeToday = 이번 주기 남은 예산에 오늘 지출을 복원한 값
+ *   (오늘 시작 시점의 가용 예산)
+ * - todayBudget = budgetBeforeToday / (오늘 포함 남은 일수)
+ * - 🔧 budgetBeforeToday가 음수면 (이미 이번 달 초과) 오늘 예산 0으로 클램프
+ *   → 오늘 "초과"가 오늘 지출만 반영하도록 분리. 누적 빚은
+ *     monthBudgetRemaining으로 별도 표시.
+ */
+export function calculateTodayAllocation(input: TodayAllocationInput): TodayAllocationResult {
+  const { monthBudgetRemaining, todayFlexSpent, cycleRemainingDays } = input;
+
+  const budgetBeforeToday = monthBudgetRemaining + todayFlexSpent;
+  const todayIncludedDays = Math.max(1, cycleRemainingDays + 1);
+
+  // 이미 이번 달 초과 상태면 오늘 예산 0으로 클램프
+  const todayBudget = budgetBeforeToday > 0
+    ? Math.round(budgetBeforeToday / todayIncludedDays)
+    : 0;
+
+  const todayRemaining = todayBudget - todayFlexSpent;
+
+  return { todayBudget, todayRemaining };
+}
+
+// ─── 스냅샷 날짜 결정 ──────────────────────────────────────
+
+/**
+ * Vercel cron 드리프트를 흡수하는 스냅샷 대상 날짜 계산 (순수 함수)
+ *
+ * 배경:
+ * - 일별 예산 로그 cron은 KST 23:50 (14:50 UTC)에 예약되어 있지만
+ *   Vercel cron은 수 분\~수십 분 드리프트가 발생한다.
+ * - 드리프트가 KST 자정을 넘어가면 `getTodayISO()`가 다음날을 반환해
+ *   스냅샷이 엉뚱한 날짜로 저장되는 문제가 있었다.
+ *
+ * 해결:
+ * - 입력 시각에서 1시간 버퍼를 빼고 KST 날짜로 환산.
+ * - 예: 14:50 UTC 정시 발화 → 13:50 UTC → 22:50 KST → 당일
+ *       15:03 UTC 드리프트 → 14:03 UTC → 23:03 KST → 당일
+ *       15:40 UTC 드리프트 → 14:40 UTC → 23:40 KST → 당일
+ * - 최대 ~1시간 드리프트까지 안전.
+ */
+export function resolveSnapshotDate(nowUtc: Date, driftBufferMs = 3600_000): string {
+  const anchorMs = nowUtc.getTime() - driftBufferMs;
+  // KST로 환산 (UTC+9)
+  const kstMs = anchorMs + 9 * 3600 * 1000;
+  const kst = new Date(kstMs);
+  const yyyy = kst.getUTCFullYear();
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(kst.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}

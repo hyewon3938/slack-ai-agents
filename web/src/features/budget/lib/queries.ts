@@ -6,6 +6,8 @@ import {
   getBillingRange,
   calcCycleDays,
   calculateBudgetAllocation,
+  calculateTodayAllocation,
+  resolveSnapshotDate,
 } from './budget-calc';
 import type { InstallmentProjection } from './budget-calc';
 import type {
@@ -928,12 +930,13 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   }
 
   // 오늘 할당 예산 (B방식 — 하루 고정)
-  // "오늘 시작 시점 남은 예산 / 오늘 포함 남은 일수" 로 역산
-  // cycleRemainingDays는 오늘 제외 남은 일수이므로 +1하면 오늘 포함
-  const budgetBeforeToday = monthBudgetRemaining + todayFlexSpent;
-  const todayIncludedDays = cycleRemainingDays + 1;
-  const todayBudget = todayIncludedDays > 0 ? Math.round(budgetBeforeToday / todayIncludedDays) : 0;
-  const todayRemaining = todayBudget - todayFlexSpent;
+  // calculateTodayAllocation: monthBudgetRemaining이 음수면 0으로 클램프
+  // → 오늘 "초과"는 오늘 지출만 반영. 누적 빚은 monthBudgetRemaining으로 별도 표시.
+  const { todayBudget, todayRemaining } = calculateTodayAllocation({
+    monthBudgetRemaining,
+    todayFlexSpent,
+    cycleRemainingDays,
+  });
 
   // ─── 월별 시뮬레이션 (실제 런웨이) ───
   const projections: MonthProjection[] = [];
@@ -1019,11 +1022,18 @@ export interface DailyBudgetLogSummary {
   avg_daily_saved: number; // 일평균 세이브
 }
 
-/** 오늘의 예산 스냅샷 저장 (Vercel cron에서 호출) */
+/**
+ * 오늘의 예산 스냅샷 저장 (Vercel cron에서 호출)
+ *
+ * @param userId
+ * @param opts.targetDate 스냅샷 대상 날짜 (생략 시 KST 오늘).
+ *   Vercel cron 드리프트 방지용으로 cron 핸들러에서 `resolveSnapshotDate(new Date())` 를 넘긴다.
+ */
 export async function saveDailyBudgetLog(
   userId: number,
+  opts?: { targetDate?: string },
 ): Promise<{ date: string; budget: number; spent: number; saved: number }> {
-  const today = getTodayISO();
+  const targetDate = opts?.targetDate ?? getTodayISO();
 
   // 목표 기간 조회 → queryRunway에 전달
   const settings = await queryOne<{ target_date: string | null }>(
@@ -1032,10 +1042,28 @@ export async function saveDailyBudgetLog(
   );
   const runway = await queryRunway(userId, settings?.target_date ?? undefined);
 
+  // targetDate의 자유 지출을 DB에서 직접 조회 (runway의 today_flex_spent는 'live today' 기준이라 드리프트 시 0이 될 수 있음)
+  // 조건은 queryRunway의 today_flex 쿼리와 동일하게 맞춤
+  const budgetStartRow = await queryOne<{ updated_at: string }>(
+    'SELECT updated_at::text FROM budget_settings WHERE user_id = $1',
+    [userId],
+  );
+  const budgetStartAtParam = budgetStartRow?.updated_at ?? '9999-12-31T00:00:00Z';
+  const targetSpentRow = await queryOne<{ spent: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text as spent
+     FROM expenses
+     WHERE user_id=$1 AND date=$2
+       AND (is_installment=false OR (is_installment=true AND created_at>=$3))
+       AND exclude_from_budget = false
+       AND COALESCE(type,'expense')='expense'
+       AND planned_expense_id IS NULL`,
+    [userId, targetDate, budgetStartAtParam],
+  );
+  const spent = Number(targetSpentRow?.spent ?? 0);
+
   const budget = runway.today_budget;
-  const spent = runway.today_flex_spent;
   const saved = budget - spent;
-  const now = new Date(`${today}T12:00:00`);
+  const now = new Date(`${targetDate}T12:00:00`);
   const billingMonth = getCurrentBillingMonth(now);
 
   // UPSERT: 같은 날 다시 실행해도 최신 값으로 갱신
@@ -1044,10 +1072,10 @@ export async function saveDailyBudgetLog(
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (user_id, date)
      DO UPDATE SET budget = $4, spent = $5, saved = $6, billing_month = $3`,
-    [userId, today, billingMonth, budget, spent, saved],
+    [userId, targetDate, billingMonth, budget, spent, saved],
   );
 
-  return { date: today, budget, spent, saved };
+  return { date: targetDate, budget, spent, saved };
 }
 
 /** billing_month 기준 일별 예산 로그 조회 */
