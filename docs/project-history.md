@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-04-13: API 비용 최적화 (#261, PR #262)
+
+월 LLM API 비용 절감을 위한 3가지 최적화 적용.
+
+**프롬프트 캐싱**: Anthropic `cache_control: ephemeral`을 system 프롬프트와 도구 정의에 적용. 캐시 히트 시 토큰 비용 90% 절감 (TTL 5분).
+
+**Insight 일기 fast path**: 운세 조회·명령 패턴 이외 메시지를 LLM 없이 직접 DB 저장. 랜덤 확인 문구 20종. 하루 일기는 밤 크론에서 LLM 1회로 통합 리뷰.
+
+**크론 정리**: 아침 크론에서 LLM 인사 제거(일정+루틴 체크리스트만 전송), `sleepCheck`/`morningSchedule`/`nightReview` 슬롯 제거, `nightReview` 내용을 `night`에 통합.
+
+예상 효과: 월 ~$30\~35 → ~$15\~21.
+
+자세한 내용: [docs/api-cost-optimization.md](api-cost-optimization.md)
+
+---
+
 ## 2026-04-10: 배포 파이프라인 최적화 (#227, PR #228/#229/#230)
 
 GitHub Actions에서 Docker 이미지를 빌드해 GHCR에 푸시하고, 배포 대상 서버는 이미지를
