@@ -3,9 +3,9 @@
 import type { SleepPeriod } from '../lib/types';
 
 const PERIODS: { id: SleepPeriod; label: string }[] = [
-  { id: '1m', label: '1개월' },
-  { id: '2w', label: '2주' },
   { id: '1w', label: '1주' },
+  { id: '2w', label: '2주' },
+  { id: '1m', label: '1개월' },
 ];
 
 interface PeriodSelectorProps {
