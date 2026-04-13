@@ -1,11 +1,12 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import type { SleepRecordWithEvents } from '../lib/types';
+import type { SleepRecordWithEvents, SleepPeriod } from '../lib/types';
 import { formatDateLabel, getDayOfWeek } from '../lib/chart-utils';
 
 interface SleepTrendChartProps {
   records: SleepRecordWithEvents[];
+  period: SleepPeriod;
 }
 
 function useContainerWidth() {
@@ -21,20 +22,21 @@ function useScrollToEnd(
   ref: React.RefObject<HTMLDivElement | null>,
   w: number,
   deps: unknown[],
+  enabled: boolean,
 ) {
   useEffect(() => {
     const el = ref.current;
-    if (el && w > 0) {
+    if (el && w > 0 && enabled) {
       el.scrollLeft = el.scrollWidth;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [w, ...deps]);
+  }, [w, enabled, ...deps]);
 }
 
-function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
+function DurationChart({ records, allowScroll }: { records: SleepRecordWithEvents[]; allowScroll: boolean }) {
   const { ref, w: cw } = useContainerWidth();
   const valid = records.filter((r) => r.duration_minutes != null);
-  useScrollToEnd(ref, cw, [valid.length]);
+  useScrollToEnd(ref, cw, [valid.length], allowScroll);
   if (valid.length === 0) return null;
 
   const maxDur = Math.max(...valid.map((r) => r.duration_minutes!));
@@ -50,7 +52,7 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">수면 시간 추이</h3>
-      <div ref={ref} className="overflow-x-auto">
+      <div ref={ref} className={allowScroll ? 'overflow-x-auto' : ''}>
         {cw > 0 && (
           <svg
             width={chartWidth}
@@ -107,10 +109,10 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
   );
 }
 
-function TimesTrendChart({ records }: { records: SleepRecordWithEvents[] }) {
+function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEvents[]; allowScroll: boolean }) {
   const { ref, w: cw } = useContainerWidth();
   const valid = records.filter((r) => r.bedtime && r.wake_time);
-  useScrollToEnd(ref, cw, [valid.length]);
+  useScrollToEnd(ref, cw, [valid.length], allowScroll);
   if (valid.length === 0) return null;
 
   const chartHeight = 140;
@@ -147,7 +149,7 @@ function TimesTrendChart({ records }: { records: SleepRecordWithEvents[] }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">취침 · 기상 시간 추이</h3>
-      <div ref={ref} className="overflow-x-auto">
+      <div ref={ref} className={allowScroll ? 'overflow-x-auto' : ''}>
         {cw > 0 && (
           <svg width={chartWidth} height={chartHeight + 12} className="text-xs">
             {yLabels.map((label, i) => {
@@ -201,11 +203,12 @@ function TimesTrendChart({ records }: { records: SleepRecordWithEvents[] }) {
   );
 }
 
-export function SleepTrendChart({ records }: SleepTrendChartProps) {
+export function SleepTrendChart({ records, period }: SleepTrendChartProps) {
+  const allowScroll = period === '1m';
   return (
     <div className="space-y-4">
-      <DurationChart records={records} />
-      <TimesTrendChart records={records} />
+      <DurationChart records={records} allowScroll={allowScroll} />
+      <TimesTrendChart records={records} allowScroll={allowScroll} />
     </div>
   );
 }

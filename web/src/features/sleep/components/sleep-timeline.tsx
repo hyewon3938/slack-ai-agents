@@ -1,11 +1,12 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import type { SleepRecordWithEvents } from '../lib/types';
+import type { SleepRecordWithEvents, SleepPeriod } from '../lib/types';
 import { formatDateLabel, getDayOfWeek } from '../lib/chart-utils';
 
 interface SleepTimelineProps {
   records: SleepRecordWithEvents[];
+  period: SleepPeriod;
 }
 
 // 20:00(=0) ~ 12:00(=960) 범위를 Y축으로 매핑
@@ -26,7 +27,7 @@ function yToRatio(y: number): number {
 const Y_LABELS = ['20', '22', '0', '2', '4', '6', '8', '10', '12'];
 const Y_LABEL_MINUTES = [0, 120, 240, 360, 480, 600, 720, 840, 960];
 
-export function SleepTimeline({ records }: SleepTimelineProps) {
+export function SleepTimeline({ records, period }: SleepTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cw, setCw] = useState(0);
 
@@ -36,13 +37,15 @@ export function SleepTimeline({ records }: SleepTimelineProps) {
     setCw(el.clientWidth);
   }, []);
 
-  // 스크롤을 오른쪽(최신)으로 이동
+  const allowScroll = period === '1m';
+
+  // 1개월일 때만 스크롤을 오른쪽(최신)으로 이동
   useEffect(() => {
     const el = containerRef.current;
-    if (el && cw > 0) {
+    if (el && cw > 0 && allowScroll) {
       el.scrollLeft = el.scrollWidth;
     }
-  }, [cw, records]);
+  }, [cw, records, allowScroll]);
 
   const validRecords = records.filter((r) => r.bedtime && r.wake_time);
 
@@ -67,7 +70,7 @@ export function SleepTimeline({ records }: SleepTimelineProps) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">수면 타임라인</h3>
-      <div ref={containerRef} className="overflow-x-auto">
+      <div ref={containerRef} className={allowScroll ? 'overflow-x-auto' : ''}>
         {cw > 0 && (
           <svg
             width={chartWidth}
