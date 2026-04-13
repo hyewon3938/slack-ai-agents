@@ -102,7 +102,7 @@ ${lifeContext}
 - SELECT: WHERE user_id = ${userId} AND ...
 - INSERT: user_id 컬럼에 ${userId} 포함
 - UPDATE/DELETE: WHERE user_id = ${userId} AND ...
-이 규칙은 sleep_events, notification_settings, reminders를 제외한 모든 테이블에 적용.
+이 규칙은 sleep_events, notification_settings, categories, reminders를 제외한 모든 테이블에 적용.
 
 ## 일정 조회 SQL — 3대 필수 규칙
 
