@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   CalendarIcon,
-  ArrowPathIcon,
+  HeartIcon,
   WalletIcon,
   ArrowRightStartOnRectangleIcon,
   Bars3Icon,
@@ -20,7 +20,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/schedules', label: '일정', Icon: CalendarIcon },
-  { href: '/routines', label: '루틴', Icon: ArrowPathIcon },
+  { href: '/routines', label: '생활', Icon: HeartIcon },
   { href: '/budget', label: '지출', Icon: WalletIcon },
 ];
 

@@ -12,7 +12,7 @@ import { RoutineForm } from './routine-form';
 import { RoutineRecordDetail } from './routine-record-detail';
 import { Modal } from '@/components/ui/modal';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
-import { TopTabs } from '@/components/ui/tabs';
+import { PillTabs } from '@/components/ui/tabs';
 import { TabsSkeleton, ListSkeleton } from '@/components/ui/skeleton';
 
 const ROUTINE_TABS: { id: RoutineView; label: string }[] = [
@@ -64,7 +64,9 @@ export function RoutinePage() {
   if (loading) {
     return (
       <div className="flex flex-1 flex-col">
-        <TabsSkeleton count={3} />
+        <div className="mx-auto w-full max-w-5xl px-4 pt-4">
+          <TabsSkeleton count={3} />
+        </div>
         <div className="mx-auto w-full max-w-5xl px-4 py-4">
           <ListSkeleton rows={5} rowHeight="h-14" />
         </div>
@@ -73,8 +75,10 @@ export function RoutinePage() {
   }
   return (
     <div className="flex flex-1 flex-col">
-      {/* 탭 바 */}
-      <TopTabs tabs={ROUTINE_TABS} active={view} onChange={setView} />
+      {/* 서브 탭 */}
+      <div className="mx-auto w-full max-w-5xl px-4 pt-4">
+        <PillTabs tabs={ROUTINE_TABS} active={view} onChange={setView} />
+      </div>
 
       {/* 콘텐츠 */}
       <div className="flex-1 overflow-y-auto">
