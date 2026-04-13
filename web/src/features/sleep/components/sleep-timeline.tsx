@@ -49,10 +49,9 @@ export function SleepTimeline({ records }: SleepTimelineProps) {
   const chartHeight = 280;
   const labelWidth = 28;
   const barGap = 2;
-  const availableWidth = Math.max(cw, 300) - labelWidth - 8;
-  const barWidth = Math.min(28, Math.max(8, availableWidth / validRecords.length - barGap));
-  const dataWidth = labelWidth + validRecords.length * (barWidth + barGap) + 8;
-  const chartWidth = Math.max(dataWidth, cw, 300);
+  const chartWidth = Math.max(cw, 300);
+  const availableWidth = chartWidth - labelWidth - 8;
+  const barWidth = Math.max(8, availableWidth / validRecords.length - barGap);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
