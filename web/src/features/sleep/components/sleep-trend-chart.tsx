@@ -10,21 +10,20 @@ interface SleepTrendChartProps {
 
 function useContainerWidth() {
   const ref = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   useEffect(() => {
     if (ref.current) setW(ref.current.clientWidth);
   }, []);
-  return { ref, scrollRef, w };
+  return { ref, w };
 }
 
 function useScrollToEnd(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
+  ref: React.RefObject<HTMLDivElement | null>,
   w: number,
   deps: unknown[],
 ) {
   useEffect(() => {
-    const el = scrollRef.current;
+    const el = ref.current;
     if (el && w > 0) {
       el.scrollLeft = el.scrollWidth;
     }
@@ -33,9 +32,9 @@ function useScrollToEnd(
 }
 
 function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
-  const { ref, scrollRef, w: cw } = useContainerWidth();
+  const { ref, w: cw } = useContainerWidth();
   const valid = records.filter((r) => r.duration_minutes != null);
-  useScrollToEnd(scrollRef, cw, [valid.length]);
+  useScrollToEnd(ref, cw, [valid.length]);
   if (valid.length === 0) return null;
 
   const maxDur = Math.max(...valid.map((r) => r.duration_minutes!));
@@ -51,55 +50,53 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">수면 시간 추이</h3>
-      <div ref={ref}>
-        <div ref={scrollRef} className="overflow-x-auto">
-          {cw > 0 && (
-            <svg
-              width={chartWidth}
-              height={chartHeight + 24 + dateAreaHeight}
-              className="text-xs"
-            >
-              <rect
-                x={0} y={(1 - idealMax / (maxDur + 60)) * chartHeight}
-                width={chartWidth} height={((idealMax - idealMin) / (maxDur + 60)) * chartHeight}
-                fill="#d1fae5" opacity={0.3}
-              />
+      <div ref={ref} className="overflow-x-auto">
+        {cw > 0 && (
+          <svg
+            width={chartWidth}
+            height={chartHeight + 24 + dateAreaHeight}
+            className="text-xs"
+          >
+            <rect
+              x={0} y={(1 - idealMax / (maxDur + 60)) * chartHeight}
+              width={chartWidth} height={((idealMax - idealMin) / (maxDur + 60)) * chartHeight}
+              fill="#d1fae5" opacity={0.3}
+            />
 
-              {valid.map((r, i) => {
-                const x = i * (barWidth + 3) + 2;
-                const h = (r.duration_minutes! / (maxDur + 60)) * chartHeight;
-                const y = chartHeight - h;
-                const hours = Math.floor(r.duration_minutes! / 60);
-                const mins = r.duration_minutes! % 60;
-                const isLow = r.duration_minutes! < idealMin;
-                const color = isLow ? '#f87171' : '#818cf8';
-                const dateLabel = formatDateLabel(r.date);
-                const dayLabel = getDayOfWeek(r.date);
+            {valid.map((r, i) => {
+              const x = i * (barWidth + 3) + 2;
+              const h = (r.duration_minutes! / (maxDur + 60)) * chartHeight;
+              const y = chartHeight - h;
+              const hours = Math.floor(r.duration_minutes! / 60);
+              const mins = r.duration_minutes! % 60;
+              const isLow = r.duration_minutes! < idealMin;
+              const color = isLow ? '#f87171' : '#818cf8';
+              const dateLabel = formatDateLabel(r.date);
+              const dayLabel = getDayOfWeek(r.date);
 
-                return (
-                  <g key={r.id}>
-                    <rect x={x} y={y} width={barWidth} height={h} rx={2} fill={color} opacity={0.8} />
-                    <text x={x + barWidth / 2} y={y - 3} textAnchor="middle" className="fill-gray-500 text-[8px]">
-                      {hours}h{mins > 0 ? mins : ''}
-                    </text>
-                    <text
-                      x={x + barWidth / 2} y={chartHeight + 12}
-                      textAnchor="middle" className="fill-gray-500 text-[9px]"
-                    >
-                      {dateLabel}
-                    </text>
-                    <text
-                      x={x + barWidth / 2} y={chartHeight + 24}
-                      textAnchor="middle" className="fill-gray-400 text-[8px]"
-                    >
-                      {dayLabel}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          )}
-        </div>
+              return (
+                <g key={r.id}>
+                  <rect x={x} y={y} width={barWidth} height={h} rx={2} fill={color} opacity={0.8} />
+                  <text x={x + barWidth / 2} y={y - 3} textAnchor="middle" className="fill-gray-500 text-[8px]">
+                    {hours}h{mins > 0 ? mins : ''}
+                  </text>
+                  <text
+                    x={x + barWidth / 2} y={chartHeight + 12}
+                    textAnchor="middle" className="fill-gray-500 text-[9px]"
+                  >
+                    {dateLabel}
+                  </text>
+                  <text
+                    x={x + barWidth / 2} y={chartHeight + 24}
+                    textAnchor="middle" className="fill-gray-400 text-[8px]"
+                  >
+                    {dayLabel}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </div>
       <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
         <span className="flex items-center gap-1">
@@ -111,9 +108,9 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
 }
 
 function TimesTrendChart({ records }: { records: SleepRecordWithEvents[] }) {
-  const { ref, scrollRef, w: cw } = useContainerWidth();
+  const { ref, w: cw } = useContainerWidth();
   const valid = records.filter((r) => r.bedtime && r.wake_time);
-  useScrollToEnd(scrollRef, cw, [valid.length]);
+  useScrollToEnd(ref, cw, [valid.length]);
   if (valid.length === 0) return null;
 
   const chartHeight = 140;
@@ -150,49 +147,47 @@ function TimesTrendChart({ records }: { records: SleepRecordWithEvents[] }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">취침 · 기상 시간 추이</h3>
-      <div ref={ref}>
-        <div ref={scrollRef} className="overflow-x-auto">
-          {cw > 0 && (
-            <svg width={chartWidth} height={chartHeight + 12} className="text-xs">
-              {yLabels.map((label, i) => {
-                const y = padding.top + (yLabelNorms[i] ?? 0) * innerH;
-                return (
-                  <g key={label}>
-                    <text x={padding.left - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[10px]">
-                      {label}시
-                    </text>
-                    <line x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y} stroke="#f3f4f6" />
-                  </g>
-                );
-              })}
-              <path d={bedPath} fill="none" stroke="#818cf8" strokeWidth={1.5} />
-              {bedPoints.map((p, i) => (
-                <circle key={`b${i}`} cx={p.x} cy={p.y} r={2.5} fill="#818cf8" />
-              ))}
-              <path d={wakePath} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
-              {wakePoints.map((p, i) => (
-                <circle key={`w${i}`} cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" />
-              ))}
-              {valid.map((r, i) => {
-                const x = padding.left + (i / Math.max(1, valid.length - 1)) * innerW;
-                const step = Math.max(1, Math.floor(valid.length / 7));
-                if (i % step !== 0 && i !== valid.length - 1) return null;
-                const dateLabel = formatDateLabel(r.date);
-                const dayLabel = getDayOfWeek(r.date);
-                return (
-                  <g key={r.id}>
-                    <text x={x} y={chartHeight - padding.bottom + 14} textAnchor="middle" className="fill-gray-500 text-[9px]">
-                      {dateLabel}
-                    </text>
-                    <text x={x} y={chartHeight - padding.bottom + 26} textAnchor="middle" className="fill-gray-400 text-[8px]">
-                      {dayLabel}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          )}
-        </div>
+      <div ref={ref} className="overflow-x-auto">
+        {cw > 0 && (
+          <svg width={chartWidth} height={chartHeight + 12} className="text-xs">
+            {yLabels.map((label, i) => {
+              const y = padding.top + (yLabelNorms[i] ?? 0) * innerH;
+              return (
+                <g key={label}>
+                  <text x={padding.left - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[10px]">
+                    {label}시
+                  </text>
+                  <line x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y} stroke="#f3f4f6" />
+                </g>
+              );
+            })}
+            <path d={bedPath} fill="none" stroke="#818cf8" strokeWidth={1.5} />
+            {bedPoints.map((p, i) => (
+              <circle key={`b${i}`} cx={p.x} cy={p.y} r={2.5} fill="#818cf8" />
+            ))}
+            <path d={wakePath} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
+            {wakePoints.map((p, i) => (
+              <circle key={`w${i}`} cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" />
+            ))}
+            {valid.map((r, i) => {
+              const x = padding.left + (i / Math.max(1, valid.length - 1)) * innerW;
+              const step = Math.max(1, Math.floor(valid.length / 7));
+              if (i % step !== 0 && i !== valid.length - 1) return null;
+              const dateLabel = formatDateLabel(r.date);
+              const dayLabel = getDayOfWeek(r.date);
+              return (
+                <g key={r.id}>
+                  <text x={x} y={chartHeight - padding.bottom + 14} textAnchor="middle" className="fill-gray-500 text-[9px]">
+                    {dateLabel}
+                  </text>
+                  <text x={x} y={chartHeight - padding.bottom + 26} textAnchor="middle" className="fill-gray-400 text-[8px]">
+                    {dayLabel}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">

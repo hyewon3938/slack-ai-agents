@@ -13,13 +13,17 @@ export function SleepDashboard() {
 
   if (loading && !data) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4 px-4 py-4">
-        <CardSkeleton className="h-10" />
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => <CardSkeleton key={i} className="h-20" />)}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl space-y-4 px-4 py-4 md:py-6">
+          <CardSkeleton className="h-10 w-48" />
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => <CardSkeleton key={i} className="h-24" />)}
+          </div>
+          <CardSkeleton className="h-80" />
+          <CardSkeleton className="h-48" />
+          <CardSkeleton className="h-48" />
+          <CardSkeleton className="h-36" />
         </div>
-        <CardSkeleton className="h-64" />
-        <CardSkeleton className="h-48" />
       </div>
     );
   }

@@ -28,7 +28,6 @@ const Y_LABEL_MINUTES = [0, 120, 240, 360, 480, 600, 720, 840, 960];
 
 export function SleepTimeline({ records }: SleepTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [cw, setCw] = useState(0);
 
   useEffect(() => {
@@ -39,7 +38,7 @@ export function SleepTimeline({ records }: SleepTimelineProps) {
 
   // 스크롤을 오른쪽(최신)으로 이동
   useEffect(() => {
-    const el = scrollRef.current;
+    const el = containerRef.current;
     if (el && cw > 0) {
       el.scrollLeft = el.scrollWidth;
     }
@@ -68,71 +67,69 @@ export function SleepTimeline({ records }: SleepTimelineProps) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">수면 타임라인</h3>
-      <div ref={containerRef}>
-        <div ref={scrollRef} className="overflow-x-auto">
-          {cw > 0 && (
-            <svg
-              width={chartWidth}
-              height={topPadding + chartHeight + dateAreaHeight}
-              className="text-xs"
-            >
-              {Y_LABELS.map((label, i) => {
-                const y = topPadding + ((Y_LABEL_MINUTES[i] ?? 0) / Y_RANGE_MINUTES) * chartHeight;
-                return (
-                  <g key={label}>
-                    <text x={labelWidth - 4} y={y + 4} textAnchor="end" className="fill-gray-400 text-[10px]">
-                      {label}
-                    </text>
-                    <line
-                      x1={labelWidth} y1={y} x2={chartWidth} y2={y}
-                      stroke="#f3f4f6" strokeWidth={1}
-                    />
-                  </g>
-                );
-              })}
+      <div ref={containerRef} className="overflow-x-auto">
+        {cw > 0 && (
+          <svg
+            width={chartWidth}
+            height={topPadding + chartHeight + dateAreaHeight}
+            className="text-xs"
+          >
+            {Y_LABELS.map((label, i) => {
+              const y = topPadding + ((Y_LABEL_MINUTES[i] ?? 0) / Y_RANGE_MINUTES) * chartHeight;
+              return (
+                <g key={label}>
+                  <text x={labelWidth - 4} y={y + 4} textAnchor="end" className="fill-gray-400 text-[10px]">
+                    {label}
+                  </text>
+                  <line
+                    x1={labelWidth} y1={y} x2={chartWidth} y2={y}
+                    stroke="#f3f4f6" strokeWidth={1}
+                  />
+                </g>
+              );
+            })}
 
-              {validRecords.map((r, i) => {
-                const x = labelWidth + i * (barWidth + barGap);
-                const bedY = topPadding + yToRatio(timeToY(r.bedtime!)) * chartHeight;
-                const wakeY = topPadding + yToRatio(timeToY(r.wake_time!)) * chartHeight;
-                const barHeight = Math.max(4, wakeY - bedY);
-                const dateLabel = formatDateLabel(r.date);
-                const dayLabel = getDayOfWeek(r.date);
+            {validRecords.map((r, i) => {
+              const x = labelWidth + i * (barWidth + barGap);
+              const bedY = topPadding + yToRatio(timeToY(r.bedtime!)) * chartHeight;
+              const wakeY = topPadding + yToRatio(timeToY(r.wake_time!)) * chartHeight;
+              const barHeight = Math.max(4, wakeY - bedY);
+              const dateLabel = formatDateLabel(r.date);
+              const dayLabel = getDayOfWeek(r.date);
 
-                return (
-                  <g key={r.id}>
-                    <rect
-                      x={x} y={bedY} width={barWidth} height={barHeight}
-                      rx={3} fill="#818cf8" opacity={0.8}
-                    />
-                    {r.events.map((e) => {
-                      const ey = topPadding + yToRatio(timeToY(e.event_time)) * chartHeight;
-                      return (
-                        <circle
-                          key={e.id}
-                          cx={x + barWidth / 2} cy={ey}
-                          r={2.5} fill="#ef4444"
-                        />
-                      );
-                    })}
-                    <text
-                      x={x + barWidth / 2} y={topPadding + chartHeight + 12}
-                      textAnchor="middle" className="fill-gray-500 text-[9px]"
-                    >
-                      {dateLabel}
-                    </text>
-                    <text
-                      x={x + barWidth / 2} y={topPadding + chartHeight + 24}
-                      textAnchor="middle" className="fill-gray-400 text-[8px]"
-                    >
-                      {dayLabel}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          )}
-        </div>
+              return (
+                <g key={r.id}>
+                  <rect
+                    x={x} y={bedY} width={barWidth} height={barHeight}
+                    rx={3} fill="#818cf8" opacity={0.8}
+                  />
+                  {r.events.map((e) => {
+                    const ey = topPadding + yToRatio(timeToY(e.event_time)) * chartHeight;
+                    return (
+                      <circle
+                        key={e.id}
+                        cx={x + barWidth / 2} cy={ey}
+                        r={2.5} fill="#ef4444"
+                      />
+                    );
+                  })}
+                  <text
+                    x={x + barWidth / 2} y={topPadding + chartHeight + 12}
+                    textAnchor="middle" className="fill-gray-500 text-[9px]"
+                  >
+                    {dateLabel}
+                  </text>
+                  <text
+                    x={x + barWidth / 2} y={topPadding + chartHeight + 24}
+                    textAnchor="middle" className="fill-gray-400 text-[8px]"
+                  >
+                    {dayLabel}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">
