@@ -18,7 +18,18 @@ import type {
   Tool,
   ContentBlockParam,
   ToolResultBlockParam,
+  TextBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
+
+/** 마지막 도구에 cache_control 추가 (도구 정의 캐싱) */
+const withToolCacheControl = (tools: Tool[]): Tool[] => {
+  if (tools.length === 0) return tools;
+  return tools.map((tool, i) =>
+    i === tools.length - 1
+      ? { ...tool, cache_control: { type: 'ephemeral' } }
+      : tool,
+  );
+};
 
 // ---- 공통 인터페이스 (Provider 독립) ----
 
@@ -103,12 +114,18 @@ export class ClaudeLLMClient implements LLMClient {
     const { system, anthropicMessages } = toClaudeMessages(messages);
     const anthropicTools = tools?.length ? toClaudeTools(tools) : undefined;
 
+    // 프롬프트 캐싱: system 프롬프트와 마지막 도구 정의에 cache_control 추가.
+    // 캐시 TTL 5분, 캐시 히트 시 토큰 비용 90% 절감.
+    const systemBlocks: TextBlockParam[] | undefined = system
+      ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+      : undefined;
+
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 4096,
-      system: system ?? undefined,
+      system: systemBlocks,
       messages: anthropicMessages,
-      tools: anthropicTools,
+      tools: anthropicTools ? withToolCacheControl(anthropicTools) : undefined,
     });
 
     return fromClaudeResponse(response);

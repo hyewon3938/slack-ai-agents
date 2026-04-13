@@ -8,6 +8,11 @@ import { buildInsightSystemPrompt } from './prompt.js';
 import { queryOne } from '../../shared/db.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
+import {
+  INSIGHT_COMMAND_RE,
+  saveDiaryEntry,
+  pickDiaryConfirmation,
+} from './diary-fast-path.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
@@ -128,7 +133,19 @@ export const createInsightAgent = (llmClient: LLMClient): AgentHandler => {
     // ── fast path: 운세 조회 ──
     if (await tryFortuneFastPath(trimmed, say, userId)) return;
 
-    // ── LLM 에이전트 루프 ──
+    // ── fast path: 일기 저장 (명령 패턴이 아닌 모든 메시지) ──
+    if (!INSIGHT_COMMAND_RE.test(trimmed)) {
+      try {
+        await saveDiaryEntry(userId, text.trim());
+        await sendMessage(say, pickDiaryConfirmation());
+      } catch (error: unknown) {
+        console.error('[Insight Agent] 일기 저장 실패:', error);
+        await sendMessage(say, '일기 저장 중 오류가 발생했어. 다시 한번 말해줘.');
+      }
+      return;
+    }
+
+    // ── LLM 에이전트 루프 (명령 패턴 매칭 시) ──
     try {
       const result = await runAgentLoop(
         llmClient,
