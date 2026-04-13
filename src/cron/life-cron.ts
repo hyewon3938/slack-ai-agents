@@ -163,6 +163,14 @@ const NIGHT_SYSTEM_PROMPT = `${CRON_BASE_PROMPT}
 - 삶의 테마나 고민이 있으면 맥락에 맞게 따뜻하게.
 - 운세 정보가 있으면 하루를 되돌아보는 맥락에서 연결.`;
 
+const INSIGHT_NIGHT_SYSTEM_PROMPT = `${CRON_BASE_PROMPT}
+
+지금은 밤이야. 사용자의 오늘 일기를 읽고 하루를 돌아보는 코멘트를 해줘.
+- 일기 내용에 공감하면서 따뜻하게 마무리.
+- 오늘 일운 데이터가 있으면 사주적 관점에서 자연스럽게 연결.
+- 길게 쓰지 마. 2\~3문장이면 충분해.
+- "오늘 일기를 보니" 같은 메타 표현 금지. 자연스럽게.`;
+
 /** LLM으로 크론 메시지 생성 (실패 시 fallback) */
 const generateCronMessage = async (
   llmClient: LLMClient,
@@ -445,25 +453,52 @@ const insightMorningTask = async (app: App, config: LifeCronConfig): Promise<voi
   });
 };
 
-/** 밤 일기 리마인더 → insight 채널 (유저별, 기존 기록 있으면 내용 표시) */
+/** 밤 일기 리뷰 → insight 채널.
+ * 오늘 일기가 있으면 LLM 1회로 하루 코멘트, 없으면 간단 리마인더 전송. */
 const insightNightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
 
-  await forEachUser(config, 'insight', '일기 리마인더', async (userId, channelId) => {
-    const result = await query<{ content: string }>(
+  await forEachUser(config, 'insight', '일기 리뷰', async (userId, channelId) => {
+    const diaryResult = await query<{ content: string }>(
       `SELECT content FROM diary_entries WHERE user_id = $1 AND date = $2 LIMIT 1`,
       [userId, today],
     );
 
-    const diary = result.rows[0];
-    const text = diary
-      ? `오늘 기록된 일기야:\n\n${diary.content}\n\n더 추가하고 싶은 이야기가 있으면 편하게 남겨.`
-      : '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자. 생각나는 대로 편하게 말해줘.';
+    const diary = diaryResult.rows[0];
 
-    await postToChannel(app.client, channelId, text);
-    console.warn(
-      `[Life Cron] 일기 리마인더 전송 (유저=${userId}, 기존 기록: ${diary ? '있음' : '없음'})`,
+    if (!diary) {
+      await postToChannel(
+        app.client,
+        channelId,
+        '오늘 하루는 어땠어? 간단하게라도 일기를 남겨보자.',
+      );
+      console.warn(`[Life Cron] 일기 없음 — 리마인더 전송 (유저=${userId})`);
+      return;
+    }
+
+    // 일운 요약 조회 (사주 연결용)
+    const fortuneResult = await query<{ summary: string | null; advice: string | null }>(
+      `SELECT summary, advice FROM fortune_analyses
+       WHERE user_id = $1 AND date = $2 AND period = 'daily'
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId, today],
     );
+    const fortune = fortuneResult.rows[0];
+    const fortuneContext = fortune?.summary
+      ? `\n오늘 일운 요약: ${fortune.summary}`
+      : '';
+
+    const context = `오늘 일기:\n${diary.content}${fortuneContext}`;
+
+    const comment = await generateCronMessage(
+      config.llmClient,
+      INSIGHT_NIGHT_SYSTEM_PROMPT,
+      context,
+      '오늘도 수고했어. 내일도 좋은 하루 보내자.',
+    );
+
+    await postToChannel(app.client, channelId, comment);
+    console.warn(`[Life Cron] 일기 리뷰 전송 완료 (유저=${userId})`);
   });
 };
 
