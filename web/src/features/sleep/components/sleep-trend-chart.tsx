@@ -41,9 +41,11 @@ function DurationChart({ records, allowScroll }: { records: SleepRecordWithEvent
 
   const maxDur = Math.max(...valid.map((r) => r.duration_minutes!));
   const chartHeight = 120;
-  const chartWidth = Math.max(cw, 200);
   const barGap = 3;
-  const barWidth = Math.max(6, (chartWidth - 8) / valid.length - barGap);
+  const minBarWidth = allowScroll ? 16 : 6;
+  const minContentWidth = 8 + valid.length * (minBarWidth + barGap);
+  const chartWidth = allowScroll ? Math.max(cw, minContentWidth) : Math.max(cw, 200);
+  const barWidth = Math.max(minBarWidth, (chartWidth - 8) / valid.length - barGap);
   const dateAreaHeight = 32;
 
   const idealMin = 420;
@@ -116,7 +118,9 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
   if (valid.length === 0) return null;
 
   const chartHeight = 140;
-  const chartWidth = Math.max(cw, 200);
+  const minPointGap = allowScroll ? 18 : 0;
+  const minContentWidth = 48 + valid.length * minPointGap;
+  const chartWidth = allowScroll ? Math.max(cw, minContentWidth) : Math.max(cw, 200);
   const padding = { left: 36, right: 12, top: 8, bottom: 36 };
   const innerW = chartWidth - padding.left - padding.right;
   const innerH = chartHeight - padding.top - padding.bottom;
