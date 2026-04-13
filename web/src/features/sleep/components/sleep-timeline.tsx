@@ -62,9 +62,11 @@ export function SleepTimeline({ records, period }: SleepTimelineProps) {
   const labelWidth = 28;
   const barGap = 2;
   const topPadding = 12;
-  const chartWidth = Math.max(cw, 300);
+  const minBarWidth = allowScroll ? 16 : 8;
+  const minContentWidth = labelWidth + 8 + validRecords.length * (minBarWidth + barGap);
+  const chartWidth = allowScroll ? Math.max(cw, minContentWidth) : Math.max(cw, 300);
   const availableWidth = chartWidth - labelWidth - 8;
-  const barWidth = Math.max(8, availableWidth / validRecords.length - barGap);
+  const barWidth = Math.max(minBarWidth, availableWidth / validRecords.length - barGap);
   const dateAreaHeight = 32;
 
   return (
