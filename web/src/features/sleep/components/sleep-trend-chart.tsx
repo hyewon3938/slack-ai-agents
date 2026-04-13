@@ -1,18 +1,32 @@
 'use client';
 
+import { useRef, useState, useEffect } from 'react';
 import type { SleepRecordWithEvents } from '../lib/types';
 
 interface SleepTrendChartProps {
   records: SleepRecordWithEvents[];
 }
 
+function useContainerWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    if (ref.current) setW(ref.current.clientWidth);
+  }, []);
+  return { ref, w };
+}
+
 function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
+  const { ref, w: cw } = useContainerWidth();
   const valid = records.filter((r) => r.duration_minutes != null);
   if (valid.length === 0) return null;
 
   const maxDur = Math.max(...valid.map((r) => r.duration_minutes!));
   const chartHeight = 120;
-  const barWidth = Math.max(6, Math.min(20, 300 / valid.length - 2));
+  const availableWidth = Math.max(cw, 200);
+  const barWidth = Math.min(24, Math.max(6, availableWidth / valid.length - 3));
+  const dataWidth = valid.length * (barWidth + 3) + 8;
+  const chartWidth = Math.max(dataWidth, cw, 200);
 
   const idealMin = 420;
   const idealMax = 480;
@@ -20,44 +34,45 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">수면 시간 추이</h3>
-      <div className="overflow-x-auto">
-        <svg
-          width={Math.max(valid.length * (barWidth + 3) + 8, 200)}
-          height={chartHeight + 24}
-          className="text-xs"
-        >
-          {/* 적정 수면 구간 배경 */}
-          <rect
-            x={0} y={(1 - idealMax / (maxDur + 60)) * chartHeight}
-            width="100%" height={((idealMax - idealMin) / (maxDur + 60)) * chartHeight}
-            fill="#d1fae5" opacity={0.3}
-          />
+      <div ref={ref} className="overflow-x-auto">
+        {cw > 0 && (
+          <svg
+            width={chartWidth}
+            height={chartHeight + 24}
+            className="text-xs"
+          >
+            <rect
+              x={0} y={(1 - idealMax / (maxDur + 60)) * chartHeight}
+              width={chartWidth} height={((idealMax - idealMin) / (maxDur + 60)) * chartHeight}
+              fill="#d1fae5" opacity={0.3}
+            />
 
-          {valid.map((r, i) => {
-            const x = i * (barWidth + 3) + 2;
-            const h = (r.duration_minutes! / (maxDur + 60)) * chartHeight;
-            const y = chartHeight - h;
-            const hours = Math.floor(r.duration_minutes! / 60);
-            const mins = r.duration_minutes! % 60;
-            const isLow = r.duration_minutes! < idealMin;
-            const color = isLow ? '#f87171' : '#818cf8';
+            {valid.map((r, i) => {
+              const x = i * (barWidth + 3) + 2;
+              const h = (r.duration_minutes! / (maxDur + 60)) * chartHeight;
+              const y = chartHeight - h;
+              const hours = Math.floor(r.duration_minutes! / 60);
+              const mins = r.duration_minutes! % 60;
+              const isLow = r.duration_minutes! < idealMin;
+              const color = isLow ? '#f87171' : '#818cf8';
 
-            return (
-              <g key={r.id}>
-                <rect x={x} y={y} width={barWidth} height={h} rx={2} fill={color} opacity={0.8} />
-                <text x={x + barWidth / 2} y={y - 3} textAnchor="middle" className="fill-gray-500 text-[8px]">
-                  {hours}h{mins > 0 ? mins : ''}
-                </text>
-                <text
-                  x={x + barWidth / 2} y={chartHeight + 12}
-                  textAnchor="middle" className="fill-gray-400 text-[9px]"
-                >
-                  {r.date.slice(8)}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+              return (
+                <g key={r.id}>
+                  <rect x={x} y={y} width={barWidth} height={h} rx={2} fill={color} opacity={0.8} />
+                  <text x={x + barWidth / 2} y={y - 3} textAnchor="middle" className="fill-gray-500 text-[8px]">
+                    {hours}h{mins > 0 ? mins : ''}
+                  </text>
+                  <text
+                    x={x + barWidth / 2} y={chartHeight + 12}
+                    textAnchor="middle" className="fill-gray-400 text-[9px]"
+                  >
+                    {r.date.slice(8)}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </div>
       <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
         <span className="flex items-center gap-1">
@@ -69,11 +84,12 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
 }
 
 function TimesTrendChart({ records }: { records: SleepRecordWithEvents[] }) {
+  const { ref, w: cw } = useContainerWidth();
   const valid = records.filter((r) => r.bedtime && r.wake_time);
   if (valid.length === 0) return null;
 
   const chartHeight = 140;
-  const chartWidth = Math.max(valid.length * 20 + 40, 200);
+  const chartWidth = Math.max(cw, 200);
   const padding = { left: 36, right: 8, top: 8, bottom: 24 };
   const innerW = chartWidth - padding.left - padding.right;
   const innerH = chartHeight - padding.top - padding.bottom;
@@ -106,38 +122,40 @@ function TimesTrendChart({ records }: { records: SleepRecordWithEvents[] }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
       <h3 className="mb-3 text-sm font-semibold text-gray-900">취침 · 기상 시간 추이</h3>
-      <div className="overflow-x-auto">
-        <svg width={chartWidth} height={chartHeight} className="text-xs">
-          {yLabels.map((label, i) => {
-            const y = padding.top + (yLabelNorms[i] ?? 0) * innerH;
-            return (
-              <g key={label}>
-                <text x={padding.left - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[10px]">
-                  {label}시
+      <div ref={ref} className="overflow-x-auto">
+        {cw > 0 && (
+          <svg width={chartWidth} height={chartHeight} className="text-xs">
+            {yLabels.map((label, i) => {
+              const y = padding.top + (yLabelNorms[i] ?? 0) * innerH;
+              return (
+                <g key={label}>
+                  <text x={padding.left - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[10px]">
+                    {label}시
+                  </text>
+                  <line x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y} stroke="#f3f4f6" />
+                </g>
+              );
+            })}
+            <path d={bedPath} fill="none" stroke="#818cf8" strokeWidth={1.5} />
+            {bedPoints.map((p, i) => (
+              <circle key={`b${i}`} cx={p.x} cy={p.y} r={2.5} fill="#818cf8" />
+            ))}
+            <path d={wakePath} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
+            {wakePoints.map((p, i) => (
+              <circle key={`w${i}`} cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" />
+            ))}
+            {valid.map((r, i) => {
+              const x = padding.left + (i / Math.max(1, valid.length - 1)) * innerW;
+              const step = Math.max(1, Math.floor(valid.length / 7));
+              if (i % step !== 0 && i !== valid.length - 1) return null;
+              return (
+                <text key={r.id} x={x} y={chartHeight - 2} textAnchor="middle" className="fill-gray-400 text-[9px]">
+                  {r.date.slice(5)}
                 </text>
-                <line x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y} stroke="#f3f4f6" />
-              </g>
-            );
-          })}
-          <path d={bedPath} fill="none" stroke="#818cf8" strokeWidth={1.5} />
-          {bedPoints.map((p, i) => (
-            <circle key={`b${i}`} cx={p.x} cy={p.y} r={2.5} fill="#818cf8" />
-          ))}
-          <path d={wakePath} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
-          {wakePoints.map((p, i) => (
-            <circle key={`w${i}`} cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" />
-          ))}
-          {valid.map((r, i) => {
-            const x = padding.left + (i / Math.max(1, valid.length - 1)) * innerW;
-            const step = Math.max(1, Math.floor(valid.length / 7));
-            if (i % step !== 0 && i !== valid.length - 1) return null;
-            return (
-              <text key={r.id} x={x} y={chartHeight - 2} textAnchor="middle" className="fill-gray-400 text-[9px]">
-                {r.date.slice(5)}
-              </text>
-            );
-          })}
-        </svg>
+              );
+            })}
+          </svg>
+        )}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">
