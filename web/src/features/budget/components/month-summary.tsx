@@ -1,6 +1,7 @@
 'use client';
 
 import type { MonthSummary } from '@/features/budget/lib/types';
+import { calculateRunwayShorten } from '@/features/budget/lib/budget-calc';
 import { formatAmount } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
 import { BanknotesIcon, ClockIcon, CheckCircleIcon } from '@/components/ui/icons';
@@ -90,11 +91,19 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
               )}
 
               {/* 하루 분석 메시지 */}
-              {todayRemaining < 0 && daysLeft > 0 && (todayBudget > 0 || (dailyBudget != null && dailyBudget > 0)) && (
-                <div className="mt-2 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-500">
-                  남은 {daysLeft}일 이 패턴이면 런웨이 약 {Math.floor(Math.abs(todayRemaining) * daysLeft / (todayBudget > 0 ? todayBudget : dailyBudget!))}일 단축
-                </div>
-              )}
+              {(() => {
+                const shortenDays = calculateRunwayShorten({
+                  todayRemaining, todayBudget, totalBudget, totalDays, daysLeft,
+                });
+                if (shortenDays != null && shortenDays > 0) {
+                  return (
+                    <div className="mt-2 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-500">
+                      남은 {daysLeft}일 이 패턴이면 런웨이 약 {shortenDays}일 단축
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               {todayRemaining > 0 && todayFlexSpent > 0 && (
                 <div className="mt-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs text-green-600">
                   오늘 {formatAmount(todayRemaining)} 아꼈어!

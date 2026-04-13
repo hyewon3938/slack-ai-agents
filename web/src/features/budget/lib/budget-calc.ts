@@ -217,6 +217,48 @@ export function calculateTodayAllocation(input: TodayAllocationInput): TodayAllo
   return { todayBudget, todayRemaining };
 }
 
+// ─── 런웨이 단축 경고 계산 ──────────────────────────────────
+
+/** 런웨이 단축 경고 입력 */
+export interface RunwayShortenInput {
+  /** 오늘 남음(음수 = 초과). null이면 데이터 없음 */
+  todayRemaining: number | null;
+  /** 오늘 할당 예산 (0 = 월 초과로 클램프됨) */
+  todayBudget: number | null;
+  /** 월 자유 예산 (freePerMonth, 항상 >= 0) */
+  totalBudget: number | null;
+  /** 결제주기 총 일수 */
+  totalDays: number;
+  /** 남은 일수 (오늘 제외) */
+  daysLeft: number;
+}
+
+/**
+ * 런웨이 단축 일수 계산 (순수 함수)
+ *
+ * "오늘과 같은 패턴으로 남은 일수를 보내면 런웨이가 며칠 단축되는가"
+ *
+ * 분모 우선순위:
+ * 1. todayBudget > 0 → 오늘 할당 예산 (가장 정확)
+ * 2. totalBudget / totalDays → 월 예산 기준 일일 예산 (월 초과 시 fallback)
+ * 3. 둘 다 없으면 null (경고 표시 불가)
+ */
+export function calculateRunwayShorten(input: RunwayShortenInput): number | null {
+  const { todayRemaining, todayBudget, totalBudget, totalDays, daysLeft } = input;
+
+  if (todayRemaining == null || todayRemaining >= 0 || daysLeft <= 0) return null;
+
+  const baseDailyBudget = todayBudget != null && todayBudget > 0
+    ? todayBudget
+    : totalBudget != null && totalBudget > 0 && totalDays > 0
+      ? Math.round(totalBudget / totalDays)
+      : 0;
+
+  if (baseDailyBudget <= 0) return null;
+
+  return Math.floor(Math.abs(todayRemaining) * daysLeft / baseDailyBudget);
+}
+
 // ─── 스냅샷 날짜 결정 ──────────────────────────────────────
 
 /**

@@ -6,6 +6,7 @@ import {
   calcCycleDays,
   calculateBudgetAllocation,
   calculateTodayAllocation,
+  calculateRunwayShorten,
   resolveSnapshotDate,
 } from '../budget-calc';
 import type { BudgetCalcInput } from '../budget-calc';
@@ -388,5 +389,115 @@ describe('resolveSnapshotDate', () => {
     // 12:00 KST = 03:00 UTC → anchor 02:00 UTC → 11:00 KST 같은 날
     const now = new Date('2026-04-11T03:00:00Z');
     expect(resolveSnapshotDate(now)).toBe('2026-04-11');
+  });
+});
+
+// ─── calculateRunwayShorten ──────────────────────────────
+//
+// 핵심 버그 재현:
+//   - 월 예산 초과 → todayBudget=0(클램프) → 런웨이 단축 경고 미표시
+//   - 원인: 분모(todayBudget)가 0이면 division by zero 방어로 경고 안 나옴
+//   - 수정: todayBudget=0일 때 totalBudget/totalDays로 fallback
+
+describe('calculateRunwayShorten', () => {
+  test('정상 케이스: todayBudget > 0 → todayBudget을 분모로 사용', () => {
+    const result = calculateRunwayShorten({
+      todayRemaining: -20_000,
+      todayBudget: 10_000,
+      totalBudget: 300_000,
+      totalDays: 30,
+      daysLeft: 5,
+    });
+    // |(-20000)| * 5 / 10000 = 10
+    expect(result).toBe(10);
+  });
+
+  test('🐛 bug fix: todayBudget=0(월 초과 클램프) → totalBudget/totalDays fallback', () => {
+    // 실제 재현: 97500원 초과, todayBudget=0, 월예산 300000, 30일 주기, 남은 2일
+    const result = calculateRunwayShorten({
+      todayRemaining: -97_500,
+      todayBudget: 0,
+      totalBudget: 300_000,
+      totalDays: 30,
+      daysLeft: 2,
+    });
+    // fallback 분모 = round(300000/30) = 10000
+    // |(-97500)| * 2 / 10000 = 19.5 → floor → 19
+    expect(result).toBe(19);
+    expect(result).not.toBeNull(); // 핵심: null이 아니어야 경고가 표시됨
+  });
+
+  test('🐛 bug fix: todayBudget=0 + dailyBudget 음수(월 초과) → fallback으로 경고 표시', () => {
+    // dailyBudget이 음수여도 totalBudget/totalDays가 양수면 경고 나와야 함
+    const result = calculateRunwayShorten({
+      todayRemaining: -50_000,
+      todayBudget: 0,
+      totalBudget: 200_000,
+      totalDays: 31,
+      daysLeft: 3,
+    });
+    // fallback 분모 = round(200000/31) = 6452
+    // 50000 * 3 / 6452 = 23.25 → 23
+    expect(result).toBe(23);
+  });
+
+  test('todayRemaining >= 0 → null (초과 아님, 경고 불필요)', () => {
+    expect(calculateRunwayShorten({
+      todayRemaining: 5_000,
+      todayBudget: 10_000,
+      totalBudget: 300_000,
+      totalDays: 30,
+      daysLeft: 5,
+    })).toBeNull();
+  });
+
+  test('todayRemaining = 0 → null (정확히 예산대로 씀)', () => {
+    expect(calculateRunwayShorten({
+      todayRemaining: 0,
+      todayBudget: 10_000,
+      totalBudget: 300_000,
+      totalDays: 30,
+      daysLeft: 5,
+    })).toBeNull();
+  });
+
+  test('todayRemaining null → null (데이터 없음)', () => {
+    expect(calculateRunwayShorten({
+      todayRemaining: null,
+      todayBudget: 10_000,
+      totalBudget: 300_000,
+      totalDays: 30,
+      daysLeft: 5,
+    })).toBeNull();
+  });
+
+  test('daysLeft = 0 → null (주기 마지막 날, 단축 의미 없음)', () => {
+    expect(calculateRunwayShorten({
+      todayRemaining: -20_000,
+      todayBudget: 10_000,
+      totalBudget: 300_000,
+      totalDays: 30,
+      daysLeft: 0,
+    })).toBeNull();
+  });
+
+  test('totalBudget null + todayBudget=0 → null (예산 데이터 없음)', () => {
+    expect(calculateRunwayShorten({
+      todayRemaining: -20_000,
+      todayBudget: 0,
+      totalBudget: null,
+      totalDays: 30,
+      daysLeft: 5,
+    })).toBeNull();
+  });
+
+  test('totalBudget=0 + todayBudget=0 → null (예산 0)', () => {
+    expect(calculateRunwayShorten({
+      todayRemaining: -20_000,
+      todayBudget: 0,
+      totalBudget: 0,
+      totalDays: 30,
+      daysLeft: 5,
+    })).toBeNull();
   });
 });
