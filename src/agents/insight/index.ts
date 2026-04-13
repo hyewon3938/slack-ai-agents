@@ -12,6 +12,7 @@ import {
   INSIGHT_COMMAND_RE,
   saveDiaryEntry,
   pickDiaryConfirmation,
+  naturalDelay,
 } from './diary-fast-path.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
@@ -137,6 +138,7 @@ export const createInsightAgent = (llmClient: LLMClient): AgentHandler => {
     if (!INSIGHT_COMMAND_RE.test(trimmed)) {
       try {
         await saveDiaryEntry(userId, text.trim());
+        await naturalDelay();
         await sendMessage(say, pickDiaryConfirmation());
       } catch (error: unknown) {
         console.error('[Insight Agent] 일기 저장 실패:', error);
