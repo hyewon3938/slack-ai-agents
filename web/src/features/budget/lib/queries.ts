@@ -703,7 +703,7 @@ export async function calcBudgetPreview(
   // 이번 달 자유 지출 + 수입 조회
   const endDate = todayISOStr < cycleTo ? todayISOStr : cycleTo;
   const budgetStartAtParam = previewBudgetStartAt ?? '9999-12-31T00:00:00Z';
-  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string }>(
+  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string; excluded: string }>(
     `SELECT
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$2 AND date<=$3
@@ -719,11 +719,17 @@ export async function calcBudgetPreview(
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$4 AND date<=$5 AND COALESCE(type,'expense')='income'
            AND COALESCE(distribute_to_budget, false) = false
-       ), 0)::text as income`,
+       ), 0)::text as income,
+       COALESCE((SELECT SUM(amount) FROM expenses
+         WHERE user_id=$1 AND date>=$2 AND date<=$3
+           AND exclude_from_budget = true
+           AND COALESCE(type,'expense')='expense'
+       ), 0)::text as excluded`,
     [userId, trackingFrom, endDate, cycleFrom, cycleTo, budgetStartAtParam],
   );
   const flexibleSpent = Number(cycleMetrics?.flex ?? 0) + Number(cycleMetrics?.overflow ?? 0);
   const currentMonthIncome = Number(cycleMetrics?.income ?? 0);
+  const excludedSpent = Number(cycleMetrics?.excluded ?? 0);
 
   const installments: InstallmentProjection[] = installmentRows.rows
     .filter((r) => r.installment_total > r.installment_num)
@@ -745,6 +751,7 @@ export async function calcBudgetPreview(
     cycleDays,
     flexibleSpent,
     currentMonthIncome,
+    excludedSpent,
   });
 
   if (calcResult.freePerMonth === null) return null;
@@ -857,7 +864,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
   // budgetStartAt이 null이면 '9999-12-31T00:00:00Z'로 폴백 → 모든 할부가 구 할부로 처리됨
   const endDate = todayStr < cycleTo ? todayStr : cycleTo;
   const budgetStartAtParam = budgetStartAt ?? '9999-12-31T00:00:00Z';
-  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string; today_flex: string }>(
+  const cycleMetrics = await queryOne<{ flex: string; overflow: string; income: string; today_flex: string; excluded: string }>(
     `SELECT
        COALESCE((SELECT SUM(amount) FROM expenses
          WHERE user_id=$1 AND date>=$2 AND date<=$3
@@ -879,12 +886,18 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
            AND (is_installment=false OR (is_installment=true AND created_at>=$7))
            AND exclude_from_budget = false
            AND COALESCE(type,'expense')='expense' AND planned_expense_id IS NULL
-       ), 0)::text as today_flex`,
+       ), 0)::text as today_flex,
+       COALESCE((SELECT SUM(amount) FROM expenses
+         WHERE user_id=$1 AND date>=$2 AND date<=$3
+           AND exclude_from_budget = true
+           AND COALESCE(type,'expense')='expense'
+       ), 0)::text as excluded`,
     [userId, trackingFrom, endDate, cycleFrom, cycleTo, todayStr, budgetStartAtParam],
   );
   const flexibleSpent = Number(cycleMetrics?.flex ?? 0) + Number(cycleMetrics?.overflow ?? 0);
   const currentMonthIncome = Number(cycleMetrics?.income ?? 0);
   const todayFlexSpent = Number(cycleMetrics?.today_flex ?? 0);
+  const excludedSpent = Number(cycleMetrics?.excluded ?? 0);
 
   // ─── 예산 배분 계산 (공통 함수) ───
   // budgetBase 보정, 월별 locked, freePerMonth, dailyFree 산출
@@ -899,6 +912,7 @@ export async function queryRunway(userId: number, targetDate?: string): Promise<
     cycleDays,
     flexibleSpent,
     currentMonthIncome,
+    excludedSpent,
   });
   freePerMonth = calcResult.freePerMonth;
 
