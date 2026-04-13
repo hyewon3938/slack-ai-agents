@@ -35,8 +35,8 @@ export function SleepDashboard() {
       <div className="mx-auto max-w-5xl space-y-4 px-4 py-4 md:py-6">
         <PeriodSelector period={period} onChange={handlePeriodChange} />
         <SleepSummaryCards summary={data.summary} />
-        <SleepTimeline records={data.records} />
-        <SleepTrendChart records={data.records} />
+        <SleepTimeline records={data.records} period={period} />
+        <SleepTrendChart records={data.records} period={period} />
         <SleepDayPattern pattern={data.dayOfWeekPattern} />
       </div>
     </div>
