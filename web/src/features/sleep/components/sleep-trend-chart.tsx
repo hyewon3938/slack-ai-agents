@@ -23,10 +23,9 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
 
   const maxDur = Math.max(...valid.map((r) => r.duration_minutes!));
   const chartHeight = 120;
-  const availableWidth = Math.max(cw, 200);
-  const barWidth = Math.min(24, Math.max(6, availableWidth / valid.length - 3));
-  const dataWidth = valid.length * (barWidth + 3) + 8;
-  const chartWidth = Math.max(dataWidth, cw, 200);
+  const chartWidth = Math.max(cw, 200);
+  const barGap = 3;
+  const barWidth = Math.max(6, (chartWidth - 8) / valid.length - barGap);
 
   const idealMin = 420;
   const idealMax = 480;
@@ -76,7 +75,7 @@ function DurationChart({ records }: { records: SleepRecordWithEvents[] }) {
       </div>
       <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-4 rounded-sm bg-green-100" /> 적정 (7\~8h)
+          <span className="inline-block h-2 w-4 rounded-sm bg-green-100" /> 적정 (7~8h)
         </span>
       </div>
     </div>
