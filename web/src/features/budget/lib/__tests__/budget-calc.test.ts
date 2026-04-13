@@ -99,11 +99,12 @@ describe('calculateBudgetAllocation', () => {
     cycleDays: 31,      // 3/16 ~ 4/15
     flexibleSpent: 30_000,
     currentMonthIncome: 40_000,
+    excludedSpent: 0,
   };
 
-  test('budgetBase = totalAvailable + flexibleSpent - currentMonthIncome', () => {
+  test('budgetBase = totalAvailable + flexibleSpent + excludedSpent - currentMonthIncome', () => {
     const result = calculateBudgetAllocation(baseInput);
-    expect(result.budgetBase).toBe(1_000_000 + 30_000 - 40_000); // 990_000
+    expect(result.budgetBase).toBe(1_000_000 + 30_000 + 0 - 40_000); // 990_000
   });
 
   test('targetDate null → freePerMonth null, 나머지 0', () => {
@@ -196,6 +197,70 @@ describe('calculateBudgetAllocation', () => {
     expect(result.monthlyLocked[1].days).toBe(30);
     // month 2 = '2026-06': 5/16 ~ 6/15 → 31일
     expect(result.monthlyLocked[2].days).toBe(31);
+  });
+
+  // ─── excludedSpent 관련 테스트 ───
+
+  test('🐛 bug fix: excludedSpent가 budgetBase에 복원되어 자유예산에 영향 안 줌', () => {
+    // 시나리오: 리커밋 택배 3500원이 예산 제외인데 자유예산을 깎았던 버그
+    // 은행 잔고가 3500원 줄었지만(totalAvailable), excludedSpent로 복원해야 함
+    const withExcluded = calculateBudgetAllocation({
+      ...baseInput,
+      totalAvailable: 996_500,   // 은행에서 3500 이미 빠진 상태
+      excludedSpent: 3_500,       // 예산 제외 지출 3500
+    });
+    const withoutExcluded = calculateBudgetAllocation({
+      ...baseInput,
+      totalAvailable: 1_000_000, // 예산 제외 지출이 없었을 때
+      excludedSpent: 0,
+    });
+    // budgetBase가 같아야 함 (996500 + 3500 = 1000000)
+    expect(withExcluded.budgetBase).toBe(withoutExcluded.budgetBase);
+    // freePerMonth도 같아야 함
+    expect(withExcluded.freePerMonth).toBe(withoutExcluded.freePerMonth);
+    expect(withExcluded.dailyFree).toBe(withoutExcluded.dailyFree);
+  });
+
+  test('excludedSpent가 크면 budgetBase가 더 높아짐 → 자유예산 증가', () => {
+    const noExcluded = calculateBudgetAllocation({ ...baseInput, excludedSpent: 0 });
+    const bigExcluded = calculateBudgetAllocation({ ...baseInput, excludedSpent: 50_000 });
+    expect(bigExcluded.budgetBase).toBe(noExcluded.budgetBase + 50_000);
+    expect(bigExcluded.freePerMonth!).toBeGreaterThan(noExcluded.freePerMonth!);
+  });
+
+  test('고정비 자동기록 + excludedSpent: locked과 이중 차감 안 됨', () => {
+    // 시나리오: 고정비 100,000이 자동 기록됨 (exclude_from_budget=true)
+    // 은행 잔고가 100,000 줄었고, excludedSpent에 100,000 포함
+    // fixedMonthly=100,000이 locked에도 있음
+    // → budgetBase에서 복원되고, locked에서 차감되므로 정확히 1번만 차감
+    const withFixed = calculateBudgetAllocation({
+      ...baseInput,
+      totalAvailable: 900_000,   // 고정비 100,000 납부 후
+      excludedSpent: 100_000,    // 고정비가 excluded 지출에 포함
+      fixedMonthly: 100_000,
+    });
+    const idealCase = calculateBudgetAllocation({
+      ...baseInput,
+      totalAvailable: 1_000_000, // 아직 미납부
+      excludedSpent: 0,
+      fixedMonthly: 100_000,
+    });
+    // budgetBase는 같아야 함 (900000+100000 = 1000000)
+    expect(withFixed.budgetBase).toBe(idealCase.budgetBase);
+    // freePerMonth도 같아야 함 (locked 배분 동일)
+    expect(withFixed.freePerMonth).toBe(idealCase.freePerMonth);
+  });
+
+  test('excludedSpent + 수입: 수입 격리와 독립적으로 작동', () => {
+    const result = calculateBudgetAllocation({
+      ...baseInput,
+      totalAvailable: 946_500,     // 3500 excluded + 50000 spent
+      flexibleSpent: 50_000,
+      currentMonthIncome: 20_000,
+      excludedSpent: 3_500,
+    });
+    // budgetBase = 946500 + 50000 + 3500 - 20000 = 980000
+    expect(result.budgetBase).toBe(980_000);
   });
 });
 

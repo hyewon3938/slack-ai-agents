@@ -62,6 +62,7 @@ export interface BudgetCalcInput {
   cycleDays: number;            // 전체 주기 일수
   flexibleSpent: number;        // 이번 주기 자유 지출
   currentMonthIncome: number;   // 이번 달 수입
+  excludedSpent: number;        // 이번 주기 예산 제외 지출 (exclude_from_budget=true)
 }
 
 /** 월별 잠긴 돈 상세 */
@@ -87,9 +88,11 @@ export interface BudgetCalcResult {
  * 예산 배분 계산 (순수 함수)
  *
  * 핵심 원리:
- * - budgetBase = totalAvailable + flexibleSpent - currentMonthIncome
- *   (이번 달 자유 지출을 복원해 "주기 시작 시점" 가용자금으로 맞추고,
+ * - budgetBase = totalAvailable + flexibleSpent + excludedSpent - currentMonthIncome
+ *   (이번 달 자유 지출 + 예산 제외 지출을 복원해 "주기 시작 시점" 가용자금으로 맞추고,
  *    수입은 이번 달에만 반영해 미래 월 예산 부풀림 방지)
+ * - excludedSpent: 예산 제외 지출(고정비 자동기록 포함)도 은행 잔고를 줄이므로 복원 필요.
+ *   고정비는 totalLocked에서 별도 차감되므로 이중 계산 아님.
  * - 현재 달 locked는 budgetDays/cycleDays 비율로 프로레이션
  * - 신규 할부(isNew)는 month 0에서 locked 제외 (자유 지출로 이미 반영)
  * - freePerMonth = dailyFree * cycleDays (월 기준 일관성)
@@ -98,11 +101,12 @@ export function calculateBudgetAllocation(input: BudgetCalcInput): BudgetCalcRes
   const {
     totalAvailable, fixedMonthly, installments, plannedExpenses,
     billingMonth, targetDate, budgetDays, cycleDays,
-    flexibleSpent, currentMonthIncome,
+    flexibleSpent, currentMonthIncome, excludedSpent,
   } = input;
 
-  // 1. budgetBase: 자유 지출 복원 + 수입 격리
-  const budgetBase = totalAvailable + flexibleSpent - currentMonthIncome;
+  // 1. budgetBase: 자유 지출 + 예산 제외 지출 복원 + 수입 격리
+  // excludedSpent를 더해야 예산 제외 지출이 자유 예산을 깎지 않음
+  const budgetBase = totalAvailable + flexibleSpent + excludedSpent - currentMonthIncome;
 
   // 2. 목표 기간 유효성 확인
   if (!targetDate || !/^\d{4}-\d{2}$/.test(targetDate)) {
