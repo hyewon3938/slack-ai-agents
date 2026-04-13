@@ -208,6 +208,7 @@ const USER_ID_EXEMPT_TABLES = new Set([
   'sleep_events',
   'notification_settings',
   'categories',
+  'reminders',
 ]);
 
 /**

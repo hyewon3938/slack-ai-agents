@@ -143,6 +143,10 @@ describe('validateUserIdFilter', () => {
     expect(validateUserIdFilter('INSERT INTO sleep_events (date, event_time) VALUES ($1, $2)', 1)).toBeNull();
   });
 
+  it('면제 테이블(reminders)만 참조하면 통과한다', () => {
+    expect(validateUserIdFilter("UPDATE reminders SET active = false WHERE title LIKE '%파슬리%'", 1)).toBeNull();
+  });
+
   it('information_schema 쿼리는 통과한다', () => {
     expect(validateUserIdFilter('SELECT * FROM information_schema.columns WHERE table_schema = \'public\'', 1)).toBeNull();
   });
