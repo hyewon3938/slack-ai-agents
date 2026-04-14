@@ -408,7 +408,10 @@ const insightNightTask = async (app: App, config: LifeCronConfig): Promise<void>
       '오늘도 수고했어. 내일도 좋은 하루 보내자.',
     );
 
-    await postToChannel(app.client, channelId, comment);
+    const diaryBlock = `*오늘의 일기*\n${diary.content}`;
+    const message = `${diaryBlock}\n\n---\n\n${comment}`;
+
+    await postToChannel(app.client, channelId, message);
     console.warn(`[Life Cron] 일기 리뷰 전송 완료 (유저=${userId})`);
   });
 };
