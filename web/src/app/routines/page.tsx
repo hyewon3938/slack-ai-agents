@@ -1,12 +1,5 @@
-'use client';
-
-import { AppShell } from '@/components/ui/app-shell';
-import { LifePage } from '@/features/life/components/life-page';
+import { redirect } from 'next/navigation';
 
 export default function RoutinesPageRoute() {
-  return (
-    <AppShell>
-      <LifePage />
-    </AppShell>
-  );
+  redirect('/life/sleep');
 }

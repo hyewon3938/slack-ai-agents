@@ -14,13 +14,11 @@ interface NavItem {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string; size?: number }>;
-  /** 이 경로들도 활성 상태로 표시 */
-  activeOn?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/schedules', label: '일정', Icon: CalendarIcon },
-  { href: '/routines', label: '생활', Icon: SunIcon },
+  { href: '/life', label: '생활', Icon: SunIcon },
   { href: '/budget', label: '지출', Icon: WalletIcon },
 ];
 
@@ -60,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <nav className="flex gap-1">
             {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href || (item.activeOn?.includes(pathname) ?? false);
+              const isActive = pathname.startsWith(item.href);
               return (
                 <a
                   key={item.href}
@@ -110,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
         <div className="flex">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || (item.activeOn?.includes(pathname) ?? false);
+            const isActive = pathname.startsWith(item.href);
             return (
               <a
                 key={item.href}

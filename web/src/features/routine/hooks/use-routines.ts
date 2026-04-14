@@ -7,7 +7,6 @@ import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/fea
 export type RoutineView = 'checklist' | 'stats' | 'manage';
 
 export function useRoutines() {
-  const [view, setView] = useState<RoutineView>('checklist');
   const [selectedDate, setSelectedDate] = useState(getTodayISO);
   const [templates, setTemplates] = useState<RoutineTemplateRow[]>([]);
   const [records, setRecords] = useState<RoutineRecordRow[]>([]);
@@ -166,10 +165,10 @@ export function useRoutines() {
 
   return {
     // state
-    view, selectedDate, templates, records, stats, yearlyStats, loading,
+    selectedDate, templates, records, stats, yearlyStats, loading,
     showForm, editingTemplate, editingRecord,
     // setters
-    setView, setSelectedDate, setShowForm, setEditingTemplate, setEditingRecord,
+    setSelectedDate, setShowForm, setEditingTemplate, setEditingRecord,
     // date nav
     handlePrevDate, handleNextDate, handleToday,
     // templates
