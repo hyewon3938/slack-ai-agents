@@ -5,7 +5,7 @@
  */
 
 import { query } from '../../shared/db.js';
-import { getTodayISO } from '../../shared/kst.js';
+import { getEffectiveTodayISO } from '../../shared/kst.js';
 
 /** 응답 전 자연스러운 딜레이 (1~2초 랜덤) */
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -50,15 +50,6 @@ export const pickDiaryConfirmation = (): string => {
   return DIARY_CONFIRMATIONS[idx] ?? DIARY_CONFIRMATIONS[0];
 };
 
-// ─── 명령 패턴 감지 ──────────────────────────────────────
-
-/**
- * LLM 에이전트 루프가 필요한 명령 패턴.
- * 매칭되면 일기 fast path를 건너뛰고 LLM으로 전달.
- */
-export const INSIGHT_COMMAND_RE =
-  /(?:테마|프로필|패턴|원국|격국|용신|사주|대운|일기\s*(?:보여|읽어|확인|분석|삭제)|분석|해석|설명\s*해|알려\s*줘|뭐야|어떻게\s*(?:봐|생각|돼|되는)|어때|삭제|추가해\s*줘)/;
-
 // ─── DB 저장 ─────────────────────────────────────────────
 
 /**
@@ -69,7 +60,7 @@ export const saveDiaryEntry = async (
   userId: number,
   content: string,
 ): Promise<void> => {
-  const date = getTodayISO();
+  const date = getEffectiveTodayISO();
 
   const existing = await query<{ id: number }>(
     `SELECT id FROM diary_entries WHERE user_id = $1 AND date = $2 LIMIT 1`,
