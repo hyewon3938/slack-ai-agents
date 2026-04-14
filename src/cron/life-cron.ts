@@ -24,7 +24,7 @@ import {
   decrementReminderCount,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
-import { getTodayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
+import { getTodayISO, getEffectiveTodayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
 import {
   DEFAULT_USER_ID,
   queryAllUserMappings,
@@ -367,7 +367,7 @@ const insightMorningTask = async (app: App, config: LifeCronConfig): Promise<voi
 /** 밤 일기 리뷰 → insight 채널.
  * 오늘 일기가 있으면 LLM 1회로 하루 코멘트, 없으면 간단 리마인더 전송. */
 const insightNightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
-  const today = getTodayISO();
+  const today = getEffectiveTodayISO();
 
   await forEachUser(config, 'insight', '일기 리뷰', async (userId, channelId) => {
     const diaryResult = await query<{ content: string }>(
