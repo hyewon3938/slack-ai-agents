@@ -1,5 +1,63 @@
 'use client';
 
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+
+interface LinkTab {
+  href: string;
+  label: string;
+}
+
+/** URL 기반 상단 밑줄 스타일 탭 */
+export function LinkTopTabs({ tabs, maxWidth = 'max-w-5xl' }: { tabs: LinkTab[]; maxWidth?: string }) {
+  const pathname = usePathname();
+  return (
+    <div className="border-b border-gray-200 bg-white px-4 pt-2">
+      <div className={`mx-auto flex ${maxWidth} gap-1`}>
+        {tabs.map((tab) => {
+          const isActive = pathname.startsWith(tab.href);
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={`rounded-t-lg px-4 py-2 text-xs font-medium transition ${
+                isActive
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'border-b-2 border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** URL 기반 Pill 형태 서브 탭 */
+export function LinkPillTabs({ tabs, className = '' }: { tabs: LinkTab[]; className?: string }) {
+  const pathname = usePathname();
+  return (
+    <div className={`flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm ${className}`}>
+      {tabs.map((tab) => {
+        const isActive = pathname.startsWith(tab.href);
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            className={`flex-1 rounded-md py-1.5 text-center text-xs font-medium transition ${
+              isActive ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 interface Tab<T extends string> {
   id: T;
   label: string;
