@@ -1,36 +1,24 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import type { RoutineView } from '../hooks/use-routines';
+import { useCallback } from 'react';
 import type { RoutineRecordRow } from '@/features/routine/lib/types';
-import { useRoutines } from '../hooks/use-routines';
-import { DateNav } from './date-nav';
-import { RoutineChecklist } from './routine-checklist';
-import { RoutineStats } from './routine-stats';
-import { RoutineList } from './routine-list';
-import { RoutineForm } from './routine-form';
-import { RoutineRecordDetail } from './routine-record-detail';
+import { useRoutines } from '@/features/routine/hooks/use-routines';
+import { DateNav } from '@/features/routine/components/date-nav';
+import { RoutineChecklist } from '@/features/routine/components/routine-checklist';
+import { RoutineForm } from '@/features/routine/components/routine-form';
+import { RoutineRecordDetail } from '@/features/routine/components/routine-record-detail';
 import { Modal } from '@/components/ui/modal';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
-import { PillTabs } from '@/components/ui/tabs';
-import { TabsSkeleton, ListSkeleton } from '@/components/ui/skeleton';
+import { ListSkeleton } from '@/components/ui/skeleton';
 
-const ROUTINE_TABS: { id: RoutineView; label: string }[] = [
-  { id: 'checklist', label: '체크리스트' },
-  { id: 'stats', label: '통계' },
-  { id: 'manage', label: '관리' },
-];
-
-export function RoutinePage() {
-  const [view, setView] = useState<RoutineView>('checklist');
+export default function ChecklistPage() {
   const {
-    selectedDate, templates, records, stats, yearlyStats, loading,
+    selectedDate, templates, records, loading,
     showForm, editingTemplate, editingRecord,
     setShowForm, setEditingTemplate, setEditingRecord,
     handlePrevDate, handleNextDate, handleToday,
     handleCreateTemplate, handleUpdateTemplate, handleDeleteTemplate,
     handleToggleRecord, handleUpdateMemo,
-    fetchStats,
   } = useRoutines();
 
   const handleEditTemplate = useCallback(
@@ -57,75 +45,30 @@ export function RoutinePage() {
     [editingTemplate, handleUpdateTemplate, handleCreateTemplate],
   );
 
-  const handleToggleActive = useCallback(
-    (id: number, active: boolean) => handleUpdateTemplate(id, { active }),
-    [handleUpdateTemplate],
-  );
-
   if (loading) {
     return (
-      <div className="flex flex-1 flex-col">
-        <div className="mx-auto w-full max-w-5xl px-4 pt-4">
-          <TabsSkeleton count={3} />
-        </div>
-        <div className="mx-auto w-full max-w-5xl px-4 py-4">
-          <ListSkeleton rows={5} rowHeight="h-14" />
-        </div>
+      <div className="mx-auto w-full max-w-5xl px-4 py-4">
+        <ListSkeleton rows={5} rowHeight="h-14" />
       </div>
     );
   }
-  return (
-    <div className="flex flex-1 flex-col">
-      {/* 서브 탭 */}
-      <div className="mx-auto w-full max-w-5xl px-4 pt-4">
-        <PillTabs tabs={ROUTINE_TABS} active={view} onChange={setView} />
-      </div>
 
-      {/* 콘텐츠 */}
+  return (
+    <>
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl px-4 py-4 md:py-6">
-          {view === 'checklist' && (
-            <div className="space-y-5">
-              <DateNav
-                date={selectedDate}
-                onPrev={handlePrevDate}
-                onNext={handleNextDate}
-                onToday={handleToday}
-              />
-              <RoutineChecklist
-                records={records}
-                onToggle={handleToggleRecord}
-                onMemoClick={handleMemoClick}
-                onEditTemplate={handleEditTemplate}
-              />
-            </div>
-          )}
-          {view === 'stats' && (
-            <RoutineStats
-              stats={stats}
-              yearlyStats={yearlyStats}
-              fetchStats={fetchStats}
-              selectedDate={selectedDate}
-            />
-          )}
-          {view === 'manage' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-gray-900">루틴 관리</h2>
-                <button
-                  onClick={() => setShowForm(true)}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  + 추가
-                </button>
-              </div>
-              <RoutineList
-                templates={templates}
-                onEdit={setEditingTemplate}
-                onToggleActive={handleToggleActive}
-              />
-            </div>
-          )}
+        <div className="mx-auto max-w-5xl space-y-5 px-4 py-4 md:py-6">
+          <DateNav
+            date={selectedDate}
+            onPrev={handlePrevDate}
+            onNext={handleNextDate}
+            onToday={handleToday}
+          />
+          <RoutineChecklist
+            records={records}
+            onToggle={handleToggleRecord}
+            onMemoClick={handleMemoClick}
+            onEditTemplate={handleEditTemplate}
+          />
         </div>
       </div>
 
@@ -182,7 +125,6 @@ export function RoutinePage() {
           </div>
         )}
       </BottomSheet>
-    </div>
+    </>
   );
 }
-

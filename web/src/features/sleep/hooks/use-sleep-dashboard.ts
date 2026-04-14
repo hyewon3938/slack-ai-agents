@@ -10,8 +10,8 @@ const PERIOD_DAYS: Record<SleepPeriod, number> = {
   '1m': 29,
 };
 
-export function useSleepDashboard() {
-  const [period, setPeriod] = useState<SleepPeriod>('1w');
+export function useSleepDashboard(initialPeriod: SleepPeriod = '1w') {
+  const [period, setPeriod] = useState<SleepPeriod>(initialPeriod);
   const [data, setData] = useState<SleepDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
