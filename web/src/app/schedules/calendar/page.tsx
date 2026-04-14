@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { Suspense, useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { startOfWeek, endOfWeek } from 'date-fns';
@@ -42,6 +42,14 @@ function getTitle(view: string, currentDate: Date): string {
 }
 
 export default function CalendarPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 p-4"><div className="mx-auto max-w-3xl"><ListSkeleton rows={5} rowHeight="h-20" /></div></div>}>
+      <CalendarContent />
+    </Suspense>
+  );
+}
+
+function CalendarContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const viewParam = searchParams.get('view') as CalendarView | null;
