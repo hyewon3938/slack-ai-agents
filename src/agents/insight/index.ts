@@ -132,6 +132,7 @@ const showTodayDiary = async (
  * 일기 자동 저장 + 운세 조회 fast path + 오늘 일기 조회.
  * LLM 에이전트 루프 없음 — 모든 비명령 메시지는 일기로 저장.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
   return async (message, say) => {
     const text = 'text' in message ? (message.text ?? '') : '';
