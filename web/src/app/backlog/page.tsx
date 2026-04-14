@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function BacklogPage() {
-  redirect('/schedules');
+  redirect('/schedules/backlog');
 }
