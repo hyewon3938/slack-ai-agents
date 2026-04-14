@@ -24,8 +24,8 @@ function getInitialView(): CalendarView {
   return window.innerWidth >= 768 ? 'week' : 'day';
 }
 
-export function useSchedules() {
-  const [view, setView] = useState<CalendarView>(getInitialView);
+export function useSchedules(initialView?: CalendarView) {
+  const [view, setView] = useState<CalendarView>(initialView ?? getInitialView);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
