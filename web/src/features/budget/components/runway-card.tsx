@@ -18,7 +18,7 @@ export function RunwayCard() {
 
   const fetchRunway = useCallback(() => {
     setLoading(true);
-    fetch('/api/budget/v2/runway')
+    fetch('/api/budget/runway')
       .then((r) => r.json())
       .then((d: { data: RunwayProjectionResponse }) => setRunway(d.data))
       .catch(() => setRunway(null))

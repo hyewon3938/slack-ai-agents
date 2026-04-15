@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { queryTargetDate, upsertTargetDate, calcBudgetPreview } from '@/features/budget/lib/queries';
+import { getBudgetPreview } from '@/features/budget/lib/facade';
+import {
+  readTargetMonth,
+  upsertTargetDate,
+} from '@/features/budget/lib/repository/settings-repo';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,17 +16,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const previewTarget = searchParams.get('previewTarget');
 
-    // 프리뷰 모드: 목표 날짜 변경 시 즉시 예산 미리보기
     if (previewTarget) {
-      const preview = await calcBudgetPreview(userId, previewTarget);
+      const preview = await getBudgetPreview(userId, new Date(), previewTarget);
       if (!preview) return NextResponse.json({ error: '유효하지 않은 날짜' }, { status: 400 });
       return NextResponse.json({ data: preview });
     }
 
-    const targetDate = await queryTargetDate(userId);
+    const targetDate = await readTargetMonth(userId);
     return NextResponse.json({ data: { target_date: targetDate } });
   } catch (err) {
-    console.error('[Budget API]', request.url, err);
+    console.error('[Budget API] settings GET', err);
     return NextResponse.json({ error: '설정 조회 실패' }, { status: 500 });
   }
 }
@@ -40,7 +43,7 @@ export async function PUT(request: Request) {
     await upsertTargetDate(userId, td ?? null);
     return NextResponse.json({ data: { target_date: td ?? null } });
   } catch (err) {
-    console.error('[Budget API]', request.url, err);
+    console.error('[Budget API] settings PUT', err);
     return NextResponse.json({ error: '설정 저장 실패' }, { status: 500 });
   }
 }

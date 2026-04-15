@@ -138,8 +138,8 @@ export function useBudget() {
   const refreshBudget = useCallback(async (month: string) => {
     const [sumRes, todayRes, monthlyRes] = await Promise.all([
       fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
-      fetchJson<{ data: TodayV2Response }>('/api/budget/v2/today'),
-      fetchJson<{ data: MonthlyV2Response }>('/api/budget/v2/monthly'),
+      fetchJson<{ data: TodayV2Response }>('/api/budget/today'),
+      fetchJson<{ data: MonthlyV2Response }>('/api/budget/monthly'),
     ]);
     if (sumRes) {
       const updated = { ...sumRes.data };
@@ -188,8 +188,8 @@ export function useBudget() {
       const [assetData, fixedData, todayData, monthlyData] = await Promise.all([
         fetchJson<{ data: AssetRow[] }>('/api/budget/assets'),
         fetchJson<{ data: FixedCostRow[] }>('/api/budget/fixed-costs'),
-        fetchJson<{ data: TodayV2Response }>('/api/budget/v2/today'),
-        fetchJson<{ data: MonthlyV2Response }>('/api/budget/v2/monthly'),
+        fetchJson<{ data: TodayV2Response }>('/api/budget/today'),
+        fetchJson<{ data: MonthlyV2Response }>('/api/budget/monthly'),
       ]);
 
       if (todayData?.data && monthlyData?.data) {
