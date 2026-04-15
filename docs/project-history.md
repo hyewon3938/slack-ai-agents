@@ -1268,3 +1268,4 @@ insight 채널의 핵심 목표: 일기 데이터와 일운 분석을 비교하�
 | 2026-04-11 | **Insight 일주 할루시네이션 방지** — 프롬프트 경량화(PR #223) 이후 약화된 일주 가드레일 복원. 상단 일주 앵커 고정, 사주 연결 규칙에 역산 금지 명시, saju\_patterns 주의 문구 추가, fortune context 이중 앵커 구조. getDayPillar 중복 계산 제거 + 단위 테스트 3개 추가 (Issue #249, PR #250) |
 | 2026-04-15 | **예산 재설계 Phase 2** — DB 마이그레이션: `monthly_budget_snapshots` 테이블 신설 (과거 월 불변 스냅샷 구조). Phase 3(Repository/Facade) 준비 완료 (Issue #285, PR #286) |
 | 2026-04-15 | **예산 재설계 Phase 5 (최종)** — v2 아키텍처 전환 완료. 런웨이 프로젝션/월별 시뮬레이션/동적 일일 예산/cron 드리프트 보정 신규 구현. v1 API 라우트·queries.ts v1 함수·budget-calc.ts 전면 제거. budgets 테이블 DROP 마이그레이션 적용. 멀티유저 cron 지원. 3계층 구조(allocator/repository/facade) 완성 (Issue #291) |
+| 2026-04-15 | **설정/분석 계산 정합성 통합** — target\_date 있을 때 allocator 결과를 projection이 재사용하도록 리팩토링. current month prorated vs full-month drift(±1개월) 제거. `projectFromAllocator` 신규 추가 + `getRunwayProjection` 분기 적용 (Issue #294) |
