@@ -1,5 +1,6 @@
 import { query, queryOne } from '@/lib/db';
 import { getTodayISO } from '@/lib/kst';
+import { getTodayAllocation } from './facade';
 import {
   addBillingMonths,
   getCurrentBillingMonth,
@@ -1048,16 +1049,14 @@ export async function saveDailyBudgetLog(
   opts?: { targetDate?: string },
 ): Promise<{ date: string; budget: number; spent: number; saved: number }> {
   const targetDate = opts?.targetDate ?? getTodayISO();
+  // T12:00:00Z = KST 21:00 → 당일 날짜 유지 (드리프트 보정은 호출 측에서 처리)
+  const now = new Date(`${targetDate}T12:00:00Z`);
 
-  // 목표 기간 조회 → queryRunway에 전달
-  const settings = await queryOne<{ target_date: string | null }>(
-    'SELECT target_date FROM budget_settings WHERE user_id = $1',
-    [userId],
-  );
-  const runway = await queryRunway(userId, settings?.target_date ?? undefined);
+  // v2 facade로 오늘 예산 계산
+  const daily = await getTodayAllocation(userId, now);
+  const budget = daily.todayBudget;
 
-  // targetDate의 자유 지출을 DB에서 직접 조회 (runway의 today_flex_spent는 'live today' 기준이라 드리프트 시 0이 될 수 있음)
-  // 조건은 queryRunway의 today_flex 쿼리와 동일하게 맞춤
+  // targetDate의 자유 지출을 DB에서 직접 조회 (드리프트로 인해 live today 기준이 다를 수 있음)
   const budgetStartRow = await queryOne<{ updated_at: string }>(
     'SELECT updated_at::text FROM budget_settings WHERE user_id = $1',
     [userId],
@@ -1075,9 +1074,7 @@ export async function saveDailyBudgetLog(
   );
   const spent = Number(targetSpentRow?.spent ?? 0);
 
-  const budget = runway.today_budget;
   const saved = budget - spent;
-  const now = new Date(`${targetDate}T12:00:00`);
   const billingMonth = getCurrentBillingMonth(now);
 
   // UPSERT: 같은 날 다시 실행해도 최신 값으로 갱신

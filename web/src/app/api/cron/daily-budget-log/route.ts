@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { saveDailyBudgetLog } from '@/features/budget/lib/queries';
-import { resolveSnapshotDate } from '@/features/budget/lib/budget-calc';
+import { resolveSnapshotDate } from '@/features/budget/lib/billing/snapshot-date';
+import { listAllUserIds } from '@/lib/users';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  // Vercel cron 인증 검증
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env['CRON_SECRET'];
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -15,15 +15,24 @@ export async function GET(request: Request) {
 
   try {
     // Vercel cron 드리프트 방어: 발화 시각에서 1시간 버퍼를 차감한 KST 날짜로 저장
-    // (cron 14:50 UTC 예약 → 15:xx 드리프트해도 KST 당일을 올바르게 반환)
     const targetDate = resolveSnapshotDate(new Date());
-    const result = await saveDailyBudgetLog(1, { targetDate });
-    return NextResponse.json({ ok: true, data: result });
+    const userIds = await listAllUserIds();
+
+    const results = await Promise.all(
+      userIds.map(async (uid) => {
+        try {
+          const data = await saveDailyBudgetLog(uid, { targetDate });
+          return { userId: uid, ok: true, data };
+        } catch (err) {
+          console.error(`[daily-budget-log] user=${uid}`, err);
+          return { userId: uid, ok: false };
+        }
+      }),
+    );
+
+    return NextResponse.json({ ok: true, results });
   } catch (err) {
     console.error('[daily-budget-log] 스냅샷 실패:', err);
-    return NextResponse.json(
-      { error: '스냅샷 실패' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: '스냅샷 실패' }, { status: 500 });
   }
 }
