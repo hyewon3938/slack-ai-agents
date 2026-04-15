@@ -12,6 +12,8 @@ export interface BillingCycle {
 export interface InstallmentInput {
   monthlyAmount: number;
   remainingCount: number;
+  /** 이번 달 신규 할부 — 현재 월 locked 제외 (이미 자유 지출에 반영됨) */
+  isNew?: boolean;
 }
 
 export interface PlannedInput {
