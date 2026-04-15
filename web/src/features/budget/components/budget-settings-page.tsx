@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { FixedCostRow, AssetRow } from '@/features/budget/lib/types';
 import { MIN_DAILY_BUDGET, FIXED_COST_CATEGORIES } from '@/features/budget/lib/types';
-import type { MonthBudgetPreview } from '@/features/budget/lib/queries';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 
@@ -246,10 +245,19 @@ function AssetItem({
 
 // ─── 목표 기간 설정 카드 ──────────────────────────────
 
+interface MonthBreakdownItem {
+  month: string;
+  locked: number;
+  installments: number;
+  planned: number;
+  free: number;
+  daily: number;
+}
+
 interface BudgetPreviewData {
   free_per_month: number;
   daily_estimate: number;
-  month_breakdown: MonthBudgetPreview[];
+  month_breakdown: MonthBreakdownItem[];
 }
 
 function TargetDateCard({
@@ -277,7 +285,7 @@ function TargetDateCard({
     if (!/^\d{4}-\d{2}$/.test(target)) return;
     setLoadingPreview(true);
     try {
-      const res = await fetch(`/api/budget/settings?previewTarget=${target}`);
+      const res = await fetch(`/api/budget/v2/settings?previewTarget=${target}`);
       if (res.ok) {
         const d = (await res.json()) as { data: BudgetPreviewData };
         setPreview(d.data);
@@ -300,7 +308,7 @@ function TargetDateCard({
     if (!inputValue || !/^\d{4}-\d{2}$/.test(inputValue)) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/budget/settings', {
+      const res = await fetch('/api/budget/v2/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_date: inputValue }),
@@ -417,7 +425,7 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
       const [fixedRes, assetsRes, settingsRes] = await Promise.all([
         fetch('/api/budget/fixed-costs'),
         fetch('/api/budget/assets'),
-        fetch('/api/budget/settings'),
+        fetch('/api/budget/v2/settings'),
       ]);
       if (fixedRes.ok) {
         const d = (await fixedRes.json()) as { data: FixedCostRow[] };

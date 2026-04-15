@@ -73,6 +73,35 @@ export function useBudget() {
     today_remaining: number;
   }
 
+  interface TodayV2Response {
+    todayBudget: number;
+    todayRemaining: number;
+    monthBudgetRemaining: number;
+    todayFlexSpent: number;
+    targetDate: string | null;
+  }
+
+  interface MonthlyV2Response {
+    freePerMonth: number | null;
+  }
+
+  /** v2 today + monthly 응답을 RunwayResponse로 합성 */
+  function buildRunwayFromV2(
+    today: TodayV2Response,
+    monthly: MonthlyV2Response,
+  ): RunwayResponse {
+    return {
+      free_per_month: monthly.freePerMonth,
+      dynamic_daily: today.todayBudget,
+      month_budget_remaining: today.monthBudgetRemaining,
+      target_date: today.targetDate,
+      cycle_days: 30,
+      today_budget: today.todayBudget,
+      today_flex_spent: today.todayFlexSpent,
+      today_remaining: today.todayRemaining,
+    };
+  }
+
   /** 런웨이 → 해당 월에 맞는 auto_budget/auto_daily 계산 */
   const applyAutoBudget = useCallback((sum: MonthSummary, rd: RunwayResponse, month: string) => {
     if (rd.free_per_month == null || !rd.target_date) return;
@@ -107,13 +136,16 @@ export function useBudget() {
 
   /** summary + 런웨이 재조회 (지출 추가/삭제/수정 후 호출) */
   const refreshBudget = useCallback(async (month: string) => {
-    const [sumRes, runwayRes] = await Promise.all([
+    const [sumRes, todayRes, monthlyRes] = await Promise.all([
       fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
-      fetchJson<{ data: RunwayResponse }>('/api/budget/runway'),
+      fetchJson<{ data: TodayV2Response }>('/api/budget/v2/today'),
+      fetchJson<{ data: MonthlyV2Response }>('/api/budget/v2/monthly'),
     ]);
     if (sumRes) {
       const updated = { ...sumRes.data };
-      if (runwayRes?.data) applyAutoBudget(updated, runwayRes.data, month);
+      if (todayRes?.data && monthlyRes?.data) {
+        applyAutoBudget(updated, buildRunwayFromV2(todayRes.data, monthlyRes.data), month);
+      }
       setSummary(updated);
     }
   }, [fetchJson, applyAutoBudget]);
@@ -153,17 +185,19 @@ export function useBudget() {
 
     // ── 2차: 런웨이 + 보조 데이터 (로딩 해제 후 백그라운드) ──
     try {
-      const [assetData, fixedData, runwayData] = await Promise.all([
+      const [assetData, fixedData, todayData, monthlyData] = await Promise.all([
         fetchJson<{ data: AssetRow[] }>('/api/budget/assets'),
         fetchJson<{ data: FixedCostRow[] }>('/api/budget/fixed-costs'),
-        fetchJson<{ data: RunwayResponse }>('/api/budget/runway'),
+        fetchJson<{ data: TodayV2Response }>('/api/budget/v2/today'),
+        fetchJson<{ data: MonthlyV2Response }>('/api/budget/v2/monthly'),
       ]);
 
-      if (runwayData?.data) {
+      if (todayData?.data && monthlyData?.data) {
+        const synthesized = buildRunwayFromV2(todayData.data, monthlyData.data);
         setSummary((prev) => {
           if (!prev) return prev;
           const updated = { ...prev };
-          applyAutoBudget(updated, runwayData.data, month);
+          applyAutoBudget(updated, synthesized, month);
           return updated;
         });
       }

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { RunwayResult } from '@/features/budget/lib/queries';
-import type { MonthProjection } from '@/features/budget/lib/types';
+import type { RunwayProjectionResponse, MonthProjection } from '@/features/budget/lib/facade';
 import { formatAmount } from '@/lib/types';
 import { ArrowTrendingDownIcon } from '@/components/ui/icons';
 
@@ -13,15 +12,15 @@ function barHeight(projection: MonthProjection, maxRemaining: number): number {
 }
 
 export function RunwayCard() {
-  const [runway, setRunway] = useState<RunwayResult | null>(null);
+  const [runway, setRunway] = useState<RunwayProjectionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showProjections, setShowProjections] = useState(true);
 
   const fetchRunway = useCallback(() => {
     setLoading(true);
-    fetch('/api/budget/runway')
+    fetch('/api/budget/v2/runway')
       .then((r) => r.json())
-      .then((d: { data: RunwayResult }) => setRunway(d.data))
+      .then((d: { data: RunwayProjectionResponse }) => setRunway(d.data))
       .catch(() => setRunway(null))
       .finally(() => setLoading(false));
   }, []);

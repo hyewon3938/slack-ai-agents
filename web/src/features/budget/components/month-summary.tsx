@@ -1,7 +1,7 @@
 'use client';
 
 import type { MonthSummary } from '@/features/budget/lib/types';
-import { calculateRunwayShorten } from '@/features/budget/lib/budget-calc';
+import { calcRunwayShorten } from '@/features/budget/lib/allocator/runway-warn';
 import { formatAmount } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
 import { BanknotesIcon, ClockIcon, CheckCircleIcon } from '@/components/ui/icons';
@@ -92,7 +92,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
 
               {/* 하루 분석 메시지 */}
               {(() => {
-                const shortenDays = calculateRunwayShorten({
+                const shortenDays = calcRunwayShorten({
                   todayRemaining, todayBudget, totalBudget, totalDays, daysLeft,
                 });
                 if (shortenDays != null && shortenDays > 0) {
