@@ -1,5 +1,64 @@
 # Work Log
 
+## 2026-04-15 (수)
+
+### 작업 요약
+- 예산 도메인 v2 아키텍처 전환 완료 — TDD 기반 계산 엔진 → Repository/Facade → API → v1 제거 수직 완성 (PR #284, #286, #288, #290, #292, #293)
+- insight 일기 저장 안정화 — LLM 경로 제거 + 날짜 경계 5시 적용 (#279)
+- 수면 기록 user_id 검증 면제 버그 수정 (#281)
+
+### 변경 규모
+- 9개 커밋, 71개 파일, +2492 / -1553 lines
+
+### 주요 변경
+- `web/src/features/budget/lib/allocator/` — 순수 함수 계산 엔진 신규 (day-allocator, month-allocator, proration, runway-projection)
+- `web/src/features/budget/lib/repository/` — 도메인별 Repository 레이어 10개 신규
+- `web/src/features/budget/lib/facade.ts` — Facade 통합 레이어 (+145줄)
+- `web/src/features/budget/lib/budget-calc.ts` — v1 삭제 (-289줄)
+- `db/migrations/042_drop_budgets_table.sql` — v1 budgets 테이블 DROP
+- `src/agents/insight/diary-fast-path.ts` — LLM 경로 제거, fast path 단일화
+
+### 다음 할 일
+- Slack 에이전트에서 v2 API 연동 확인
+- 월 정산 cron 실제 동작 검증 (월 초 전환 시점)
+
+## 2026-04-14 (화)
+
+### 작업 요약
+- Next.js 중첩 라우팅으로 탭 전환 구조 전환 — 클라이언트 상태 → URL 기반 라우팅 (#277)
+- useSearchParams Suspense 래핑 누락 즉시 수정 (#278)
+- insight 밤 알림에 오늘 일기 내용 포함 (#275)
+
+### 변경 규모
+- 3개 커밋, 34개 파일, +967 / -527 lines
+
+### 주요 변경
+- `web/src/app/schedules/`, `budget/`, `life/` — 도메인별 중첩 레이아웃 + 서브 라우트 신규 분리 (31개 파일)
+- `web/src/components/ui/tabs.tsx` — URL 기반 탭 컴포넌트 신규 추가 (58줄)
+- `src/cron/life-cron.ts` — 밤 알림에 오늘 일기 내용 포함
+
+### 다음 할 일
+- 새 라우팅 구조 실제 동작 검증 (네비게이션 히스토리, 뒤로가기 UX)
+
+## 2026-04-13 (일)
+
+### 작업 요약
+- 수면 대시보드 신규 개발 (feat #266) + 모바일 UX 세밀화 연속 수정 (#267\~274)
+- LLM 비용 최적화 — 프롬프트 캐싱 + insight fast path + 크론 정리 (#262)
+- 예산·리마인더·insight 버그 수정 (#258, #259, #260, #264)
+
+### 변경 규모
+- 15개 커밋, \~60개 파일, +2047 / -687 lines
+
+### 주요 변경
+- `web/src/features/sleep/` — 수면 시각화 전체 신규 (timeline, trend-chart, summary-cards, period-selector, queries, types)
+- `src/shared/llm.ts`, `src/agents/insight/` — 프롬프트 캐싱 + 일기 fast path 도입, 크론 통합 정리
+- `web/src/features/budget/lib/budget-calc.ts` — 예산 계산 버그 2종 수정 + 단위 테스트 추가
+
+### 다음 할 일
+- 수면 대시보드 sleep-day-pattern 컴포넌트 연결 확인
+- LLM 비용 절감 효과 모니터링
+
 ## 2026-04-06 (일)
 
 ### 작업 요약
