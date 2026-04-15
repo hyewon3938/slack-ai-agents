@@ -49,9 +49,13 @@ describe('B. 월 배분 (allocateMonthlyBudgets)', () => {
   });
 
   describe('B-4. 자산 감소 → 현재 월도 남은 일수 기준 감소', () => {
-    it('totalAvailable 절반 → 현재 월 free도 절반', () => {
-      const r1 = allocateMonthlyBudgets(BASE);
-      const r2 = allocateMonthlyBudgets({ ...BASE, totalAvailable: 18000 });
+    it('totalAvailable 절반 → dailyFree 절반, free 비례 감소', () => {
+      // sumDays = 5(Apr) + 30(May 주기: 04-16~05-15) = 35
+      // 35000 → dailyFree=1000, Apr=5000, May=30000
+      // 17500 → dailyFree=500, Apr=2500, May=15000
+      const r1 = allocateMonthlyBudgets({ ...BASE, totalAvailable: 35000 });
+      const r2 = allocateMonthlyBudgets({ ...BASE, totalAvailable: 17500 });
+      expect(r2.dailyFree).toBeCloseTo(r1.dailyFree / 2, 5);
       const apr1 = r1.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
       const apr2 = r2.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
       expect(apr2.free).toBe(apr1.free / 2);
