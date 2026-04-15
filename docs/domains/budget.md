@@ -1,6 +1,6 @@
 # 지출/예산 관리 (Budget)
 
-> **상태**: 기능 브랜치에서 개발 중 (main 미병합). 이 문서는 설계 기반 스켈레톤.
+> **상태**: v2 아키텍처 운영 중 (Phase 5 완료).
 
 ## DB 스키마
 
@@ -10,11 +10,20 @@ expenses:
   id SERIAL PK,
   user_id INTEGER,
   date DATE,
-  amount INTEGER,        -- 원 단위
-  category TEXT,         -- 식비, 교통비, 문화생활 등
+  amount INTEGER,
+  category TEXT,
   description TEXT,
-  payment_method TEXT,   -- 카드, 현금, 이체 등
-  is_fixed BOOLEAN,      -- 고정비 여부
+  payment_method TEXT,
+  is_installment BOOLEAN,
+  installment_num INTEGER,
+  installment_total INTEGER,
+  installment_group TEXT,
+  source TEXT,
+  memo TEXT,
+  type TEXT DEFAULT 'expense',         -- 'expense' | 'income'
+  planned_expense_id INTEGER FK,
+  exclude_from_budget BOOLEAN,
+  distribute_to_budget BOOLEAN,
   created_at TIMESTAMPTZ
 
 -- 고정비 템플릿
@@ -24,27 +33,10 @@ fixed_costs:
   name TEXT,
   amount INTEGER,
   category TEXT,
-  billing_day INTEGER,   -- 매월 결제일
+  is_variable BOOLEAN,
+  day_of_month INTEGER,
   active BOOLEAN,
-  created_at TIMESTAMPTZ
-
--- 고정비 월별 기록
-fixed_cost_records:
-  id SERIAL PK,
-  user_id INTEGER,
-  fixed_cost_id INTEGER FK,
-  date DATE,
-  amount INTEGER,
-  paid BOOLEAN,
-  created_at TIMESTAMPTZ
-
--- 월간 예산
-budgets:
-  id SERIAL PK,
-  user_id INTEGER,
-  year_month TEXT,       -- '2026-04'
-  total_budget INTEGER,
-  category_budgets JSONB,  -- { "식비": 300000, "교통비": 100000, ... }
+  memo TEXT,
   created_at TIMESTAMPTZ
 
 -- 자산
@@ -52,81 +44,130 @@ assets:
   id SERIAL PK,
   user_id INTEGER,
   name TEXT,
-  type TEXT,             -- 예금, 투자, 부채 등
-  amount INTEGER,
+  type TEXT,
+  balance INTEGER,
+  available_amount INTEGER,
+  is_emergency BOOLEAN,
+  memo TEXT,
   updated_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ
 
--- 수입
-incomes:
+-- 예산 설정 (목표 기간, 시작일)
+budget_settings:
+  id SERIAL PK,
+  user_id INTEGER UNIQUE,
+  target_date VARCHAR(7),              -- 'YYYY-MM'
+  updated_at TIMESTAMPTZ
+
+-- 예정 지출 (계획된 큰 지출)
+planned_expenses:
+  id SERIAL PK,
+  user_id INTEGER,
+  year_month VARCHAR(7),
+  amount INTEGER,
+  category TEXT,
+  description TEXT,
+  is_recurring BOOLEAN,
+  created_at TIMESTAMPTZ
+
+-- 일별 예산 로그 (cron 스냅샷)
+daily_budget_logs:
   id SERIAL PK,
   user_id INTEGER,
   date DATE,
-  amount INTEGER,
-  source TEXT,
-  memo TEXT,
-  created_at TIMESTAMPTZ
+  billing_month VARCHAR(7),
+  budget INTEGER,
+  spent INTEGER,
+  saved INTEGER,
+  created_at TIMESTAMPTZ,
+  UNIQUE(user_id, date)
 
--- 월별 예산 스냅샷 (Phase 2)
+-- 월별 예산 스냅샷 (과거 월 정산)
 monthly_budget_snapshots:
   id SERIAL PK,
   user_id INTEGER,
-  year_month VARCHAR(7),            -- '2026-04' (빌링 월)
-  allocated_budget INTEGER,         -- 배정된 자유 예산
-  fixed_total INTEGER,              -- 고정비 합계
-  installment_total INTEGER,        -- 할부 합계
-  planned_total INTEGER,            -- 예정 지출 합계
-  flexible_spent INTEGER,           -- 실제 자유 지출
-  excluded_spent INTEGER,           -- 예산 제외 지출
-  income_total INTEGER,             -- 수입 합계
-  available_at_start INTEGER,       -- 월 시작 시점 가용자금
-  available_at_end INTEGER,         -- 월 종료 시점 가용자금
-  sealed_at TIMESTAMPTZ,            -- 정산 시각
+  year_month VARCHAR(7),
+  allocated_budget INTEGER,
+  fixed_total INTEGER,
+  installment_total INTEGER,
+  planned_total INTEGER,
+  flexible_spent INTEGER,
+  excluded_spent INTEGER,
+  income_total INTEGER,
+  available_at_start INTEGER,
+  available_at_end INTEGER,
+  sealed_at TIMESTAMPTZ,
   UNIQUE(user_id, year_month)
 ```
-
-> 위 스키마는 설계 기반 예상. 실제 마이그레이션 파일이 main에 병합되면 업데이트 필요.
 
 ## API 엔드포인트
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET/POST | `/api/expenses` | 지출 목록 조회 / 지출 등록 |
+| GET/POST | `/api/expenses` | 지출 목록 / 지출 등록 |
+| GET | `/api/expenses/summary` | 월간 요약 |
 | PATCH/DELETE | `/api/expenses/[id]` | 지출 수정 / 삭제 |
-| GET | `/api/budget` | 월간 예산 조회 |
-| PUT | `/api/budget` | 월간 예산 설정 |
-| GET | `/api/budget/assets` | 자산 현황 조회 |
-| GET | `/api/budget/runway` | 지출 분석 |
+| GET | `/api/budget/today` | 오늘 예산 할당 |
+| GET | `/api/budget/monthly` | 월 예산 할당 |
+| GET | `/api/budget/runway` | 런웨이 프로젝션 |
+| GET/PUT | `/api/budget/settings` | 목표 기간 조회/설정 |
+| GET | `/api/budget/assets` | 자산 현황 |
+| PATCH | `/api/budget/assets/[id]` | 자산 잔액 수정 |
+| GET | `/api/budget/fixed-costs` | 고정비 목록 |
+| GET | `/api/budget/daily-logs` | 일별 예산 로그 |
+| GET/POST | `/api/budget/planned-expenses` | 예정 지출 목록 / 등록 |
+| DELETE | `/api/budget/planned-expenses/[id]` | 예정 지출 삭제 |
+| GET | `/api/cron/daily-budget-log` | 일별 스냅샷 cron (내부용) |
 
-## 웹 컴포넌트 구조
+## 코드 구조
 
 ```
 features/budget/
 ├── components/
-│   ├── expense-list.tsx        # 지출 목록
-│   ├── expense-form.tsx        # 지출 등록/수정 폼
-│   ├── budget-overview.tsx     # 월간 예산 대비 지출 현황
-│   ├── category-chart.tsx      # 카테고리별 지출 차트
-│   └── fixed-cost-list.tsx     # 고정비 관리
+│   ├── budget-tab.tsx              # 탭 진입점
+│   ├── budget-overview.tsx         # 월 개요 (달력 + 요약)
+│   ├── expense-list.tsx            # 지출 목록
+│   ├── expense-form.tsx            # 지출 등록/수정 폼
+│   ├── month-summary.tsx           # 월간 요약 카드
+│   ├── runway-card.tsx             # 런웨이 시뮬레이션 카드
+│   ├── budget-settings-page.tsx    # 예산 설정 탭
+│   └── ...
 ├── hooks/
-│   └── use-budget.ts           # 상태 관리 + CRUD
+│   └── use-budget.ts               # 상태 관리 + CRUD
 └── lib/
-    ├── types.ts                # 타입 정의
-    └── queries.ts              # 서버 사이드 DB 쿼리
+    ├── types.ts                    # 타입 정의
+    ├── queries.ts                  # DB 쿼리 (지출 CRUD, 요약, 로그)
+    ├── facade.ts                   # v2 통합 인터페이스
+    ├── allocator/                  # 순수 계산 함수
+    │   ├── day-allocator.ts        # 일일 예산 배분
+    │   ├── month-allocator.ts      # 월별 예산 배분
+    │   ├── runway-projection.ts    # 런웨이 시뮬레이션
+    │   ├── runway-warn.ts          # 런웨이 단축 경고
+    │   └── proration.ts            # 당월 잔여 일수 계산
+    ├── billing/                    # 결제주기 유틸리티
+    │   ├── cycle.ts                # 빌링 월/범위/일수 계산
+    │   └── snapshot-date.ts        # cron 드리프트 보정
+    └── repository/                 # DB 읽기/쓰기 레이어
+        ├── expenses-repo.ts
+        ├── assets-repo.ts
+        ├── fixed-costs-repo.ts
+        ├── planned-repo.ts
+        └── settings-repo.ts
 ```
 
 ## 핵심 로직
 
-- **카테고리별 지출 분석**: 월간 카테고리별 지출 합계 + 예산 대비 비율
-- **월간 예산 대비 지출 추적**: 전체 예산 + 카테고리별 예산 설정, 초과 시 알림
-- **고정비 vs 변동비 분리**: 고정비 템플릿으로 매월 자동 생성, 변동비는 수동 입력
-- **지출 분석**: 자산 대비 월 평균 지출 추이 분석
+- **카드 결제주기 기반**: 전월 16일 \~ 당월 15일을 한 달로 계산
+- **동적 일일 예산**: (월 자유 예산 \- 이번 달 자유 지출) / 남은 일수
+- **런웨이 시뮬레이션**: 월별 고정비 + 할부 + 예정지출을 차감해 가용자금 소진 시점 예측
+- **자동 월 예산 배분**: 가용자금을 목표 기간까지 균등 분배
+- **Vercel cron 드리프트 보정**: 발화 시각에서 1시간 버퍼 차감 후 KST 날짜 결정
+- **3개월 평균 변동 지출**: 런웨이 기준 수치 (참고용)
 
 ## 관련 Slack 에이전트
 
-- **채널**: #money (예정)
+- **채널**: #money
 - **에이전트**: money 에이전트 (SQL 도구 기반, 지출 기록 + 분석)
-- **크론**: 월초 지출 리포트, 예산 초과 알림 (예정)
 
 ## 비공개 참고
 

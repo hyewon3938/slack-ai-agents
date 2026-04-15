@@ -39,6 +39,29 @@ Repository / Snapshot / Facade 레이어 신설.
 
 ---
 
+## 2026-04-15: 지출/예산 계산 엔진 재설계 Phase 4 (#289, PR #290)
+
+API 라우트 + 월 경계 정산 cron 연결 — facade 계층의 외부 진입점 구축.
+
+**v2 API 라우트** (네임스페이스 격리):
+- `GET /api/budget/v2/monthly` — `getMonthlyAllocation` 노출
+- `GET /api/budget/v2/today` — `getTodayAllocation` 노출
+- 기존 `/api/budget`은 Phase 5 cutover까지 병행 운영
+
+**월 경계 정산 cron**:
+- `GET /api/cron/monthly-settlement` (Vercel Cron, `30 15 * * *` UTC = 00:30 KST)
+- `listAllUserIds` 멀티유저 루프 + 유저별 try-catch 에러 격리
+- `runSettlementIfDue` 멱등 → 매일 실행해도 16일에만 실제 스냅샷
+
+**축 A/B 의미 분리**:
+- `readDistributableIncomeTotal` 추가 — 자산 유입 수입(distribute_to_budget=true)만 합산
+- `computeTotalAvailable`에서 사용 전환 — 당월만 쓸 수입이 자산으로 흘러드는 구조 제거
+- 정산 스냅샷의 income_total은 전체 기록용으로 `readIncomeTotal` 유지
+
+Phase 5 남은 작업: 프론트엔드 전환 + 기존 코드 제거.
+
+---
+
 ## 2026-04-13: API 비용 최적화 (#261, PR #262)
 
 월 LLM API 비용 절감을 위한 3가지 최적화 적용.
@@ -1244,3 +1267,4 @@ insight 채널의 핵심 목표: 일기 데이터와 일운 분석을 비교하�
 | 2026-04-10 | **멀티유저 크론 루프 확장** — `slack_user_mappings`에 `life_channel_id`/`insight_channel_id` 컬럼 추가. 크론 7개 태스크 + 주간 리포트를 `queryAllUserMappings` 기반 유저별 루프로 전환. 유저별 전용 채널 없으면 `slack_user_id` 폴백 → Slack 자동 DM 전송. 유저별 try/catch로 에러 격리 (Issue #240, PR #243) |
 | 2026-04-11 | **Insight 일주 할루시네이션 방지** — 프롬프트 경량화(PR #223) 이후 약화된 일주 가드레일 복원. 상단 일주 앵커 고정, 사주 연결 규칙에 역산 금지 명시, saju\_patterns 주의 문구 추가, fortune context 이중 앵커 구조. getDayPillar 중복 계산 제거 + 단위 테스트 3개 추가 (Issue #249, PR #250) |
 | 2026-04-15 | **예산 재설계 Phase 2** — DB 마이그레이션: `monthly_budget_snapshots` 테이블 신설 (과거 월 불변 스냅샷 구조). Phase 3(Repository/Facade) 준비 완료 (Issue #285, PR #286) |
+| 2026-04-15 | **예산 재설계 Phase 5 (최종)** — v2 아키텍처 전환 완료. 런웨이 프로젝션/월별 시뮬레이션/동적 일일 예산/cron 드리프트 보정 신규 구현. v1 API 라우트·queries.ts v1 함수·budget-calc.ts 전면 제거. budgets 테이블 DROP 마이그레이션 적용. 멀티유저 cron 지원. 3계층 구조(allocator/repository/facade) 완성 (Issue #291) |
