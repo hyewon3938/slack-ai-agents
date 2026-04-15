@@ -228,8 +228,11 @@ export const validateUserIdFilter = (sql: string, userId: number): string | null
   const tableMatches = stripped.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+(\w+)/gi);
   const tables = [...tableMatches].map((m) => (m[1] ?? '').toLowerCase());
 
+  // 테이블 참조가 없는 순수 계산 쿼리는 OK (SELECT EXTRACT(...), SELECT 470 등)
+  if (tables.length === 0) return null;
+
   // 추출된 테이블이 모두 면제 대상이면 OK
-  if (tables.length > 0 && tables.every((t) => USER_ID_EXEMPT_TABLES.has(t))) {
+  if (tables.every((t) => USER_ID_EXEMPT_TABLES.has(t))) {
     return null;
   }
 
