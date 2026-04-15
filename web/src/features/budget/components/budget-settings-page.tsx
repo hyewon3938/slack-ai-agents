@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { FixedCostRow, AssetRow } from '@/features/budget/lib/types';
 import { MIN_DAILY_BUDGET, FIXED_COST_CATEGORIES } from '@/features/budget/lib/types';
-import type { MonthBudgetPreview } from '@/features/budget/lib/queries';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 
@@ -246,10 +245,19 @@ function AssetItem({
 
 // ─── 목표 기간 설정 카드 ──────────────────────────────
 
+interface MonthBreakdownItem {
+  month: string;
+  locked: number;
+  installments: number;
+  planned: number;
+  free: number;
+  daily: number;
+}
+
 interface BudgetPreviewData {
   free_per_month: number;
   daily_estimate: number;
-  month_breakdown: MonthBudgetPreview[];
+  month_breakdown: MonthBreakdownItem[];
 }
 
 function TargetDateCard({

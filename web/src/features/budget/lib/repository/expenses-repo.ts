@@ -51,3 +51,24 @@ export async function readTodayFlexSpent(
   );
   return Number(result.rows[0]?.total ?? 0);
 }
+
+/** 최근 N개월 변동 지출 월평균 (고정비 제외 일반 지출만) */
+export async function readAvgVariableMonthly(
+  userId: number,
+  months = 3,
+): Promise<number> {
+  const result = await query<{ avg_monthly: string }>(
+    `SELECT COALESCE(AVG(monthly_total), 0) AS avg_monthly
+     FROM (
+       SELECT DATE_TRUNC('month', date) AS month, SUM(amount) AS monthly_total
+       FROM expenses
+       WHERE user_id = $1
+         AND date >= NOW() - ($2::text || ' months')::interval
+         AND exclude_from_budget = false
+         AND COALESCE(type, 'expense') = 'expense'
+       GROUP BY 1
+     ) sub`,
+    [userId, months],
+  );
+  return Math.round(Number(result.rows[0]?.avg_monthly ?? 0));
+}

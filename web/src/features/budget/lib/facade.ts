@@ -2,6 +2,7 @@ import { getBillingCycle, getBillingRange } from './billing/cycle';
 import { calcAllocatedDays } from './allocator/proration';
 import { allocateMonthlyBudgets } from './allocator/month-allocator';
 import { allocateTodayBudget } from './allocator/day-allocator';
+import { projectRunway } from './allocator/runway-projection';
 import { detectSettlementTrigger, buildSettlementSnapshot } from './settlement/settle';
 
 import { readTotalAssetBalance } from './repository/assets-repo';
@@ -9,11 +10,43 @@ import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
 import { readIncomeTotal, readDistributableIncomeTotal } from './repository/incomes-repo';
-import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent } from './repository/expenses-repo';
+import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent, readAvgVariableMonthly } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
 
 import type { MonthAllocatorResult, DayAllocatorResult, SettlementSnapshot } from './types-v2';
+import type { MonthProjection } from './allocator/runway-projection';
+
+export type { MonthProjection };
+
+export interface TodayAllocationResult extends DayAllocatorResult {
+  todayFlexSpent: number;
+  targetDate: string | null;
+}
+
+export interface RunwayProjectionResponse {
+  actual_runway_months: number;
+  actual_runway_date: string;
+  free_per_month: number | null;
+  effective_available: number;
+  fixed_monthly: number;
+  avg_variable_monthly: number;
+  target_date: string | null;
+  projections: MonthProjection[];
+}
+
+export interface BudgetPreviewResponse {
+  free_per_month: number | null;
+  daily_estimate: number;
+  month_breakdown: Array<{
+    month: string;
+    locked: number;
+    installments: number;
+    planned: number;
+    free: number;
+    daily: number;
+  }>;
+}
 
 function formatKSTDate(d: Date): string {
   const kst = new Date(d.getTime() + 9 * 3600 * 1000);
@@ -70,25 +103,121 @@ export async function getMonthlyAllocation(
 export async function getTodayAllocation(
   userId: number,
   now: Date,
-): Promise<DayAllocatorResult> {
+): Promise<TodayAllocationResult> {
   const cycle = getBillingCycle(now);
   const monthly = await getMonthlyAllocation(userId, now);
   const currentMonth = monthly.monthlyBudgets.find((m) => m.isCurrent);
   if (!currentMonth) {
-    return { todayBudget: 0, todayRemaining: 0, monthBudgetRemaining: 0 };
+    return { todayBudget: 0, todayRemaining: 0, monthBudgetRemaining: 0, todayFlexSpent: 0, targetDate: null };
   }
   const todayStr = formatKSTDate(now);
   const { remaining } = calcAllocatedDays(todayStr, cycle);
-  const [flex, todayFlex] = await Promise.all([
+  const [flex, todayFlex, targetDate] = await Promise.all([
     readFlexibleSpent(userId, cycle.from, todayStr),
     readTodayFlexSpent(userId, todayStr),
+    readTargetMonth(userId),
   ]);
-  return allocateTodayBudget({
-    monthBudget: currentMonth.free,
-    flexibleSpent: flex,
+  return {
+    ...allocateTodayBudget({
+      monthBudget: currentMonth.free,
+      flexibleSpent: flex,
+      todayFlexSpent: todayFlex,
+      cycleRemainingDays: remaining,
+    }),
     todayFlexSpent: todayFlex,
-    cycleRemainingDays: remaining,
+    targetDate,
+  };
+}
+
+/** 런웨이 projection + 참고 수치 */
+export async function getRunwayProjection(
+  userId: number,
+  now: Date,
+): Promise<RunwayProjectionResponse> {
+  const cycle = getBillingCycle(now);
+  const todayStr = formatKSTDate(now);
+
+  const [monthly, avgVariableMonthly, fixedMonthly, installments, targetDate] = await Promise.all([
+    getMonthlyAllocation(userId, now),
+    readAvgVariableMonthly(userId, 3),
+    readFixedCostsMonthlyTotal(userId),
+    readActiveInstallments(userId, cycle.from),
+    readTargetMonth(userId),
+  ]);
+
+  const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate ?? cycle.yearMonth);
+  const totalAvailable = await computeTotalAvailable(userId, todayStr);
+
+  const currentMonth = monthly.monthlyBudgets.find((m) => m.isCurrent);
+  const freePerMonth = currentMonth?.free ?? null;
+  const freePerMonthEstimate = freePerMonth ?? avgVariableMonthly;
+
+  const { projections, actualRunwayMonths, actualRunwayDate } = projectRunway({
+    billingMonth: cycle.yearMonth,
+    totalAvailable,
+    fixedMonthly,
+    installments: installments.map((inst) => ({
+      monthlyAmount: inst.monthlyAmount,
+      remainingCount: inst.remainingCount,
+    })),
+    plannedExpenses: planned,
+    freePerMonthEstimate,
   });
+
+  return {
+    actual_runway_months: actualRunwayMonths,
+    actual_runway_date: actualRunwayDate,
+    free_per_month: freePerMonth,
+    effective_available: totalAvailable,
+    fixed_monthly: fixedMonthly,
+    avg_variable_monthly: avgVariableMonthly,
+    target_date: targetDate,
+    projections,
+  };
+}
+
+/** 목표 날짜 변경 프리뷰 — 저장 없이 allocator를 override해 결과만 반환 */
+export async function getBudgetPreview(
+  userId: number,
+  now: Date,
+  targetDate: string,
+): Promise<BudgetPreviewResponse | null> {
+  if (!/^\d{4}-\d{2}$/.test(targetDate)) return null;
+
+  const cycle = getBillingCycle(now);
+  const todayStr = formatKSTDate(now);
+
+  const [totalAvailable, fixedMonthly, installments] = await Promise.all([
+    computeTotalAvailable(userId, todayStr),
+    readFixedCostsMonthlyTotal(userId),
+    readActiveInstallments(userId, cycle.from),
+  ]);
+  const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate);
+
+  const result = allocateMonthlyBudgets({
+    totalAvailable,
+    fixedMonthly,
+    installments,
+    plannedExpenses: planned,
+    currentBillingMonth: cycle.yearMonth,
+    targetMonth: targetDate,
+    today: todayStr,
+  });
+
+  if (result.freePerMonth === null) return null;
+
+  return {
+    free_per_month: result.freePerMonth,
+    daily_estimate: Math.round(result.dailyFree),
+    month_breakdown: result.monthlyBudgets.map((m) => ({
+      month: m.yearMonth,
+      locked: m.fixed + m.installments + m.planned,
+      installments: m.installments,
+      planned: m.planned,
+      free: m.free,
+      daily: m.allocatedDays > 0 ? Math.round(m.free / m.allocatedDays) : 0,
+    })),
+  };
 }
 
 /** 월 경계 정산 (Phase 4 cron 진입점) */
