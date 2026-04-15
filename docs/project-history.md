@@ -20,6 +20,25 @@
 
 ---
 
+## 2026-04-15: 지출/예산 계산 엔진 재설계 Phase 2 (#285, PR #286)
+
+`monthly_budget_snapshots` 테이블 신설 (DB 마이그레이션 041).
+과거 월 불변 스냅샷 구조 준비. Phase 3 Repository/Facade 레이어 추가 예정.
+
+---
+
+## 2026-04-15: 지출/예산 계산 엔진 재설계 Phase 3 (#287, PR #288)
+
+Repository / Snapshot / Facade 레이어 신설.
+
+**Repository 레이어** (7개): assets / expenses / fixed-costs / incomes / installments / planned / settings  
+**Snapshot 레이어**: `monthly_budget_snapshots` CRUD (ON CONFLICT DO NOTHING — idempotent)  
+**Facade 레이어**: `getMonthlyAllocation`, `getTodayAllocation`, `runSettlementIfDue` 3개 공개 API
+
+기존 `queries.ts` 미변경 (Phase 5 cutover 예정). `budget_settings.updated_at` 신규 facade 미사용 (의미 전환).
+
+---
+
 ## 2026-04-13: API 비용 최적화 (#261, PR #262)
 
 월 LLM API 비용 절감을 위한 3가지 최적화 적용.
