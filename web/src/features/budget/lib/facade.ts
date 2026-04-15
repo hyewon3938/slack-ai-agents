@@ -8,7 +8,7 @@ import { readTotalAssetBalance } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
-import { readIncomeTotal } from './repository/incomes-repo';
+import { readIncomeTotal, readDistributableIncomeTotal } from './repository/incomes-repo';
 import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
@@ -35,7 +35,7 @@ async function computeTotalAvailable(userId: number, today: string): Promise<num
   const snapshotEnd = getBillingRange(snapshot.year_month).to;
   const fromDate = addOneDay(snapshotEnd);
   const [income, flex, excluded] = await Promise.all([
-    readIncomeTotal(userId, fromDate, today),
+    readDistributableIncomeTotal(userId, fromDate, today),
     readFlexibleSpent(userId, fromDate, today),
     readExcludedSpent(userId, fromDate, today),
   ]);
