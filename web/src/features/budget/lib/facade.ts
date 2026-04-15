@@ -2,7 +2,7 @@ import { getBillingCycle, getBillingRange } from './billing/cycle';
 import { calcAllocatedDays } from './allocator/proration';
 import { allocateMonthlyBudgets } from './allocator/month-allocator';
 import { allocateTodayBudget } from './allocator/day-allocator';
-import { projectRunway } from './allocator/runway-projection';
+import { projectRunway, projectFromAllocator } from './allocator/runway-projection';
 import { detectSettlementTrigger, buildSettlementSnapshot } from './settlement/settle';
 
 import { readDistributableAssetBalance } from './repository/assets-repo';
@@ -145,33 +145,38 @@ export async function getRunwayProjection(
     readTargetMonth(userId),
   ]);
 
-  const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate ?? cycle.yearMonth);
   const totalAvailable = await computeTotalAvailable(userId, todayStr);
-
   const freePerMonth = monthly.freePerMonth;
-  const freePerMonthEstimate = freePerMonth ?? avgVariableMonthly;
 
-  const { projections, actualRunwayMonths, actualRunwayDate } = projectRunway({
-    billingMonth: cycle.yearMonth,
-    totalAvailable,
-    fixedMonthly,
-    installments: installments.map((inst) => ({
-      monthlyAmount: inst.monthlyAmount,
-      remainingCount: inst.remainingCount,
-    })),
-    plannedExpenses: planned,
-    freePerMonthEstimate,
-  });
+  let projResult;
+  if (targetDate && monthly.monthlyBudgets.length > 0) {
+    // target 있음 → allocator 결과 재사용 (정합성 보장)
+    projResult = projectFromAllocator(totalAvailable, monthly.monthlyBudgets, cycle.yearMonth);
+  } else {
+    // target 없음 → 평균 지출 기반 시뮬레이션
+    const planned = await readPlannedExpenses(userId, cycle.yearMonth, cycle.yearMonth);
+    projResult = projectRunway({
+      billingMonth: cycle.yearMonth,
+      totalAvailable,
+      fixedMonthly,
+      installments: installments.map((inst) => ({
+        monthlyAmount: inst.monthlyAmount,
+        remainingCount: inst.remainingCount,
+      })),
+      plannedExpenses: planned,
+      freePerMonthEstimate: avgVariableMonthly,
+    });
+  }
 
   return {
-    actual_runway_months: actualRunwayMonths,
-    actual_runway_date: actualRunwayDate,
+    actual_runway_months: projResult.actualRunwayMonths,
+    actual_runway_date: projResult.actualRunwayDate,
     free_per_month: freePerMonth,
     effective_available: totalAvailable,
     fixed_monthly: fixedMonthly,
     avg_variable_monthly: avgVariableMonthly,
     target_date: targetDate,
-    projections,
+    projections: projResult.projections,
   };
 }
 
