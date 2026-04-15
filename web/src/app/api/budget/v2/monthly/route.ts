@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getMonthlyAllocation } from '@/features/budget/lib/facade';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
