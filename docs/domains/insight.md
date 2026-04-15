@@ -90,7 +90,7 @@ saju_patterns:
 
 - **채널**: #insight
 - **에이전트**: insight 에이전트 (`src/agents/insight/`)
-- **LLM**: Claude Sonnet (대화), Gemini (운세 분석 생성용, 크론)
+- **LLM**: Claude Sonnet (대화 + 운세 분석 생성)
 - **SQL 도구 기반**: query_db, modify_db, get_schema
 
 ## 핵심 로직

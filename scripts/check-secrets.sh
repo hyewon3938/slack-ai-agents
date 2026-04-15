@@ -6,7 +6,6 @@ PATTERNS=(
   'SLACK_BOT_TOKEN\s*='
   'SLACK_APP_TOKEN\s*='
   'ANTHROPIC_API_KEY\s*='
-  'GEMINI_API_KEY\s*='
   'GROQ_API_KEY\s*='
   'DATABASE_URL\s*='
   'DB_PASSWORD\s*='

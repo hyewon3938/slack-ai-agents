@@ -15,7 +15,7 @@ vi.mock('../shared/db.js', () => ({
 vi.mock('../shared/config.js', () => ({
   CONFIG: {
     slack: { botToken: 't', signingSecret: 's', appToken: 'a' },
-    llm: { provider: 'anthropic', model: '', anthropicApiKey: 'k', geminiApiKey: '', groqApiKey: '' },
+    llm: { provider: 'anthropic', model: '', anthropicApiKey: 'k', groqApiKey: '' },
     channels: { life: 'C1', project: '', insight: '', money: '' },
     db: { url: 'postgresql://test' },
     dbProxy: { apiKey: 'test-api-key-at-least-32-chars-long-xxxx' },
