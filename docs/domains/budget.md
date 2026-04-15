@@ -66,6 +66,23 @@ incomes:
   source TEXT,
   memo TEXT,
   created_at TIMESTAMPTZ
+
+-- 월별 예산 스냅샷 (Phase 2)
+monthly_budget_snapshots:
+  id SERIAL PK,
+  user_id INTEGER,
+  year_month VARCHAR(7),            -- '2026-04' (빌링 월)
+  allocated_budget INTEGER,         -- 배정된 자유 예산
+  fixed_total INTEGER,              -- 고정비 합계
+  installment_total INTEGER,        -- 할부 합계
+  planned_total INTEGER,            -- 예정 지출 합계
+  flexible_spent INTEGER,           -- 실제 자유 지출
+  excluded_spent INTEGER,           -- 예산 제외 지출
+  income_total INTEGER,             -- 수입 합계
+  available_at_start INTEGER,       -- 월 시작 시점 가용자금
+  available_at_end INTEGER,         -- 월 종료 시점 가용자금
+  sealed_at TIMESTAMPTZ,            -- 정산 시각
+  UNIQUE(user_id, year_month)
 ```
 
 > 위 스키마는 설계 기반 예상. 실제 마이그레이션 파일이 main에 병합되면 업데이트 필요.
