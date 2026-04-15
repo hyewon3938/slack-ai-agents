@@ -21,7 +21,6 @@ vi.mock('./repository/expenses-repo', () => ({
 }));
 vi.mock('./repository/settings-repo', () => ({
   readTargetMonth: vi.fn(),
-  readBudgetStartAt: vi.fn(),
   upsertTargetDate: vi.fn(),
 }));
 
