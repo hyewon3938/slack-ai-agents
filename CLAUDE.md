@@ -13,8 +13,8 @@
                         │
                    ┌────┴────┐
                    ▼         ▼
-              [PostgreSQL]  [외부 API]
-              (Oracle VM)   (명리학: Gemini)
+              [PostgreSQL]
+              (Oracle VM)
                    ↑
               [Vercel]
               (Next.js 웹 대시보드)
@@ -24,7 +24,7 @@
 
 - Runtime: Node.js + TypeScript (strict)
 - Slack: @slack/bolt (Socket Mode)
-- LLM: Claude Sonnet (메인) — 명리학 분석 전용: Gemini
+- LLM: Claude Sonnet
 - DB: PostgreSQL (Oracle VM, Docker)
 - Web: Next.js 16 (Vercel 배포)
 - Cron: node-cron (timezone: Asia/Seoul)

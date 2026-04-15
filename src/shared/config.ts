@@ -10,7 +10,7 @@ function requireEnv(key: string): string {
   return value;
 }
 
-const LLM_PROVIDERS = ['groq', 'anthropic', 'gemini'] as const;
+const LLM_PROVIDERS = ['groq', 'anthropic'] as const;
 type LLMProvider = (typeof LLM_PROVIDERS)[number];
 
 function requireLLMProvider(key: string, defaultValue: LLMProvider): LLMProvider {
@@ -28,11 +28,10 @@ export const CONFIG = {
     appToken: requireEnv('SLACK_APP_TOKEN'),
   },
   llm: {
-    provider: requireLLMProvider('LLM_PROVIDER', 'gemini'),
+    provider: requireLLMProvider('LLM_PROVIDER', 'anthropic'),
     model: process.env['LLM_MODEL'] ?? '',
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
-    geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
   },
   channels: {
     life: requireEnv('LIFE_CHANNEL_ID'),

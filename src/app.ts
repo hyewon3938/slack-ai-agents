@@ -41,7 +41,7 @@ const startApp = async (): Promise<void> => {
     registerAgent(CONFIG.channels.insight, insightAgent);
   }
 
-  // 크론 스케줄러 (DB 기반 동적 스케줄) — Gemini Flash로 비용 절감
+  // 크론 스케줄러 (DB 기반 동적 스케줄)
   const cronScheduler = new CronScheduler(app, {
     channelId: CONFIG.channels.life,
     llmClient: cronLLMClient,

@@ -1,6 +1,6 @@
 /**
  * 주간 리포트.
- * 매주 일요일 실행: SQL 집계 → Block Kit + Gemini Flash 한줄 총평.
+ * 매주 일요일 실행: SQL 집계 → Block Kit + LLM 한줄 총평.
  * 일요일 아닌 날은 early return.
  */
 
