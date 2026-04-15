@@ -205,9 +205,7 @@ describe('getRunwayProjection', () => {
     expect(result.projections[0]!.free_budget).toBe(200_000);
   });
 
-  it('free_per_month은 전체월 기준 — prorated(현재월 남은일수) 금지 + 런웨이 target 근사', async () => {
-    // April 10 (current cycle 31일, 남은일수 6일)
-    // 고정/할부/예정 0, 자산 1M, target 8월(5개월): 부풀림/prorated 없으면 런웨이가 target 근처에서 소진
+  it('target 설정 시 actual_runway_date === target_date (정합성 불변식)', async () => {
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
     vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
     vi.mocked(readAvgVariableMonthly).mockResolvedValue(999_999); // 사용 안 됨 확인
@@ -215,13 +213,24 @@ describe('getRunwayProjection', () => {
 
     const result = await getRunwayProjection(1, DEFAULT_NOW);
 
-    // prorated(dailyFree × 6 ≈ 47k) 였으면 100k 아래 — 전체월(≈ 242k) 이어야 함
-    expect(result.free_per_month).not.toBeNull();
-    expect(result.free_per_month!).toBeGreaterThan(100_000);
+    expect(result.target_date).toBe('2026-08');
+    expect(result.actual_runway_date).toBe('2026-08'); // 정확히 일치
+    expect(result.projections).toHaveLength(5); // 4월 ~ 8월
+    expect(result.projections.at(-1)!.remaining).toBeLessThanOrEqual(10);
+  });
 
-    // 런웨이가 target(8월) 근처에서 끝나야 함. prorated 라면 수십 개월로 연장됨
-    expect(result.projections.length).toBeLessThanOrEqual(6);
-    expect(result.actual_runway_date.startsWith('2026-0')).toBe(true);
+  it('고정비/할부 있어도 target 정확히 일치', async () => {
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(500_000);
+    vi.mocked(readActiveInstallments).mockResolvedValue([
+      { monthlyAmount: 100_000, remainingCount: 3, isNew: false },
+    ]);
+    vi.mocked(readTargetMonth).mockResolvedValue('2026-08');
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(result.actual_runway_date).toBe('2026-08');
+    expect(result.projections[0]!.installments).toBeGreaterThan(0);
   });
 });
 

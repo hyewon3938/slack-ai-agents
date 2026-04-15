@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { projectRunway } from '../runway-projection';
+import { projectRunway, projectFromAllocator } from '../runway-projection';
+import type { MonthlyBudget } from '../../types-v2';
 
 const BASE = {
   billingMonth: '2026-04',
@@ -66,5 +67,38 @@ describe('projectRunway', () => {
       ...BASE, totalAvailable: 999_999_999, maxMonths: 5,
     });
     expect(projections.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('projectFromAllocator', () => {
+  it('allocator 결과 기반 projection — remaining이 target 끝에 0으로 수렴', () => {
+    // sum(free) = 1_000_000 (라운딩 오차 포함)
+    const monthlyBudgets: MonthlyBudget[] = [
+      { yearMonth: '2026-04', allocatedDays: 6,  fixed: 0, installments: 0, planned: 0, free: 46_875,  isCurrent: true  },
+      { yearMonth: '2026-05', allocatedDays: 30, fixed: 0, installments: 0, planned: 0, free: 234_375, isCurrent: false },
+      { yearMonth: '2026-06', allocatedDays: 31, fixed: 0, installments: 0, planned: 0, free: 242_188, isCurrent: false },
+      { yearMonth: '2026-07', allocatedDays: 30, fixed: 0, installments: 0, planned: 0, free: 234_375, isCurrent: false },
+      { yearMonth: '2026-08', allocatedDays: 31, fixed: 0, installments: 0, planned: 0, free: 242_187, isCurrent: false },
+    ];
+
+    const { projections, actualRunwayDate } = projectFromAllocator(1_000_000, monthlyBudgets, '2026-04');
+
+    expect(projections).toHaveLength(5);
+    expect(actualRunwayDate).toBe('2026-08');
+    expect(projections.at(-1)!.remaining).toBeLessThanOrEqual(1); // 라운딩 오차만
+  });
+
+  it('잠긴돈이 자산 초과 — target 전에 소진', () => {
+    const monthlyBudgets: MonthlyBudget[] = [
+      { yearMonth: '2026-04', allocatedDays: 6,  fixed: 500_000, installments: 0, planned: 0, free: 0, isCurrent: true  },
+      { yearMonth: '2026-05', allocatedDays: 30, fixed: 500_000, installments: 0, planned: 0, free: 0, isCurrent: false },
+      { yearMonth: '2026-06', allocatedDays: 31, fixed: 500_000, installments: 0, planned: 0, free: 0, isCurrent: false },
+      { yearMonth: '2026-07', allocatedDays: 30, fixed: 500_000, installments: 0, planned: 0, free: 0, isCurrent: false },
+    ];
+
+    const { projections } = projectFromAllocator(1_000_000, monthlyBudgets, '2026-04');
+
+    expect(projections.length).toBeLessThan(4); // target 전 소진
+    expect(projections.at(-1)!.remaining).toBe(0);
   });
 });
