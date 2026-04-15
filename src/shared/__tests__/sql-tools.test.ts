@@ -131,6 +131,11 @@ describe('validateUserIdFilter', () => {
     expect(validateUserIdFilter('SELECT * FROM schedules WHERE id = 1', 1)).not.toBeNull();
   });
 
+  it('테이블 참조 없는 순수 계산 쿼리는 통과한다', () => {
+    expect(validateUserIdFilter("SELECT EXTRACT(EPOCH FROM ('08:50'::time - '01:00'::time)) / 60 AS duration_minutes", 1)).toBeNull();
+    expect(validateUserIdFilter('SELECT 470 AS duration_minutes', 1)).toBeNull();
+  });
+
   it('면제 테이블(categories)만 참조하면 통과한다', () => {
     expect(validateUserIdFilter('SELECT * FROM categories', 1)).toBeNull();
   });
