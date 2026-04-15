@@ -9,7 +9,10 @@ vi.mock('./repository/assets-repo', () => ({ readTotalAssetBalance: vi.fn() }));
 vi.mock('./repository/fixed-costs-repo', () => ({ readFixedCostsMonthlyTotal: vi.fn() }));
 vi.mock('./repository/installments-repo', () => ({ readActiveInstallments: vi.fn() }));
 vi.mock('./repository/planned-repo', () => ({ readPlannedExpenses: vi.fn() }));
-vi.mock('./repository/incomes-repo', () => ({ readIncomeTotal: vi.fn() }));
+vi.mock('./repository/incomes-repo', () => ({
+  readIncomeTotal: vi.fn(),
+  readDistributableIncomeTotal: vi.fn(),
+}));
 vi.mock('./repository/expenses-repo', () => ({
   readFlexibleSpent: vi.fn(),
   readExcludedSpent: vi.fn(),
@@ -23,7 +26,7 @@ import { readTotalAssetBalance } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
-import { readIncomeTotal } from './repository/incomes-repo';
+import { readIncomeTotal, readDistributableIncomeTotal } from './repository/incomes-repo';
 import { readFlexibleSpent, readExcludedSpent } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 
@@ -40,6 +43,7 @@ function setupCommonMocks() {
   vi.mocked(readFlexibleSpent).mockResolvedValue(0);
   vi.mocked(readExcludedSpent).mockResolvedValue(0);
   vi.mocked(readIncomeTotal).mockResolvedValue(0);
+  vi.mocked(readDistributableIncomeTotal).mockResolvedValue(0);
   vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
 }
 
@@ -66,7 +70,7 @@ describe('getMonthlyAllocation', () => {
       planned_total: 0, flexible_spent: 0, excluded_spent: 0, income_total: 0,
       available_at_start: 1_000_000, available_at_end: 900_000,
     });
-    vi.mocked(readIncomeTotal).mockResolvedValue(100_000);
+    vi.mocked(readDistributableIncomeTotal).mockResolvedValue(100_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(50_000);
     vi.mocked(readExcludedSpent).mockResolvedValue(0);
     // readTotalAssetBalance은 호출되지 않아야 함 (별도로 확인)

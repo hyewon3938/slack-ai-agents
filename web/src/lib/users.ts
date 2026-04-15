@@ -19,6 +19,12 @@ export interface UserRow {
 export const findUserByKakaoId = async (kakaoId: number): Promise<UserRow | null> =>
   queryOne<UserRow>('SELECT * FROM users WHERE kakao_id = $1', [kakaoId]);
 
+/** cron 멀티유저 루프용 — 등록된 모든 user id */
+export const listAllUserIds = async (): Promise<number[]> => {
+  const result = await query<{ id: number }>('SELECT id FROM users ORDER BY id');
+  return result.rows.map((row) => row.id);
+};
+
 /** 유저 수 확인 */
 export const getUserCount = async (): Promise<number> => {
   const result = await queryOne<{ count: string }>('SELECT COUNT(*) as count FROM users');
