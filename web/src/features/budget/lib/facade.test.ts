@@ -5,7 +5,7 @@ vi.mock('./snapshot/monthly-snapshot-repo', () => ({
   readSnapshotByMonth: vi.fn(),
   saveSnapshotIfAbsent: vi.fn(),
 }));
-vi.mock('./repository/assets-repo', () => ({ readTotalAssetBalance: vi.fn() }));
+vi.mock('./repository/assets-repo', () => ({ readDistributableAssetBalance: vi.fn() }));
 vi.mock('./repository/fixed-costs-repo', () => ({ readFixedCostsMonthlyTotal: vi.fn() }));
 vi.mock('./repository/installments-repo', () => ({ readActiveInstallments: vi.fn() }));
 vi.mock('./repository/planned-repo', () => ({ readPlannedExpenses: vi.fn() }));
@@ -29,7 +29,7 @@ import {
   runSettlementIfDue,
 } from './facade';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
-import { readTotalAssetBalance } from './repository/assets-repo';
+import { readDistributableAssetBalance } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
@@ -42,7 +42,7 @@ const DEFAULT_NOW = new Date('2026-04-10T12:00:00Z');
 
 function setupCommonMocks() {
   vi.mocked(readLatestSnapshot).mockResolvedValue(null);
-  vi.mocked(readTotalAssetBalance).mockResolvedValue(0);
+  vi.mocked(readDistributableAssetBalance).mockResolvedValue(0);
   vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
   vi.mocked(readActiveInstallments).mockResolvedValue([]);
   vi.mocked(readTargetMonth).mockResolvedValue('2026-04');
@@ -64,11 +64,11 @@ describe('getMonthlyAllocation', () => {
 
   it('스냅샷 없을 때 → 자산 합계를 totalAvailable로 사용', async () => {
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(1_000_000);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
 
     const result = await getMonthlyAllocation(1, DEFAULT_NOW);
 
-    expect(readTotalAssetBalance).toHaveBeenCalledWith(1);
+    expect(readDistributableAssetBalance).toHaveBeenCalledWith(1);
     expect(result.monthlyBudgets.length).toBeGreaterThan(0);
   });
 
@@ -82,8 +82,8 @@ describe('getMonthlyAllocation', () => {
     vi.mocked(readDistributableIncomeTotal).mockResolvedValue(100_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(50_000);
     vi.mocked(readExcludedSpent).mockResolvedValue(0);
-    // readTotalAssetBalance은 호출되지 않아야 함 (별도로 확인)
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(999_999);
+    // readDistributableAssetBalance은 호출되지 않아야 함 (별도로 확인)
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(999_999);
 
     const result = await getMonthlyAllocation(1, DEFAULT_NOW);
 
@@ -114,7 +114,7 @@ describe('runSettlementIfDue', () => {
     const settlementNow = new Date('2026-04-16T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
     vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
     vi.mocked(readIncomeTotal).mockResolvedValue(2_000_000);
@@ -132,7 +132,7 @@ describe('getTodayAllocation', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     setupCommonMocks();
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(3_000_000);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(3_000_000);
     vi.mocked(readTargetMonth).mockResolvedValue('2026-06');
     vi.mocked(readTodayFlexSpent).mockResolvedValue(30_000);
   });
@@ -149,7 +149,7 @@ describe('getTodayAllocation', () => {
 
   it('currentMonth 없으면 빈 값 + targetDate null 반환', async () => {
     vi.mocked(readTargetMonth).mockResolvedValue(null);
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(0);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(0);
 
     const result = await getTodayAllocation(1, DEFAULT_NOW);
 
@@ -167,7 +167,7 @@ describe('getRunwayProjection', () => {
   });
 
   it('응답 shape 검증 — projections 배열 + 필수 필드', async () => {
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(500_000);
     vi.mocked(readAvgVariableMonthly).mockResolvedValue(300_000);
     vi.mocked(readTargetMonth).mockResolvedValue('2026-06');
@@ -184,7 +184,7 @@ describe('getRunwayProjection', () => {
   });
 
   it('totalAvailable 0 → projections 빈 배열, actualRunwayMonths 0', async () => {
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(0);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(0);
 
     const result = await getRunwayProjection(1, DEFAULT_NOW);
 
@@ -193,7 +193,7 @@ describe('getRunwayProjection', () => {
   });
 
   it('target_date null이면 avg_variable_monthly를 freePerMonthEstimate로 사용', async () => {
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(1_000_000);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
     vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
     vi.mocked(readAvgVariableMonthly).mockResolvedValue(200_000);
     vi.mocked(readTargetMonth).mockResolvedValue(null);
@@ -203,6 +203,25 @@ describe('getRunwayProjection', () => {
     expect(result.free_per_month).toBeNull();
     expect(result.projections.length).toBeGreaterThan(0);
     expect(result.projections[0]!.free_budget).toBe(200_000);
+  });
+
+  it('free_per_month은 전체월 기준 — prorated(현재월 남은일수) 금지 + 런웨이 target 근사', async () => {
+    // April 10 (current cycle 31일, 남은일수 6일)
+    // 고정/할부/예정 0, 자산 1M, target 8월(5개월): 부풀림/prorated 없으면 런웨이가 target 근처에서 소진
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
+    vi.mocked(readAvgVariableMonthly).mockResolvedValue(999_999); // 사용 안 됨 확인
+    vi.mocked(readTargetMonth).mockResolvedValue('2026-08');
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    // prorated(dailyFree × 6 ≈ 47k) 였으면 100k 아래 — 전체월(≈ 242k) 이어야 함
+    expect(result.free_per_month).not.toBeNull();
+    expect(result.free_per_month!).toBeGreaterThan(100_000);
+
+    // 런웨이가 target(8월) 근처에서 끝나야 함. prorated 라면 수십 개월로 연장됨
+    expect(result.projections.length).toBeLessThanOrEqual(6);
+    expect(result.actual_runway_date.startsWith('2026-0')).toBe(true);
   });
 });
 
@@ -219,13 +238,13 @@ describe('getBudgetPreview', () => {
 
   it('과거 targetDate (monthCount <= 0) → null', async () => {
     // DEFAULT_NOW = 2026-04, targetDate '2026-03' → monthCount = 0 → allocator returns empty
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     const result = await getBudgetPreview(1, DEFAULT_NOW, '2026-03');
     expect(result).toBeNull();
   });
 
   it('totalAvailable 0 → free_per_month 0으로 반환 (null 아님)', async () => {
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(0);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(0);
     vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(1_000_000);
     const result = await getBudgetPreview(1, DEFAULT_NOW, '2026-05');
     expect(result).not.toBeNull();
@@ -233,7 +252,7 @@ describe('getBudgetPreview', () => {
   });
 
   it('정상 응답 shape 검증', async () => {
-    vi.mocked(readTotalAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(300_000);
 
     const result = await getBudgetPreview(1, DEFAULT_NOW, '2026-06');

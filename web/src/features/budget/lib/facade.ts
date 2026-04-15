@@ -5,7 +5,7 @@ import { allocateTodayBudget } from './allocator/day-allocator';
 import { projectRunway } from './allocator/runway-projection';
 import { detectSettlementTrigger, buildSettlementSnapshot } from './settlement/settle';
 
-import { readTotalAssetBalance } from './repository/assets-repo';
+import { readDistributableAssetBalance } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
@@ -63,7 +63,7 @@ function addOneDay(dateStr: string): string {
 async function computeTotalAvailable(userId: number, today: string): Promise<number> {
   const snapshot = await readLatestSnapshot(userId);
   if (!snapshot) {
-    return readTotalAssetBalance(userId);
+    return readDistributableAssetBalance(userId);
   }
   const snapshotEnd = getBillingRange(snapshot.year_month).to;
   const fromDate = addOneDay(snapshotEnd);
@@ -148,8 +148,7 @@ export async function getRunwayProjection(
   const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate ?? cycle.yearMonth);
   const totalAvailable = await computeTotalAvailable(userId, todayStr);
 
-  const currentMonth = monthly.monthlyBudgets.find((m) => m.isCurrent);
-  const freePerMonth = currentMonth?.free ?? null;
+  const freePerMonth = monthly.freePerMonth;
   const freePerMonthEstimate = freePerMonth ?? avgVariableMonthly;
 
   const { projections, actualRunwayMonths, actualRunwayDate } = projectRunway({
@@ -247,7 +246,7 @@ export async function runSettlementIfDue(
   }
 
   const prevSnapshot = await readLatestSnapshot(userId);
-  const availableAtStart = prevSnapshot?.available_at_end ?? await readTotalAssetBalance(userId);
+  const availableAtStart = prevSnapshot?.available_at_end ?? await readDistributableAssetBalance(userId);
   const availableAtEnd = await computeTotalAvailable(userId, formatKSTDate(now));
 
   const snapshot = buildSettlementSnapshot({
