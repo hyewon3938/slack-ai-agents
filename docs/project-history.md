@@ -1224,3 +1224,4 @@ insight 채널의 핵심 목표: 일기 데이터와 일운 분석을 비교하�
 | 2026-04-10 | **SQL 도구 user_id 동적 격리** — \`user_id = 1\` 하드코딩을 제거하고 Slack 진입점·크론·에이전트 루프 전 경로를 userId 파라미터화. \`user-resolver\`로 \`slack_user_mappings\` 기반 해석, 미등록 시 DEFAULT_USER_ID 폴백 + warn 로그. 진입점 4곳 폴백 정책 통일 (Issue #236, PR #237) |
 | 2026-04-10 | **멀티유저 크론 루프 확장** — `slack_user_mappings`에 `life_channel_id`/`insight_channel_id` 컬럼 추가. 크론 7개 태스크 + 주간 리포트를 `queryAllUserMappings` 기반 유저별 루프로 전환. 유저별 전용 채널 없으면 `slack_user_id` 폴백 → Slack 자동 DM 전송. 유저별 try/catch로 에러 격리 (Issue #240, PR #243) |
 | 2026-04-11 | **Insight 일주 할루시네이션 방지** — 프롬프트 경량화(PR #223) 이후 약화된 일주 가드레일 복원. 상단 일주 앵커 고정, 사주 연결 규칙에 역산 금지 명시, saju\_patterns 주의 문구 추가, fortune context 이중 앵커 구조. getDayPillar 중복 계산 제거 + 단위 테스트 3개 추가 (Issue #249, PR #250) |
+| 2026-04-15 | **예산 재설계 Phase 2** — DB 마이그레이션: `monthly_budget_snapshots` 테이블 신설 (과거 월 불변 스냅샷 구조). Phase 3(Repository/Facade) 준비 완료 (Issue #285, PR #286) |
