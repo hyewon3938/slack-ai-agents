@@ -17,17 +17,25 @@ vi.mock('./repository/expenses-repo', () => ({
   readFlexibleSpent: vi.fn(),
   readExcludedSpent: vi.fn(),
   readTodayFlexSpent: vi.fn(),
+  readAvgVariableMonthly: vi.fn(),
 }));
-vi.mock('./repository/settings-repo', () => ({ readTargetMonth: vi.fn() }));
+vi.mock('./repository/settings-repo', () => ({
+  readTargetMonth: vi.fn(),
+  readBudgetStartAt: vi.fn(),
+  upsertTargetDate: vi.fn(),
+}));
 
-import { getMonthlyAllocation, runSettlementIfDue } from './facade';
+import {
+  getMonthlyAllocation, getTodayAllocation, getRunwayProjection, getBudgetPreview,
+  runSettlementIfDue,
+} from './facade';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
 import { readTotalAssetBalance } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
 import { readIncomeTotal, readDistributableIncomeTotal } from './repository/incomes-repo';
-import { readFlexibleSpent, readExcludedSpent } from './repository/expenses-repo';
+import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent, readAvgVariableMonthly } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 
 // April 10 21:00 KST — billing cycle: 2026-04 (Mar 16 ~ Apr 15)
@@ -42,6 +50,8 @@ function setupCommonMocks() {
   vi.mocked(readPlannedExpenses).mockResolvedValue([]);
   vi.mocked(readFlexibleSpent).mockResolvedValue(0);
   vi.mocked(readExcludedSpent).mockResolvedValue(0);
+  vi.mocked(readTodayFlexSpent).mockResolvedValue(0);
+  vi.mocked(readAvgVariableMonthly).mockResolvedValue(0);
   vi.mocked(readIncomeTotal).mockResolvedValue(0);
   vi.mocked(readDistributableIncomeTotal).mockResolvedValue(0);
   vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
@@ -116,5 +126,127 @@ describe('runSettlementIfDue', () => {
     expect(result.settled).toBe(true);
     expect(result.snapshot).toBeDefined();
     expect(result.snapshot?.year_month).toBe('2026-04');
+  });
+});
+
+describe('getTodayAllocation', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setupCommonMocks();
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(3_000_000);
+    vi.mocked(readTargetMonth).mockResolvedValue('2026-06');
+    vi.mocked(readTodayFlexSpent).mockResolvedValue(30_000);
+  });
+
+  it('결과에 todayFlexSpent + targetDate 포함', async () => {
+    const result = await getTodayAllocation(1, DEFAULT_NOW);
+
+    expect(result.todayFlexSpent).toBe(30_000);
+    expect(result.targetDate).toBe('2026-06');
+    expect(typeof result.todayBudget).toBe('number');
+    expect(typeof result.todayRemaining).toBe('number');
+    expect(typeof result.monthBudgetRemaining).toBe('number');
+  });
+
+  it('currentMonth 없으면 빈 값 + targetDate null 반환', async () => {
+    vi.mocked(readTargetMonth).mockResolvedValue(null);
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(0);
+
+    const result = await getTodayAllocation(1, DEFAULT_NOW);
+
+    expect(result.todayBudget).toBe(0);
+    expect(result.todayRemaining).toBe(0);
+    expect(result.todayFlexSpent).toBe(0);
+    expect(result.targetDate).toBeNull();
+  });
+});
+
+describe('getRunwayProjection', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setupCommonMocks();
+  });
+
+  it('응답 shape 검증 — projections 배열 + 필수 필드', async () => {
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(500_000);
+    vi.mocked(readAvgVariableMonthly).mockResolvedValue(300_000);
+    vi.mocked(readTargetMonth).mockResolvedValue('2026-06');
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(typeof result.actual_runway_months).toBe('number');
+    expect(typeof result.actual_runway_date).toBe('string');
+    expect(typeof result.effective_available).toBe('number');
+    expect(typeof result.fixed_monthly).toBe('number');
+    expect(result.avg_variable_monthly).toBe(300_000);
+    expect(result.target_date).toBe('2026-06');
+    expect(Array.isArray(result.projections)).toBe(true);
+  });
+
+  it('totalAvailable 0 → projections 빈 배열, actualRunwayMonths 0', async () => {
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(0);
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(result.projections).toHaveLength(0);
+    expect(result.actual_runway_months).toBe(0);
+  });
+
+  it('target_date null이면 avg_variable_monthly를 freePerMonthEstimate로 사용', async () => {
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(1_000_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
+    vi.mocked(readAvgVariableMonthly).mockResolvedValue(200_000);
+    vi.mocked(readTargetMonth).mockResolvedValue(null);
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(result.free_per_month).toBeNull();
+    expect(result.projections.length).toBeGreaterThan(0);
+    expect(result.projections[0]!.free_budget).toBe(200_000);
+  });
+});
+
+describe('getBudgetPreview', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setupCommonMocks();
+  });
+
+  it('유효하지 않은 targetDate → null', async () => {
+    const result = await getBudgetPreview(1, DEFAULT_NOW, '2026-3');
+    expect(result).toBeNull();
+  });
+
+  it('과거 targetDate (monthCount <= 0) → null', async () => {
+    // DEFAULT_NOW = 2026-04, targetDate '2026-03' → monthCount = 0 → allocator returns empty
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(5_000_000);
+    const result = await getBudgetPreview(1, DEFAULT_NOW, '2026-03');
+    expect(result).toBeNull();
+  });
+
+  it('totalAvailable 0 → free_per_month 0으로 반환 (null 아님)', async () => {
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(0);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(1_000_000);
+    const result = await getBudgetPreview(1, DEFAULT_NOW, '2026-05');
+    expect(result).not.toBeNull();
+    expect(result!.free_per_month).toBe(0);
+  });
+
+  it('정상 응답 shape 검증', async () => {
+    vi.mocked(readTotalAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(300_000);
+
+    const result = await getBudgetPreview(1, DEFAULT_NOW, '2026-06');
+
+    expect(result).not.toBeNull();
+    expect(typeof result!.free_per_month).toBe('number');
+    expect(typeof result!.daily_estimate).toBe('number');
+    expect(Array.isArray(result!.month_breakdown)).toBe(true);
+    const mb = result!.month_breakdown[0]!;
+    expect(typeof mb.month).toBe('string');
+    expect(typeof mb.locked).toBe('number');
+    expect(typeof mb.free).toBe('number');
+    expect(typeof mb.daily).toBe('number');
   });
 });
