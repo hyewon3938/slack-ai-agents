@@ -2,6 +2,7 @@ import { query, queryOne } from '@/lib/db';
 import { getTodayISO } from '@/lib/kst';
 import { getTodayAllocation } from './facade';
 import { getCurrentBillingMonth } from './billing/cycle';
+import { resolveFixedCostExpenseDate } from './billing/fixed-cost-date';
 import type {
   ExpenseRow,
   FixedCostRow,
@@ -368,10 +369,6 @@ export async function deleteFixedCost(userId: number, id: number): Promise<boole
  * 해당 결제주기 내에 지출 기록이 없으면 자동 생성.
  */
 export async function ensureFixedCostExpenses(userId: number, yearMonth: string): Promise<number> {
-  const [year, month] = yearMonth.split('-').map(Number);
-  const prevMonth = month === 1 ? 12 : month - 1;
-  const prevYear = month === 1 ? year - 1 : year;
-
   const fixedCosts = await queryFixedCosts(userId);
   const activeCostsWithDay = fixedCosts.filter((fc) => fc.active && fc.day_of_month);
 
@@ -382,20 +379,7 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
   let created = 0;
 
   for (const fc of activeCostsWithDay) {
-    const day = fc.day_of_month!;
-
-    let expenseYear: number, expenseMonth: number;
-    if (day >= 16) {
-      expenseYear = prevYear;
-      expenseMonth = prevMonth;
-    } else {
-      expenseYear = year;
-      expenseMonth = month;
-    }
-
-    const lastDay = new Date(expenseYear, expenseMonth, 0).getDate();
-    const actualDay = Math.min(day, lastDay);
-    const expenseDate = `${expenseYear}-${String(expenseMonth).padStart(2, '0')}-${String(actualDay).padStart(2, '0')}`;
+    const expenseDate = resolveFixedCostExpenseDate(yearMonth, fc.day_of_month!);
 
     if (expenseDate > todayStr) continue;
 

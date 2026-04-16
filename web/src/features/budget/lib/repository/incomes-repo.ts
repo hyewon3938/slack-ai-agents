@@ -19,22 +19,20 @@ export async function readIncomeTotal(
   return Number(result.rows[0]?.total ?? 0);
 }
 
-// 축 A — 자산에 흘러드는 수입만 합산 (distribute_to_budget=true + 레거시 incomes)
-export async function readDistributableIncomeTotal(
+// 이번 달만 반영 — distribute_to_budget=false 인 expenses.type='income' 만 (현재 월 free 에 독점 귀속)
+// 레거시 incomes 테이블은 항상 전체 분배로 간주하므로 제외.
+export async function readCurrentMonthOnlyIncome(
   userId: number,
   from: string,
   to: string,
 ): Promise<number> {
   const result = await query<{ total: string }>(
-    `SELECT COALESCE(SUM(amount), 0)::text AS total FROM (
-       SELECT amount FROM incomes
-        WHERE user_id = $1 AND date BETWEEN $2 AND $3
-       UNION ALL
-       SELECT amount FROM expenses
-        WHERE user_id = $1 AND type = 'income'
-          AND COALESCE(distribute_to_budget, false) = true
-          AND date BETWEEN $2 AND $3
-     ) AS combined`,
+    `SELECT COALESCE(SUM(amount), 0)::text AS total
+     FROM expenses
+     WHERE user_id = $1
+       AND type = 'income'
+       AND COALESCE(distribute_to_budget, false) = false
+       AND date BETWEEN $2 AND $3`,
     [userId, from, to],
   );
   return Number(result.rows[0]?.total ?? 0);

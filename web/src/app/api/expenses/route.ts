@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       planned_expense_id?: number | null;
       installment_months?: number;
       exclude_from_budget?: boolean;
+      distribute_to_budget?: boolean;
     };
 
     if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       type: entryType,
       planned_expense_id: body.planned_expense_id ?? null,
       exclude_from_budget: excludeFromBudget,
+      distribute_to_budget: body.distribute_to_budget ?? false,
     });
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {

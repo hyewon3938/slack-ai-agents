@@ -29,6 +29,8 @@ export interface MonthAllocatorInput {
   currentBillingMonth: string;
   targetMonth: string | null;
   today: string;        // 'YYYY-MM-DD'
+  /** 이번 달에만 쓰는 수입 (distribute_to_budget=false) — 현재 월 free 에 독점 귀속 */
+  currentMonthOnlyIncome?: number;
 }
 
 export interface MonthlyBudget {

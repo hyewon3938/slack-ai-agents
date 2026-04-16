@@ -9,7 +9,7 @@ import { readDistributableAssetBalance } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
-import { readIncomeTotal, readDistributableIncomeTotal } from './repository/incomes-repo';
+import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
 import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent, readAvgVariableMonthly } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
@@ -68,7 +68,7 @@ async function computeTotalAvailable(userId: number, today: string): Promise<num
   const snapshotEnd = getBillingRange(snapshot.year_month).to;
   const fromDate = addOneDay(snapshotEnd);
   const [income, flex, excluded] = await Promise.all([
-    readDistributableIncomeTotal(userId, fromDate, today),
+    readIncomeTotal(userId, fromDate, today),
     readFlexibleSpent(userId, fromDate, today),
     readExcludedSpent(userId, fromDate, today),
   ]);
@@ -82,11 +82,12 @@ export async function getMonthlyAllocation(
 ): Promise<MonthAllocatorResult> {
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
-  const [totalAvailable, fixedMonthly, installments, targetMonth] = await Promise.all([
+  const [totalAvailable, fixedMonthly, installments, targetMonth, currentMonthOnlyIncome] = await Promise.all([
     computeTotalAvailable(userId, todayStr),
     readFixedCostsMonthlyTotal(userId),
     readActiveInstallments(userId, cycle.from),
     readTargetMonth(userId),
+    readCurrentMonthOnlyIncome(userId, cycle.from, todayStr),
   ]);
   const planned = await readPlannedExpenses(
     userId, cycle.yearMonth, targetMonth ?? cycle.yearMonth,
@@ -96,6 +97,7 @@ export async function getMonthlyAllocation(
     plannedExpenses: planned,
     currentBillingMonth: cycle.yearMonth,
     targetMonth, today: todayStr,
+    currentMonthOnlyIncome,
   });
 }
 
@@ -191,10 +193,11 @@ export async function getBudgetPreview(
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
 
-  const [totalAvailable, fixedMonthly, installments] = await Promise.all([
+  const [totalAvailable, fixedMonthly, installments, currentMonthOnlyIncome] = await Promise.all([
     computeTotalAvailable(userId, todayStr),
     readFixedCostsMonthlyTotal(userId),
     readActiveInstallments(userId, cycle.from),
+    readCurrentMonthOnlyIncome(userId, cycle.from, todayStr),
   ]);
   const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate);
 
@@ -206,6 +209,7 @@ export async function getBudgetPreview(
     currentBillingMonth: cycle.yearMonth,
     targetMonth: targetDate,
     today: todayStr,
+    currentMonthOnlyIncome,
   });
 
   if (result.freePerMonth === null) return null;

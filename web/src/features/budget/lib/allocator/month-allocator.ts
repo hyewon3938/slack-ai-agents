@@ -76,10 +76,15 @@ export function allocateMonthlyBudgets(input: MonthAllocatorInput): MonthAllocat
     sumDays += entry.allocatedDays;
   }
 
-  const totalFree = Math.max(0, input.totalAvailable - totalLocked);
+  const bonus = Math.max(0, input.currentMonthOnlyIncome ?? 0);
+  const totalFree = Math.max(0, input.totalAvailable - totalLocked - bonus);
   const dailyFree = sumDays > 0 ? totalFree / sumDays : 0;
   const freePerMonth = Math.round(dailyFree * currentCycle.totalDays);
   for (const mb of monthlyBudgets) mb.free = Math.round(dailyFree * mb.allocatedDays);
+  if (bonus > 0) {
+    const current = monthlyBudgets.find((mb) => mb.isCurrent);
+    if (current) current.free += bonus;
+  }
 
   return { monthlyBudgets, dailyFree, freePerMonth, totalLocked };
 }
