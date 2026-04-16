@@ -11,7 +11,7 @@ vi.mock('./repository/installments-repo', () => ({ readActiveInstallments: vi.fn
 vi.mock('./repository/planned-repo', () => ({ readPlannedExpenses: vi.fn() }));
 vi.mock('./repository/incomes-repo', () => ({
   readIncomeTotal: vi.fn(),
-  readDistributableIncomeTotal: vi.fn(),
+  readCurrentMonthOnlyIncome: vi.fn(),
 }));
 vi.mock('./repository/expenses-repo', () => ({
   readFlexibleSpent: vi.fn(),
@@ -33,7 +33,7 @@ import { readDistributableAssetBalance } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
-import { readIncomeTotal, readDistributableIncomeTotal } from './repository/incomes-repo';
+import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
 import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent, readAvgVariableMonthly } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 
@@ -52,7 +52,7 @@ function setupCommonMocks() {
   vi.mocked(readTodayFlexSpent).mockResolvedValue(0);
   vi.mocked(readAvgVariableMonthly).mockResolvedValue(0);
   vi.mocked(readIncomeTotal).mockResolvedValue(0);
-  vi.mocked(readDistributableIncomeTotal).mockResolvedValue(0);
+  vi.mocked(readCurrentMonthOnlyIncome).mockResolvedValue(0);
   vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
 }
 
@@ -79,7 +79,7 @@ describe('getMonthlyAllocation', () => {
       planned_total: 0, flexible_spent: 0, excluded_spent: 0, income_total: 0,
       available_at_start: 1_000_000, available_at_end: 900_000,
     });
-    vi.mocked(readDistributableIncomeTotal).mockResolvedValue(100_000);
+    vi.mocked(readIncomeTotal).mockResolvedValue(100_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(50_000);
     vi.mocked(readExcludedSpent).mockResolvedValue(0);
     // readDistributableAssetBalance은 호출되지 않아야 함 (별도로 확인)
@@ -91,6 +91,32 @@ describe('getMonthlyAllocation', () => {
     expect(result.monthlyBudgets.length).toBeGreaterThan(0);
     // freePerMonth은 totalAvailable 950_000 기준 계산 (≠ 999_999 기준)
     expect(result.freePerMonth).not.toBeNull();
+  });
+
+  it('readCurrentMonthOnlyIncome 을 현재 결제주기 시작일 ~ 오늘 범위로 호출', async () => {
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
+    await getMonthlyAllocation(1, DEFAULT_NOW);
+    expect(readCurrentMonthOnlyIncome).toHaveBeenCalledWith(1, '2026-03-16', '2026-04-10');
+  });
+
+  it('currentMonthOnlyIncome > 0 → 현재 월 free 에 독점 귀속, 다른 월은 오히려 감소', async () => {
+    // totalAvailable = 1_000_000, bonus = 50_000, target = 2026-05
+    // Apr 10 기준 현재 월 남은 일수 = 6 (Apr 10~15), May 주기 = 30일, sumDays = 36
+    // totalFree = 1_000_000 - 50_000 = 950_000, dailyFree = 950_000/36 ≈ 26,388.88
+    // current free = round(26,388.88 * 6) + 50_000 = 158_333 + 50_000 = 208_333
+    // may free     = round(26,388.88 * 30)         = 791_667
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
+    vi.mocked(readTargetMonth).mockResolvedValue('2026-05');
+    vi.mocked(readCurrentMonthOnlyIncome).mockResolvedValue(50_000);
+
+    const result = await getMonthlyAllocation(1, DEFAULT_NOW);
+    const current = result.monthlyBudgets.find((m) => m.isCurrent)!;
+    const future = result.monthlyBudgets.find((m) => !m.isCurrent)!;
+
+    expect(current.free).toBe(208_333);
+    expect(future.free).toBe(791_667);
+    // 총 합은 totalAvailable 과 동일해야 함 (bonus 중복 없음)
+    expect(current.free + future.free).toBe(1_000_000);
   });
 });
 

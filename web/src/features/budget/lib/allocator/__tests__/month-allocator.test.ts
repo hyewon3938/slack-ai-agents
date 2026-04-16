@@ -110,4 +110,149 @@ describe('B. 월 배분 (allocateMonthlyBudgets)', () => {
       expect(may.planned).toBe(5000);
     });
   });
+
+  describe('이번 달 전용 수입 (currentMonthOnlyIncome bonus)', () => {
+    it('미설정(undefined) → 기본 동작과 동일', () => {
+      const r1 = allocateMonthlyBudgets({ ...BASE, totalAvailable: 35000 });
+      const r2 = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, currentMonthOnlyIncome: undefined,
+      });
+      expect(r1).toEqual(r2);
+    });
+
+    it('0 → 기본 동작과 동일', () => {
+      const r1 = allocateMonthlyBudgets({ ...BASE, totalAvailable: 35000 });
+      const r2 = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, currentMonthOnlyIncome: 0,
+      });
+      expect(r1).toEqual(r2);
+    });
+
+    it('양수 bonus → 현재 월 free 에만 귀속, 미래 월 dailyFree 감소', () => {
+      // sumDays=35, totalAvailable=35000 → baseline: dailyFree=1000, apr=5000, may=30000
+      // bonus=3500 → totalFree=31500, dailyFree=900, apr=round(900*5)+3500=8000, may=round(900*30)=27000
+      const result = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, currentMonthOnlyIncome: 3500,
+      });
+      const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
+      const may = result.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      expect(apr.free).toBe(8000);
+      expect(may.free).toBe(27000);
+      expect(apr.free + may.free).toBe(35000); // 중복 없음 — 총합 = totalAvailable
+    });
+
+    it('bonus 추가 시 미래 월 free 는 bonus 없을 때보다 감소', () => {
+      const base = allocateMonthlyBudgets({ ...BASE, totalAvailable: 35000 });
+      const withBonus = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, currentMonthOnlyIncome: 3500,
+      });
+      const baseMay = base.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      const bonusMay = withBonus.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      expect(bonusMay.free).toBeLessThan(baseMay.free);
+    });
+
+    it('bonus > totalAvailable → totalFree 0 으로 클램프, 현재 월 free = bonus', () => {
+      // totalAvailable=10000, bonus=50000 → totalFree=max(0, 10000-50000)=0, dailyFree=0
+      // apr=0+50000=50000, may=0
+      const result = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 10000, currentMonthOnlyIncome: 50000,
+      });
+      const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
+      const may = result.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      expect(apr.free).toBe(50000);
+      expect(may.free).toBe(0);
+    });
+
+    it('targetMonth null → bonus 무시 (monthlyBudgets 빈 배열)', () => {
+      const result = allocateMonthlyBudgets({
+        ...BASE, targetMonth: null, currentMonthOnlyIncome: 5000,
+      });
+      expect(result.monthlyBudgets).toEqual([]);
+    });
+
+    it('음수 bonus → 0 으로 클램프 (방어적)', () => {
+      const neg = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, currentMonthOnlyIncome: -1000,
+      });
+      const zero = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, currentMonthOnlyIncome: 0,
+      });
+      expect(neg).toEqual(zero);
+    });
+  });
+
+  describe('할부 isNew 경계 판정', () => {
+    it('isNew=true → 현재 월 installments 제외 (자유 지출에서 이미 차감됐다고 간주)', () => {
+      const result = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000,
+        installments: [{ monthlyAmount: 1000, remainingCount: 3, isNew: true }],
+      });
+      const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
+      expect(apr.installments).toBe(0);
+    });
+
+    it('isNew=false → 현재 월 installments 포함 + 남은 일수 비례', () => {
+      // 현재 월 ratio=5/31, installmentSum=1000 → round(1000 * 5/31) = 161
+      const result = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000,
+        installments: [{ monthlyAmount: 1000, remainingCount: 3, isNew: false }],
+      });
+      const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
+      expect(apr.installments).toBe(161);
+    });
+
+    it('미래 월 installments 는 isNew 무관 — 항상 전액', () => {
+      const rTrue = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000,
+        installments: [{ monthlyAmount: 1000, remainingCount: 3, isNew: true }],
+      });
+      const rFalse = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000,
+        installments: [{ monthlyAmount: 1000, remainingCount: 3, isNew: false }],
+      });
+      const mayTrue = rTrue.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      const mayFalse = rFalse.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      expect(mayTrue.installments).toBe(1000);
+      expect(mayTrue.installments).toBe(mayFalse.installments);
+    });
+
+    it('isNew=true + remainingCount=1 → 현재 월/미래 월 모두 제외 (할부가 예산에서 완전 증발)', () => {
+      // index=0: isNew=true 이므로 제외
+      // index=1: remainingCount(1) > index(1) 거짓 → 제외
+      const result = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, targetMonth: '2026-05',
+        installments: [{ monthlyAmount: 1000, remainingCount: 1, isNew: true }],
+      });
+      const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
+      const may = result.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      expect(apr.installments).toBe(0);
+      expect(may.installments).toBe(0);
+    });
+
+    it('remainingCount 초과 월은 제외 (할부 종료 경계)', () => {
+      // remainingCount=2 → index 0,1 포함 / index 2 이후 제외
+      const result = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000, targetMonth: '2026-06',
+        installments: [{ monthlyAmount: 1000, remainingCount: 2, isNew: false }],
+      });
+      const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
+      const may = result.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
+      const jun = result.monthlyBudgets.find((m) => m.yearMonth === '2026-06')!;
+      expect(apr.installments).toBeGreaterThan(0);
+      expect(may.installments).toBe(1000);
+      expect(jun.installments).toBe(0);
+    });
+
+    it('isNew 미설정(undefined) → isNew=false 와 동일', () => {
+      const rUndef = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000,
+        installments: [{ monthlyAmount: 1000, remainingCount: 3 }],
+      });
+      const rFalse = allocateMonthlyBudgets({
+        ...BASE, totalAvailable: 35000,
+        installments: [{ monthlyAmount: 1000, remainingCount: 3, isNew: false }],
+      });
+      expect(rUndef).toEqual(rFalse);
+    });
+  });
 });
