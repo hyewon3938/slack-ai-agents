@@ -68,6 +68,50 @@ export async function updateRoutineTemplate(
   );
 }
 
+/** 템플릿 단건 조회 (삭제되지 않은 것) */
+export async function queryRoutineTemplate(
+  userId: number,
+  id: number,
+): Promise<RoutineTemplateRow | null> {
+  return queryOne<RoutineTemplateRow>(
+    `SELECT id, name, time_slot, frequency, active, start_date::text, created_at::text
+     FROM routine_templates
+     WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+    [id, userId],
+  );
+}
+
+/** 특정 날짜 이전 기록 삭제 (includeCompleted=false면 미완료만) */
+export async function deleteRecordsBefore(
+  userId: number,
+  templateId: number,
+  before: string,
+  includeCompleted: boolean,
+): Promise<number> {
+  const completedFilter = includeCompleted ? '' : 'AND completed = false';
+  const result = await query(
+    `DELETE FROM routine_records
+     WHERE template_id = $1 AND user_id = $2 AND date < $3
+     ${completedFilter}`,
+    [templateId, userId, before],
+  );
+  return result.rowCount ?? 0;
+}
+
+/** 특정 날짜 이전 완료된 기록 개수 */
+export async function countCompletedRecordsBefore(
+  userId: number,
+  templateId: number,
+  before: string,
+): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM routine_records
+     WHERE template_id = $1 AND user_id = $2 AND date < $3 AND completed = true`,
+    [templateId, userId, before],
+  );
+  return row?.count ?? 0;
+}
+
 /** 템플릿 삭제 (soft delete — UI에서 완전히 숨김, DB에는 보존) */
 export async function deleteRoutineTemplate(userId: number, id: number): Promise<boolean> {
   const result = await query(

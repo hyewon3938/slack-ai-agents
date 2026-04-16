@@ -8,6 +8,9 @@ import {
   deleteRoutineTemplate,
   createInactivePeriod,
   closeOpenInactivePeriod,
+  queryRoutineTemplate,
+  deleteRecordsBefore,
+  countCompletedRecordsBefore,
 } from '@/features/routine/lib/queries';
 
 export async function PATCH(
@@ -37,6 +40,10 @@ export async function PATCH(
       return NextResponse.json({ error: lengthError }, { status: 400 });
     }
 
+    // 시작일 변경 감지를 위해 이전 값 미리 조회
+    const oldTemplate = await queryRoutineTemplate(userId, numId);
+    if (!oldTemplate) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
+
     const data = await updateRoutineTemplate(userId, numId, body);
     if (!data) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
 
@@ -49,10 +56,17 @@ export async function PATCH(
       await closeOpenInactivePeriod(userId, numId, addDays(getTodayISO(), -1));
     }
 
+    // 시작일이 미래로 이동된 경우 이전 기록 정리 (미완료만 자동, 완료는 카운트만 반환)
+    let staleCompletedCount = 0;
+    if (data.start_date && oldTemplate.start_date && data.start_date > oldTemplate.start_date) {
+      await deleteRecordsBefore(userId, numId, data.start_date, false);
+      staleCompletedCount = await countCompletedRecordsBefore(userId, numId, data.start_date);
+    }
+
     revalidateTag('routines', 'seconds');
     revalidateTag('routine-records', 'seconds');
     revalidateTag('routine-stats', 'seconds');
-    return NextResponse.json({ data });
+    return NextResponse.json({ data, staleCompletedCount });
   } catch {
     return NextResponse.json({ error: '루틴 수정 실패' }, { status: 500 });
   }

@@ -110,10 +110,22 @@ export function useRoutines() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (res.ok) {
-        setEditingTemplate(null);
-        await fetchData();
+      if (!res.ok) return;
+      const { data: template, staleCompletedCount } = (await res.json()) as {
+        data: RoutineTemplateRow;
+        staleCompletedCount: number;
+      };
+      // 시작일 이전 완료 기록이 남아있으면 확인 후 추가 정리
+      if (staleCompletedCount > 0 && template?.start_date) {
+        const ok = confirm(`시작일 이전에 완료한 기록 ${staleCompletedCount}개도 같이 지울까?`);
+        if (ok) {
+          await fetch(`/api/routines/${id}/records?before=${template.start_date}`, {
+            method: 'DELETE',
+          });
+        }
       }
+      setEditingTemplate(null);
+      await fetchData();
     },
     [fetchData],
   );
