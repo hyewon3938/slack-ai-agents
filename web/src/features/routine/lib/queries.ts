@@ -142,6 +142,9 @@ function parseIntervalDays(frequency: string): number | null {
 }
 
 function shouldCreateToday(frequency: string | null, lastDate: string | null, today: string, startDate?: string): boolean {
+  // 시작일이 미래면 생성하지 않음 (YYYY-MM-DD는 사전순 비교 = 시간순 비교)
+  if (startDate && today < startDate) return false;
+
   if (!frequency || frequency === '매일') return true;
 
   // 간격 빈도(격일, N일마다, 주1회): start_date 기준 모듈러 연산
