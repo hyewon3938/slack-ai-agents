@@ -75,6 +75,17 @@ describe('shouldCreateToday', () => {
   it('알 수 없는 빈도는 true', () => {
     expect(shouldCreateToday('unknown', '2026-03-07', '2026-03-08')).toBe(true);
   });
+
+  it('시작일이 미래면 빈도와 무관하게 false', () => {
+    expect(shouldCreateToday('매일', null, '2026-03-08', '2026-03-09')).toBe(false);
+    expect(shouldCreateToday('격일', null, '2026-03-08', '2026-03-09')).toBe(false);
+    expect(shouldCreateToday('주1회', null, '2026-03-08', '2026-03-09')).toBe(false);
+    expect(shouldCreateToday('3일마다', null, '2026-03-08', '2026-03-09')).toBe(false);
+  });
+
+  it('시작일이 오늘이면 매일은 true', () => {
+    expect(shouldCreateToday('매일', null, '2026-03-08', '2026-03-08')).toBe(true);
+  });
 });
 
 // ─── frequencyBadge ────────────────────────────────────
