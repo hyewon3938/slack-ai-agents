@@ -27,9 +27,16 @@ function yToRatio(y: number): number {
 const Y_LABELS = ['20', '22', '0', '2', '4', '6', '8', '10', '12'];
 const Y_LABEL_MINUTES = [0, 120, 240, 360, 480, 600, 720, 840, 960];
 
+interface Tooltip {
+  x: number;
+  y: number;
+  record: SleepRecordWithEvents;
+}
+
 export function SleepTimeline({ records, period }: SleepTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cw, setCw] = useState(0);
+  const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -71,8 +78,14 @@ export function SleepTimeline({ records, period }: SleepTimelineProps) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <style>{`
+        @media (hover: none) {
+          .desktop-hover-target { display: none; }
+          .desktop-tooltip { display: none; }
+        }
+      `}</style>
       <h3 className="mb-3 text-sm font-semibold text-gray-900">수면 타임라인</h3>
-      <div ref={containerRef} className={allowScroll ? 'overflow-x-auto' : ''}>
+      <div ref={containerRef} className={`relative ${allowScroll ? 'overflow-x-auto' : ''}`}>
         {cw > 0 && (
           <svg
             width={chartWidth}
@@ -104,9 +117,25 @@ export function SleepTimeline({ records, period }: SleepTimelineProps) {
 
               return (
                 <g key={r.id}>
+                  {/* 투명 히트 영역 — 좁은 바도 hover 쉽게 */}
+                  <rect
+                    x={x - 2} y={topPadding}
+                    width={barWidth + 4} height={chartHeight}
+                    fill="transparent"
+                    className="desktop-hover-target"
+                    onMouseEnter={() => {
+                      setTooltip({
+                        x: x + barWidth / 2,
+                        y: bedY,
+                        record: r,
+                      });
+                    }}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
                   <rect
                     x={x} y={bedY} width={barWidth} height={barHeight}
                     rx={3} fill="#818cf8" opacity={0.8}
+                    className="pointer-events-none"
                   />
                   {r.events.map((e) => {
                     const ey = topPadding + yToRatio(timeToY(e.event_time)) * chartHeight;
@@ -115,6 +144,7 @@ export function SleepTimeline({ records, period }: SleepTimelineProps) {
                         key={e.id}
                         cx={x + barWidth / 2} cy={ey}
                         r={2.5} fill="#ef4444"
+                        className="pointer-events-none"
                       />
                     );
                   })}
@@ -135,6 +165,31 @@ export function SleepTimeline({ records, period }: SleepTimelineProps) {
             })}
           </svg>
         )}
+        {tooltip && (() => {
+        const r = tooltip.record;
+        const hours = r.duration_minutes ? Math.floor(r.duration_minutes / 60) : 0;
+        const mins = r.duration_minutes ? r.duration_minutes % 60 : 0;
+        return (
+          <div
+            className="desktop-tooltip pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+            style={{ left: tooltip.x, top: tooltip.y - 8, transform: 'translate(-50%, -100%)' }}
+          >
+            <p className="mb-1 font-semibold text-gray-700">{r.date}</p>
+            <p className="text-gray-600">취침 {r.bedtime} → 기상 {r.wake_time}</p>
+            {r.duration_minutes != null && (
+              <p className="text-gray-600">수면 {hours}시간{mins > 0 ? ` ${mins}분` : ''}</p>
+            )}
+            {r.events.length > 0 && (
+              <div className="mt-1 border-t border-gray-100 pt-1">
+                <p className="text-red-500">중간기상 {r.events.length}회</p>
+                {r.events.map((e) => (
+                  <p key={e.id} className="text-gray-500">&nbsp;&nbsp;{e.event_time}{e.memo ? ` — ${e.memo}` : ''}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+        })()}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">
