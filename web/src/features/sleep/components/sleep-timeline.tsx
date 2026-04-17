@@ -169,10 +169,13 @@ export function SleepTimeline({ records, period }: SleepTimelineProps) {
         const r = tooltip.record;
         const hours = r.duration_minutes ? Math.floor(r.duration_minutes / 60) : 0;
         const mins = r.duration_minutes ? r.duration_minutes % 60 : 0;
+        const alignRight = tooltip.x > chartWidth - 100;
+        const alignLeft = tooltip.x < 100;
+        const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
         return (
           <div
-            className="desktop-tooltip pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
-            style={{ left: tooltip.x, top: tooltip.y - 8, transform: 'translate(-50%, -100%)' }}
+            className="desktop-tooltip pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+            style={{ left: tooltip.x, top: tooltip.y - 8, transform: `translate(${translateX}, -100%)` }}
           >
             <p className="mb-1 font-semibold text-gray-700">{r.date}</p>
             <p className="text-gray-600">취침 {r.bedtime} → 기상 {r.wake_time}</p>
