@@ -18,17 +18,19 @@ export async function querySleepRecordsWithEvents(
       [userId, from, to],
     ),
     query<SleepEvent>(
-      `SELECT DISTINCT e.id, e.date::text, e.event_time, e.memo
+      `SELECT e.id, e.date::text, e.event_time, e.memo
        FROM sleep_events e
-       JOIN sleep_records r ON r.date = e.date AND r.user_id = $1
-       WHERE e.date BETWEEN $2 AND $3
+       WHERE e.date BETWEEN $1 AND $2
        ORDER BY e.date, e.event_time`,
-      [userId, from, to],
+      [from, to],
     ),
   ]);
 
   const eventsByDate = new Map<string, SleepEvent[]>();
+  const seenEventIds = new Set<number>();
   for (const e of eventsResult.rows) {
+    if (seenEventIds.has(e.id)) continue;
+    seenEventIds.add(e.id);
     const list = eventsByDate.get(e.date) ?? [];
     list.push(e);
     eventsByDate.set(e.date, list);
