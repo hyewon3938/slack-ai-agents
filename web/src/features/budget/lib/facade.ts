@@ -256,7 +256,7 @@ export async function runSettlementIfDue(
 
   const prevSnapshot = await readLatestSnapshot(userId);
   const availableAtStart = prevSnapshot?.available_at_end ?? await readDistributableAssetBalance(userId);
-  const availableAtEnd = await computeTotalAvailable(userId, formatKSTDate(now));
+  const availableAtEnd = availableAtStart + income - flex - excluded;
 
   const snapshot = buildSettlementSnapshot({
     yearMonth: targetMonth, monthlyBudget,
