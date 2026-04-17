@@ -111,9 +111,19 @@ function DurationChart({ records, allowScroll }: { records: SleepRecordWithEvent
   );
 }
 
+interface TrendTooltip {
+  x: number;
+  y: number;
+  date: string;
+  bedtime: string;
+  wakeTime: string;
+  type: 'bed' | 'wake';
+}
+
 function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEvents[]; allowScroll: boolean }) {
   const { ref, w: cw } = useContainerWidth();
   const valid = records.filter((r) => r.bedtime && r.wake_time);
+  const [tooltip, setTooltip] = useState<TrendTooltip | null>(null);
   useScrollToEnd(ref, cw, [valid.length], allowScroll);
   if (valid.length === 0) return null;
 
@@ -152,8 +162,14 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <style>{`
+        @media (hover: none) {
+          .desktop-hover-target { display: none; }
+          .desktop-tooltip { display: none; }
+        }
+      `}</style>
       <h3 className="mb-3 text-sm font-semibold text-gray-900">취침 · 기상 시간 추이</h3>
-      <div ref={ref} className={allowScroll ? 'overflow-x-auto' : ''}>
+      <div ref={ref} className={`relative ${allowScroll ? 'overflow-x-auto' : ''}`}>
         {cw > 0 && (
           <svg width={chartWidth} height={chartHeight + 12} className="text-xs">
             {yLabels.map((label, i) => {
@@ -169,11 +185,45 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
             })}
             <path d={bedPath} fill="none" stroke="#818cf8" strokeWidth={1.5} />
             {bedPoints.map((p, i) => (
-              <circle key={`b${i}`} cx={p.x} cy={p.y} r={2.5} fill="#818cf8" />
+              <g key={`b${i}`}>
+                <circle cx={p.x} cy={p.y} r={2.5} fill="#818cf8" className="pointer-events-none" />
+                <circle
+                  cx={p.x} cy={p.y} r={8} fill="transparent"
+                  className="desktop-hover-target"
+                  onMouseEnter={() => {
+                    setTooltip({
+                      x: p.x,
+                      y: p.y,
+                      date: valid[i].date,
+                      bedtime: valid[i].bedtime!,
+                      wakeTime: valid[i].wake_time!,
+                      type: 'bed',
+                    });
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
+                />
+              </g>
             ))}
             <path d={wakePath} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
             {wakePoints.map((p, i) => (
-              <circle key={`w${i}`} cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" />
+              <g key={`w${i}`}>
+                <circle cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" className="pointer-events-none" />
+                <circle
+                  cx={p.x} cy={p.y} r={8} fill="transparent"
+                  className="desktop-hover-target"
+                  onMouseEnter={() => {
+                    setTooltip({
+                      x: p.x,
+                      y: p.y,
+                      date: valid[i].date,
+                      bedtime: valid[i].bedtime!,
+                      wakeTime: valid[i].wake_time!,
+                      type: 'wake',
+                    });
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
+                />
+              </g>
             ))}
             {valid.map((r, i) => {
               const x = padding.left + (i / Math.max(1, valid.length - 1)) * innerW;
@@ -193,6 +243,20 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
               );
             })}
           </svg>
+        )}
+        {tooltip && (
+        <div
+          className="desktop-tooltip pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+          style={{ left: tooltip.x, top: tooltip.y - 8, transform: 'translate(-50%, -100%)' }}
+        >
+          <p className="mb-0.5 font-semibold text-gray-700">{tooltip.date}</p>
+          <p style={{ color: tooltip.type === 'bed' ? '#818cf8' : undefined }} className={tooltip.type === 'bed' ? 'font-medium' : 'text-gray-500'}>
+            취침 {tooltip.bedtime}
+          </p>
+          <p style={{ color: tooltip.type === 'wake' ? '#f59e0b' : undefined }} className={tooltip.type === 'wake' ? 'font-medium' : 'text-gray-500'}>
+            기상 {tooltip.wakeTime}
+          </p>
+        </div>
         )}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
