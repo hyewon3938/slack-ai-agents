@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     const from = searchParams.get('from') ?? today.slice(0, 7) + '-01';
     const to = searchParams.get('to') ?? today;
     const category = searchParams.get('category') ?? undefined;
+    const plannedExpenseId = searchParams.get('planned_expense_id');
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       return NextResponse.json({ error: 'from/to 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)' }, { status: 400 });
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
     }
 
-    const data = await queryExpenses(userId, from, to, category);
+    const data = await queryExpenses(userId, from, to, category, plannedExpenseId ? Number(plannedExpenseId) : undefined);
     return NextResponse.json({ data });
   } catch (err) {
     console.error('[Expense API]', request.url, err);

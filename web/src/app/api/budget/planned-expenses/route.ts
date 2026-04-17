@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { queryPlannedExpenses, createPlannedExpense, deletePlannedExpense } from '@/features/budget/lib/queries';
+import { queryPlannedExpenses, createPlannedExpense, updatePlannedExpense, deletePlannedExpense } from '@/features/budget/lib/queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +39,30 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error('[Budget API]', request.url, err);
     return NextResponse.json({ error: '예정 지출 추가 실패' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const userId = await requireAuth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const body = (await request.json()) as { id?: number; amount?: number; memo?: string | null };
+    const { id, amount, memo } = body;
+
+    if (!id || typeof id !== 'number') {
+      return NextResponse.json({ error: 'id 필수' }, { status: 400 });
+    }
+    if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
+      return NextResponse.json({ error: 'amount는 양수여야 합니다' }, { status: 400 });
+    }
+
+    const data = await updatePlannedExpense(userId, id, { amount, memo });
+    if (!data) return NextResponse.json({ error: '항목을 찾을 수 없습니다' }, { status: 404 });
+    return NextResponse.json({ data });
+  } catch (err) {
+    console.error('[Budget API]', request.url, err);
+    return NextResponse.json({ error: '예정 지출 수정 실패' }, { status: 500 });
   }
 }
 

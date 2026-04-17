@@ -21,12 +21,17 @@ export async function queryExpenses(
   from: string,
   to: string,
   category?: string,
+  plannedExpenseId?: number,
 ): Promise<ExpenseRow[]> {
   const conditions = ['user_id = $1', 'date >= $2', 'date <= $3'];
   const params: unknown[] = [userId, from, to];
   if (category) {
     conditions.push(`category = $${params.length + 1}`);
     params.push(category);
+  }
+  if (plannedExpenseId) {
+    conditions.push(`planned_expense_id = $${params.length + 1}`);
+    params.push(plannedExpenseId);
   }
   const { rows } = await query<ExpenseRow>(
     `SELECT id, date::text, amount, category, description, payment_method,
@@ -465,6 +470,31 @@ export async function createPlannedExpense(
   );
   if (!row) throw new Error('createPlannedExpense: INSERT returned no rows');
   return row;
+}
+
+/** 예정 지출 수정 */
+export async function updatePlannedExpense(
+  userId: number,
+  id: number,
+  data: { amount?: number; memo?: string | null },
+): Promise<PlannedExpenseRow | null> {
+  const sets: string[] = [];
+  const values: unknown[] = [id, userId];
+  if (data.amount !== undefined) {
+    sets.push(`amount = $${values.length + 1}`);
+    values.push(data.amount);
+  }
+  if (data.memo !== undefined) {
+    sets.push(`memo = $${values.length + 1}`);
+    values.push(data.memo);
+  }
+  if (sets.length === 0) return null;
+  return queryOne<PlannedExpenseRow>(
+    `UPDATE planned_expenses SET ${sets.join(', ')}
+     WHERE id = $1 AND user_id = $2
+     RETURNING id, year_month, amount, memo, created_at::text`,
+    values,
+  );
 }
 
 /** 예정 지출 삭제 */
