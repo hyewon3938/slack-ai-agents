@@ -1,28 +1,50 @@
 'use client';
 
-import { useState } from 'react';
-import type { ExpenseRow } from '@/features/budget/lib/types';
+import { useState, useEffect } from 'react';
+import type { ExpenseRow, PlannedExpenseRow } from '@/features/budget/lib/types';
 import { EXPENSE_CATEGORIES, BUDGET_EXCLUDED_CATEGORIES } from '@/features/budget/lib/types';
+import { formatAmount } from '@/lib/types';
 import { XMarkIcon } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
 
 interface ExpenseEditModalProps {
   expense: ExpenseRow;
-  onSave: (id: number, updates: { date: string; amount: number; category: string; description: string | null; exclude_from_budget: boolean }) => Promise<void>;
+  /** 현재 보고 있는 결제주기 월 (예정 지출 목록용) */
+  yearMonth?: string;
+  onSave: (id: number, updates: {
+    date: string;
+    amount: number;
+    category: string;
+    description: string | null;
+    exclude_from_budget: boolean;
+    planned_expense_id: number | null;
+  }) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onClose: () => void;
 }
 
-export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: ExpenseEditModalProps) {
+export function ExpenseEditModal({ expense, yearMonth, onSave, onDelete, onClose }: ExpenseEditModalProps) {
   const [deleting, setDeleting] = useState(false);
   const [date, setDate] = useState(expense.date);
   const [amountStr, setAmountStr] = useState(expense.amount.toLocaleString('ko-KR'));
   const [category, setCategory] = useState(expense.category);
   const [description, setDescription] = useState(expense.description ?? '');
   const [excludeFromBudget, setExcludeFromBudget] = useState(expense.exclude_from_budget);
+  const [selectedPlanned, setSelectedPlanned] = useState<number | null>(expense.planned_expense_id);
+  const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpenseRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const showPlannedSelect = yearMonth && !expense.is_installment && expense.type !== 'income';
+
+  useEffect(() => {
+    if (!showPlannedSelect) return;
+    void fetch(`/api/budget/planned-expenses?yearMonth=${yearMonth}`)
+      .then((r) => r.json())
+      .then((d: { data?: PlannedExpenseRow[] }) => setPlannedExpenses(d.data ?? []))
+      .catch(() => setPlannedExpenses([]));
+  }, [yearMonth, showPlannedSelect]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/[^0-9]/g, '');
@@ -51,6 +73,7 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
         category,
         description: description || null,
         exclude_from_budget: excludeFromBudget,
+        planned_expense_id: selectedPlanned,
       });
       onClose();
     } catch (err) {
@@ -156,6 +179,28 @@ export function ExpenseEditModal({ expense, onSave, onDelete, onClose }: Expense
               </button>
             </div>
           </div>
+
+          {/* 예정 지출 연결 (일시불 지출만, 할부/수입 제외) */}
+          {showPlannedSelect && plannedExpenses.length > 0 && (
+            <div>
+              <Select
+                label="예정 지출 연결"
+                value={selectedPlanned ?? ''}
+                onChange={(e) => setSelectedPlanned(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">일반 지출 (일일 예산 차감)</option>
+                {plannedExpenses.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.memo ?? '예정 지출'} — {formatAmount(p.amount)}
+                    {(p.used_amount ?? 0) > 0 && ` (사용 ${formatAmount(p.used_amount ?? 0)})`}
+                  </option>
+                ))}
+              </Select>
+              {selectedPlanned && (
+                <p className="mt-1 text-[10px] text-blue-500">이 지출은 일일 예산에 영향을 주지 않습니다</p>
+              )}
+            </div>
+          )}
 
           {/* Error */}
           {error && (

@@ -51,6 +51,7 @@ export function useBudget() {
   const [fixedCosts, setFixedCosts] = useState<FixedCostRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expenseVersion, setExpenseVersion] = useState(0);
 
   const fetchJson = useCallback(async <T,>(url: string): Promise<T | null> => {
     try {
@@ -240,6 +241,7 @@ export function useBudget() {
         setExpenses((prev) => [newExpense, ...prev]);
         void refreshBudget(selectedMonth).catch(() => {});
       }
+      setExpenseVersion((v) => v + 1);
       return newExpense;
     },
     [selectedMonth, refreshBudget],
@@ -252,11 +254,12 @@ export function useBudget() {
       throw new Error(err.error ?? '지출 삭제 실패');
     }
     setExpenses((prev) => prev.filter((e) => e.id !== id));
+    setExpenseVersion((v) => v + 1);
     void refreshBudget(selectedMonth).catch(() => {});
   }, [selectedMonth, refreshBudget]);
 
   const updateExpense = useCallback(
-    async (id: number, updates: { date: string; amount: number; category: string; description: string | null; exclude_from_budget?: boolean }): Promise<void> => {
+    async (id: number, updates: { date: string; amount: number; category: string; description: string | null; exclude_from_budget?: boolean; planned_expense_id?: number | null }): Promise<void> => {
       const res = await fetch(`/api/expenses/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -268,6 +271,7 @@ export function useBudget() {
       }
       const { data } = (await res.json()) as { data: ExpenseRow };
       setExpenses((prev) => prev.map((e) => (e.id === id ? data : e)));
+      setExpenseVersion((v) => v + 1);
       void refreshBudget(selectedMonth).catch(() => {});
     },
     [selectedMonth, refreshBudget],
@@ -296,6 +300,7 @@ export function useBudget() {
     fixedCosts,
     loading,
     error,
+    expenseVersion,
     addExpense,
     deleteExpense,
     updateExpense,

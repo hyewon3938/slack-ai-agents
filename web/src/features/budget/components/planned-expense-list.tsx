@@ -7,9 +7,11 @@ import { XMarkIcon } from '@/components/ui/icons';
 
 interface PlannedExpenseListProps {
   yearMonth: string;
+  /** 지출 변경 시 리프레시 트리거 (카운터) */
+  refreshTrigger?: number;
 }
 
-export function PlannedExpenseList({ yearMonth }: PlannedExpenseListProps) {
+export function PlannedExpenseList({ yearMonth, refreshTrigger }: PlannedExpenseListProps) {
   const [items, setItems] = useState<PlannedExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -30,7 +32,9 @@ export function PlannedExpenseList({ yearMonth }: PlannedExpenseListProps) {
     }
   }, [yearMonth]);
 
-  useEffect(() => { void fetchItems(); }, [fetchItems]);
+  // yearMonth 변경 또는 지출 변경(refreshTrigger) 시 예정지출 목록 리프레시
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void fetchItems(); }, [fetchItems, refreshTrigger]);
 
   const handleAdd = async () => {
     const amount = parseInt(amountInput.replace(/,/g, ''), 10);
