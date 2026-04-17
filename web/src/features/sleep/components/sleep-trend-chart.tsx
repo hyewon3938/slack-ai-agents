@@ -244,10 +244,14 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
             })}
           </svg>
         )}
-        {tooltip && (
+        {tooltip && (() => {
+        const alignRight = tooltip.x > chartWidth - 80;
+        const alignLeft = tooltip.x < 80;
+        const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
+        return (
         <div
-          className="desktop-tooltip pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
-          style={{ left: tooltip.x, top: tooltip.y - 8, transform: 'translate(-50%, -100%)' }}
+          className="desktop-tooltip pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+          style={{ left: tooltip.x, top: tooltip.y - 8, transform: `translate(${translateX}, -100%)` }}
         >
           <p className="mb-0.5 font-semibold text-gray-700">{tooltip.date}</p>
           <p style={{ color: tooltip.type === 'bed' ? '#818cf8' : undefined }} className={tooltip.type === 'bed' ? 'font-medium' : 'text-gray-500'}>
@@ -257,7 +261,8 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
             기상 {tooltip.wakeTime}
           </p>
         </div>
-        )}
+        );
+        })()}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">
