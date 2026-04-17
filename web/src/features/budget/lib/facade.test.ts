@@ -152,6 +152,24 @@ describe('runSettlementIfDue', () => {
     expect(result.snapshot).toBeDefined();
     expect(result.snapshot?.year_month).toBe('2026-04');
   });
+
+  it('available_at_end = availableAtStart + income - flex - excluded (자산 미참조)', async () => {
+    const settlementNow = new Date('2026-04-16T12:00:00Z');
+
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
+    vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
+    vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    const result = await runSettlementIfDue(1, settlementNow);
+
+    // availableAtStart = 5_000_000 (자산 fallback)
+    // availableAtEnd = 5_000_000 + 200_000 - 300_000 - 50_000 = 4_850_000
+    expect(result.snapshot?.available_at_end).toBe(4_850_000);
+    expect(result.snapshot?.available_at_start).toBe(5_000_000);
+  });
 });
 
 describe('getTodayAllocation', () => {
