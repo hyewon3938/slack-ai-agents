@@ -24,7 +24,7 @@ import {
   decrementReminderCount,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
-import { getTodayISO, getEffectiveTodayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
+import { getTodayISO, getYesterdayISO, getEffectiveTodayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
 import {
   DEFAULT_USER_ID,
   queryAllUserMappings,
@@ -120,7 +120,7 @@ const NIGHT_SYSTEM_PROMPT = `${CRON_BASE_PROMPT}
 지금은 밤 22시야. 하루를 마무리하는 메시지를 만들어줘.
 
 ## 시제 가이드
-- "오늘 루틴 달성률" → 오늘 하루 결과.
+- "오늘 루틴 현황" → 23:55 기준 중간 현황이야. 자정 넘어서 마무리할 수 있으니 최종 결과가 아님. "아직 진행 중일 수 있으니" 톤으로.
 - "어젯밤 수면 N시간" → 어제 밤 수면. 오늘 취침과 혼동 금지.
 - 지금은 밤 10시. "일찍 자라"는 지금 바로 해당되는 조언이야.
 - "내일 일찍 자봐" 금지 → "오늘은 일찍 자봐"가 맞아.
@@ -132,7 +132,7 @@ const NIGHT_SYSTEM_PROMPT = `${CRON_BASE_PROMPT}
 
 ## 데이터 해석 규칙
 - 제공된 데이터에 없는 내용은 추측하지 마. 데이터에 있는 것만 언급해.
-- 수고했다는 느낌. 못 끝낸 건 내일 하자고 가볍게.
+- 수고했다는 느낌. 아직 안 한 루틴은 "아직 할 수 있으니까" 톤으로 가볍게. 최종 정산은 내일 아침에 할 거야.
 - 일기 내용이 있으면 하루를 돌아보며 한마디.
 - 삶의 테마나 고민이 있으면 맥락에 맞게 따뜻하게.
 - 운세 정보가 있으면 하루를 되돌아보는 맥락에서 연결.`;
@@ -241,22 +241,37 @@ export const createTodayRecords = async (today: string, userId: number = DEFAULT
 
 // ─── 크론 태스크 ────────────────────────────────────────
 
-/** 아침: 루틴 기록 생성 + 오늘 일정 + 낮 루틴 체크리스트 (LLM 없음) */
+/** 아침: 어제 루틴 최종 달성률 + 루틴 기록 생성 + 오늘 일정 + 낮 루틴 체크리스트 (LLM 없음) */
 const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
+  const yesterday = getYesterdayISO();
 
   await forEachUser(config, 'life', '아침 알림', async (userId, channelId) => {
-    // 1. 오늘 루틴 기록 생성
+    // 1. 어제 루틴 최종 달성률
+    const yesterdayRecords = await queryTodayRecords(yesterday, userId);
+    if (yesterdayRecords.length > 0) {
+      const stats = calcRoutineStats(yesterdayRecords);
+      const slotText = Object.entries(stats.slotBreakdown)
+        .map(([s, d]) => `${s} ${d.completed}/${d.total}`)
+        .join(', ');
+      const line =
+        stats.completed === stats.total
+          ? `어제 루틴 전부 완료! ${stats.rate}% (${stats.completed}/${stats.total}) — ${slotText}`
+          : `어제 루틴 최종 ${stats.rate}% (${stats.completed}/${stats.total}) — ${slotText}`;
+      await postToChannel(app.client, channelId, line);
+    }
+
+    // 2. 오늘 루틴 기록 생성
     const created = await createTodayRecords(today, userId);
 
-    // 2. 오늘 일정 텍스트
+    // 3. 오늘 일정 텍스트
     const schedules = await queryTodaySchedules(today, userId);
     if (schedules.length > 0) {
       const scheduleText = buildScheduleText(schedules, today);
       await postToChannel(app.client, channelId, scheduleText);
     }
 
-    // 3. 낮 루틴 체크리스트 (Block Kit)
+    // 4. 낮 루틴 체크리스트 (Block Kit)
     const todayRecords = await queryTodayRecords(today, userId);
     const hasDay = todayRecords.some((r) => r.time_slot === '낮');
     if (hasDay) {
@@ -298,12 +313,12 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
     const nightScheduleText = buildNightScheduleText(schedules, today);
     const scheduleContext = nightScheduleText ? `\n일정 현황: ${nightScheduleText}` : '';
 
-    const context = `밤 마무리 메시지 생성해줘.\n오늘 루틴 달성률: ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${scheduleContext}${lifeContext}`;
+    const context = `밤 마무리 메시지 생성해줘.\n오늘 루틴 현황 (23:55 기준, 자정 넘어서 마무리할 수 있음): ${stats.rate}% (${stats.completed}/${stats.total})\n시간대별: ${slotText}${scheduleContext}${lifeContext}`;
 
     const fallback =
       stats.completed === stats.total
         ? '오늘 루틴 다 했어! 수고했어, 푹 쉬어.'
-        : `오늘 루틴 ${stats.completed}/${stats.total} 완료. 수고했어!`;
+        : `오늘 루틴 현재까지 ${stats.completed}/${stats.total} 완료. 아직 할 수 있으니까 천천히!`;
 
     const summary = await generateCronMessage(
       config.llmClient,
