@@ -12,6 +12,7 @@ export async function readFlexibleSpent(
        AND COALESCE(type, 'expense') = 'expense'
        AND exclude_from_budget = false
        AND is_installment = false
+       AND planned_expense_id IS NULL
        AND date BETWEEN $2 AND $3`,
     [userId, from, to],
   );
@@ -46,6 +47,7 @@ export async function readTodayFlexSpent(
        AND COALESCE(type, 'expense') = 'expense'
        AND exclude_from_budget = false
        AND is_installment = false
+       AND planned_expense_id IS NULL
        AND date = $2::date`,
     [userId, today],
   );

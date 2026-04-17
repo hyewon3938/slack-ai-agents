@@ -28,6 +28,7 @@ export default function ManagePage() {
     selectedMonth, setSelectedMonth,
     expenses, summary,
     loading, error,
+    expenseVersion,
     addExpense, deleteExpense, updateExpense,
   } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export default function ManagePage() {
 
       {/* 예정 지출 */}
       <div className="mb-4">
-        <PlannedExpenseList yearMonth={selectedMonth} />
+        <PlannedExpenseList yearMonth={selectedMonth} refreshTrigger={expenseVersion} />
       </div>
 
       {/* 지출 추가 폼 */}
@@ -109,6 +110,7 @@ export default function ManagePage() {
       {editingExpense && editingExpense.type !== 'income' && (
         <ExpenseEditModal
           expense={editingExpense}
+          yearMonth={selectedMonth}
           onSave={updateExpense}
           onDelete={deleteExpense}
           onClose={() => setEditingExpense(null)}
