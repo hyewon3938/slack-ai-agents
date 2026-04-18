@@ -96,10 +96,10 @@ describe('getMonthlyAllocation', () => {
 
   it('currentMonthOnlyIncome > 0 → 현재 월 free 에 독점 귀속, 다른 월은 오히려 감소', async () => {
     // totalAvailable = 1_000_000, bonus = 50_000, target = 2026-05
-    // Apr 10 기준 현재 월 남은 일수 = 6 (Apr 10~15), May 주기 = 30일, sumDays = 36
-    // totalFree = 1_000_000 - 50_000 = 950_000, dailyFree = 950_000/36 ≈ 26,388.88
-    // current free = round(26,388.88 * 6) + 50_000 = 158_333 + 50_000 = 208_333
-    // may free     = round(26,388.88 * 30)         = 791_667
+    // sumDays = 31(Apr) + 30(May) = 61
+    // totalFree = 950_000, dailyFree = 950_000/61 ≈ 15_573.77
+    // current free = round(15_573.77 * 31) + 50_000 = 482_787 + 50_000 = 532_787
+    // may free     = round(15_573.77 * 30) = 467_213
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
     vi.mocked(readTargetMonth).mockResolvedValue('2026-05');
     vi.mocked(readCurrentMonthOnlyIncome).mockResolvedValue(50_000);
@@ -108,8 +108,8 @@ describe('getMonthlyAllocation', () => {
     const current = result.monthlyBudgets.find((m) => m.isCurrent)!;
     const future = result.monthlyBudgets.find((m) => !m.isCurrent)!;
 
-    expect(current.free).toBe(208_333);
-    expect(future.free).toBe(791_667);
+    expect(current.free).toBe(532_787);
+    expect(future.free).toBe(467_213);
     // 총 합은 totalAvailable 과 동일해야 함 (bonus 중복 없음)
     expect(current.free + future.free).toBe(1_000_000);
   });

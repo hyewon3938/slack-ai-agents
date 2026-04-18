@@ -96,7 +96,6 @@ export async function getTodayAllocation(
     return { todayBudget: 0, todayRemaining: 0, monthBudgetRemaining: 0, todayFlexSpent: 0, targetDate: null };
   }
   const todayStr = formatKSTDate(now);
-  const { remaining } = calcAllocatedDays(todayStr, cycle);
   const [flex, todayFlex, targetDate] = await Promise.all([
     readFlexibleSpent(userId, cycle.from, todayStr),
     readTodayFlexSpent(userId, todayStr),
@@ -107,7 +106,7 @@ export async function getTodayAllocation(
       monthBudget: currentMonth.free,
       flexibleSpent: flex,
       todayFlexSpent: todayFlex,
-      cycleRemainingDays: remaining,
+      cycleTotalDays: cycle.totalDays,
     }),
     todayFlexSpent: todayFlex,
     targetDate,

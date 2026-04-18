@@ -1,5 +1,4 @@
 import { addBillingMonths, getBillingRange, calcCycleDays } from '../billing/cycle';
-import { calcAllocatedDays } from './proration';
 import type {
   BillingCycle, InstallmentInput, MonthAllocatorInput, MonthAllocatorResult,
   MonthlyBudget, PlannedInput,
@@ -57,7 +56,7 @@ export function allocateMonthlyBudgets(input: MonthAllocatorInput): MonthAllocat
   const currentCycle: BillingCycle = {
     yearMonth: input.currentBillingMonth, from: cf, to: ct, totalDays: calcCycleDays(cf, ct),
   };
-  const { allocatedDays: currentAllocatedDays } = calcAllocatedDays(input.today, currentCycle);
+  const currentAllocatedDays = currentCycle.totalDays;
 
   const monthlyBudgets: MonthlyBudget[] = [];
   let totalLocked = 0;
