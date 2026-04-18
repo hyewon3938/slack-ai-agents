@@ -31,6 +31,8 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const todayFlexSpent = summary.today_flex_spent ?? 0;
   const todayRemaining = summary.today_remaining;
 
+  const month = parseInt(summary.year_month.slice(5), 10);
+
   // 결제주기: 전월 14일 ~ 당월 13일
   const todayISO = getTodayISO();
   const today = new Date(`${todayISO}T00:00:00`);
