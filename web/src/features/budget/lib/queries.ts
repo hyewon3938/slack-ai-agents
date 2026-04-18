@@ -1,7 +1,7 @@
 import { query, queryOne } from '@/lib/db';
 import { getTodayISO } from '@/lib/kst';
 import { getTodayAllocation } from './facade';
-import { getCurrentBillingMonth } from './billing/cycle';
+import { getCurrentBillingMonth, getBillingRange, calcCycleDays } from './billing/cycle';
 import { resolveFixedCostExpenseDate } from './billing/fixed-cost-date';
 import type {
   ExpenseRow,
@@ -199,14 +199,10 @@ export async function deleteExpense(userId: number, id: number): Promise<boolean
 
 /**
  * 월간 요약: 총 지출, 카테고리별, 예산 대비.
- * 카드 결제주기 기준: 전월 16일 ~ 당월 15일.
+ * 카드 결제주기 기준: 전월 14일 ~ 당월 13일.
  */
 export async function queryMonthSummary(userId: number, yearMonth: string): Promise<MonthSummary> {
-  const [year, month] = yearMonth.split('-').map(Number);
-  const prevMonth = month === 1 ? 12 : month - 1;
-  const prevYear = month === 1 ? year - 1 : year;
-  const from = `${prevYear}-${String(prevMonth).padStart(2, '0')}-16`;
-  const to = `${year}-${String(month).padStart(2, '0')}-15`;
+  const { from, to } = getBillingRange(yearMonth);
 
   const [totalResult, categoryResult, fixedCosts] = await Promise.all([
     query<{ total: string }>(
@@ -283,10 +279,8 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   const plannedRows = await queryPlannedExpenses(userId, yearMonth);
   const plannedTotal = plannedRows.reduce((s, p) => s + p.amount, 0);
 
-  // 결제주기 일수 계산 (전월 16일 ~ 당월 15일)
-  const fromDate = new Date(`${from}T00:00:00`);
-  const toDate = new Date(`${to}T00:00:00`);
-  const daysInCycle = Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  // 결제주기 일수 계산 (전월 14일 ~ 당월 13일)
+  const daysInCycle = calcCycleDays(from, to);
   const dailyAvg = variableTotal > 0 ? Math.round(variableTotal / daysInCycle) : 0;
 
   // 자동 예산은 런웨이 API에서 따로 로드 (순환 참조 방지)

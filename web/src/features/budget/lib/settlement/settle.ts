@@ -18,7 +18,7 @@ function subtractOneDay(dateStr: string): string {
   return `${y}-${m}-${day}`;
 }
 
-/** 어제 날짜가 주기 마지막 날(15일)인지 확인 */
+/** 어제 날짜가 주기 마지막 날(13일)인지 확인 */
 export function detectSettlementTrigger(
   today: Date,
 ): { shouldSettle: boolean; targetMonth: string | null } {
@@ -26,7 +26,7 @@ export function detectSettlementTrigger(
   const yesterday = subtractOneDay(todayKST);
   const day = parseInt(yesterday.slice(8, 10), 10);
 
-  if (day !== 15) return { shouldSettle: false, targetMonth: null };
+  if (day !== 13) return { shouldSettle: false, targetMonth: null };
 
   const targetMonth = yesterday.slice(0, 7); // YYYY-MM
   return { shouldSettle: true, targetMonth };

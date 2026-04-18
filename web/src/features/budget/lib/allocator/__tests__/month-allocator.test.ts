@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { allocateMonthlyBudgets } from '../month-allocator';
 import type { MonthAllocatorInput } from '../../types-v2';
 
-// today: 2026-04-11 → 현재 주기 03-16~04-15 (31일)
+// today: 2026-04-11 → 현재 주기 03-14~04-13 (31일)
 const BASE: MonthAllocatorInput = {
   totalAvailable: 36000,
   fixedMonthly: 0,
@@ -50,7 +50,7 @@ describe('B. 월 배분 (allocateMonthlyBudgets)', () => {
 
   describe('B-4. 자산 감소 → 전 월 자유 예산 비례 감소', () => {
     it('totalAvailable 절반 → dailyFree 절반, free 비례 감소', () => {
-      // sumDays = 31(Apr) + 30(May 주기: 04-16~05-15) = 61
+      // sumDays = 31(Apr) + 30(May 주기: 04-14~05-13) = 61
       // 61000 → dailyFree=1000, Apr=31000, May=30000
       // 30500 → dailyFree=500, Apr=15500, May=15000
       const r1 = allocateMonthlyBudgets({ ...BASE, totalAvailable: 61000 });
@@ -260,7 +260,7 @@ describe('B. 월 배분 (allocateMonthlyBudgets)', () => {
   describe('B-7. today가 달라도 결과 동일 (대금기간 내 고정 예산)', () => {
     it('대금기간 내 다른 날짜여도 allocatedDays/monthlyBudgets 동일', () => {
       const r1 = allocateMonthlyBudgets({ ...BASE, today: '2026-03-17' });
-      const r2 = allocateMonthlyBudgets({ ...BASE, today: '2026-04-14' });
+      const r2 = allocateMonthlyBudgets({ ...BASE, today: '2026-04-10' });
       expect(r1).toEqual(r2);
     });
   });
