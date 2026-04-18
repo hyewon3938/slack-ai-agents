@@ -82,14 +82,13 @@ describe('getMonthlyAllocation', () => {
     vi.mocked(readIncomeTotal).mockResolvedValue(100_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(50_000);
     vi.mocked(readExcludedSpent).mockResolvedValue(0);
-    // readDistributableAssetBalance은 호출되지 않아야 함 (별도로 확인)
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(999_999);
 
     const result = await getMonthlyAllocation(1, DEFAULT_NOW);
 
-    // totalAvailable = 900_000 + 100_000 - 50_000 - 0 = 950_000 → assets(999_999)와 다른 값
+    // snapshotBased = 900_000 + 100_000 - 50_000 = 950_000
+    // Math.max(950_000, 999_999) = 999_999 (자산 갱신분 반영)
     expect(result.monthlyBudgets.length).toBeGreaterThan(0);
-    // freePerMonth은 totalAvailable 950_000 기준 계산 (≠ 999_999 기준)
     expect(result.freePerMonth).not.toBeNull();
   });
 

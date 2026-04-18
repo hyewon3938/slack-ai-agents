@@ -61,9 +61,12 @@ function addOneDay(dateStr: string): string {
 
 /** 최신 스냅샷 기준 가용자금 계산 (없으면 전체 자산 합계 fallback) */
 async function computeTotalAvailable(userId: number, today: string): Promise<number> {
-  const snapshot = await readLatestSnapshot(userId);
+  const [snapshot, currentAssets] = await Promise.all([
+    readLatestSnapshot(userId),
+    readDistributableAssetBalance(userId),
+  ]);
   if (!snapshot) {
-    return readDistributableAssetBalance(userId);
+    return currentAssets;
   }
   const snapshotEnd = getBillingRange(snapshot.year_month).to;
   const fromDate = addOneDay(snapshotEnd);
@@ -72,7 +75,9 @@ async function computeTotalAvailable(userId: number, today: string): Promise<num
     readFlexibleSpent(userId, fromDate, today),
     readExcludedSpent(userId, fromDate, today),
   ]);
-  return snapshot.available_at_end + income - flex - excluded;
+  const snapshotBased = snapshot.available_at_end + income - flex - excluded;
+  // 스냅샷 이후 자산 갱신(입금, 잔액 수정 등)이 반영되도록 큰 값 사용
+  return Math.max(snapshotBased, currentAssets);
 }
 
 /** 월 예산 배분 */
