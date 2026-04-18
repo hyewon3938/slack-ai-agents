@@ -72,22 +72,18 @@ describe('getMonthlyAllocation', () => {
     expect(result.monthlyBudgets.length).toBeGreaterThan(0);
   });
 
-  it('스냅샷 있을 때 → available_at_end + 이후 변동으로 totalAvailable 계산', async () => {
+  it('스냅샷 있어도 → 현재 자산 잔액을 totalAvailable로 사용', async () => {
     vi.mocked(readLatestSnapshot).mockResolvedValue({
       id: 1, user_id: 1, year_month: '2026-03', sealed_at: '2026-03-16T00:00:00Z',
       allocated_budget: 500_000, fixed_total: 0, installment_total: 0,
       planned_total: 0, flexible_spent: 0, excluded_spent: 0, income_total: 0,
       available_at_start: 1_000_000, available_at_end: 900_000,
     });
-    vi.mocked(readIncomeTotal).mockResolvedValue(100_000);
-    vi.mocked(readFlexibleSpent).mockResolvedValue(50_000);
-    vi.mocked(readExcludedSpent).mockResolvedValue(0);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(999_999);
 
     const result = await getMonthlyAllocation(1, DEFAULT_NOW);
 
-    // snapshotBased = 900_000 + 100_000 - 50_000 = 950_000
-    // Math.max(950_000, 999_999) = 999_999 (자산 갱신분 반영)
+    // totalAvailable = currentAssets = 999_999 (스냅샷 무관, 자산 잔액 직접 사용)
     expect(result.monthlyBudgets.length).toBeGreaterThan(0);
     expect(result.freePerMonth).not.toBeNull();
   });
