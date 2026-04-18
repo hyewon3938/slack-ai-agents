@@ -9,7 +9,7 @@ const BASE: MonthAllocatorInput = {
   plannedExpenses: [],
   currentBillingMonth: '2026-04',
   targetMonth: '2026-06',   // 3개월: Apr, May, Jun
-  today: '2026-04-11',      // Apr 주기: 03-16~04-15 (31일)
+  today: '2026-04-11',      // Apr 주기: 03-14~04-13 (31일)
 };
 
 describe('F. 엣지 케이스', () => {

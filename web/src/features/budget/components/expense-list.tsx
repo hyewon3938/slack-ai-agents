@@ -36,6 +36,16 @@ function getCategoryColor(category: string): string {
   return CATEGORY_COLORS[category] ?? '#9ca3af';
 }
 
+const PAYMENT_LABELS: Record<string, string> = {
+  '현대카드': '현대',
+  '국민카드': '국민',
+  '현금': '현금',
+};
+
+function getPaymentLabel(method: string): string | null {
+  return PAYMENT_LABELS[method] ?? null;
+}
+
 interface ExpenseListProps {
   expenses: ExpenseRow[];
   onEdit: (expense: ExpenseRow) => void;
@@ -156,6 +166,11 @@ export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChan
                           {expense.is_installment && expense.installment_num !== null && expense.installment_total !== null && (
                             <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-500">
                               {expense.installment_num}/{expense.installment_total}
+                            </span>
+                          )}
+                          {expense.type === 'expense' && getPaymentLabel(expense.payment_method) && (
+                            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">
+                              {getPaymentLabel(expense.payment_method)}
                             </span>
                           )}
                         </div>

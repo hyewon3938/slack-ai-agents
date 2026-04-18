@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { PlannedExpenseRow, ExpenseRow } from '@/features/budget/lib/types';
+import { getBillingRange } from '@/features/budget/lib/billing/cycle';
 import { formatAmount } from '@/lib/types';
 import { XMarkIcon } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
@@ -26,11 +27,7 @@ export function PlannedExpenseEditModal({ item, yearMonth, onSave, onDelete, onC
 
   // 연결된 지출 내역 로드
   useEffect(() => {
-    const [year, month] = yearMonth.split('-').map(Number);
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const from = `${prevYear}-${String(prevMonth).padStart(2, '0')}-16`;
-    const to = `${year}-${String(month).padStart(2, '0')}-15`;
+    const { from, to } = getBillingRange(yearMonth);
 
     void fetch(`/api/expenses?from=${from}&to=${to}&planned_expense_id=${item.id}`)
       .then((r) => r.json())

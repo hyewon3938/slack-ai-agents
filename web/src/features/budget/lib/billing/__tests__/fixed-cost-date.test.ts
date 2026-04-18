@@ -7,12 +7,12 @@ describe('resolveFixedCostExpenseDate', () => {
       expect(resolveFixedCostExpenseDate('2026-04', 1)).toBe('2026-04-01');
     });
 
-    it('결제일 15일 (결제주기 말일) → 당월', () => {
-      expect(resolveFixedCostExpenseDate('2026-04', 15)).toBe('2026-04-15');
+    it('결제일 13일 (결제주기 말일) → 당월', () => {
+      expect(resolveFixedCostExpenseDate('2026-04', 13)).toBe('2026-04-13');
     });
 
-    it('결제일 16일 (결제주기 시작일) → 전월', () => {
-      expect(resolveFixedCostExpenseDate('2026-04', 16)).toBe('2026-03-16');
+    it('결제일 14일 (결제주기 시작일) → 전월', () => {
+      expect(resolveFixedCostExpenseDate('2026-04', 14)).toBe('2026-03-14');
     });
 
     it('결제일 31일 → 전월 말일', () => {
@@ -20,10 +20,10 @@ describe('resolveFixedCostExpenseDate', () => {
     });
   });
 
-  describe('월 경계 — 15일/16일 boundary', () => {
-    it('15일 ↔ 16일 경계에서 월이 바뀐다', () => {
-      expect(resolveFixedCostExpenseDate('2026-04', 15)).toBe('2026-04-15');
-      expect(resolveFixedCostExpenseDate('2026-04', 16)).toBe('2026-03-16');
+  describe('월 경계 — 13일/14일 boundary', () => {
+    it('13일 ↔ 14일 경계에서 월이 바뀐다', () => {
+      expect(resolveFixedCostExpenseDate('2026-04', 13)).toBe('2026-04-13');
+      expect(resolveFixedCostExpenseDate('2026-04', 14)).toBe('2026-03-14');
     });
   });
 
@@ -32,8 +32,8 @@ describe('resolveFixedCostExpenseDate', () => {
       expect(resolveFixedCostExpenseDate('2026-01', 16)).toBe('2025-12-16');
     });
 
-    it('1월 + 결제일 15일 → 당월 1월', () => {
-      expect(resolveFixedCostExpenseDate('2026-01', 15)).toBe('2026-01-15');
+    it('1월 + 결제일 13일 → 당월 1월', () => {
+      expect(resolveFixedCostExpenseDate('2026-01', 13)).toBe('2026-01-13');
     });
 
     it('12월 + 결제일 16일 → 당년 11월', () => {
