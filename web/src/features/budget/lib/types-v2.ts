@@ -56,7 +56,7 @@ export interface DayAllocatorInput {
   monthBudget: number;
   flexibleSpent: number;
   todayFlexSpent: number;
-  cycleRemainingDays: number;
+  cycleTotalDays: number;
 }
 
 export interface DayAllocatorResult {

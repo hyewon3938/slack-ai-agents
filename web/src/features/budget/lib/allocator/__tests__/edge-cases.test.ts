@@ -9,19 +9,19 @@ const BASE: MonthAllocatorInput = {
   plannedExpenses: [],
   currentBillingMonth: '2026-04',
   targetMonth: '2026-06',   // 3개월: Apr, May, Jun
-  today: '2026-04-11',      // Apr 남은 5일
+  today: '2026-04-11',      // Apr 주기: 03-16~04-15 (31일)
 };
 
 describe('F. 엣지 케이스', () => {
   describe('F-1. 신규 할부 (isNew) — 현재 월 locked 제외, 미래 월만 포함', () => {
-    it('isNew=false → 현재 월도 프로레이션 포함', () => {
+    it('isNew=false → 현재 월도 전액 포함 (ratio=1)', () => {
       const result = allocateMonthlyBudgets({
         ...BASE,
         installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: false }],
       });
       const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
-      // round(10000 * 5/31) = 1613
-      expect(apr.installments).toBe(1613);
+      // round(10000 * 1) = 10000
+      expect(apr.installments).toBe(10000);
     });
 
     it('isNew=true → 현재 월 installments=0, 미래 월은 포함', () => {
@@ -37,7 +37,7 @@ describe('F. 엣지 케이스', () => {
       expect(jun.installments).toBe(10000); // 미래 월 포함
     });
 
-    it('isNew=true vs isNew=false — 총 locked 차이는 현재 월 프로레이션 금액', () => {
+    it('isNew=true vs isNew=false — 총 locked 차이는 현재 월 할부 전액', () => {
       const rOld = allocateMonthlyBudgets({
         ...BASE,
         installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: false }],
@@ -46,8 +46,8 @@ describe('F. 엣지 케이스', () => {
         ...BASE,
         installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: true }],
       });
-      // isNew=false는 현재 월에 round(10000*5/31)=1613 추가
-      expect(rOld.totalLocked - rNew.totalLocked).toBe(1613);
+      // isNew=false는 현재 월에 round(10000*1)=10000 추가
+      expect(rOld.totalLocked - rNew.totalLocked).toBe(10000);
     });
   });
 

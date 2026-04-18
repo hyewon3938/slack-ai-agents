@@ -41,13 +41,13 @@ describe('D. 과거/현재/미래 경계', () => {
         monthBudget: currentMonth.free,
         flexibleSpent: 5000,
         todayFlexSpent: 1000,
-        cycleRemainingDays: 4,
+        cycleTotalDays: 31,
       });
       const dayResult2 = allocateTodayBudget({
         monthBudget: currentMonth.free, // monthBudget 동일
         flexibleSpent: 8000,            // 지출 기록만 다름
         todayFlexSpent: 2000,
-        cycleRemainingDays: 4,
+        cycleTotalDays: 31,
       });
       // 월 예산(monthBudget)은 지출에 관계없이 동일
       expect(currentMonth.free).toBe(currentMonth.free); // 변하지 않음
