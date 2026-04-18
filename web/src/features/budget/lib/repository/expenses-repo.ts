@@ -2,8 +2,8 @@ import { query } from '@/lib/db';
 
 export async function readFlexibleSpent(
   userId: number,
-  from: string,
-  to: string,
+  billingMonth: string,
+  upToDate: string,
 ): Promise<number> {
   const result = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS total
@@ -13,16 +13,16 @@ export async function readFlexibleSpent(
        AND exclude_from_budget = false
        AND is_installment = false
        AND planned_expense_id IS NULL
-       AND date BETWEEN $2 AND $3`,
-    [userId, from, to],
+       AND billing_month = $2
+       AND date <= $3`,
+    [userId, billingMonth, upToDate],
   );
   return Number(result.rows[0]?.total ?? 0);
 }
 
 export async function readExcludedSpent(
   userId: number,
-  from: string,
-  to: string,
+  billingMonth: string,
 ): Promise<number> {
   const result = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS total
@@ -30,8 +30,8 @@ export async function readExcludedSpent(
      WHERE user_id = $1
        AND COALESCE(type, 'expense') = 'expense'
        AND exclude_from_budget = true
-       AND date BETWEEN $2 AND $3`,
-    [userId, from, to],
+       AND billing_month = $2`,
+    [userId, billingMonth],
   );
   return Number(result.rows[0]?.total ?? 0);
 }

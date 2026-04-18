@@ -1,20 +1,22 @@
 import { query } from '@/lib/db';
+import { getBillingRange } from '../billing/cycle';
 
 // incomes 테이블 + expenses.type='income' 양쪽 통합 (레거시 병존 구조)
+// incomes 테이블은 billing_month 미지원 → 날짜 범위 유지, expenses는 billing_month 사용
 export async function readIncomeTotal(
   userId: number,
-  from: string,
-  to: string,
+  billingMonth: string,
 ): Promise<number> {
+  const { from, to } = getBillingRange(billingMonth);
   const result = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS total FROM (
        SELECT amount FROM incomes
         WHERE user_id = $1 AND date BETWEEN $2 AND $3
        UNION ALL
        SELECT amount FROM expenses
-        WHERE user_id = $1 AND type = 'income' AND date BETWEEN $2 AND $3
+        WHERE user_id = $1 AND type = 'income' AND billing_month = $4
      ) AS combined`,
-    [userId, from, to],
+    [userId, from, to, billingMonth],
   );
   return Number(result.rows[0]?.total ?? 0);
 }
@@ -23,8 +25,8 @@ export async function readIncomeTotal(
 // 레거시 incomes 테이블은 항상 전체 분배로 간주하므로 제외.
 export async function readCurrentMonthOnlyIncome(
   userId: number,
-  from: string,
-  to: string,
+  billingMonth: string,
+  upToDate: string,
 ): Promise<number> {
   const result = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS total
@@ -32,8 +34,9 @@ export async function readCurrentMonthOnlyIncome(
      WHERE user_id = $1
        AND type = 'income'
        AND COALESCE(distribute_to_budget, false) = false
-       AND date BETWEEN $2 AND $3`,
-    [userId, from, to],
+       AND billing_month = $2
+       AND date <= $3`,
+    [userId, billingMonth, upToDate],
   );
   return Number(result.rows[0]?.total ?? 0);
 }

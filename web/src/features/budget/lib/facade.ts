@@ -70,7 +70,7 @@ export async function getMonthlyAllocation(
     readFixedCostsMonthlyTotal(userId),
     readActiveInstallments(userId, cycle.yearMonth),
     readTargetMonth(userId),
-    readCurrentMonthOnlyIncome(userId, cycle.from, todayStr),
+    readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
   ]);
   const planned = await readPlannedExpenses(
     userId, cycle.yearMonth, targetMonth ?? cycle.yearMonth,
@@ -97,7 +97,7 @@ export async function getTodayAllocation(
   }
   const todayStr = formatKSTDate(now);
   const [flex, todayFlex, targetDate] = await Promise.all([
-    readFlexibleSpent(userId, cycle.from, todayStr),
+    readFlexibleSpent(userId, cycle.yearMonth, todayStr),
     readTodayFlexSpent(userId, todayStr),
     readTargetMonth(userId),
   ]);
@@ -179,7 +179,7 @@ export async function getBudgetPreview(
     computeTotalAvailable(userId, todayStr),
     readFixedCostsMonthlyTotal(userId),
     readActiveInstallments(userId, cycle.yearMonth),
-    readCurrentMonthOnlyIncome(userId, cycle.from, todayStr),
+    readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
   ]);
   const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate);
 
@@ -223,9 +223,9 @@ export async function runSettlementIfDue(
   const range = getBillingRange(targetMonth);
 
   const [flex, excluded, income] = await Promise.all([
-    readFlexibleSpent(userId, range.from, range.to),
-    readExcludedSpent(userId, range.from, range.to),
-    readIncomeTotal(userId, range.from, range.to),
+    readFlexibleSpent(userId, targetMonth, range.to),
+    readExcludedSpent(userId, targetMonth),
+    readIncomeTotal(userId, targetMonth),
   ]);
 
   // 정산 대상 월 기준 allocator 재실행 — T12:00:00Z = KST 21:00 (15일 이내)
