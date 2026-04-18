@@ -6,7 +6,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
 function getBillingRangeLabel(yearMonth: string): string {
   const [, month] = yearMonth.split('-').map(Number);
   const prevMonth = month === 1 ? 12 : month - 1;
-  return `${prevMonth}/16~${month}/15`;
+  return `${prevMonth}/14~${month}/13`;
 }
 
 export function MonthNavigator({

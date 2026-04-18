@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { queryExpenses, createExpense, createInstallmentExpenses } from '@/features/budget/lib/queries';
+import { queryExpenses, queryExpensesByBillingMonth, createExpense, createInstallmentExpenses } from '@/features/budget/lib/queries';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { getTodayISO } from '@/lib/kst';
 import { validateFields } from '@/lib/validation';
@@ -15,17 +15,30 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
+    const category = searchParams.get('category') ?? undefined;
+
+    if (category && !VALID_CATEGORIES.has(category)) {
+      return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
+    }
+
+    // billing_month 기준 조회 (카드별 결제주기 반영)
+    const yearMonth = searchParams.get('yearMonth');
+    if (yearMonth) {
+      if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+        return NextResponse.json({ error: 'yearMonth 형식이 올바르지 않습니다 (YYYY-MM)' }, { status: 400 });
+      }
+      const data = await queryExpensesByBillingMonth(userId, yearMonth, category);
+      return NextResponse.json({ data });
+    }
+
+    // 날짜 범위 기준 조회 (기존 호환)
     const today = getTodayISO();
     const from = searchParams.get('from') ?? today.slice(0, 7) + '-01';
     const to = searchParams.get('to') ?? today;
-    const category = searchParams.get('category') ?? undefined;
     const plannedExpenseId = searchParams.get('planned_expense_id');
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       return NextResponse.json({ error: 'from/to 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)' }, { status: 400 });
-    }
-    if (category && !VALID_CATEGORIES.has(category)) {
-      return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
     }
 
     const data = await queryExpenses(userId, from, to, category, plannedExpenseId ? Number(plannedExpenseId) : undefined);
