@@ -48,6 +48,32 @@ export async function queryExpenses(
   return rows;
 }
 
+/** billing_month 기준 지출 목록 조회 (카드별 결제주기 반영) */
+export async function queryExpensesByBillingMonth(
+  userId: number,
+  billingMonth: string,
+  category?: string,
+): Promise<ExpenseRow[]> {
+  const conditions = ['user_id = $1', 'billing_month = $2'];
+  const params: unknown[] = [userId, billingMonth];
+  if (category) {
+    conditions.push(`category = $${params.length + 1}`);
+    params.push(category);
+  }
+  const { rows } = await query<ExpenseRow>(
+    `SELECT id, date::text, amount, category, description, payment_method,
+            is_installment, installment_num, installment_total, installment_group,
+            source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
+            COALESCE(exclude_from_budget, false) as exclude_from_budget,
+            COALESCE(distribute_to_budget, false) as distribute_to_budget
+     FROM expenses
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY date DESC, created_at DESC`,
+    params,
+  );
+  return rows;
+}
+
 /** 지출 단건 조회 */
 export async function queryExpense(userId: number, id: number): Promise<ExpenseRow | null> {
   return queryOne<ExpenseRow>(

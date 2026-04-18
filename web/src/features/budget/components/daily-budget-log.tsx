@@ -89,7 +89,6 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
         {runwayImpactDays !== null && runwayImpactDays > 0 && (
           <div className="mt-2 text-xs text-gray-400">
             런웨이 약 {runwayImpactDays}일 {totalSaved >= 0 ? '연장' : '단축'} 효과
-            <InfoTooltip text="일일 예산 기준 대략적인 추정치야. 고정비 변동 등에 따라 실제와 다를 수 있어" />
           </div>
         )}
       </div>
