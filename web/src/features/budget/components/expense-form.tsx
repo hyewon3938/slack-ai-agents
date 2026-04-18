@@ -7,6 +7,7 @@ import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 import { formatAmount } from '@/lib/types';
 import { Input, Select } from '@/components/ui/input';
 import { getTodayISO } from '@/lib/kst';
+import { getBillingMonthForExpense } from '@/features/budget/lib/billing/card-billing';
 
 interface ExpenseFormProps {
   onAdd: (data: {
@@ -26,6 +27,8 @@ interface ExpenseFormProps {
 }
 
 const INSTALLMENT_OPTIONS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const PAYMENT_OPTIONS = ['현대카드', '국민카드', '현금'] as const;
+type PaymentOption = (typeof PAYMENT_OPTIONS)[number];
 
 export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const today = getTodayISO();
@@ -36,7 +39,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const [description, setDescription] = useState('');
   const [selectedPlanned, setSelectedPlanned] = useState<number | null>(null);
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpenseRow[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'카드' | '현금'>('카드');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentOption>('현대카드');
   const [installmentMonths, setInstallmentMonths] = useState<number>(1);
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
   const [distributeToBudget, setDistributeToBudget] = useState(false);
@@ -67,7 +70,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     }
   };
 
-  const handlePaymentMethodChange = (method: '카드' | '현금') => {
+  const handlePaymentMethodChange = (method: PaymentOption) => {
     setPaymentMethod(method);
     // 현금으로 바꾸면 할부 초기화
     if (method === '현금') setInstallmentMonths(1);
@@ -91,7 +94,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         type: entryType,
         planned_expense_id: selectedPlanned,
         payment_method: entryType === 'expense' ? paymentMethod : '기타',
-        installment_months: entryType === 'expense' && paymentMethod === '카드' ? installmentMonths : undefined,
+        installment_months: entryType === 'expense' && paymentMethod !== '현금' ? installmentMonths : undefined,
         exclude_from_budget: entryType === 'expense' ? excludeFromBudget : false,
         distribute_to_budget: entryType === 'income' ? distributeToBudget : false,
       });
@@ -123,6 +126,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     ? Math.round(rawAmount / installmentMonths)
     : null;
 
+  // 귀속 월 계산 (지출 모드에서 실시간 표시)
+  const billingMonthNum = parseInt(getBillingMonthForExpense(date, paymentMethod).slice(5), 10);
+
   return (
     <form onSubmit={(e) => void handleSubmit(e)} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       {/* 지출 / 수입 토글 */}
@@ -150,6 +156,11 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-700">
           <PlusIcon size={14} />
           {entryType === 'expense' ? '지출 추가' : '수입 추가'}
+          {entryType === 'expense' && (
+            <span className="ml-1 text-xs font-normal text-gray-400">
+              {billingMonthNum}월 대금
+            </span>
+          )}
         </h2>
       </div>
 
@@ -200,29 +211,23 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
           <div>
             <label className="mb-1 block text-xs text-gray-500">결제수단</label>
             <div className="flex rounded-lg border border-gray-200 p-0.5">
-              <button
-                type="button"
-                onClick={() => handlePaymentMethodChange('카드')}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  paymentMethod === '카드' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                카드
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePaymentMethodChange('현금')}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  paymentMethod === '현금' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                현금
-              </button>
+              {PAYMENT_OPTIONS.map((method) => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => handlePaymentMethodChange(method)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    paymentMethod === method ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {method}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* 할부 (카드 선택 시만) */}
-          {paymentMethod === '카드' && (
+          {paymentMethod !== '현금' && (
             <div>
               <Select
                 label="할부"

@@ -4,6 +4,7 @@ import type { MonthSummary } from '@/features/budget/lib/types';
 import { calcRunwayShorten } from '@/features/budget/lib/allocator/runway-warn';
 import { formatAmount } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
+import { getBillingRange, calcCycleDays } from '@/features/budget/lib/billing/cycle';
 import { BanknotesIcon, ClockIcon, CheckCircleIcon } from '@/components/ui/icons';
 
 interface MonthSummaryCardProps {
@@ -30,15 +31,13 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const todayFlexSpent = summary.today_flex_spent ?? 0;
   const todayRemaining = summary.today_remaining;
 
-  // 결제주기: 전월 16일 ~ 당월 15일
+  // 결제주기: 전월 14일 ~ 당월 13일
   const todayISO = getTodayISO();
   const today = new Date(`${todayISO}T00:00:00`);
-  const [year, month] = summary.year_month.split('-').map(Number);
-  const prevMonth = month === 1 ? 12 : month - 1;
-  const prevYear = month === 1 ? year - 1 : year;
-  const cycleStart = new Date(`${prevYear}-${String(prevMonth).padStart(2, '0')}-16T00:00:00`);
-  const cycleEnd = new Date(`${year}-${String(month).padStart(2, '0')}-15T00:00:00`);
-  const totalDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const { from, to } = getBillingRange(summary.year_month);
+  const cycleStart = new Date(`${from}T00:00:00`);
+  const cycleEnd = new Date(`${to}T00:00:00`);
+  const totalDays = calcCycleDays(from, to);
   const isFutureCycle = today < cycleStart;
   const isCurrentCycle = today >= cycleStart && today <= cycleEnd;
   const daysPassed = isFutureCycle
