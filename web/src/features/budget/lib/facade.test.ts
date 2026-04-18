@@ -37,7 +37,7 @@ import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/income
 import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent, readAvgVariableMonthly } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 
-// April 10 21:00 KST — billing cycle: 2026-04 (Mar 16 ~ Apr 15)
+// April 10 21:00 KST — billing cycle: 2026-04 (Mar 14 ~ Apr 13)
 const DEFAULT_NOW = new Date('2026-04-10T12:00:00Z');
 
 function setupCommonMocks() {
@@ -91,7 +91,7 @@ describe('getMonthlyAllocation', () => {
   it('readCurrentMonthOnlyIncome 을 현재 결제주기 시작일 ~ 오늘 범위로 호출', async () => {
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
     await getMonthlyAllocation(1, DEFAULT_NOW);
-    expect(readCurrentMonthOnlyIncome).toHaveBeenCalledWith(1, '2026-03-16', '2026-04-10');
+    expect(readCurrentMonthOnlyIncome).toHaveBeenCalledWith(1, '2026-03-14', '2026-04-10');
   });
 
   it('currentMonthOnlyIncome > 0 → 현재 월 free 에 독점 귀속, 다른 월은 오히려 감소', async () => {
@@ -121,18 +121,18 @@ describe('runSettlementIfDue', () => {
     setupCommonMocks();
   });
 
-  it('정산일(16일)이 아니면 settled=false', async () => {
+  it('정산일(14일)이 아니면 settled=false', async () => {
     const result = await runSettlementIfDue(1, DEFAULT_NOW); // April 10
 
     expect(result.settled).toBe(false);
     expect(saveSnapshotIfAbsent).not.toHaveBeenCalled();
   });
 
-  it('정산일(16일)이고 스냅샷 신규 → settled=true + 스냅샷 반환', async () => {
-    // April 16 12:00 UTC = April 16 21:00 KST → yesterday=April 15 → shouldSettle=true, targetMonth='2026-04'...
-    // wait: targetMonth = '2026-04-15'.slice(0,7) = '2026-04', range.to = '2026-04-15'
-    // targetEnd = new Date('2026-04-15T12:00:00Z') = Apr 15 21:00 KST → billing cycle '2026-04' ✓
-    const settlementNow = new Date('2026-04-16T12:00:00Z');
+  it('정산일(14일)이고 스냅샷 신규 → settled=true + 스냅샷 반환', async () => {
+    // April 14 12:00 UTC = April 14 21:00 KST → yesterday=April 13 → shouldSettle=true, targetMonth='2026-04'
+    // targetMonth = '2026-04-13'.slice(0,7) = '2026-04', range.to = '2026-04-13'
+    // targetEnd = new Date('2026-04-13T12:00:00Z') = Apr 13 21:00 KST → billing cycle '2026-04' ✓
+    const settlementNow = new Date('2026-04-14T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
@@ -149,7 +149,7 @@ describe('runSettlementIfDue', () => {
   });
 
   it('available_at_end = availableAtStart + income - flex - excluded (자산 미참조)', async () => {
-    const settlementNow = new Date('2026-04-16T12:00:00Z');
+    const settlementNow = new Date('2026-04-14T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
