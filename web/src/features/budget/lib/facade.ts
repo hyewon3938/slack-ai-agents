@@ -53,31 +53,9 @@ function formatKSTDate(d: Date): string {
   return kst.toISOString().slice(0, 10);
 }
 
-function addOneDay(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-/** 최신 스냅샷 기준 가용자금 계산 (없으면 전체 자산 합계 fallback) */
-async function computeTotalAvailable(userId: number, today: string): Promise<number> {
-  const [snapshot, currentAssets] = await Promise.all([
-    readLatestSnapshot(userId),
-    readDistributableAssetBalance(userId),
-  ]);
-  if (!snapshot) {
-    return currentAssets;
-  }
-  const snapshotEnd = getBillingRange(snapshot.year_month).to;
-  const fromDate = addOneDay(snapshotEnd);
-  const [income, flex, excluded] = await Promise.all([
-    readIncomeTotal(userId, fromDate, today),
-    readFlexibleSpent(userId, fromDate, today),
-    readExcludedSpent(userId, fromDate, today),
-  ]);
-  const snapshotBased = snapshot.available_at_end + income - flex - excluded;
-  // 스냅샷 이후 자산 갱신(입금, 잔액 수정 등)이 반영되도록 큰 값 사용
-  return Math.max(snapshotBased, currentAssets);
+/** 가용자금 = 현재 자산 잔액 (사용자가 갱신하는 실제 재정 상태) */
+async function computeTotalAvailable(userId: number, _today: string): Promise<number> {
+  return readDistributableAssetBalance(userId);
 }
 
 /** 월 예산 배분 */
