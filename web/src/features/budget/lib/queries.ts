@@ -238,15 +238,15 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   const [totalResult, categoryResult, fixedCosts] = await Promise.all([
     query<{ total: string }>(
       `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-       WHERE user_id = $1 AND date >= $2 AND date <= $3 AND COALESCE(type, 'expense') = 'expense'`,
-      [userId, from, to],
+       WHERE user_id = $1 AND billing_month = $2 AND COALESCE(type, 'expense') = 'expense'`,
+      [userId, yearMonth],
     ),
     query<{ category: string; total: string; count: string }>(
       `SELECT category, SUM(amount) as total, COUNT(*) as count
-       FROM expenses WHERE user_id = $1 AND date >= $2 AND date <= $3
+       FROM expenses WHERE user_id = $1 AND billing_month = $2
          AND COALESCE(type, 'expense') = 'expense'
        GROUP BY category ORDER BY SUM(amount) DESC`,
-      [userId, from, to],
+      [userId, yearMonth],
     ),
     queryFixedCosts(userId),
   ]);
@@ -262,21 +262,21 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   // 자유 지출 합계 (exclude_from_budget=false인 것만)
   const variableResult = await queryOne<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-     WHERE user_id = $1 AND date >= $2 AND date <= $3
+     WHERE user_id = $1 AND billing_month = $2
        AND exclude_from_budget = false
        AND COALESCE(type, 'expense') = 'expense'`,
-    [userId, from, to],
+    [userId, yearMonth],
   );
   const variableTotal = Number(variableResult?.total ?? 0);
 
   // 할부 합계 (예산 포함인 것 중 is_installment=true)
   const installmentResult = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-     WHERE user_id = $1 AND date >= $2 AND date <= $3
+     WHERE user_id = $1 AND billing_month = $2
        AND is_installment = true
        AND exclude_from_budget = false
        AND COALESCE(type, 'expense') = 'expense'`,
-    [userId, from, to],
+    [userId, yearMonth],
   );
   const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
 
@@ -289,11 +289,11 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
        SELECT p.amount as budget, COALESCE(SUM(e.amount), 0) as used
        FROM planned_expenses p
        LEFT JOIN expenses e ON e.planned_expense_id = p.id
-         AND e.date >= $2 AND e.date <= $3
+         AND e.billing_month = $2
        WHERE p.user_id = $1
        GROUP BY p.id, p.amount
      ) sub`,
-    [userId, from, to],
+    [userId, yearMonth],
   );
   const plannedLinkedTotal = Number(plannedLinkedResult.rows[0]?.linked ?? 0);
   const flexibleSpent = variableTotal - installmentTotal - plannedLinkedTotal;
@@ -301,8 +301,8 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   // 수입 합계 (type='income')
   const incomeResult = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-     WHERE user_id = $1 AND date >= $2 AND date <= $3 AND COALESCE(type, 'expense') = 'income'`,
-    [userId, from, to],
+     WHERE user_id = $1 AND billing_month = $2 AND COALESCE(type, 'expense') = 'income'`,
+    [userId, yearMonth],
   );
   const incomeTotal = Number(incomeResult.rows[0]?.total ?? 0);
 

@@ -88,10 +88,10 @@ describe('getMonthlyAllocation', () => {
     expect(result.freePerMonth).not.toBeNull();
   });
 
-  it('readCurrentMonthOnlyIncome 을 현재 결제주기 시작일 ~ 오늘 범위로 호출', async () => {
+  it('readCurrentMonthOnlyIncome 을 billing_month + 오늘 범위로 호출', async () => {
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
     await getMonthlyAllocation(1, DEFAULT_NOW);
-    expect(readCurrentMonthOnlyIncome).toHaveBeenCalledWith(1, '2026-03-14', '2026-04-10');
+    expect(readCurrentMonthOnlyIncome).toHaveBeenCalledWith(1, '2026-04', '2026-04-10');
   });
 
   it('currentMonthOnlyIncome > 0 → 현재 월 free 에 독점 귀속, 다른 월은 오히려 감소', async () => {
