@@ -68,7 +68,7 @@ export async function getMonthlyAllocation(
   const [totalAvailable, fixedMonthly, installments, targetMonth, currentMonthOnlyIncome] = await Promise.all([
     computeTotalAvailable(userId, todayStr),
     readFixedCostsMonthlyTotal(userId),
-    readActiveInstallments(userId, cycle.from),
+    readActiveInstallments(userId, cycle.yearMonth),
     readTargetMonth(userId),
     readCurrentMonthOnlyIncome(userId, cycle.from, todayStr),
   ]);
@@ -125,7 +125,7 @@ export async function getRunwayProjection(
     getMonthlyAllocation(userId, now),
     readAvgVariableMonthly(userId, 3),
     readFixedCostsMonthlyTotal(userId),
-    readActiveInstallments(userId, cycle.from),
+    readActiveInstallments(userId, cycle.yearMonth),
     readTargetMonth(userId),
   ]);
 
@@ -178,7 +178,7 @@ export async function getBudgetPreview(
   const [totalAvailable, fixedMonthly, installments, currentMonthOnlyIncome] = await Promise.all([
     computeTotalAvailable(userId, todayStr),
     readFixedCostsMonthlyTotal(userId),
-    readActiveInstallments(userId, cycle.from),
+    readActiveInstallments(userId, cycle.yearMonth),
     readCurrentMonthOnlyIncome(userId, cycle.from, todayStr),
   ]);
   const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate);
