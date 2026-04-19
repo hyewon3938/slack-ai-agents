@@ -1,5 +1,66 @@
 # Work Log
 
+## 2026-04-18 (토)
+
+### 작업 요약
+- 카드 결제주기 `billing_month` 시스템 전면 도입 — DB 컬럼 추가부터 facade/query/UI까지 수직 완성 (PR #312, #313)
+- 대금기간 경계일 14\~13일로 변경 + 프로레이션 제거 + 가용자금 계산 단순화 (PR #310, #311)
+- `billing_month` 기준 지출 조회·예산 요약 계산 정합성 확보 (PR #314, #308, #309)
+
+### 변경 규모
+- 12개 커밋, 3개 PR 머지, 47개 파일, +509 / -353 lines
+
+### 주요 변경
+- `db/migrations/043_billing_month.sql` — billing_month 컬럼 + 카드별 대금기간 모듈 신규
+- `web/src/features/budget/lib/billing/cycle.ts` — 대금기간 경계일 14\~13일로 변경
+- `web/src/features/budget/lib/queries.ts` — billing_month 기준 지출 조회 로직 전면 수정
+- `web/src/features/budget/lib/facade.ts`, `repository/expenses-repo.ts`, `incomes-repo.ts` — billing_month 기준 예산 계산 통일
+- `web/src/app/api/expenses/route.ts` — 결제주기 UI 보정 + billing_month 기준 API 정합성 보정
+
+### 다음 할 일
+- billing_month 기반 월간 통계 뷰 + 카드사별 정산 리포트 검토
+
+## 2026-04-17 (금)
+
+### 작업 요약
+- 수면 차트 데스크탑 hover 툴팁 신규 추가 (PR #305) → 중간기상 중복·우측 끝 잘림 버그 즉각 수정 (PR #306) → sleep_events JOIN 쿼리 롤백 + JS 중복 제거로 전환 (PR #307)
+- 예정지출 연결 지출 일일 예산 이중 차감 버그 수정 + 수정 모달 연결 폼 추가 (PR #303)
+- 예정지출 수정 모달 신규 구현 + 연결 지출 내역 표시 (PR #304)
+- 아침/밤 크론 톤 + 달성률 개선 (PR #302)
+
+### 변경 규모
+- 6개 커밋, 5개 PR 머지, 18개 파일, +704 / -147 lines
+
+### 주요 변경
+- `web/src/features/sleep/components/sleep-timeline.tsx`, `sleep-trend-chart.tsx` — 툴팁 신규 (+123줄) + 버그 수정 (+20/-11)
+- `web/src/features/sleep/lib/queries.ts` — JOIN 쿼리 롤백, JS 레벨 중복 제거로 전환
+- `web/src/features/budget/components/planned-expense-edit-modal.tsx` — 수정 모달 신규 (201줄)
+- `web/src/features/budget/components/planned-expense-list.tsx` — 수정 모달 연결 + 이중 차감 방어
+- `web/src/features/budget/lib/repository/__tests__/expenses-repo.test.ts` — 이중 차감 회귀 테스트 추가 (75줄)
+- `src/cron/life-cron.ts` — 밤 크론 현황 톤 + 아침 크론 어제 달성률 추가
+
+### 다음 할 일
+- 예정지출 삭제/연결 해제 UX 검토
+
+## 2026-04-16 (목)
+
+### 작업 요약
+- 루틴 시작일 이전 체크리스트 생성 방어 + 이전 기록 자동 정리 기능 추가 (PR #300, #301)
+- 예산 도메인 강화 — projectFromAllocator 계산 정합성 통합 + 수입 옵션 추가 + 감사 테스트 확대 (PR #295, #299)
+- Gemini provider 완전 제거 — LLM 스택을 Claude 단일화 (PR #297/#298)
+
+### 변경 규모
+- 6개 커밋, 38개 파일, +986 / -1237 lines
+
+### 주요 변경
+- `src/shared/life-queries.ts`, `web/src/app/api/routines/[id]/` — 루틴 시작일 경계 검사 + 이전 기록 정리 API
+- `web/src/features/budget/lib/allocator/runway-projection.ts` — projectFromAllocator 도입, 설정/분석 계산 일치 보장
+- `docs/domains/budget-spec.md` — 기능 명세 193줄 신규 + 테스트 파일 3개 (\~360줄) 추가
+- `src/shared/llm.ts`, `src/shared/__tests__/llm.test.ts` — Gemini 관련 코드 전면 제거 (-1134줄)
+
+### 다음 할 일
+- 루틴 시작일 변경 + 월 전환 엣지케이스 동작 검증
+
 ## 2026-04-15 (수)
 
 ### 작업 요약
