@@ -159,11 +159,11 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
                     width={barWidth + 4} height={chartHeight}
                     fill="transparent"
                     style={{ cursor: 'pointer' }}
-                    onMouseEnter={(e) => {
+                    onPointerEnter={(e) => {
                       if (e.pointerType === 'touch') return;
                       setTooltip({ x: x + barWidth / 2, y: topPadding, daily: d });
                     }}
-                    onMouseLeave={(e) => {
+                    onPointerLeave={(e) => {
                       if (e.pointerType === 'touch') return;
                       setTooltip(null);
                     }}

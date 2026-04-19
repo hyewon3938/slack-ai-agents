@@ -210,11 +210,11 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
                 <circle
                   cx={p.x} cy={p.y} r={12} fill="transparent"
                   style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) => {
+                  onPointerEnter={(e) => {
                     if (e.pointerType === 'touch') return;
                     setTooltip({ x: p.x, y: p.y, daily: valid[i], type: 'bed' });
                   }}
-                  onMouseLeave={(e) => {
+                  onPointerLeave={(e) => {
                     if (e.pointerType === 'touch') return;
                     setTooltip(null);
                   }}
@@ -237,11 +237,11 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
                   <circle
                     cx={p.x} cy={p.y} r={12} fill="transparent"
                     style={{ cursor: 'pointer' }}
-                    onMouseEnter={(e) => {
+                    onPointerEnter={(e) => {
                       if (e.pointerType === 'touch') return;
                       setTooltip({ x: p.x, y: p.y!, daily: valid[i], type: 'wake' });
                     }}
-                    onMouseLeave={(e) => {
+                    onPointerLeave={(e) => {
                       if (e.pointerType === 'touch') return;
                       setTooltip(null);
                     }}
