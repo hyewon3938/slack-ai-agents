@@ -113,7 +113,7 @@ function DurationChart({ dailies, allowScroll }: { dailies: DailySleep[]; allowS
       </div>
       <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-4 rounded-sm bg-green-100" /> 적정 (7\~8h)
+          <span className="inline-block h-2 w-4 rounded-sm bg-green-100" /> 적정 (7~8h)
         </span>
       </div>
     </div>

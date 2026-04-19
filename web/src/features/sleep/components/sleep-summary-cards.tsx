@@ -61,8 +61,8 @@ const regularityContent = (
     <p className="mb-2 text-gray-600">취침 시각이 얼마나 일정한지를 100점 만점으로 나타내.</p>
     <ul className="space-y-0.5 text-gray-500">
       <li><span className="font-medium text-green-600">80점↑</span> 거의 같은 시간에 잠</li>
-      <li><span className="font-medium text-green-600">70\~79</span> 꽤 규칙적</li>
-      <li><span className="font-medium text-yellow-600">40\~69</span> 변동 큼</li>
+      <li><span className="font-medium text-green-600">70~79</span> 꽤 규칙적</li>
+      <li><span className="font-medium text-yellow-600">40~69</span> 변동 큼</li>
       <li><span className="font-medium text-red-500">40점↓</span> 매우 불규칙</li>
     </ul>
   </div>
