@@ -32,6 +32,21 @@ export interface DayOfWeekPattern {
   count: number;
 }
 
+/** 날짜별 통합 수면 데이터 (대시보드 차트용 렌더 단위) */
+export interface DailySleep {
+  date: string;
+  /** 밤잠 (sleep_type='night') */
+  nightSleep: SleepRecordWithEvents | null;
+  /** 아침잠 (nap, bedtime < 12:00) */
+  morningSleeps: SleepRecord[];
+  /** 낮잠 (nap, bedtime >= 12:00) */
+  afternoonNaps: SleepRecord[];
+  /** 밤잠 + 아침잠 합산 duration (분) */
+  totalNightDurationMinutes: number;
+  /** 기상 시각 — 아침잠 있으면 아침잠 중 가장 늦은 wake_time, 없으면 밤잠 wake_time */
+  effectiveWakeTime: string | null;
+}
+
 /** 대시보드 요약 통계 */
 export interface SleepSummary {
   avgDuration: number; // 분
@@ -41,11 +56,15 @@ export interface SleepSummary {
   avgMidWakesPerNight: number;
   regularityScore: number; // 0~100
   totalNights: number;
+  napDaysCount: number;      // 낮잠을 잔 날 수
+  avgNapMinutes: number;     // 낮잠 일수 중 평균 낮잠 시간(분)
+  totalNapMinutes: number;   // 기간 내 낮잠 총합(분)
 }
 
 /** 대시보드 API 응답 */
 export interface SleepDashboardData {
   records: SleepRecordWithEvents[];
+  dailySleeps: DailySleep[];
   summary: SleepSummary;
   dayOfWeekPattern: DayOfWeekPattern[];
 }

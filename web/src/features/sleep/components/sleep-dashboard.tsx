@@ -5,6 +5,7 @@ import { PeriodSelector } from './period-selector';
 import { SleepSummaryCards } from './sleep-summary-cards';
 import { SleepTimeline } from './sleep-timeline';
 import { SleepTrendChart } from './sleep-trend-chart';
+import { NapTimeline } from './nap-timeline';
 import { SleepDayPattern } from './sleep-day-pattern';
 import { CardSkeleton } from '@/components/ui/skeleton';
 
@@ -35,8 +36,9 @@ export function SleepDashboard() {
       <div className="mx-auto max-w-5xl space-y-4 px-4 py-4 md:py-6">
         <PeriodSelector period={period} onChange={handlePeriodChange} />
         <SleepSummaryCards summary={data.summary} />
-        <SleepTimeline records={data.records} period={period} />
-        <SleepTrendChart records={data.records} period={period} />
+        <SleepTimeline dailies={data.dailySleeps} period={period} />
+        <SleepTrendChart dailies={data.dailySleeps} period={period} />
+        <NapTimeline dailies={data.dailySleeps} period={period} />
         <SleepDayPattern pattern={data.dayOfWeekPattern} />
       </div>
     </div>

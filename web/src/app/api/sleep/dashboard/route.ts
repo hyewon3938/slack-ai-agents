@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import {
   querySleepRecordsWithEvents,
+  buildDailySleeps,
   calculateSleepSummary,
   calculateDayOfWeekPattern,
 } from '@/features/sleep/lib/queries';
@@ -22,11 +23,12 @@ export async function GET(request: Request) {
     }
 
     const records = await querySleepRecordsWithEvents(userId, from, to);
-    const summary = calculateSleepSummary(records);
-    const dayOfWeekPattern = calculateDayOfWeekPattern(records);
+    const dailySleeps = buildDailySleeps(records, from, to);
+    const summary = calculateSleepSummary(dailySleeps);
+    const dayOfWeekPattern = calculateDayOfWeekPattern(dailySleeps);
 
     return NextResponse.json(
-      { data: { records, summary, dayOfWeekPattern } },
+      { data: { records, dailySleeps, summary, dayOfWeekPattern } },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } },
     );
   } catch {

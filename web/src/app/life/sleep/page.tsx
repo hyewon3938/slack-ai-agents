@@ -7,6 +7,7 @@ import { PeriodSelector } from '@/features/sleep/components/period-selector';
 import { SleepSummaryCards } from '@/features/sleep/components/sleep-summary-cards';
 import { SleepTimeline } from '@/features/sleep/components/sleep-timeline';
 import { SleepTrendChart } from '@/features/sleep/components/sleep-trend-chart';
+import { NapTimeline } from '@/features/sleep/components/nap-timeline';
 import { SleepDayPattern } from '@/features/sleep/components/sleep-day-pattern';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import type { SleepPeriod } from '@/features/sleep/lib/types';
@@ -74,8 +75,9 @@ function SleepContent() {
       <div className="mx-auto max-w-5xl space-y-4 px-4 py-4 md:py-6">
         <PeriodSelector period={period} onChange={onPeriodChange} />
         <SleepSummaryCards summary={data.summary} />
-        <SleepTimeline records={data.records} period={period} />
-        <SleepTrendChart records={data.records} period={period} />
+        <SleepTimeline dailies={data.dailySleeps} period={period} />
+        <SleepTrendChart dailies={data.dailySleeps} period={period} />
+        <NapTimeline dailies={data.dailySleeps} period={period} />
         <SleepDayPattern pattern={data.dayOfWeekPattern} />
       </div>
     </div>

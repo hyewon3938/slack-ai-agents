@@ -1,11 +1,11 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import type { SleepRecordWithEvents, SleepPeriod } from '../lib/types';
+import type { DailySleep, SleepPeriod } from '../lib/types';
 import { formatDateLabel, getDayOfWeek } from '../lib/chart-utils';
 
 interface SleepTrendChartProps {
-  records: SleepRecordWithEvents[];
+  dailies: DailySleep[];
   period: SleepPeriod;
 }
 
@@ -33,19 +33,19 @@ function useScrollToEnd(
   }, [w, enabled, ...deps]);
 }
 
-function DurationChart({ records, allowScroll }: { records: SleepRecordWithEvents[]; allowScroll: boolean }) {
+function DurationChart({ dailies, allowScroll }: { dailies: DailySleep[]; allowScroll: boolean }) {
   const { ref, w: cw } = useContainerWidth();
-  const valid = records.filter((r) => r.duration_minutes != null);
+  const valid = dailies.filter((d) => d.totalNightDurationMinutes > 0);
   useScrollToEnd(ref, cw, [valid.length], allowScroll);
   if (valid.length === 0) return null;
 
-  const maxDur = Math.max(...valid.map((r) => r.duration_minutes!));
+  const maxDur = Math.max(...valid.map((d) => d.totalNightDurationMinutes));
   const chartHeight = 120;
   const barGap = 3;
   const minBarWidth = allowScroll ? 16 : 6;
-  const minContentWidth = 8 + valid.length * (minBarWidth + barGap);
+  const minContentWidth = 8 + dailies.length * (minBarWidth + barGap);
   const chartWidth = allowScroll ? Math.max(cw, minContentWidth) : Math.max(cw, 200);
-  const barWidth = Math.max(minBarWidth, (chartWidth - 8) / valid.length - barGap);
+  const barWidth = Math.max(minBarWidth, (chartWidth - 8) / dailies.length - barGap);
   const dateAreaHeight = 32;
 
   const idealMin = 420;
@@ -67,33 +67,42 @@ function DurationChart({ records, allowScroll }: { records: SleepRecordWithEvent
               fill="#d1fae5" opacity={0.3}
             />
 
-            {valid.map((r, i) => {
+            {dailies.map((d, i) => {
               const x = i * (barWidth + 3) + 2;
-              const h = (r.duration_minutes! / (maxDur + 60)) * chartHeight;
+              if (d.totalNightDurationMinutes === 0) {
+                const dateLabel = formatDateLabel(d.date);
+                const dayLabel = getDayOfWeek(d.date);
+                return (
+                  <g key={d.date}>
+                    <text x={x + barWidth / 2} y={chartHeight + 12} textAnchor="middle" className="fill-gray-300 text-[9px]">
+                      {dateLabel}
+                    </text>
+                    <text x={x + barWidth / 2} y={chartHeight + 24} textAnchor="middle" className="fill-gray-200 text-[8px]">
+                      {dayLabel}
+                    </text>
+                  </g>
+                );
+              }
+              const dur = d.totalNightDurationMinutes;
+              const h = (dur / (maxDur + 60)) * chartHeight;
               const y = chartHeight - h;
-              const hours = Math.floor(r.duration_minutes! / 60);
-              const mins = r.duration_minutes! % 60;
-              const isLow = r.duration_minutes! < idealMin;
+              const hours = Math.floor(dur / 60);
+              const mins = dur % 60;
+              const isLow = dur < idealMin;
               const color = isLow ? '#f87171' : '#818cf8';
-              const dateLabel = formatDateLabel(r.date);
-              const dayLabel = getDayOfWeek(r.date);
+              const dateLabel = formatDateLabel(d.date);
+              const dayLabel = getDayOfWeek(d.date);
 
               return (
-                <g key={r.id}>
+                <g key={d.date}>
                   <rect x={x} y={y} width={barWidth} height={h} rx={2} fill={color} opacity={0.8} />
                   <text x={x + barWidth / 2} y={y - 3} textAnchor="middle" className="fill-gray-500 text-[8px]">
                     {hours}h{mins > 0 ? mins : ''}
                   </text>
-                  <text
-                    x={x + barWidth / 2} y={chartHeight + 12}
-                    textAnchor="middle" className="fill-gray-500 text-[9px]"
-                  >
+                  <text x={x + barWidth / 2} y={chartHeight + 12} textAnchor="middle" className="fill-gray-500 text-[9px]">
                     {dateLabel}
                   </text>
-                  <text
-                    x={x + barWidth / 2} y={chartHeight + 24}
-                    textAnchor="middle" className="fill-gray-400 text-[8px]"
-                  >
+                  <text x={x + barWidth / 2} y={chartHeight + 24} textAnchor="middle" className="fill-gray-400 text-[8px]">
                     {dayLabel}
                   </text>
                 </g>
@@ -114,17 +123,29 @@ function DurationChart({ records, allowScroll }: { records: SleepRecordWithEvent
 interface TrendTooltip {
   x: number;
   y: number;
-  date: string;
-  bedtime: string;
-  wakeTime: string;
+  daily: DailySleep;
   type: 'bed' | 'wake';
 }
 
-function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEvents[]; allowScroll: boolean }) {
+function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allowScroll: boolean }) {
   const { ref, w: cw } = useContainerWidth();
-  const valid = records.filter((r) => r.bedtime && r.wake_time);
+  const valid = dailies.filter((d) => d.nightSleep?.bedtime);
   const [tooltip, setTooltip] = useState<TrendTooltip | null>(null);
   useScrollToEnd(ref, cw, [valid.length], allowScroll);
+
+  // 외부 탭 시 툴팁 닫기 (모바일)
+  useEffect(() => {
+    if (!tooltip) return;
+    const handler = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setTooltip(null);
+      }
+    };
+    document.addEventListener('pointerdown', handler);
+    return () => document.removeEventListener('pointerdown', handler);
+  }, [tooltip, ref]);
+
   if (valid.length === 0) return null;
 
   const chartHeight = 140;
@@ -140,34 +161,33 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
 
   function timeToNorm(time: string): number {
     const [h, m] = time.split(':').map(Number);
-    let mins = h * 60 + (m ?? 0) - yStart;
+    let mins = (h ?? 0) * 60 + (m ?? 0) - yStart;
     if (mins < 0) mins += 1440;
     return mins / yRange;
   }
 
-  const bedPoints = valid.map((r, i) => ({
+  const bedPoints = valid.map((d, i) => ({
     x: padding.left + (i / Math.max(1, valid.length - 1)) * innerW,
-    y: padding.top + timeToNorm(r.bedtime!) * innerH,
+    y: padding.top + timeToNorm(d.nightSleep!.bedtime!) * innerH,
   }));
-  const wakePoints = valid.map((r, i) => ({
+  const wakePoints = valid.map((d, i) => ({
     x: padding.left + (i / Math.max(1, valid.length - 1)) * innerW,
-    y: padding.top + timeToNorm(r.wake_time!) * innerH,
+    y: d.effectiveWakeTime
+      ? padding.top + timeToNorm(d.effectiveWakeTime) * innerH
+      : null,
   }));
 
   const bedPath = bedPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-  const wakePath = wakePoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const wakePath = wakePoints
+    .filter((p): p is { x: number; y: number } => p.y !== null)
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
+    .join(' ');
 
   const yLabels = ['20', '0', '4', '8', '12'];
   const yLabelNorms = [0, 240 / 960, 480 / 960, 720 / 960, 1];
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
-      <style>{`
-        @media (hover: none) {
-          .desktop-hover-target { display: none; }
-          .desktop-tooltip { display: none; }
-        }
-      `}</style>
       <h3 className="mb-3 text-sm font-semibold text-gray-900">취침 · 기상 시간 추이</h3>
       <div ref={ref} className={`relative ${allowScroll ? 'overflow-x-auto' : ''}`}>
         {cw > 0 && (
@@ -188,51 +208,62 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
               <g key={`b${i}`}>
                 <circle cx={p.x} cy={p.y} r={2.5} fill="#818cf8" className="pointer-events-none" />
                 <circle
-                  cx={p.x} cy={p.y} r={8} fill="transparent"
-                  className="desktop-hover-target"
-                  onMouseEnter={() => {
-                    setTooltip({
-                      x: p.x,
-                      y: p.y,
-                      date: valid[i].date,
-                      bedtime: valid[i].bedtime!,
-                      wakeTime: valid[i].wake_time!,
-                      type: 'bed',
-                    });
+                  cx={p.x} cy={p.y} r={12} fill="transparent"
+                  style={{ cursor: 'pointer' }}
+                  onPointerEnter={(e) => {
+                    if (e.pointerType === 'touch') return;
+                    setTooltip({ x: p.x, y: p.y, daily: valid[i], type: 'bed' });
                   }}
-                  onMouseLeave={() => setTooltip(null)}
+                  onPointerLeave={(e) => {
+                    if (e.pointerType === 'touch') return;
+                    setTooltip(null);
+                  }}
+                  onClick={() => {
+                    setTooltip((prev) =>
+                      prev?.daily.date === valid[i].date && prev.type === 'bed'
+                        ? null
+                        : { x: p.x, y: p.y, daily: valid[i], type: 'bed' },
+                    );
+                  }}
                 />
               </g>
             ))}
             <path d={wakePath} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
-            {wakePoints.map((p, i) => (
-              <g key={`w${i}`}>
-                <circle cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" className="pointer-events-none" />
-                <circle
-                  cx={p.x} cy={p.y} r={8} fill="transparent"
-                  className="desktop-hover-target"
-                  onMouseEnter={() => {
-                    setTooltip({
-                      x: p.x,
-                      y: p.y,
-                      date: valid[i].date,
-                      bedtime: valid[i].bedtime!,
-                      wakeTime: valid[i].wake_time!,
-                      type: 'wake',
-                    });
-                  }}
-                  onMouseLeave={() => setTooltip(null)}
-                />
-              </g>
-            ))}
-            {valid.map((r, i) => {
+            {wakePoints.map((p, i) => {
+              if (p.y === null) return null;
+              return (
+                <g key={`w${i}`}>
+                  <circle cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" className="pointer-events-none" />
+                  <circle
+                    cx={p.x} cy={p.y} r={12} fill="transparent"
+                    style={{ cursor: 'pointer' }}
+                    onPointerEnter={(e) => {
+                      if (e.pointerType === 'touch') return;
+                      setTooltip({ x: p.x, y: p.y!, daily: valid[i], type: 'wake' });
+                    }}
+                    onPointerLeave={(e) => {
+                      if (e.pointerType === 'touch') return;
+                      setTooltip(null);
+                    }}
+                    onClick={() => {
+                      setTooltip((prev) =>
+                        prev?.daily.date === valid[i].date && prev.type === 'wake'
+                          ? null
+                          : { x: p.x, y: p.y!, daily: valid[i], type: 'wake' },
+                      );
+                    }}
+                  />
+                </g>
+              );
+            })}
+            {valid.map((d, i) => {
               const x = padding.left + (i / Math.max(1, valid.length - 1)) * innerW;
               const step = Math.max(1, Math.floor(valid.length / 7));
               if (i % step !== 0 && i !== valid.length - 1) return null;
-              const dateLabel = formatDateLabel(r.date);
-              const dayLabel = getDayOfWeek(r.date);
+              const dateLabel = formatDateLabel(d.date);
+              const dayLabel = getDayOfWeek(d.date);
               return (
-                <g key={r.id}>
+                <g key={d.date}>
                   <text x={x} y={chartHeight - padding.bottom + 14} textAnchor="middle" className="fill-gray-500 text-[9px]">
                     {dateLabel}
                   </text>
@@ -245,23 +276,28 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
           </svg>
         )}
         {tooltip && (() => {
-        const alignRight = tooltip.x > chartWidth - 80;
-        const alignLeft = tooltip.x < 80;
-        const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
-        return (
-        <div
-          className="desktop-tooltip pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
-          style={{ left: tooltip.x, top: tooltip.y - 8, transform: `translate(${translateX}, -100%)` }}
-        >
-          <p className="mb-0.5 font-semibold text-gray-700">{tooltip.date}</p>
-          <p style={{ color: tooltip.type === 'bed' ? '#818cf8' : undefined }} className={tooltip.type === 'bed' ? 'font-medium' : 'text-gray-500'}>
-            취침 {tooltip.bedtime}
-          </p>
-          <p style={{ color: tooltip.type === 'wake' ? '#f59e0b' : undefined }} className={tooltip.type === 'wake' ? 'font-medium' : 'text-gray-500'}>
-            기상 {tooltip.wakeTime}
-          </p>
-        </div>
-        );
+          const d = tooltip.daily;
+          const hasMorning = d.morningSleeps.length > 0;
+          const alignRight = tooltip.x > chartWidth - 100;
+          const alignLeft = tooltip.x < 100;
+          const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
+          return (
+            <div
+              className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+              style={{ left: tooltip.x, top: tooltip.y - 8, transform: `translate(${translateX}, -100%)` }}
+            >
+              <p className="mb-0.5 font-semibold text-gray-700">{d.date}</p>
+              <p style={{ color: tooltip.type === 'bed' ? '#818cf8' : undefined }} className={tooltip.type === 'bed' ? 'font-medium' : 'text-gray-500'}>
+                취침 {d.nightSleep?.bedtime ?? '--:--'}
+              </p>
+              <p style={{ color: tooltip.type === 'wake' ? '#f59e0b' : undefined }} className={tooltip.type === 'wake' ? 'font-medium' : 'text-gray-500'}>
+                기상 {d.effectiveWakeTime ?? '--:--'}
+                {hasMorning && tooltip.type === 'wake' && (
+                  <span className="ml-1 text-gray-400 font-normal">※아침잠 포함</span>
+                )}
+              </p>
+            </div>
+          );
         })()}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
@@ -276,12 +312,12 @@ function TimesTrendChart({ records, allowScroll }: { records: SleepRecordWithEve
   );
 }
 
-export function SleepTrendChart({ records, period }: SleepTrendChartProps) {
+export function SleepTrendChart({ dailies, period }: SleepTrendChartProps) {
   const allowScroll = period === '1m';
   return (
     <div className="space-y-4">
-      <DurationChart records={records} allowScroll={allowScroll} />
-      <TimesTrendChart records={records} allowScroll={allowScroll} />
+      <DurationChart dailies={dailies} allowScroll={allowScroll} />
+      <TimesTrendChart dailies={dailies} allowScroll={allowScroll} />
     </div>
   );
 }
