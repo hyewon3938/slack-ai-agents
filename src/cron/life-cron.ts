@@ -36,6 +36,7 @@ import {
   buildRoutineBlocks,
   buildScheduleText,
   buildNightScheduleText,
+  buildYesterdayIncompleteText,
 } from '../agents/life/blocks.js';
 // insights.ts 넛지는 제거 — Sonnet이 생활 맥락에서 직접 인사이트 도출
 // 복원 시: import { pickMorningNudge, pickNightNudge } from '../shared/insights.js';
@@ -259,6 +260,17 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
           ? `어제 루틴 전부 완료! ${stats.rate}% (${stats.completed}/${stats.total}) — ${slotText}`
           : `어제 루틴 최종 ${stats.rate}% (${stats.completed}/${stats.total}) — ${slotText}`;
       await postToChannel(app.client, channelId, line);
+    }
+
+    // 1-2. 어제 못 끝낸 일정 요약 (end_date가 오늘 이후인 진행 중 기간 일정은 제외)
+    const yesterdaySchedules = await queryTodaySchedules(yesterday, userId);
+    const yesterdayIncompleteText = buildYesterdayIncompleteText(
+      yesterdaySchedules,
+      yesterday,
+      today,
+    );
+    if (yesterdayIncompleteText) {
+      await postToChannel(app.client, channelId, yesterdayIncompleteText);
     }
 
     // 2. 오늘 루틴 기록 생성
