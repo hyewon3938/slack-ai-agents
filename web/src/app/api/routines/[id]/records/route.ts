@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { deleteRecordsBefore } from '@/features/routine/lib/queries';
 
@@ -20,8 +19,6 @@ export async function DELETE(
 
     const deleted = await deleteRecordsBefore(userId, Number(id), before, true);
 
-    revalidateTag('routine-records', 'seconds');
-    revalidateTag('routine-stats', 'seconds');
     return NextResponse.json({ data: { deleted } });
   } catch {
     return NextResponse.json({ error: '기록 삭제 실패' }, { status: 500 });

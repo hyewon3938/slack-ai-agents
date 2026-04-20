@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { queryInactivePeriods, createInactivePeriod } from '@/features/routine/lib/queries';
 
@@ -40,7 +39,6 @@ export async function POST(
       body.start_date,
       body.end_date ?? null,
     );
-    revalidateTag('routine-stats', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
   } catch {
     return NextResponse.json({ error: '비활성 기간 생성 실패' }, { status: 500 });

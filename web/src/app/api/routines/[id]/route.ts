@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { getTodayISO, addDays } from '@/lib/kst';
 import { validateFields } from '@/lib/validation';
@@ -63,9 +62,6 @@ export async function PATCH(
       staleCompletedCount = await countCompletedRecordsBefore(userId, numId, data.start_date);
     }
 
-    revalidateTag('routines', 'seconds');
-    revalidateTag('routine-records', 'seconds');
-    revalidateTag('routine-stats', 'seconds');
     return NextResponse.json({ data, staleCompletedCount });
   } catch {
     return NextResponse.json({ error: '루틴 수정 실패' }, { status: 500 });
@@ -84,7 +80,6 @@ export async function DELETE(
     const deleted = await deleteRoutineTemplate(userId, Number(id));
     if (!deleted) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
 
-    revalidateTag('routines', 'seconds');
     return NextResponse.json({ data: { id: Number(id) } });
   } catch {
     return NextResponse.json({ error: '루틴 삭제 실패' }, { status: 500 });
