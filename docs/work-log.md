@@ -1,5 +1,24 @@
 # Work Log
 
+## 2026-04-19 (일)
+
+### 작업 요약
+- 수면 대시보드 시각화 전면 개선 — 밤잠·아침잠·낮잠 3분류 `DailySleep` 타입 도입 (PR #318)
+- 낮잠 전용 타임라인(`NapTimeline`) 신규 + 요약 카드 낮잠 통계(5번째 카드) 추가
+- 공통 터치 툴팁 훅(`useChartTooltip`) 분리 — 모바일 tap 인터랙션 전 차트에 일괄 적용
+
+### 변경 규모
+- 1개 커밋, 1개 PR 머지, 13개 파일, +858 / -211 lines
+
+### 주요 변경
+- `web/src/features/sleep/lib/queries.ts` — DailySleep 분류 로직 + `effectiveWakeTime` 계산 재설계 (+184/-34)
+- `web/src/features/sleep/components/nap-timeline.tsx` — 낮잠 전용 타임라인 신규 (210줄)
+- `web/src/features/sleep/components/sleep-trend-chart.tsx` — 아침잠 반영 추이 차트 재설계 (+228/-95)
+- `web/src/features/sleep/hooks/use-chart-tooltip.ts` — 공통 툴팁 훅 신규 (27줄)
+
+### 다음 할 일
+- 수면 분석 인사이트(패턴 요약 텍스트 생성) 또는 수면 주간 리포트 검토
+
 ## 2026-04-18 (토)
 
 ### 작업 요약
