@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
-import { getCachedRoutineRecords } from '@/lib/cache';
-import { ensureTodayRecords } from '@/features/routine/lib/queries';
+import { ensureTodayRecords, queryRoutineRecords } from '@/features/routine/lib/queries';
 import { getTodayISO } from '@/lib/kst';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -15,12 +15,14 @@ export async function GET(request: Request) {
     if (!date) return NextResponse.json({ error: 'date 파라미터 필요' }, { status: 400 });
 
     if (date === getTodayISO()) {
-      const created = await ensureTodayRecords(userId, date);
-      if (created > 0) revalidateTag('routine-records', 'seconds');
+      await ensureTodayRecords(userId, date);
     }
 
-    const data = await getCachedRoutineRecords(userId, date);
-    return NextResponse.json({ data });
+    const data = await queryRoutineRecords(userId, date);
+    return NextResponse.json(
+      { data },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+    );
   } catch {
     return NextResponse.json({ error: '루틴 기록 조회 실패' }, { status: 500 });
   }

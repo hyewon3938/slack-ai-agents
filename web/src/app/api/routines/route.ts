@@ -1,18 +1,25 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
-import { getCachedRoutineTemplates } from '@/lib/cache';
-import { createRoutineTemplate, backfillRecords } from '@/features/routine/lib/queries';
+import {
+  createRoutineTemplate,
+  backfillRecords,
+  queryRoutineTemplates,
+} from '@/features/routine/lib/queries';
 import { getTodayISO } from '@/lib/kst';
 import { validateFields } from '@/lib/validation';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const data = await getCachedRoutineTemplates(userId);
-    return NextResponse.json({ data });
+    const data = await queryRoutineTemplates(userId);
+    return NextResponse.json(
+      { data },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+    );
   } catch {
     return NextResponse.json({ error: '루틴 조회 실패' }, { status: 500 });
   }
@@ -58,7 +65,6 @@ export async function POST(request: Request) {
       await backfillRecords(userId, data.id, body.start_date, body.frequency ?? null, today);
     }
 
-    revalidateTag('routines', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
   } catch {
     return NextResponse.json({ error: '루틴 생성 실패' }, { status: 500 });

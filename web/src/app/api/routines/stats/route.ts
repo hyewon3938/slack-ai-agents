@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getCachedRoutineStats } from '@/lib/cache';
-import { queryRoutinePerStats } from '@/features/routine/lib/queries';
+import { queryRoutinePerStats, queryRoutineStats } from '@/features/routine/lib/queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +29,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'from/to 파라미터 필요' }, { status: 400 });
     }
 
-    const data = await getCachedRoutineStats(userId, from, to);
-    return NextResponse.json({ data });
+    const data = await queryRoutineStats(userId, from, to);
+    return NextResponse.json(
+      { data },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+    );
   } catch {
     return NextResponse.json({ error: '루틴 통계 조회 실패' }, { status: 500 });
   }

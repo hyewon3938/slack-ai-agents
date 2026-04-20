@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { updateInactivePeriod, deleteInactivePeriod } from '@/features/routine/lib/queries';
 
@@ -23,7 +22,6 @@ export async function PATCH(
       body.end_date ?? null,
     );
     if (!data) return NextResponse.json({ error: '비활성 기간을 찾을 수 없어' }, { status: 404 });
-    revalidateTag('routine-stats', 'seconds');
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '비활성 기간 수정 실패' }, { status: 500 });
@@ -41,7 +39,6 @@ export async function DELETE(
     const { periodId } = await params;
     const deleted = await deleteInactivePeriod(userId, Number(periodId));
     if (!deleted) return NextResponse.json({ error: '비활성 기간을 찾을 수 없어' }, { status: 404 });
-    revalidateTag('routine-stats', 'seconds');
     return NextResponse.json({ data: { id: Number(periodId) } });
   } catch {
     return NextResponse.json({ error: '비활성 기간 삭제 실패' }, { status: 500 });
