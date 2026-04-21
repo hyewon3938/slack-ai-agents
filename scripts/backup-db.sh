@@ -5,13 +5,15 @@
 set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-LOG_DIR="${LOG_DIR:-/var/log/slack-ai-agents}"
-LOG_FILE="$LOG_DIR/backup.log"
 
-# .env 로드 (POSTGRES_USER, POSTGRES_DB, R2_REMOTE, SLACK_BOT_TOKEN, PROJECT_CHANNEL_ID)
+# .env 로드 (POSTGRES_USER, POSTGRES_DB, R2_REMOTE, SLACK_BOT_TOKEN, PROJECT_CHANNEL_ID, LOG_DIR)
+# LOG_DIR/LOG_FILE 평가는 .env 로드 이후에 수행 (.env의 LOG_DIR이 적용되도록)
 if [ -f "$REPO_DIR/.env" ]; then
   set -a; . "$REPO_DIR/.env"; set +a
 fi
+
+LOG_DIR="${LOG_DIR:-/var/log/slack-ai-agents}"
+LOG_FILE="$LOG_DIR/backup.log"
 
 : "${POSTGRES_USER:?POSTGRES_USER 필요}"
 : "${POSTGRES_DB:?POSTGRES_DB 필요}"
