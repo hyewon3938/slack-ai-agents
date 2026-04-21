@@ -210,4 +210,5 @@ docker compose down             # 전체 정지 (볼륨은 유지 → 데이터 
 | [docs/project-history.md](docs/project-history.md) | 설계 변화와 의사결정 과정 상세 기록 |
 | [docs/conventions.md](docs/conventions.md) | 코드 컨벤션 & 보안 체크리스트 |
 | [docs/pipeline-optimization.md](docs/pipeline-optimization.md) | 배포 파이프라인 최적화 (GHCR 이미지 빌드) |
+| [docs/operations/db-backup.md](docs/operations/db-backup.md) | DB 백업/복원 운영 가이드 |
 | [docs/developer-profile.md](docs/developer-profile.md) | AI가 분석한 개발자 성향 프로필 (gitignored) |
