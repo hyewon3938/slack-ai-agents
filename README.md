@@ -84,9 +84,10 @@ AI를 "코딩 보조"가 아니라 **협업 개발자**로 취급하고, 작업 
 
 일정·루틴·수면·지출·일기를 자연어 대화만으로 기록·조회·수정. 하루 2회 크론 알림 + 프로액티브 인사이트(넛지) + 생활 맥락 기반 잔소리. 스마트 메모리로 사용자 선호를 자동 학습.
 
+ <img src="docs/images/01-conversation.png" width="49%" />
 <p>
-  <img src="docs/images/01-conversation.png" width="49%" />
-  <img src="docs/images/03-routine-checklist.png" width="49%" />
+ 
+  <!-- <img src="docs/images/03-routine-checklist.png" width="49%" /> -->
 </p>
 
 ### 프로액티브 인사이트 — 물어보지 않아도 패턴을 감지
@@ -105,12 +106,12 @@ AI를 "코딩 보조"가 아니라 **협업 개발자**로 취급하고, 작업 
 
 ### App Home — Slack 내 대시보드
 
-오늘의 일정·루틴·수면 요약을 Slack App Home 탭에 영구 표시. Slack 스크롤에 밀리는 문제 해결.
-
-<p>
-  <img src="docs/images/01-app-home.PNG" width="49%" />
+오늘의 일정·루틴·수면 요약을 Slack App Home 탭에 영구 표시. 간단한 액션과 데이터 확인은 앱 홈 화면에서 진행 가능하도록.
+ <img src="docs/images/01-app-home.PNG" width="49%" />
+<!-- <p>
+ 
   <img src="docs/images/app-home-dashboard.jpg" width="49%" />
-</p>
+</p> -->
 
 ---
 
