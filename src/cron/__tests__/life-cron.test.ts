@@ -59,7 +59,7 @@ vi.mock('../../shared/kst.js', () => ({
 }));
 
 import { connectDB } from '../../shared/db.js';
-import { CronScheduler, type LifeCronConfig } from '../life-cron.js';
+import { CronScheduler, createTodayRecords, type LifeCronConfig } from '../life-cron.js';
 import type { UserMapping } from '../../shared/user-resolver.js';
 
 /** notification_settings 쿼리 mock 설정 */
@@ -187,5 +187,64 @@ describe('CronScheduler reload debounce', () => {
     for (const stop of initStopFns) {
       expect(stop).toHaveBeenCalled();
     }
+  });
+});
+
+// ── createTodayRecords: start_date 가드 ──
+
+describe('createTodayRecords — 매일 빈도 start_date 가드', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockConnect.mockResolvedValue({ release: vi.fn() });
+    await connectDB('postgresql://test@localhost/test');
+  });
+
+  const setupTemplateMock = (
+    template: { id: number; name: string; time_slot: string; frequency: string; start_date: string },
+  ): void => {
+    mockQuery.mockImplementation((sql: string) => {
+      if (/FROM routine_templates/.test(sql)) {
+        return Promise.resolve({ rows: [template] });
+      }
+      if (/SELECT template_id FROM routine_records/.test(sql)) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (/INSERT INTO routine_records/.test(sql)) {
+        return Promise.resolve({ rows: [{ id: 1 }] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+  };
+
+  it('매일 빈도 + start_date 미래 → 기록 생성하지 않음', async () => {
+    setupTemplateMock({
+      id: 99, name: '미래 루틴', time_slot: '낮', frequency: '매일', start_date: '2026-04-21',
+    });
+
+    const created = await createTodayRecords('2026-04-20', 1);
+    expect(created).toBe(0);
+
+    const inserts = mockQuery.mock.calls.filter(
+      (call) => /INSERT INTO routine_records/.test(call[0] as string),
+    );
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('매일 빈도 + start_date = 오늘 → 기록 생성', async () => {
+    setupTemplateMock({
+      id: 99, name: '오늘 시작', time_slot: '낮', frequency: '매일', start_date: '2026-04-21',
+    });
+
+    const created = await createTodayRecords('2026-04-21', 1);
+    expect(created).toBe(1);
+  });
+
+  it('매일 빈도 + start_date 과거 → 기록 생성', async () => {
+    setupTemplateMock({
+      id: 99, name: '진행 중', time_slot: '밤', frequency: '매일', start_date: '2026-04-01',
+    });
+
+    const created = await createTodayRecords('2026-04-21', 1);
+    expect(created).toBe(1);
   });
 });
