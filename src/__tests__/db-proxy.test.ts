@@ -291,6 +291,44 @@ describe('DB Proxy Server', () => {
       expect(status).toBe(503);
       expect(body).toEqual({ ok: false });
     });
+
+    it('GET /health/detail — 인증 없으면 401', async () => {
+      const { status } = await makeRequest(port, {
+        method: 'GET',
+        path: '/health/detail',
+      });
+      expect(status).toBe(401);
+    });
+
+    it('GET /health/detail — 인증 + DB 정상이면 200 + 상세 정보', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }], rowCount: 1 });
+      const { status, body } = await makeRequest(port, {
+        method: 'GET',
+        path: '/health/detail',
+        headers: AUTH,
+      });
+      expect(status).toBe(200);
+      expect(body).toMatchObject({
+        ok: true,
+        db: { status: 'ok' },
+      });
+      expect(typeof (body as { uptime: number }).uptime).toBe('number');
+      expect(typeof (body as { db: { latencyMs: number } }).db.latencyMs).toBe('number');
+    });
+
+    it('GET /health/detail — DB 죽으면 503 + db.status=error', async () => {
+      mockQuery.mockRejectedValueOnce(new Error('conn refused'));
+      const { status, body } = await makeRequest(port, {
+        method: 'GET',
+        path: '/health/detail',
+        headers: AUTH,
+      });
+      expect(status).toBe(503);
+      expect(body).toMatchObject({
+        ok: false,
+        db: { status: 'error' },
+      });
+    });
   });
 
   // ── 에러 응답 일반화 ──
