@@ -13,7 +13,6 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "dev:web": "yarn --cwd web dev",
-    "deploy": "ssh life-server 'bash ~/deploy.sh'",
     "prepare": "husky"
   },
   "lint-staged": {

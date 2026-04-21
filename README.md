@@ -172,7 +172,11 @@ yarn install
 cp .env.example .env        # Slack, Anthropic, DB 등 API 키 설정
 yarn dev                    # 개발 모드
 yarn build && yarn start    # 빌드 & 실행
-yarn deploy                 # 운영 VM 배포 (SSH → deploy.sh)
+
+# 운영 배포는 GitHub Actions가 담당:
+#   - main 브랜치 push → 자동 배포
+#   - 수동 재배포: GitHub Actions에서 Deploy 워크플로우 "Run workflow"
+#     또는 CLI: `gh workflow run deploy.yml`
 
 # 웹 대시보드
 cd web && yarn install
