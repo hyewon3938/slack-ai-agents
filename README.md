@@ -186,6 +186,21 @@ yarn dev                    # localhost:3000
 # 프로덕션은 Vercel 자동 배포 (GitHub push → 빌드 → 배포)
 ```
 
+### 운영 환경 구성 (Docker Compose)
+
+봇과 DB는 Docker Compose로 함께 관리된다.
+
+```bash
+docker compose up -d            # 전체 기동 (app + db)
+docker compose logs -f app      # 로그 확인
+docker compose restart app      # app만 재시작 (DB 영향 없음)
+docker compose down             # 전체 정지 (볼륨은 유지 → 데이터 보존)
+```
+
+- **app 컨테이너**: Slack 봇 + DB Proxy API. 내부 포트는 루프백 바인딩.
+- **db 컨테이너**: PostgreSQL 17, TLS on, Docker 내부 네트워크 전용.
+- **볼륨 `pgdata`**: DB 데이터 영속화. 컨테이너 재생성·재배포에도 유지.
+
 ---
 
 ## 관련 문서
