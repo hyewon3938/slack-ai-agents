@@ -223,7 +223,7 @@ export const createTodayRecords = async (today: string, userId: number = DEFAULT
   for (const t of candidates) {
     const shouldCreate =
       t.frequency === '매일'
-        ? true
+        ? !t.start_date || today >= t.start_date
         : shouldCreateToday(t.frequency, await queryLastRecordDate(t.id, userId), today, t.start_date);
 
     if (shouldCreate) {
