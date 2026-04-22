@@ -10,6 +10,12 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
+# actions/github-script@v7 Node.js 20 deprecation 선제 대응.
+# 2026-06-02 이후 기본값 변경, 2026-09-16에 Node 20 제거 예정.
+# ref: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 permissions:
   actions: read
   contents: read
