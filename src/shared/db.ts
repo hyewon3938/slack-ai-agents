@@ -103,6 +103,31 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
   }
 };
 
+/**
+ * 쿼리를 BEGIN → 실행 → ROLLBACK으로 실행해 영향 row 수만 얻는다.
+ * DB 상태는 변경되지 않는다. DELETE/UPDATE 실행 전 영향 범위 사전 점검용.
+ */
+export const dryRunRowCount = async (
+  text: string,
+  timeoutMs: number,
+): Promise<number> => {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
+    await client.query('BEGIN');
+    const result = await client.query(text);
+    await client.query('ROLLBACK');
+    return result.rowCount ?? 0;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {/* 무시 */});
+    throw err;
+  } finally {
+    await client.query('SET statement_timeout = 0').catch(() => {/* 무시 */});
+    client.release();
+  }
+};
+
 /** 연결 풀 종료 */
 export const disconnectDB = async (): Promise<void> => {
   if (!pool) return;

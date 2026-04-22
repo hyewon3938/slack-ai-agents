@@ -388,3 +388,155 @@ describe('executeSQLTool', () => {
     expect(parsed.error).toContain('알 수 없는');
   });
 });
+
+describe('executeSQLTool — modify_db 확인 플로우', () => {
+  let executeSQLTool: typeof import('../sql-tools.js').executeSQLTool;
+  let setConfirmCardSender: typeof import('../sql-tools.js').setConfirmCardSender;
+  let clearConfirmCardSender: typeof import('../sql-tools.js').clearConfirmCardSender;
+  let connectDB: (url: string) => Promise<void>;
+  let disconnectDB: () => Promise<void>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockClientQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockConnect.mockResolvedValue({ query: mockClientQuery, release: mockRelease });
+    mockEnd.mockResolvedValue(undefined);
+
+    const db = await import('../db.js');
+    connectDB = db.connectDB;
+    disconnectDB = db.disconnectDB;
+
+    await disconnectDB();
+    vi.clearAllMocks();
+    mockConnect.mockResolvedValue({ query: mockClientQuery, release: mockRelease });
+    mockEnd.mockResolvedValue(undefined);
+    await connectDB('postgresql://test@localhost/test');
+    vi.clearAllMocks();
+    mockConnect.mockResolvedValue({ query: mockClientQuery, release: mockRelease });
+
+    const sqlTools = await import('../sql-tools.js');
+    executeSQLTool = sqlTools.executeSQLTool;
+    setConfirmCardSender = sqlTools.setConfirmCardSender;
+    clearConfirmCardSender = sqlTools.clearConfirmCardSender;
+  });
+
+  it('DELETE with row < threshold → 즉시 실행 (confirm 스킵)', async () => {
+    // dry-run (BEGIN/쿼리/ROLLBACK) → 2 rows
+    // 이어서 실제 실행 (SET/BEGIN/쿼리/COMMIT) → 2 rows
+    mockClientQuery
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // dry SET timeout
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // dry BEGIN
+      .mockResolvedValueOnce({ rows: [], rowCount: 2 }) // dry DELETE (영향 2행)
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // dry ROLLBACK
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // dry SET timeout 0
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // 실제 SET timeout
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // 실제 BEGIN
+      .mockResolvedValueOnce({ rows: [], rowCount: 2 }) // 실제 DELETE
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // 실제 COMMIT
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // 실제 SET timeout 0
+
+    const sender = vi.fn().mockResolvedValue(undefined);
+    setConfirmCardSender(sender);
+
+    const result = await executeSQLTool(
+      'modify_db',
+      { sql: 'DELETE FROM schedules WHERE user_id = 1 AND id = 5' },
+      1,
+      { slackChannel: 'C123' },
+    );
+    const parsed = JSON.parse(result) as { rowCount?: number; pending?: boolean };
+
+    expect(parsed.pending).toBeUndefined();
+    expect(parsed.rowCount).toBe(2);
+    expect(sender).not.toHaveBeenCalled();
+
+    clearConfirmCardSender();
+  });
+
+  it('DELETE with row ≥ threshold → pending + sender 호출', async () => {
+    // dry-run → 5 rows (threshold 3 이상)
+    mockClientQuery
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // dry SET timeout
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // dry BEGIN
+      .mockResolvedValueOnce({ rows: [], rowCount: 5 }) // dry DELETE
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // dry ROLLBACK
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // dry SET timeout 0
+    // pending INSERT는 pool.query(mockQuery) 경유
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const sender = vi.fn().mockResolvedValue(undefined);
+    setConfirmCardSender(sender);
+
+    const result = await executeSQLTool(
+      'modify_db',
+      { sql: 'DELETE FROM schedules WHERE user_id = 1 AND category = \'old\'' },
+      1,
+      { slackChannel: 'C123', slackThreadTs: '1700000000.000100' },
+    );
+    const parsed = JSON.parse(result) as {
+      pending?: boolean;
+      rowCount?: number;
+      message?: string;
+    };
+
+    expect(parsed.pending).toBe(true);
+    expect(parsed.rowCount).toBe(5);
+    expect(sender).toHaveBeenCalledTimes(1);
+    const callArg = sender.mock.calls[0]?.[0] as {
+      token: string;
+      rowCount: number;
+      context: { slackChannel?: string; slackThreadTs?: string };
+    };
+    expect(callArg.rowCount).toBe(5);
+    expect(callArg.token).toMatch(/^[a-f0-9]{16}$/);
+    expect(callArg.context.slackChannel).toBe('C123');
+
+    clearConfirmCardSender();
+  });
+
+  it('INSERT는 threshold 체크 없이 즉시 실행', async () => {
+    mockClientQuery
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // SET timeout
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 }) // INSERT
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // COMMIT
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // SET timeout 0
+
+    const sender = vi.fn().mockResolvedValue(undefined);
+    setConfirmCardSender(sender);
+
+    const result = await executeSQLTool(
+      'modify_db',
+      { sql: "INSERT INTO schedules (title, user_id) VALUES ('test', 1) RETURNING id" },
+      1,
+      { slackChannel: 'C123' },
+    );
+    const parsed = JSON.parse(result) as { rowCount?: number; pending?: boolean };
+
+    expect(parsed.pending).toBeUndefined();
+    expect(parsed.rowCount).toBe(1);
+    expect(sender).not.toHaveBeenCalled();
+
+    clearConfirmCardSender();
+  });
+
+  it('sender 미설정 시 DELETE도 즉시 실행 (하위 호환)', async () => {
+    clearConfirmCardSender();
+    mockClientQuery
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 10 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await executeSQLTool(
+      'modify_db',
+      { sql: 'DELETE FROM schedules WHERE user_id = 1 AND category = \'x\'' },
+      1,
+    );
+    const parsed = JSON.parse(result) as { rowCount?: number; pending?: boolean };
+
+    expect(parsed.pending).toBeUndefined();
+    expect(parsed.rowCount).toBe(10);
+  });
+});

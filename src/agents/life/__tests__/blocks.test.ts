@@ -6,10 +6,13 @@ import {
   buildFilteredRoutineBlocks,
   buildMorningGreetingBlocks,
   buildScheduleBlocks,
+  buildConfirmModifyCard,
   parseButtonValue,
   parseOverflowValue,
   ROUTINE_ACTION_ID,
   SCHEDULE_ACTION_ID,
+  CONFIRM_MODIFY_EXECUTE_ACTION_ID,
+  CONFIRM_MODIFY_CANCEL_ACTION_ID,
 } from '../blocks.js';
 
 // ─── 테스트 데이터 ─────────────────────────────────────
@@ -333,5 +336,61 @@ describe('buildScheduleBlocks', () => {
     const 업무Index = sectionTexts.findIndex((t) => t.includes('[업무]'));
     const 미분류Index = sectionTexts.findIndex((t) => t.includes('[미분류]'));
     expect(업무Index).toBeLessThan(미분류Index);
+  });
+});
+
+describe('buildConfirmModifyCard', () => {
+  it('실행/취소 버튼에 token이 value로 들어간다', () => {
+    const { blocks } = buildConfirmModifyCard({
+      token: 'abc1234567890def',
+      sql: 'DELETE FROM schedules WHERE user_id = 1 AND category = \'old\'',
+      rowCount: 5,
+    });
+
+    const actionsBlock = blocks.find((b) => b.type === 'actions');
+    expect(actionsBlock).toBeDefined();
+    if (!actionsBlock || actionsBlock.type !== 'actions') {
+      throw new Error('actions block missing');
+    }
+
+    const buttons = actionsBlock.elements.filter(
+      (e): e is Extract<typeof e, { type: 'button' }> => e.type === 'button',
+    );
+    expect(buttons).toHaveLength(2);
+
+    const execute = buttons.find((b) => b.action_id === CONFIRM_MODIFY_EXECUTE_ACTION_ID);
+    const cancel = buttons.find((b) => b.action_id === CONFIRM_MODIFY_CANCEL_ACTION_ID);
+    expect(execute?.value).toBe('abc1234567890def');
+    expect(cancel?.value).toBe('abc1234567890def');
+    expect(execute?.style).toBe('primary');
+    expect(cancel?.style).toBe('danger');
+  });
+
+  it('rowCount가 fallback text와 헤더에 노출된다', () => {
+    const { text, blocks } = buildConfirmModifyCard({
+      token: 't0',
+      sql: 'DELETE FROM schedules WHERE user_id = 1',
+      rowCount: 17,
+    });
+
+    expect(text).toContain('17개');
+    const header = blocks[0];
+    if (header?.type === 'section' && 'text' in header && header.text && 'text' in header.text) {
+      expect(header.text.text).toContain('17개');
+    } else {
+      throw new Error('header block shape unexpected');
+    }
+  });
+
+  it('긴 SQL은 500자로 잘린다', () => {
+    const longSql = 'DELETE FROM schedules WHERE user_id = 1 AND ' + 'a'.repeat(1000);
+    const { blocks } = buildConfirmModifyCard({ token: 't', sql: longSql, rowCount: 3 });
+    const codeBlock = blocks[1];
+    if (codeBlock?.type === 'section' && 'text' in codeBlock && codeBlock.text && 'text' in codeBlock.text) {
+      expect(codeBlock.text.text).toContain('...');
+      expect(codeBlock.text.text.length).toBeLessThan(longSql.length);
+    } else {
+      throw new Error('code block shape unexpected');
+    }
   });
 });

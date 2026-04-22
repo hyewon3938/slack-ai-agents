@@ -6,6 +6,23 @@
 
 ---
 
+## 2026-04-22: modify_db 대량 변경 확인 플로우 (#342, PR #343)
+
+LLM이 `modify_db` 도구로 생성한 DELETE/UPDATE의 영향 row가 임계치(기본 3) 이상이면 즉시 실행 대신 Slack 확인 카드로 전환해 사용자 승인을 받는 구조 추가.
+
+**구조**:
+- `dryRunRowCount`(BEGIN → 실행 → ROLLBACK)로 DB 상태 변경 없이 영향 row 수만 계산
+- `pending_modify` 테이블(token/user_id/TTL 5분)에 대기 쿼리 저장
+- `buildConfirmModifyCard`로 SQL 미리보기 + 실행/취소 버튼 카드 생성
+- 사용자 클릭 시 `queryWithRowLimit`(50행 한도 유지)로 실제 실행, 결과 메시지로 카드 교체
+- `MODIFY_CONFIRM_THRESHOLD` 환경변수로 재배포 없이 임계치 조정
+
+기존 가드레일(DDL 차단, WHERE 필수, user_id 스코프, 50행 제한) 전부 유지. "범위는 괜찮지만 넓은 쿼리"에 대한 추가 안전망.
+
+판단 근거: [ADR 0006](adr/0006-modify-db-confirm-flow.md) — C안(threshold) + 고정 템플릿 종료 채택 근거와 D안(LLM agent-loop 재개) 전환 시나리오 기록.
+
+---
+
 ## 2026-04-22: 관측성 레이어 & ADR 체계 도입 (#334)
 
 **업타임 모니터링 자체 구현**: 봇·웹 헬스체크를 GitHub Actions cron으로 5분 간격 폴링하는 자체 모니터 구축. 외부 SaaS(UptimeRobot 등) 무료 티어 제약을 피해 완전 자체 통제 구조로 전환.

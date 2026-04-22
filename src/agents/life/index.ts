@@ -100,6 +100,12 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
     }
 
     // ── LLM 에이전트 루프 ──
+    const threadTs = 'thread_ts' in message ? message.thread_ts : undefined;
+    const sqlContext = {
+      slackUserId,
+      slackChannel: channelId,
+      ...(threadTs ? { slackThreadTs: threadTs } : {}),
+    };
     try {
       const result = await runAgentLoop(
         llmClient,
@@ -108,7 +114,7 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
           label: 'Life Agent',
           buildSystemPrompt: () => buildLifeSystemPrompt(channelId, userId),
           getTools: async () => SQL_TOOLS,
-          executeToolCall: (name, args) => executeSQLTool(name, args, userId),
+          executeToolCall: (name, args) => executeSQLTool(name, args, userId, sqlContext),
           historyMessages: history.toMessages(channelId),
         },
       );

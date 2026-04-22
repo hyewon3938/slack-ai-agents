@@ -1,5 +1,6 @@
 import type { LLMToolDefinition } from './llm.js';
-import { query, queryWithClient, queryWithRowLimit } from './db.js';
+import { query, queryWithClient, queryWithRowLimit, dryRunRowCount } from './db.js';
+import { createPendingModify } from './pending-modify.js';
 
 // ---- 상수 ----
 
@@ -297,6 +298,33 @@ export const setPostModifyHook = (hook: PostModifyHook): void => {
   postModifyHook = hook;
 };
 
+// ---- Confirm card sender ----
+
+export interface SQLToolContext {
+  slackUserId?: string;
+  slackChannel?: string;
+  slackThreadTs?: string;
+}
+
+export type ConfirmCardSender = (params: {
+  token: string;
+  sql: string;
+  rowCount: number;
+  context: SQLToolContext & { userId: number };
+}) => Promise<void>;
+
+let confirmCardSender: ConfirmCardSender | null = null;
+
+/** 확인 카드 전송 함수 주입. app.ts에서 Slack client 바인딩하여 호출 */
+export const setConfirmCardSender = (sender: ConfirmCardSender): void => {
+  confirmCardSender = sender;
+};
+
+/** 테스트용: sender 해제 */
+export const clearConfirmCardSender = (): void => {
+  confirmCardSender = null;
+};
+
 // ---- 감사 로그 ----
 
 /** SQL 실행 로그 (도구명, SQL 앞부분, 결과 요약) */
@@ -315,11 +343,13 @@ const logSQLExecution = (tool: string, sql: string, result: { rowCount?: number 
  * SQL 도구 실행기.
  * agent-loop의 executeToolCall 시그니처: (name, args) => Promise<string>
  * userId: 현재 사용자의 DB user_id (기본값 1)
+ * context: Slack 채널/스레드 정보 (modify_db 확인 카드 전송용)
  */
 export const executeSQLTool = async (
   name: string,
   args: Record<string, unknown>,
   userId: number = 1,
+  context?: SQLToolContext,
 ): Promise<string> => {
   switch (name) {
     case 'query_db': {
@@ -343,7 +373,49 @@ export const executeSQLTool = async (
         return JSON.stringify({ error });
       }
 
-      // INSERT/UPDATE/DELETE 모두 트랜잭션 + row 수 제한 적용 (대량 변경 방지)
+      // DELETE/UPDATE: 영향 row 수가 임계치 이상이면 확인 카드로 전환
+      const keyword = extractFirstKeyword(sql);
+      if ((keyword === 'DELETE' || keyword === 'UPDATE') && confirmCardSender) {
+        const threshold = Number(process.env['MODIFY_CONFIRM_THRESHOLD'] ?? 3);
+        let dryRunCount: number;
+        try {
+          dryRunCount = await dryRunRowCount(sql, SQL_TIMEOUT_MS);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logSQLExecution('modify_db', sql, { error: `dry-run 실패: ${msg}` });
+          return JSON.stringify({ error: `쿼리 검증 실패: ${msg}` });
+        }
+
+        if (dryRunCount >= threshold) {
+          const token = await createPendingModify({
+            userId,
+            sqlText: sql,
+            rowCount: dryRunCount,
+            slackChannel: context?.slackChannel,
+            slackThreadTs: context?.slackThreadTs,
+          });
+
+          try {
+            await confirmCardSender({
+              token,
+              sql,
+              rowCount: dryRunCount,
+              context: { userId, ...context },
+            });
+          } catch (err: unknown) {
+            console.error('[SQL Tools] confirm card 전송 실패:', err);
+          }
+
+          logSQLExecution('modify_db', sql, { error: `confirm pending (${dryRunCount} rows)` });
+          return JSON.stringify({
+            pending: true,
+            rowCount: dryRunCount,
+            message: `${dryRunCount}개 행이 변경될 예정이야. Slack 확인 카드에서 실행/취소해줘.`,
+          });
+        }
+      }
+
+      // 즉시 실행 경로 (INSERT 전체, 또는 DELETE/UPDATE 중 영향 row < threshold)
       const result = await queryWithRowLimit(sql, SQL_TIMEOUT_MS, MAX_MODIFY_ROWS);
       logSQLExecution('modify_db', sql, { rowCount: result.rowCount });
 
