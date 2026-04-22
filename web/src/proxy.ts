@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { unsealData } from 'iron-session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth', '/api/cron'];
+const PUBLIC_PATHS = ['/login', '/api/auth', '/api/cron', '/api/health'];
 const SESSION_COOKIE = 'life-dashboard-session';
 
 /** Next.js 16 — proxy는 기본 Node.js 런타임에서 동작 */
