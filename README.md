@@ -46,6 +46,7 @@ Vercel(웹)은 DB에 직접 연결하지 않고, **HTTPS API 프록시**를 경�
 ### 2. LLM × SQL 자율 에이전트 + 비용·안전 제어
 
 - **2-tier 비용 구조** — Claude Sonnet(대화/크론/주간 리포트) + Pure SQL(프로액티브 인사이트/넛지). 패턴 감지가 명확한 영역은 LLM 호출 없이 SQL로 처리.
+- **프롬프트 캐싱** — Anthropic `cache_control: ephemeral`을 시스템 프롬프트·도구 정의에 적용. 연속 대화 시 반복 전송되는 컨텍스트의 토큰 비용 최대 90% 절감. [llm.ts:108](src/shared/llm.ts:108)
 - **프롬프트 엔지니어링** — LLM 반복 실수를 관찰·분류해 규칙으로 차단. 의도 분류 시스템은 3단계 진화 후 **삭제**("분류 단계가 필요하다"는 가정 자체가 틀렸다는 결론).
 - **아키텍처 3회 전환** — Notion→PostgreSQL, 단일 Docker→멀티 서비스→Vercel 분리. 임시방편 대신 코어 교체로 대응. [의사결정 과정](docs/project-history.md).
 
