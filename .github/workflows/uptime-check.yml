@@ -3,7 +3,7 @@ name: Uptime Check
 # 봇·웹 헬스체크 엔드포인트를 5분 간격으로 폴링.
 # - 2회 재시도로 일시적 네트워크 튐 흡수 (cry wolf 방지)
 # - 직전 run 조회로 DOWN / RECOVERY 상태 전이 알림
-# - 설계 판단: docs/adr/0001-uptime-monitoring-github-actions.md
+# - 설계 판단: docs/adr/0005-uptime-monitoring-github-actions.md
 
 on:
   schedule:

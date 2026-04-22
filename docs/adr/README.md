@@ -79,7 +79,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 ```
 
 - `NNNN` — 4자리 zero-padded 번호 (0001, 0002, ...)
-- 제목은 간결하게. ADR 자체의 짧은 제목 (예: `0001-uptime-monitoring-github-actions.md`)
+- 제목은 간결하게. ADR 자체의 짧은 제목 (예: `0005-uptime-monitoring-github-actions.md`)
 
 ### 번호 부여
 
@@ -107,9 +107,13 @@ docs/adr/NNNN-<kebab-case-제목>.md
 
 | 번호 | 제목 | Status | Date | Tags |
 |------|------|--------|------|------|
-| [0001](0001-uptime-monitoring-github-actions.md) | GitHub Actions 기반 자체 업타임 모니터링 | Accepted | 2026-04-22 | infra, observability |
+| [0001](0001-sql-tool-llm-agent.md) | SQL 도구 기반 LLM 에이전트 설계 | Accepted | 2026-03-08 | architecture, llm, data |
+| [0002](0002-v3-architecture-split.md) | v3 아키텍처 — Vercel 웹 + VM 봇 + managed DB | Accepted | 2026-03-12 | infra, architecture |
+| [0003](0003-self-hosted-postgres.md) | DB 자가 호스팅 전환 (Neon → VM PostgreSQL) | Accepted | 2026-04-06 | infra, data |
+| [0004](0004-db-proxy-api.md) | DB Proxy API 패턴 — Vercel→VM DB 직결 제거 | Accepted | 2026-04-09 | infra, security |
+| [0005](0005-uptime-monitoring-github-actions.md) | GitHub Actions 기반 자체 업타임 모니터링 | Accepted | 2026-04-22 | infra, observability |
 
-> **주**: 이 프로젝트의 ADR 운영은 2026-04-22부터 시작했다. 그 이전 주요 설계 판단(v3 아키텍처 전환, Neon→VM PostgreSQL 마이그레이션, DB Proxy 패턴, SQL 도구 기반 에이전트 설계 등)은 [docs/project-history.md](../project-history.md)에 서술형으로 남아있으며, 후속 PR에서 ADR 0001\~0004로 백필할 예정이다 (백필 시 본 ADR은 0005로 rename).
+> **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
 ---
 

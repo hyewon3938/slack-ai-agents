@@ -1,11 +1,9 @@
-# 0001. GitHub Actions 기반 자체 업타임 모니터링
+# 0005. GitHub Actions 기반 자체 업타임 모니터링
 
 - Status: Accepted
 - Date: 2026-04-22
 - Related: #334
 - Tags: infra, observability
-
-> **메타 주석**: 이 프로젝트의 ADR 운영은 이 문서부터 시작한다. 이전 주요 설계 판단(v3 아키텍처 전환, Neon→VM 마이그레이션, DB Proxy 패턴, SQL 도구 기반 에이전트)은 [docs/project-history.md](../project-history.md)에 서술형으로 남아있으며, 후속 PR에서 ADR 0001\~0004로 백필 후 본 문서는 0005로 rename 예정.
 
 ## Context
 

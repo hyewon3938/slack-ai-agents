@@ -6,7 +6,7 @@
 
 - 모니터링 주체: **GitHub Actions** (자체 구현)
 - 체크 간격: 5분 (GitHub cron 특성상 실제 5\~10분)
-- 설계 판단 근거: [docs/adr/0001-uptime-monitoring-github-actions.md](../adr/0001-uptime-monitoring-github-actions.md)
+- 설계 판단 근거: [docs/adr/0005-uptime-monitoring-github-actions.md](../adr/0005-uptime-monitoring-github-actions.md)
 
 ## 엔드포인트
 
@@ -132,7 +132,7 @@ gh workflow run uptime-check.yml
 1주일 이상 일시적 실패 알림이 반복되면:
 1. Actions 로그에서 해당 run의 curl 결과 확인
 2. 재시도 간격(현재 10초) · 재시도 횟수(현재 2회) 튜닝 검토
-3. 튜닝 시 본 문서와 `0001-uptime-monitoring-github-actions.md` 후속 ADR 동시 업데이트
+3. 튜닝 시 본 문서와 `0005-uptime-monitoring-github-actions.md` 후속 ADR 동시 업데이트
 
 ## 알려진 한계
 
