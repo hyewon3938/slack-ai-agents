@@ -103,22 +103,28 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
   }
 };
 
+export interface DryRunResult {
+  rowCount: number;
+  rows: Array<Record<string, unknown>>;
+}
+
 /**
- * 쿼리를 BEGIN → 실행 → ROLLBACK으로 실행해 영향 row 수만 얻는다.
- * DB 상태는 변경되지 않는다. DELETE/UPDATE 실행 전 영향 범위 사전 점검용.
+ * 쿼리를 BEGIN → 실행 → ROLLBACK으로 실행해 영향 row 수와 RETURNING 결과를 얻는다.
+ * DB 상태는 변경되지 않는다. RETURNING이 없는 쿼리는 rows가 빈 배열.
+ * DELETE/UPDATE 실행 전 영향 범위 사전 점검 + 확인 카드 상세 표시용.
  */
-export const dryRunRowCount = async (
+export const dryRunQuery = async (
   text: string,
   timeoutMs: number,
-): Promise<number> => {
+): Promise<DryRunResult> => {
   const p = getPool();
   const client = await p.connect();
   try {
     await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
     await client.query('BEGIN');
-    const result = await client.query(text);
+    const result = await client.query<Record<string, unknown>>(text);
     await client.query('ROLLBACK');
-    return result.rowCount ?? 0;
+    return { rowCount: result.rowCount ?? 0, rows: result.rows };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {/* 무시 */});
     throw err;

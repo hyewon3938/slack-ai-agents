@@ -1,5 +1,5 @@
 import type { LLMToolDefinition } from './llm.js';
-import { query, queryWithClient, queryWithRowLimit, dryRunRowCount } from './db.js';
+import { query, queryWithClient, queryWithRowLimit, dryRunQuery } from './db.js';
 import { createPendingModify } from './pending-modify.js';
 
 // ---- 상수 ----
@@ -379,7 +379,8 @@ export const executeSQLTool = async (
         const threshold = Number(process.env['MODIFY_CONFIRM_THRESHOLD'] ?? 3);
         let dryRunCount: number;
         try {
-          dryRunCount = await dryRunRowCount(sql, SQL_TIMEOUT_MS);
+          const dryRun = await dryRunQuery(sql, SQL_TIMEOUT_MS);
+          dryRunCount = dryRun.rowCount;
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           logSQLExecution('modify_db', sql, { error: `dry-run 실패: ${msg}` });
