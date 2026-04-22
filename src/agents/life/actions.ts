@@ -4,6 +4,7 @@
  */
 
 import type { App } from '@slack/bolt';
+import type { WebClient } from '@slack/web-api';
 import {
   completeRecord,
   queryTodayRecords,
@@ -15,8 +16,9 @@ import {
   toggleScheduleImportant,
   moveScheduleToDate,
 } from '../../shared/life-queries.js';
-import { updateMessage } from '../../shared/slack.js';
+import { updateMessage, postBlockMessage } from '../../shared/slack.js';
 import { queryWithRowLimit } from '../../shared/db.js';
+import { extractTargetTable } from '../../shared/sql-tools.js';
 import {
   findActivePending,
   markExecuted,
@@ -43,6 +45,42 @@ import { publishHomeView } from './home.js';
 
 const CONFIRM_EXECUTE_TIMEOUT_MS = 10_000;
 const CONFIRM_EXECUTE_MAX_ROWS = 50;
+
+/**
+ * schedules 변경 후 영향받은 날짜별로 현재 일정 상태를 재조회하여 Slack 메시지로 전송.
+ * - date IS NULL (백로그) 포함
+ * - 각 고유 date마다 메시지 1개
+ * - 개별 재조회 실패는 로그만 남기고 전체 흐름 유지 (사용자는 이미 완료 메시지 받음)
+ */
+const postScheduleRefreshMessages = async (
+  client: WebClient,
+  channelId: string,
+  userId: number,
+  rows: Array<Record<string, unknown>>,
+): Promise<void> => {
+  const uniqueDates = new Set<string | null>();
+  for (const row of rows) {
+    const date = row['date'];
+    uniqueDates.add(typeof date === 'string' ? date : null);
+  }
+
+  for (const date of uniqueDates) {
+    try {
+      if (date === null) {
+        const items = await queryBacklogSchedules(userId);
+        const { text, blocks } = buildScheduleBlocks(items, 'backlog', undefined, { backlog: true });
+        await postBlockMessage(client, channelId, text, blocks);
+      } else {
+        const items = await queryTodaySchedules(date, userId);
+        const { text, blocks } = buildScheduleBlocks(items, date);
+        await postBlockMessage(client, channelId, text, blocks);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Life Action] schedules 재조회 실패 (date=${date}): ${msg}`);
+    }
+  }
+};
 
 /** Slack body에서 userId 해석 (미등록이면 DEFAULT_USER_ID 폴백) */
 const resolveBodyUserId = async (body: { user?: string | { id: string } }): Promise<number> => {
@@ -191,20 +229,27 @@ export const registerLifeActions = (app: App): void => {
     }
 
     try {
-      const result = await queryWithRowLimit(
+      const result = await queryWithRowLimit<Record<string, unknown>>(
         pending.sql_text,
         CONFIRM_EXECUTE_TIMEOUT_MS,
         CONFIRM_EXECUTE_MAX_ROWS,
       );
       await markExecuted(pending.id);
+
       if (channelId && messageTs) {
         await updateMessage(
           client,
           channelId,
           messageTs,
-          `실행 완료. ${result.rowCount ?? 0}개 행 변경됐어.`,
+          `${result.rowCount ?? 0}개 처리 완료.`,
           [],
         );
+      }
+
+      // schedules 후처리 재조회 (약속한 "오늘 일정 다시 보여줄게" 실제 이행)
+      const tableName = extractTargetTable(pending.sql_text);
+      if (tableName === 'schedules' && channelId && result.rows.length > 0) {
+        await postScheduleRefreshMessages(client, channelId, userId, result.rows);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
