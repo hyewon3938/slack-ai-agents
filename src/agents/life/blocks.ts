@@ -24,7 +24,7 @@ export const MOVE_TO_TODAY_ACTION = 'move_today';
 export const CONFIRM_MODIFY_EXECUTE_ACTION_ID = 'life_confirm_modify_execute';
 export const CONFIRM_MODIFY_CANCEL_ACTION_ID = 'life_confirm_modify_cancel';
 
-const CONFIRM_CARD_SQL_MAX_LEN = 500;
+const CONFIRM_CARD_SECTION_MAX_CHARS = 2800; // Slack section block 3000자 한도 여유
 
 const TIME_SLOT_ORDER = ['낮', '밤'] as const;
 
@@ -174,54 +174,145 @@ export const buildMorningGreetingBlocks = (greetingText: string): KnownBlock[] =
 
 // ─── 대량 변경 확인 카드 ────────────────────────────────
 
+type ConfirmOperation = 'DELETE' | 'UPDATE';
+
+const OPERATION_LABELS: Record<ConfirmOperation, { noun: string; verb: string }> = {
+  DELETE: { noun: '삭제될 항목', verb: '삭제돼' },
+  UPDATE: { noun: '변경될 항목', verb: '변경돼' },
+};
+
+/** 영향받는 레코드 한 줄 포맷 (테이블별 주요 필드 노출) */
+const formatAffectedRow = (
+  tableName: string | null,
+  row: Record<string, unknown>,
+): string => {
+  if (tableName === 'schedules') {
+    const title = typeof row['title'] === 'string' ? row['title'] : '(제목 없음)';
+    const date = typeof row['date'] === 'string' ? row['date'] : null;
+    const endDate = typeof row['end_date'] === 'string' ? row['end_date'] : null;
+    const datePart = date ? (endDate ? `${date}~${endDate}` : date) : '백로그';
+    return `• ${datePart}  ${title}`;
+  }
+  if (tableName === 'sleep_records') {
+    const date = typeof row['date'] === 'string' ? row['date'] : '?';
+    const bedtime = typeof row['bedtime'] === 'string' ? row['bedtime'] : '?';
+    const wakeTime = typeof row['wake_time'] === 'string' ? row['wake_time'] : '?';
+    const sleepType = typeof row['sleep_type'] === 'string' ? row['sleep_type'] : '';
+    return `• ${date}  ${sleepType}  ${bedtime} → ${wakeTime}`;
+  }
+  if (tableName === 'routine_records' || tableName === 'routine_templates') {
+    const name = typeof row['name'] === 'string' ? row['name'] : null;
+    const date = typeof row['date'] === 'string' ? row['date'] : null;
+    if (name) return `• ${date ? date + ' ' : ''}${name}`;
+    return `• id=${row['id'] ?? '?'}`;
+  }
+  if (tableName === 'reminders') {
+    const title = typeof row['title'] === 'string' ? row['title'] : '(제목 없음)';
+    const time = typeof row['time_value'] === 'string' ? row['time_value'] : '';
+    return `• ${time}  ${title}`;
+  }
+  if (tableName === 'custom_instructions') {
+    const instr = typeof row['instruction'] === 'string' ? row['instruction'] : '';
+    return `• ${instr.length > 80 ? instr.slice(0, 80) + '...' : instr}`;
+  }
+  // fallback: id + 주요 string 필드 1개
+  const id = row['id'];
+  const firstString = Object.entries(row).find(
+    ([k, v]) => k !== 'id' && typeof v === 'string',
+  );
+  return `• id=${id ?? '?'}${firstString ? `  ${String(firstString[1])}` : ''}`;
+};
+
+/**
+ * 라인 리스트를 section block 다중으로 분할 (각 블록 3000자 한도 회피).
+ * 한 라인이 한도보다 길어도 그 라인만 포함한 블록으로 생성 (잘림 없음).
+ */
+const splitLinesIntoSections = (lines: string[]): KnownBlock[] => {
+  const blocks: KnownBlock[] = [];
+  let current: string[] = [];
+  let currentLen = 0;
+
+  for (const line of lines) {
+    const addLen = line.length + 1; // newline 포함
+    if (currentLen + addLen > CONFIRM_CARD_SECTION_MAX_CHARS && current.length > 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: current.join('\n') },
+      });
+      current = [];
+      currentLen = 0;
+    }
+    current.push(line);
+    currentLen += addLen;
+  }
+
+  if (current.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: current.join('\n') },
+    });
+  }
+
+  return blocks;
+};
+
 /**
  * modify_db 확인 카드. value에 pending token 인코딩.
- * ⚠️ 경고 이모지는 Block Kit UI 요소로, 에이전트 대화체 이모지 금지 규칙과는 별개.
+ * 영향받는 레코드를 테이블별 주요 필드로 표시 (RETURNING 결과 기반).
+ * ⚠️ 경고 이모지는 Block Kit UI 요소로, 에이전트 대화체 이모지 금지 규칙과 별개.
  */
 export const buildConfirmModifyCard = (params: {
   token: string;
-  sql: string;
+  operation: ConfirmOperation;
+  tableName: string | null;
   rowCount: number;
+  rows: Array<Record<string, unknown>>;
 }): { text: string; blocks: KnownBlock[] } => {
-  const sqlPreview =
-    params.sql.length > CONFIRM_CARD_SQL_MAX_LEN
-      ? params.sql.slice(0, CONFIRM_CARD_SQL_MAX_LEN) + '...'
-      : params.sql;
+  const { token, operation, tableName, rowCount, rows } = params;
+  const label = OPERATION_LABELS[operation];
 
-  return {
-    text: `${params.rowCount}개 행이 변경될 예정이야. 확인해줘.`,
-    blocks: [
+  const blocks: KnownBlock[] = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*⚠️ 확인 필요* — *${rowCount}개*가 ${label.verb}. 진짜 실행할까?`,
+      },
+    },
+  ];
+
+  if (rows.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*${label.noun}:*` },
+    });
+    const lines = rows.map((r) => formatAffectedRow(tableName, r));
+    blocks.push(...splitLinesIntoSections(lines));
+  }
+
+  blocks.push({
+    type: 'actions',
+    elements: [
       {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*⚠️ 확인 필요* — 이 쿼리로 *${params.rowCount}개* 행이 변경돼. 진짜 실행할까?`,
-        },
+        type: 'button',
+        text: { type: 'plain_text', text: '실행', emoji: true },
+        action_id: CONFIRM_MODIFY_EXECUTE_ACTION_ID,
+        value: token,
+        style: 'primary',
       },
       {
-        type: 'section',
-        text: { type: 'mrkdwn', text: '```' + sqlPreview + '```' },
-      },
-      {
-        type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: '실행', emoji: true },
-            action_id: CONFIRM_MODIFY_EXECUTE_ACTION_ID,
-            value: params.token,
-            style: 'primary',
-          },
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: '취소', emoji: true },
-            action_id: CONFIRM_MODIFY_CANCEL_ACTION_ID,
-            value: params.token,
-            style: 'danger',
-          },
-        ],
+        type: 'button',
+        text: { type: 'plain_text', text: '취소', emoji: true },
+        action_id: CONFIRM_MODIFY_CANCEL_ACTION_ID,
+        value: token,
+        style: 'danger',
       },
     ],
+  });
+
+  return {
+    text: `${rowCount}개가 ${label.verb}. 확인해줘.`,
+    blocks,
   };
 };
 

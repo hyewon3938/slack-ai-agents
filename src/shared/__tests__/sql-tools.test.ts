@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   extractFirstKeyword,
+  extractTargetTable,
+  ensureReturningClause,
   hasMultipleStatements,
   validateSelectQuery,
   validateModifyQuery,
@@ -247,6 +249,59 @@ describe('validateUserIdFilter — user_id 값 제한', () => {
   });
 });
 
+describe('extractTargetTable', () => {
+  it('DELETE의 FROM 뒤 테이블명을 추출한다', () => {
+    expect(extractTargetTable('DELETE FROM schedules WHERE user_id = 1')).toBe('schedules');
+  });
+
+  it('UPDATE의 테이블명을 추출한다', () => {
+    expect(extractTargetTable('UPDATE schedules SET status = \'done\' WHERE id = 1')).toBe('schedules');
+  });
+
+  it('INSERT INTO 뒤 테이블명을 추출한다', () => {
+    expect(extractTargetTable('INSERT INTO sleep_records (date) VALUES (\'2026-04-23\')')).toBe('sleep_records');
+  });
+
+  it('JOIN이 있어도 첫 FROM 테이블을 반환한다', () => {
+    expect(extractTargetTable('SELECT * FROM schedules s JOIN categories c ON s.category = c.name WHERE s.user_id = 1')).toBe('schedules');
+  });
+
+  it('테이블 참조가 없으면 null', () => {
+    expect(extractTargetTable('SELECT 1')).toBeNull();
+  });
+
+  it('대소문자 무관하게 소문자로 정규화', () => {
+    expect(extractTargetTable('delete FROM Schedules WHERE user_id = 1')).toBe('schedules');
+  });
+});
+
+describe('ensureReturningClause', () => {
+  it('RETURNING이 없으면 RETURNING *를 추가한다', () => {
+    const sql = 'DELETE FROM schedules WHERE user_id = 1';
+    expect(ensureReturningClause(sql)).toBe('DELETE FROM schedules WHERE user_id = 1 RETURNING *');
+  });
+
+  it('이미 RETURNING이 있으면 원본 그대로', () => {
+    const sql = 'DELETE FROM schedules WHERE user_id = 1 RETURNING id, title';
+    expect(ensureReturningClause(sql)).toBe(sql);
+  });
+
+  it('세미콜론으로 끝나면 세미콜론 앞에 삽입한다', () => {
+    const sql = 'DELETE FROM schedules WHERE user_id = 1;';
+    expect(ensureReturningClause(sql)).toBe('DELETE FROM schedules WHERE user_id = 1 RETURNING *;');
+  });
+
+  it('UPDATE도 RETURNING을 추가한다', () => {
+    const sql = 'UPDATE schedules SET status = \'done\' WHERE user_id = 1';
+    expect(ensureReturningClause(sql)).toBe('UPDATE schedules SET status = \'done\' WHERE user_id = 1 RETURNING *');
+  });
+
+  it('RETURNING이 대문자든 소문자든 감지한다', () => {
+    const sql = 'DELETE FROM schedules WHERE user_id = 1 returning *';
+    expect(ensureReturningClause(sql)).toBe(sql);
+  });
+});
+
 describe('validateCustomInstruction', () => {
   it('custom_instructions가 없는 쿼리는 통과한다', () => {
     expect(validateCustomInstruction('INSERT INTO schedules (title, user_id) VALUES (\'test\', 1)')).toBeNull();
@@ -484,11 +539,17 @@ describe('executeSQLTool — modify_db 확인 플로우', () => {
     expect(sender).toHaveBeenCalledTimes(1);
     const callArg = sender.mock.calls[0]?.[0] as {
       token: string;
+      operation: 'DELETE' | 'UPDATE';
+      tableName: string | null;
       rowCount: number;
+      rows: Array<Record<string, unknown>>;
       context: { slackChannel?: string; slackThreadTs?: string };
     };
     expect(callArg.rowCount).toBe(5);
     expect(callArg.token).toMatch(/^[a-f0-9]{16}$/);
+    expect(callArg.operation).toBe('DELETE');
+    expect(callArg.tableName).toBe('schedules');
+    expect(Array.isArray(callArg.rows)).toBe(true);
     expect(callArg.context.slackChannel).toBe('C123');
 
     clearConfirmCardSender();

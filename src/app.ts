@@ -58,14 +58,20 @@ const startApp = async (): Promise<void> => {
   });
 
   // 대량 변경 확인 카드 전송자 주입
-  setConfirmCardSender(async ({ token, sql, rowCount, context }) => {
+  setConfirmCardSender(async ({ token, operation, tableName, rowCount, rows, context }) => {
     if (!context.slackChannel) {
       console.warn(
         `[Confirm] slackChannel 없음 — 카드 전송 스킵. token: ${token}`,
       );
       return;
     }
-    const { text, blocks } = buildConfirmModifyCard({ token, sql, rowCount });
+    const { text, blocks } = buildConfirmModifyCard({
+      token,
+      operation,
+      tableName,
+      rowCount,
+      rows,
+    });
     await postBlockMessage(
       app.client,
       context.slackChannel,

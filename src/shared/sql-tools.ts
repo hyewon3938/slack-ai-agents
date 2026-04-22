@@ -84,6 +84,32 @@ export const extractFirstKeyword = (sql: string): string => {
   return (match?.[1] ?? '').toUpperCase();
 };
 
+/**
+ * SQL에서 주 대상 테이블명 추출 (첫 FROM/UPDATE/INTO 뒤).
+ * 여러 테이블이면 첫 번째만 반환. 소문자로 정규화.
+ */
+export const extractTargetTable = (sql: string): string | null => {
+  const stripped = stripCommentsAndStrings(sql);
+  const match = /\b(?:FROM|UPDATE|INTO)\s+(\w+)/i.exec(stripped);
+  return match?.[1]?.toLowerCase() ?? null;
+};
+
+/**
+ * DELETE/UPDATE 쿼리에 RETURNING 절이 없으면 `RETURNING *`을 자동 삽입.
+ * 세미콜론이 있으면 그 앞에 삽입.
+ * 이미 RETURNING이 있으면 원본 그대로 반환.
+ */
+export const ensureReturningClause = (sql: string): string => {
+  const stripped = stripCommentsAndStrings(sql);
+  if (/\bRETURNING\b/i.test(stripped)) return sql;
+
+  const trimmed = sql.trimEnd();
+  if (trimmed.endsWith(';')) {
+    return `${trimmed.slice(0, -1)} RETURNING *;`;
+  }
+  return `${trimmed} RETURNING *`;
+};
+
 /** 복수 SQL 문 감지 (주석·문자열 리터럴 내 세미콜론 제외) */
 export const hasMultipleStatements = (sql: string): boolean => {
   const stripped = stripCommentsAndStrings(sql);
@@ -308,8 +334,10 @@ export interface SQLToolContext {
 
 export type ConfirmCardSender = (params: {
   token: string;
-  sql: string;
+  operation: 'DELETE' | 'UPDATE';
+  tableName: string | null;
   rowCount: number;
+  rows: Array<Record<string, unknown>>;
   context: SQLToolContext & { userId: number };
 }) => Promise<void>;
 
@@ -377,41 +405,46 @@ export const executeSQLTool = async (
       const keyword = extractFirstKeyword(sql);
       if ((keyword === 'DELETE' || keyword === 'UPDATE') && confirmCardSender) {
         const threshold = Number(process.env['MODIFY_CONFIRM_THRESHOLD'] ?? 3);
-        let dryRunCount: number;
+        const sqlWithReturning = ensureReturningClause(sql);
+
+        let dryRun: Awaited<ReturnType<typeof dryRunQuery>>;
         try {
-          const dryRun = await dryRunQuery(sql, SQL_TIMEOUT_MS);
-          dryRunCount = dryRun.rowCount;
+          dryRun = await dryRunQuery(sqlWithReturning, SQL_TIMEOUT_MS);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           logSQLExecution('modify_db', sql, { error: `dry-run 실패: ${msg}` });
           return JSON.stringify({ error: `쿼리 검증 실패: ${msg}` });
         }
 
-        if (dryRunCount >= threshold) {
+        if (dryRun.rowCount >= threshold) {
           const token = await createPendingModify({
             userId,
-            sqlText: sql,
-            rowCount: dryRunCount,
+            sqlText: sqlWithReturning,
+            rowCount: dryRun.rowCount,
             slackChannel: context?.slackChannel,
             slackThreadTs: context?.slackThreadTs,
           });
 
+          const tableName = extractTargetTable(sql);
+
           try {
             await confirmCardSender({
               token,
-              sql,
-              rowCount: dryRunCount,
+              operation: keyword,
+              tableName,
+              rowCount: dryRun.rowCount,
+              rows: dryRun.rows,
               context: { userId, ...context },
             });
           } catch (err: unknown) {
             console.error('[SQL Tools] confirm card 전송 실패:', err);
           }
 
-          logSQLExecution('modify_db', sql, { error: `confirm pending (${dryRunCount} rows)` });
+          logSQLExecution('modify_db', sql, { error: `confirm pending (${dryRun.rowCount} rows)` });
           return JSON.stringify({
             pending: true,
-            rowCount: dryRunCount,
-            message: `${dryRunCount}개 행이 변경될 예정이야. Slack 확인 카드에서 실행/취소해줘.`,
+            rowCount: dryRun.rowCount,
+            message: `${dryRun.rowCount}개 행이 변경될 예정이야. Slack 확인 카드에서 실행/취소해줘.`,
           });
         }
       }
