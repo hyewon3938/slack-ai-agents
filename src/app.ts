@@ -9,7 +9,9 @@ import { registerLifeActions } from './agents/life/actions.js';
 import { registerHomeTab } from './agents/life/home.js';
 import { createInsightAgent } from './agents/insight/index.js';
 import { CronScheduler } from './cron/life-cron.js';
-import { setPostModifyHook } from './shared/sql-tools.js';
+import { setPostModifyHook, setConfirmCardSender } from './shared/sql-tools.js';
+import { buildConfirmModifyCard } from './agents/life/blocks.js';
+import { postBlockMessage } from './shared/slack.js';
 import { startDBProxy } from './db-proxy.js';
 
 const app = new App({
@@ -53,6 +55,24 @@ const startApp = async (): Promise<void> => {
     if (/\bnotification_settings\b/i.test(sql)) {
       cronScheduler.reload();
     }
+  });
+
+  // 대량 변경 확인 카드 전송자 주입
+  setConfirmCardSender(async ({ token, sql, rowCount, context }) => {
+    if (!context.slackChannel) {
+      console.warn(
+        `[Confirm] slackChannel 없음 — 카드 전송 스킵. token: ${token}`,
+      );
+      return;
+    }
+    const { text, blocks } = buildConfirmModifyCard({ token, sql, rowCount });
+    await postBlockMessage(
+      app.client,
+      context.slackChannel,
+      text,
+      blocks,
+      context.slackThreadTs,
+    );
   });
 
   // DB 프록시 서버 (웹 대시보드용 — Vercel → HTTPS → VM → DB)

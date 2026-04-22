@@ -21,6 +21,10 @@ export const POSTPONE_ACTION = 'postpone';
 export const DELETE_ACTION = 'delete';
 export const TOGGLE_IMPORTANT_ACTION = 'toggle_important';
 export const MOVE_TO_TODAY_ACTION = 'move_today';
+export const CONFIRM_MODIFY_EXECUTE_ACTION_ID = 'life_confirm_modify_execute';
+export const CONFIRM_MODIFY_CANCEL_ACTION_ID = 'life_confirm_modify_cancel';
+
+const CONFIRM_CARD_SQL_MAX_LEN = 500;
 
 const TIME_SLOT_ORDER = ['낮', '밤'] as const;
 
@@ -167,6 +171,59 @@ export const buildMorningGreetingBlocks = (greetingText: string): KnownBlock[] =
   { type: 'section', text: { type: 'mrkdwn', text: greetingText } },
 ];
 
+
+// ─── 대량 변경 확인 카드 ────────────────────────────────
+
+/**
+ * modify_db 확인 카드. value에 pending token 인코딩.
+ * ⚠️ 경고 이모지는 Block Kit UI 요소로, 에이전트 대화체 이모지 금지 규칙과는 별개.
+ */
+export const buildConfirmModifyCard = (params: {
+  token: string;
+  sql: string;
+  rowCount: number;
+}): { text: string; blocks: KnownBlock[] } => {
+  const sqlPreview =
+    params.sql.length > CONFIRM_CARD_SQL_MAX_LEN
+      ? params.sql.slice(0, CONFIRM_CARD_SQL_MAX_LEN) + '...'
+      : params.sql;
+
+  return {
+    text: `${params.rowCount}개 행이 변경될 예정이야. 확인해줘.`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*⚠️ 확인 필요* — 이 쿼리로 *${params.rowCount}개* 행이 변경돼. 진짜 실행할까?`,
+        },
+      },
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: '```' + sqlPreview + '```' },
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '실행', emoji: true },
+            action_id: CONFIRM_MODIFY_EXECUTE_ACTION_ID,
+            value: params.token,
+            style: 'primary',
+          },
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '취소', emoji: true },
+            action_id: CONFIRM_MODIFY_CANCEL_ACTION_ID,
+            value: params.token,
+            style: 'danger',
+          },
+        ],
+      },
+    ],
+  };
+};
 
 // ─── 인사이트 넛지 ──────────────────────────────────────
 

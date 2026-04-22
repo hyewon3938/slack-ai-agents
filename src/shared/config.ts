@@ -45,4 +45,5 @@ export const CONFIG = {
   dbProxy: {
     apiKey: process.env['DB_PROXY_API_KEY'] ?? '',
   },
+  modifyConfirmThreshold: Number(process.env['MODIFY_CONFIRM_THRESHOLD'] ?? 3),
 } as const;

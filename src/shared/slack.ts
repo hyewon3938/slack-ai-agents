@@ -10,14 +10,20 @@ export const postToChannel = async (
   await client.chat.postMessage({ channel, text });
 };
 
-/** Block Kit 메시지 전송 (인터랙티브 메시지용) */
+/** Block Kit 메시지 전송 (인터랙티브 메시지용). threadTs 지정 시 스레드 답글 */
 export const postBlockMessage = async (
   client: WebClient,
   channel: string,
   text: string,
   blocks: KnownBlock[],
+  threadTs?: string,
 ): Promise<{ ts: string; channel: string }> => {
-  const result = await client.chat.postMessage({ channel, text, blocks });
+  const result = await client.chat.postMessage({
+    channel,
+    text,
+    blocks,
+    ...(threadTs ? { thread_ts: threadTs } : {}),
+  });
   return { ts: result.ts as string, channel: result.channel as string };
 };
 
