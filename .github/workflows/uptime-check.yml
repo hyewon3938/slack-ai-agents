@@ -1,0 +1,212 @@
+name: Uptime Check
+
+# 봇·웹 헬스체크 엔드포인트를 5분 간격으로 폴링.
+# - 2회 재시도로 일시적 네트워크 튐 흡수 (cry wolf 방지)
+# - 직전 run 조회로 DOWN / RECOVERY 상태 전이 알림
+# - 설계 판단: docs/adr/0001-uptime-monitoring-github-actions.md
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: uptime-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: ${{ matrix.label }} 헬스체크
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bot
+            label: 봇
+          - target: web
+            label: 웹
+    steps:
+      - name: Resolve target URL
+        id: url
+        env:
+          BOT_URL: ${{ vars.BOT_HEALTH_URL }}
+          WEB_URL: ${{ vars.WEB_HEALTH_URL }}
+        run: |
+          case "${{ matrix.target }}" in
+            bot) url="$BOT_URL" ;;
+            web) url="$WEB_URL" ;;
+            *)   echo "unknown target"; exit 1 ;;
+          esac
+
+          if [ -z "$url" ]; then
+            echo "::error::URL variable for ${{ matrix.target }} is empty. Set vars.BOT_HEALTH_URL / WEB_HEALTH_URL."
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Health check (up to 2 tries)
+        id: check
+        env:
+          URL: ${{ steps.url.outputs.url }}
+        run: |
+          set +e
+          http_code=""
+          body=""
+
+          for attempt in 1 2; do
+            echo "▶ Attempt $attempt: GET $URL"
+            response=$(curl -sS -o /tmp/body.txt -w "%{http_code}" --max-time 10 "$URL")
+            curl_exit=$?
+            http_code="$response"
+            body="$(cat /tmp/body.txt 2>/dev/null || true)"
+
+            if [ $curl_exit -eq 0 ] && [ "$http_code" = "200" ] && echo "$body" | grep -qE '"ok"[[:space:]]*:[[:space:]]*true'; then
+              echo "✅ Attempt $attempt: OK"
+              echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "⚠ Attempt $attempt failed (curl_exit=$curl_exit, http_code=$http_code)"
+            if [ $attempt -eq 1 ]; then
+              sleep 10
+            fi
+          done
+
+          echo "::error::Health check failed after 2 attempts (http_code=$http_code)"
+          echo "http_code=${http_code:-timeout}" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Resolve prev status & notify
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CURRENT_OUTCOME: ${{ steps.check.outcome }}
+          HTTP_CODE: ${{ steps.check.outputs.http_code }}
+          HEALTH_URL: ${{ steps.url.outputs.url }}
+          TARGET_LABEL: ${{ matrix.label }}
+          JOB_NAME: ${{ matrix.label }} 헬스체크
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          script: |
+            const {
+              CURRENT_OUTCOME,
+              HTTP_CODE,
+              HEALTH_URL,
+              TARGET_LABEL,
+              JOB_NAME,
+              SLACK_WEBHOOK,
+            } = process.env;
+
+            const currentStatus = CURRENT_OUTCOME === 'success' ? 'up' : 'down';
+
+            // ── 직전 완료 run에서 같은 target 잡의 conclusion 조회 ──
+            let prevStatus = 'unknown';
+            try {
+              const { data: runsData } = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'uptime-check.yml',
+                status: 'completed',
+                per_page: 10,
+                exclude_pull_requests: true,
+              });
+
+              const prevRun = runsData.workflow_runs.find((r) => r.id !== context.runId);
+              if (prevRun) {
+                const { data: jobsData } = await github.rest.actions.listJobsForWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: prevRun.id,
+                });
+                const prevJob = jobsData.jobs.find((j) => j.name === JOB_NAME);
+                if (prevJob) {
+                  prevStatus = prevJob.conclusion === 'success' ? 'up' : 'down';
+                }
+              }
+            } catch (err) {
+              core.warning(`직전 상태 조회 실패: ${err.message}. 보수적으로 진행.`);
+            }
+
+            core.info(`[${TARGET_LABEL}] prev=${prevStatus}, current=${currentStatus}`);
+
+            // ── 상태 전이 판정 ──
+            // current\prev  up           down          unknown
+            // up            skip         RECOVERY      skip (첫 실행 정상)
+            // down          DOWN         skip          DOWN (보수적)
+            let alertType = null;
+            if (currentStatus === 'down' && prevStatus !== 'down') {
+              alertType = 'down';
+            } else if (currentStatus === 'up' && prevStatus === 'down') {
+              alertType = 'recovery';
+            }
+
+            if (!alertType) {
+              core.info(`상태 변화 없음. 알림 스킵.`);
+              return;
+            }
+
+            if (!SLACK_WEBHOOK) {
+              core.warning('SLACK_WEBHOOK_URL 미설정. 알림 생략.');
+              return;
+            }
+
+            // ── Slack 메시지 구성 ──
+            const kstNow = new Date().toLocaleString('ko-KR', {
+              timeZone: 'Asia/Seoul',
+              year: 'numeric', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit', hour12: false,
+            });
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let text;
+            let blocks;
+            if (alertType === 'down') {
+              text = `🔴 ${TARGET_LABEL} 헬스체크 실패`;
+              blocks = [
+                { type: 'header', text: { type: 'plain_text', text: `🔴 ${TARGET_LABEL} 다운 감지` } },
+                {
+                  type: 'section',
+                  fields: [
+                    { type: 'mrkdwn', text: `*URL*\n${HEALTH_URL}` },
+                    { type: 'mrkdwn', text: `*HTTP*\n${HTTP_CODE || 'timeout'}` },
+                    { type: 'mrkdwn', text: `*시각 (KST)*\n${kstNow}` },
+                    { type: 'mrkdwn', text: `*재시도*\n2회 후 실패` },
+                  ],
+                },
+                { type: 'context', elements: [{ type: 'mrkdwn', text: `<${runUrl}|GitHub Actions run 보기>` }] },
+              ];
+            } else {
+              text = `✅ ${TARGET_LABEL} 헬스체크 복구`;
+              blocks = [
+                { type: 'header', text: { type: 'plain_text', text: `✅ ${TARGET_LABEL} 복구 확인` } },
+                {
+                  type: 'section',
+                  fields: [
+                    { type: 'mrkdwn', text: `*URL*\n${HEALTH_URL}` },
+                    { type: 'mrkdwn', text: `*시각 (KST)*\n${kstNow}` },
+                  ],
+                },
+                { type: 'context', elements: [{ type: 'mrkdwn', text: `<${runUrl}|GitHub Actions run 보기>` }] },
+              ];
+            }
+
+            // ── Slack webhook 전송 ──
+            const res = await fetch(SLACK_WEBHOOK, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text, blocks }),
+            });
+
+            if (!res.ok) {
+              const errText = await res.text().catch(() => '');
+              core.setFailed(`Slack webhook 전송 실패: ${res.status} ${errText}`);
+              return;
+            }
+
+            core.info(`📨 Slack 알림 전송 완료 (${alertType})`);
