@@ -135,6 +135,31 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse): 
     return;
   }
 
+  // GET /health/detail — 운영자용 상세 헬스체크 (API 키 인증 필요)
+  if (req.method === 'GET' && req.url === '/health/detail') {
+    if (!authenticate(req)) {
+      jsonResponse(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+    const startedAt = Date.now();
+    let dbStatus: 'ok' | 'error' = 'ok';
+    let dbLatencyMs = 0;
+    try {
+      await query('SELECT 1');
+      dbLatencyMs = Date.now() - startedAt;
+    } catch {
+      dbStatus = 'error';
+    }
+    const ok = dbStatus === 'ok';
+    jsonResponse(res, ok ? 200 : 503, {
+      ok,
+      uptime: Math.floor(process.uptime()),
+      db: { status: dbStatus, latencyMs: dbLatencyMs },
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
   // POST /api/db/query 만 허용 (서버간 호출이므로 CORS 불필요)
   if (req.method !== 'POST' || req.url !== '/api/db/query') {
     jsonResponse(res, 404, { error: 'Not found' });
