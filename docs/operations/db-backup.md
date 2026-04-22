@@ -86,6 +86,8 @@ rclone lsf r2:slack-ai-agents-backup/daily/
 
 ## 3. crontab 등록
 
+> **주의**: VM 타임존은 `Etc/UTC`이므로 cron 시간도 UTC로 기입한다. KST 04:00은 UTC 19:00 (전날 기준).
+
 ```bash
 crontab -e
 ```
@@ -93,7 +95,7 @@ crontab -e
 아래 줄 추가:
 
 ```
-0 4 * * * /home/ubuntu/slack-ai-agents/scripts/backup-db.sh
+0 19 * * * /home/ubuntu/slack-ai-agents/scripts/backup-db.sh  # UTC 19:00 = KST 04:00
 ```
 
 등록 확인:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # DB 일일 백업 → Cloudflare R2 업로드.
-# crontab: 0 4 * * * /home/ubuntu/slack-ai-agents/scripts/backup-db.sh
+# crontab: 0 19 * * * /home/ubuntu/slack-ai-agents/scripts/backup-db.sh  # UTC 기준 (= KST 04:00)
 
 set -euo pipefail
 
