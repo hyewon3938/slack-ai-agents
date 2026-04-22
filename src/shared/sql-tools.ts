@@ -376,7 +376,7 @@ export const executeSQLTool = async (
       // DELETE/UPDATE: 영향 row 수가 임계치 이상이면 확인 카드로 전환
       const keyword = extractFirstKeyword(sql);
       if ((keyword === 'DELETE' || keyword === 'UPDATE') && confirmCardSender) {
-        const threshold = (await import('./config.js')).CONFIG.modifyConfirmThreshold;
+        const threshold = Number(process.env['MODIFY_CONFIRM_THRESHOLD'] ?? 3);
         let dryRunCount: number;
         try {
           dryRunCount = await dryRunRowCount(sql, SQL_TIMEOUT_MS);
