@@ -86,7 +86,7 @@ AI를 "코딩 보조"가 아니라 **협업 개발자**로 취급하고, 작업 
 - **`workflow_run` API**로 직전 실행 상태 조회 → **DOWN / RECOVERY** 양방향 Slack 알림
 - **Variables vs Secrets** 분리: URL은 Variables, Webhook은 Secrets
 
-설계 판단 배경: [docs/adr/0001-uptime-monitoring-github-actions.md](docs/adr/0001-uptime-monitoring-github-actions.md)
+설계 판단 배경: [docs/adr/0005-uptime-monitoring-github-actions.md](docs/adr/0005-uptime-monitoring-github-actions.md)
 
 ---
 

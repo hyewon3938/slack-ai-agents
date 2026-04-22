@@ -17,8 +17,8 @@
 
 **ADR 체계 도입**: 되돌리기 어려운 설계 판단을 Michael Nygard 포맷으로 별도 기록하는 구조 신설. `docs/adr/README.md`에 기록 기준·운영 규칙 명시. `/design`·`/build` 스킬에 ADR 작성 판단 단계 내장.
 
-- 첫 ADR: [0001 — GitHub Actions 기반 자체 업타임 모니터링](adr/0001-uptime-monitoring-github-actions.md)
-- 후속 PR에서 v3 전환·Neon→VM 마이그레이션·DB Proxy 패턴·SQL 도구 기반 설계를 ADR 0001\~0004로 백필 예정 (백필 시 본 ADR은 0005로 rename)
+- 첫 ADR: [GitHub Actions 기반 자체 업타임 모니터링](adr/0005-uptime-monitoring-github-actions.md) — 당시 0001로 기록됐고, 이후 #339에서 핵심 아키텍처 판단 4건 백필과 함께 0005로 rename됨
+- 후속 백필: #339에서 SQL 도구 기반 에이전트·v3 전환·Neon→VM·DB Proxy 판단 4건을 ADR 0001\~0004로 소급 기록
 
 ---
 
