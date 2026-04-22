@@ -73,8 +73,20 @@ Vercel(웹)은 DB에 직접 연결하지 않고, **HTTPS API 프록시**를 경�
 - **Custom Skills (3)**: `/init-project`, `/design`(Opus), `/build`(Sonnet) — 설계/구현 모델 분리로 토큰 비용 최적화, 계획서 파일로 핸드오프
 - **MCP**: PostgreSQL(운영 DB 조회), Slack(에이전트 응답 품질 점검)
 - **Scheduled Tasks**: 매일 22:00 git 분석 → `developer-profile.md` 업데이트 → Slack 예약 전송
+- **ADR (Architecture Decision Records)**: 되돌리기 어려운 설계 판단을 Michael Nygard 포맷으로 기록 → `/design`·`/build` 스킬에 ADR 판단 로직 내장
 
 AI를 "코딩 보조"가 아니라 **협업 개발자**로 취급하고, 작업 단위는 GitHub Issues·PR로 리뷰·검증한다.
+
+### 5. 관측성 — 자체 구현 업타임 모니터링
+
+봇·웹 헬스체크를 **GitHub Actions cron**으로 5분 간격 폴링. 외부 SaaS(UptimeRobot 등) 무료 티어 제약을 피해 자체 구현했다.
+
+- **Matrix strategy**로 봇·웹 병렬 체크 → 장애 원인 즉시 식별
+- **2회 재시도**로 일시적 네트워크 튐 흡수 (cry wolf 방지)
+- **`workflow_run` API**로 직전 실행 상태 조회 → **DOWN / RECOVERY** 양방향 Slack 알림
+- **Variables vs Secrets** 분리: URL은 Variables, Webhook은 Secrets
+
+설계 판단 배경: [docs/adr/0001-uptime-monitoring-github-actions.md](docs/adr/0001-uptime-monitoring-github-actions.md)
 
 ---
 
@@ -207,8 +219,10 @@ docker compose down             # 전체 정지 (볼륨은 유지 → 데이터 
 
 | 문서 | 내용 |
 |------|------|
+| [docs/adr/](docs/adr/) | Architecture Decision Records — 되돌리기 어려운 설계 판단의 배경·대안·트레이드오프 기록 |
 | [docs/project-history.md](docs/project-history.md) | 설계 변화와 의사결정 과정 상세 기록 |
 | [docs/conventions.md](docs/conventions.md) | 코드 컨벤션 & 보안 체크리스트 |
 | [docs/pipeline-optimization.md](docs/pipeline-optimization.md) | 배포 파이프라인 최적화 (GHCR 이미지 빌드) |
 | [docs/operations/db-backup.md](docs/operations/db-backup.md) | DB 백업/복원 운영 가이드 |
+| [docs/ops/health-monitoring.md](docs/ops/health-monitoring.md) | 업타임 모니터링 운영 가이드 (GitHub Actions 기반) |
 | [docs/developer-profile.md](docs/developer-profile.md) | AI가 분석한 개발자 성향 프로필 (gitignored) |
