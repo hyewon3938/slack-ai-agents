@@ -2,6 +2,36 @@
 
 개인 라이프 데이터 AI 에이전트 시스템의 개발 과정과 설계 변화를 기록하는 문서.
 
+> **참고**: 2026-04-22부터 **ADR(Architecture Decision Records)** 체계를 병행 도입했다. 되돌리기 어려운 설계 판단은 [docs/adr/](adr/)에 별도 기록되며, 본 문서는 완료 기능·전반적 변화의 **타임라인**을 담당한다.
+
+---
+
+## 2026-04-22: 관측성 레이어 & ADR 체계 도입 (#334)
+
+**업타임 모니터링 자체 구현**: 봇·웹 헬스체크를 GitHub Actions cron으로 5분 간격 폴링하는 자체 모니터 구축. 외부 SaaS(UptimeRobot 등) 무료 티어 제약을 피해 완전 자체 통제 구조로 전환.
+
+- Matrix strategy로 봇·웹 병렬 체크
+- 2회 재시도로 일시적 네트워크 튐 흡수 (cry wolf 방지)
+- `workflow_run` API로 직전 상태 조회 → DOWN/RECOVERY 양방향 Slack 알림
+- Variables(URL) / Secrets(Webhook) 분리로 최소 권한 원칙 적용
+
+**ADR 체계 도입**: 되돌리기 어려운 설계 판단을 Michael Nygard 포맷으로 별도 기록하는 구조 신설. `docs/adr/README.md`에 기록 기준·운영 규칙 명시. `/design`·`/build` 스킬에 ADR 작성 판단 단계 내장.
+
+- 첫 ADR: [0001 — GitHub Actions 기반 자체 업타임 모니터링](adr/0001-uptime-monitoring-github-actions.md)
+- 후속 PR에서 v3 전환·Neon→VM 마이그레이션·DB Proxy 패턴·SQL 도구 기반 설계를 ADR 0001\~0004로 백필 예정 (백필 시 본 ADR은 0005로 rename)
+
+---
+
+## 2026-04-21: 관측성 기반 준비 (#327, #332, #333)
+
+봇·웹 양쪽에 헬스체크 엔드포인트 신설.
+
+- 봇: `GET /health` (DB ping 포함) + `GET /health/detail` (API Key 인증, uptime·latency 노출)
+- 웹: `GET /api/health` (Vercel liveness)
+- Next.js 프록시에서 `/api/health`를 공개 경로로 등록
+
+이 PR의 후속으로 2026-04-22에 GitHub Actions 기반 자체 모니터 구현.
+
 ---
 
 ## 2026-04-15: 지출/예산 계산 엔진 재설계 Phase 1 (#283, PR #284)

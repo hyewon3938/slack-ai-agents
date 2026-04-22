@@ -1,5 +1,45 @@
 # Work Log
 
+## 2026-04-22 (수)
+
+### 작업 요약
+- 업타임 모니터링 자체 구현 — GitHub Actions cron 기반, matrix + 2-retry + workflow_run API로 down/recovery 알림 (feature/334)
+- ADR(Architecture Decision Records) 체계 도입 — Michael Nygard 포맷, 기록 기준·운영 규칙 정리, 첫 ADR 작성
+- `/design`·`/build`·`/init-project` 글로벌 스킬에 ADR 판단 로직 내장 — 모든 Claude Code 프로젝트에 ADR 체계 전파
+
+### 주요 변경
+- `.github/workflows/uptime-check.yml` — GitHub Actions 자체 모니터 신규
+- `docs/adr/README.md` + `docs/adr/template.md` + `docs/adr/0001-uptime-monitoring-github-actions.md` — ADR 인프라
+- `docs/ops/health-monitoring.md` — GitHub Actions 기반으로 재작성
+- `README.md` — 관측성 섹션 + ADR 체계 소개 추가
+- `~/.claude/CLAUDE.md` — ADR 운영 원칙 섹션 추가 (글로벌)
+- `~/.claude/skills/design/SKILL.md` + `~/.claude/skills/build/SKILL.md` + `~/.claude/skills/init-project/SKILL.md` — ADR 판단 단계 내장
+
+### 배경
+- 2026-04-21에 UptimeRobot 무료 티어 연결 시도 → Slack·Webhook·Keyword Alert 모두 유료만 가능 확인
+- 외부 서비스 의존 제거 + 월 고정비 0원 유지 + Slack 알림 필수 조건을 동시에 만족하는 대안 검토
+- GitHub Actions cron + 자체 알림 로직으로 선택. 정시성 트레이드오프 수용
+
+## 2026-04-21 (화)
+
+### 작업 요약
+- DB 자동 백업 파이프라인 구축 — backup-db.sh, restore-db.sh, 운영 문서(db-backup.md) (PR #329, #330, #331)
+- 헬스체크 엔드포인트 추가 — 웹 Next.js API route + DB Proxy 인증된 상세 체크 (feature/327)
+- GitHub Actions 단일 배포 경로 통합 + README 운영 섹션 보강 (PR #324, #325, #328)
+- 루틴 start_date 가드 버그 수정 — 매일 빈도 루틴 누락 (PR #323)
+
+### 변경 규모
+- 11개 커밋, 21개 파일, +514 / -14 lines
+
+### 주요 변경
+- `scripts/backup-db.sh`, `scripts/restore-db.sh` — DB 백업/복원 파이프라인 신규 (+277줄)
+- `web/src/app/api/health/route.ts` — 웹 헬스체크 API route 신규 (+10줄)
+- `src/db-proxy.ts` + `src/__tests__/db-proxy.test.ts` — DB Proxy 헬스체크 + 테스트 (+63줄)
+- `docs/ops/health-monitoring.md` — 운영 모니터링 가이드 신규 (+68줄)
+
+### 다음 할 일
+- 헬스체크 엔드포인트를 외부 모니터링 서비스(UptimeRobot 등)에 연결 검토
+
 ## 2026-04-19 (일)
 
 ### 작업 요약
