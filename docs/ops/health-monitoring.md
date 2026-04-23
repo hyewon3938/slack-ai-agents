@@ -122,8 +122,8 @@ gh workflow run uptime-check.yml
 
 1. Slack `#project` 알림 수신
 2. `/health/detail` 호출해서 컴포넌트별 상태 확인
-   - `db.status: 'error'` → DB 컨테이너 점검 (VM SSH → `docker compose logs db`)
-   - `ok: false` + `db.status: 'ok'` → 봇 프로세스/네트워크 점검 (`docker compose logs app`)
+   - `db.status: 'error'` → DB 컨테이너 로그 점검
+   - `ok: false` + `db.status: 'ok'` → 봇 프로세스/네트워크 로그 점검
    - Vercel `/api/health` 장애 → Vercel 배포 상태 확인
 3. 원인에 따라 복구 → 다음 cron에서 RECOVERY 알림 자동 수신
 
