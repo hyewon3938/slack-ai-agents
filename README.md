@@ -84,7 +84,7 @@ LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용
 - **Custom Skills**: `/init-project`, `/design`, `/build` — 계획서 파일로 세션 간 핸드오프
 - **MCP**: PostgreSQL(운영 DB 조회), Slack(에이전트 응답 품질 점검)
 - **Scheduled Tasks (비동기 깊은 분석 전용)**:
-  - `nightly-dev-report` (매일 22:00): Opus가 당일 git 활동·대화 이력을 분석 → [developer-profile.md](docs/developer-profile.md)에 관찰 메모 자동 축적 → 다음 날 09:25/09:30 Slack 예약 전송
+  - `nightly-dev-report` (매일 22:00): Opus가 당일 git 활동·대화 이력을 분석 → 로컬 문서에 관찰 메모 자동 축적 → 다음 날 09:25/09:30 Slack으로 예약 전송, 매일 피드백 수신
   - `weekly-saju-review` (일요일 21:31): 최근 4주 일기 × 일운 × 수면 상관 분석 → 사주 패턴 감지/업데이트
   - `weekly-fortune` (일요일 22:37): 7일 일운 + 월운/세운/대운 자동 갱신
   - `nightly-achievements` (매일 23:30): 오늘 해낸 일 3가지 + 일운 코멘트 응원 메시지 — 바쁘게 보낸 날에도 "아무것도 안 한 것 같은" 불안감 극복용
@@ -102,8 +102,6 @@ AI를 "코딩 보조"가 아니라 **협업 개발자**로 취급하고, 작업 
 일정·루틴·수면·일기를 자연어 대화만으로 기록·조회·수정. 하루 2회 크론 알림 + 프로액티브 인사이트 + 생활 맥락 기반 잔소리. 스마트 메모리로 사용자 선호를 자동 학습.
 
 **수면 기록 워크플로우** — 아침에 봇이 기록 알림 → 슬랙에 자연어로 입력(취침시간·기상시간·중간기상·메모) → 자동 파싱·저장 → 웹 대시보드에서 시각화 + 규칙성 점수 → 수면 부족한 날 루틴 달성률·일정 소화율 하락 상관 분석 → 잔소리 근거로 재활용
-
-<img src="docs/images/01-conversation.png" width="49%" />
 
 ### 일기 × 개인 프로파일 맥락 자동 연결
 
@@ -246,4 +244,3 @@ docker compose down             # 전체 정지 (볼륨은 유지 → 데이터 
 | [docs/optimization/](docs/optimization/) | 최적화 기록 — LLM 비용, 응답 속도, 배포 파이프라인, 의도 분류 제거 회고 |
 | [docs/ops/db-backup.md](docs/ops/db-backup.md) | DB 백업/복원 운영 가이드 |
 | [docs/ops/health-monitoring.md](docs/ops/health-monitoring.md) | 업타임 모니터링 운영 가이드 (GitHub Actions 기반) |
-| [docs/developer-profile.md](docs/developer-profile.md) | AI가 분석한 개발자 성향 프로필 (gitignored) |

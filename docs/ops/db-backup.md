@@ -13,7 +13,7 @@
 ### 1.1 Cloudflare R2 버킷 생성
 
 1. Cloudflare 대시보드 → R2 → "Create bucket"
-2. 버킷명: `slack-ai-agents-backup`
+2. 버킷명: `<백업 버킷명>`
 3. R2 → Manage R2 API Tokens → "Create API token"
    - 권한: Object Read & Write
    - 버킷 범위: 위 버킷
@@ -46,13 +46,13 @@ rclone config
 
 ```bash
 rclone lsd r2:
-rclone lsf r2:slack-ai-agents-backup
+rclone lsf r2:<백업 버킷명>
 ```
 
 ### 1.4 .env에 R2_REMOTE 추가
 
 ```bash
-echo "R2_REMOTE=r2:slack-ai-agents-backup" >> ~/slack-ai-agents/.env
+echo "R2_REMOTE=r2:<백업 버킷명>" >> ~/slack-ai-agents/.env
 ```
 
 ### 1.5 스크립트 실행 권한 부여
@@ -72,7 +72,7 @@ chmod +x ~/slack-ai-agents/scripts/restore-db.sh
 cd ~/slack-ai-agents
 ./scripts/backup-db.sh
 tail -20 ~/.local/log/slack-ai-agents/backup.log
-rclone lsf r2:slack-ai-agents-backup/daily/
+rclone lsf r2:<백업 버킷명>/daily/
 ```
 
 ---
@@ -88,7 +88,7 @@ crontab -e
 아래 줄 추가:
 
 ```
-0 19 * * * /home/ubuntu/slack-ai-agents/scripts/backup-db.sh  # UTC 19:00 = KST 04:00
+0 19 * * * ~/slack-ai-agents/scripts/backup-db.sh  # UTC 19:00 = KST 04:00
 ```
 
 등록 확인:
@@ -140,7 +140,7 @@ docker rm -f test-restore
 
 ## 6. 정상 동작 확인 체크리스트 (정기)
 
-- [ ] 매일 R2 버킷에 daily 백업 생성되는지 확인 (`rclone lsf r2:slack-ai-agents-backup/daily/`)
+- [ ] 매일 R2 버킷에 daily 백업 생성되는지 확인 (`rclone lsf r2:<백업 버킷명>/daily/`)
 - [ ] 일요일에 weekly 백업 추가 생성 확인
 - [ ] 14일 이상된 daily 자동 정리 확인
 - [ ] 분기 1회 복원 리허설

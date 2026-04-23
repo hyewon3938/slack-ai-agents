@@ -1,21 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" font-family="'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, sans-serif">
   <defs>
     <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
       <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.08"/>
     </filter>
-    <marker id="arrow" markerWidth="6" markerHeight="5" refX="5" refY="2.5" orient="auto">
-      <path d="M0,0 L5,2.5 L0,5 Z" fill="#6366f1"/>
+    <marker id="arrow" markerWidth="4" markerHeight="3" refX="4" refY="1.5" orient="auto">
+      <path d="M0,0 L4,1.5 L0,3 Z" fill="#6366f1"/>
     </marker>
-    <marker id="arrowGreen" markerWidth="6" markerHeight="5" refX="5" refY="2.5" orient="auto">
-      <path d="M0,0 L5,2.5 L0,5 Z" fill="#10b981"/>
+    <marker id="arrowGreen" markerWidth="4" markerHeight="3" refX="4" refY="1.5" orient="auto">
+      <path d="M0,0 L4,1.5 L0,3 Z" fill="#10b981"/>
     </marker>
-    <marker id="arrowGray" markerWidth="6" markerHeight="5" refX="5" refY="2.5" orient="auto">
-      <path d="M0,0 L5,2.5 L0,5 Z" fill="#94a3b8"/>
+    <marker id="arrowGray" markerWidth="4" markerHeight="3" refX="4" refY="1.5" orient="auto">
+      <path d="M0,0 L4,1.5 L0,3 Z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowPink" markerWidth="4" markerHeight="3" refX="4" refY="1.5" orient="auto">
+      <path d="M0,0 L4,1.5 L0,3 Z" fill="#be185d"/>
     </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="960" height="460" fill="#f8fafc"/>
+  <rect width="960" height="540" fill="#f8fafc"/>
 
   <!-- Title -->
   <text x="480" y="30" text-anchor="middle" fill="#334155" font-size="14" font-weight="700">Slack AI Agent — 자연어로 라이프 데이터를 다루는 에이전트</text>
@@ -31,11 +34,11 @@
     <rect x="40" y="80" width="240" height="38" rx="12" fill="#611f69"/>
     <rect x="40" y="106" width="240" height="12" fill="#611f69"/>
     <text x="60" y="106" fill="#ffffff" font-size="14" font-weight="700">Slack</text>
-    <text x="230" y="106" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.8">Socket Mode</text>
+    <text x="260" y="106" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.85">Socket Mode</text>
   </g>
   <text x="60" y="142" fill="#475569" font-size="12">자연어 대화 · 크론 알림</text>
   <text x="60" y="162" fill="#475569" font-size="12">체크리스트 · App Home</text>
-  <text x="60" y="182" fill="#475569" font-size="12">인사이트 넛지</text>
+  <text x="60" y="182" fill="#475569" font-size="12">프로액티브 인사이트</text>
 
   <!-- ===== Web (Vercel) card ===== -->
   <g filter="url(#shadow)">
@@ -43,79 +46,109 @@
     <rect x="40" y="230" width="240" height="38" rx="12" fill="#171717"/>
     <rect x="40" y="256" width="240" height="12" fill="#171717"/>
     <text x="60" y="256" fill="#ffffff" font-size="14" font-weight="700">Web</text>
-    <text x="230" y="256" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.8">Vercel · Next.js</text>
+    <text x="260" y="256" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.85">Vercel · Next.js</text>
   </g>
   <text x="60" y="292" fill="#475569" font-size="12">캘린더 · 백로그 · 루틴</text>
-  <text x="60" y="312" fill="#475569" font-size="12">지출 · 카테고리 · DnD</text>
+  <text x="60" y="312" fill="#475569" font-size="12">지출 · 수면 기록</text>
 
   <!-- ===== Oracle Cloud VM (center) ===== -->
   <g>
-    <rect x="310" y="76" width="340" height="320" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+    <rect x="310" y="76" width="340" height="400" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
   </g>
+
+  <!-- Caddy (호스트 레이어, Docker 바깥) -->
+  <g filter="url(#shadow)">
+    <rect x="326" y="94" width="308" height="44" rx="10" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+  </g>
+  <text x="342" y="114" fill="#065f46" font-size="12" font-weight="700">Caddy (호스트 서비스)</text>
+  <text x="618" y="114" text-anchor="end" fill="#047857" font-size="10" font-weight="600">자동 TLS · :443</text>
+  <text x="342" y="130" fill="#475569" font-size="10">외부 트래픽 입구 — TLS 종료 후 내부로만 라우팅</text>
+
+  <!-- DOCKER 영역 라벨 -->
+  <text x="326" y="158" fill="#94a3b8" font-size="9" font-weight="700" letter-spacing="2">DOCKER COMPOSE</text>
 
   <!-- Slack Bolt App -->
   <g filter="url(#shadow)">
-    <rect x="334" y="100" width="292" height="120" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <rect x="326" y="165" width="308" height="158" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
   </g>
-  <text x="354" y="126" fill="#1e3a8a" font-size="13" font-weight="700">Slack Bolt App</text>
-  <text x="354" y="148" fill="#475569" font-size="11">• Agent Loop — LLM ↔ SQL 도구 자율 반복</text>
-  <text x="354" y="167" fill="#475569" font-size="11">• node-cron — 아침/밤/주간 알림 (KST)</text>
-  <text x="354" y="186" fill="#475569" font-size="11">• Fast path — 정규식 → Block Kit (\~1초)</text>
-  <text x="354" y="205" fill="#475569" font-size="11">• Rate Limit · userId 격리 · 인젝션 차단</text>
+  <text x="342" y="188" fill="#1e3a8a" font-size="13" font-weight="700">Slack Bolt App</text>
+  <text x="618" y="188" text-anchor="end" fill="#1e40af" font-size="10" font-weight="600">Node · TS</text>
+  <text x="342" y="210" fill="#475569" font-size="11">• Agent Loop — LLM ↔ SQL 도구 자율 반복</text>
+  <text x="342" y="229" fill="#475569" font-size="11">• Pure SQL 패턴 감지 5종 — streak·sleep·slot…</text>
+  <text x="342" y="248" fill="#475569" font-size="11">• node-cron — 아침/밤/주간 알림 (KST)</text>
+  <text x="342" y="267" fill="#475569" font-size="11">• Fast path — 정규식 → Block Kit (~1초)</text>
+  <text x="342" y="286" fill="#475569" font-size="11">• modify_db 승인 플로우 — dry-run 카드 → 승인</text>
+  <text x="342" y="305" fill="#475569" font-size="11">• Rate Limit · userId 격리 · 인젝션 차단</text>
 
   <!-- DB Proxy API -->
   <g filter="url(#shadow)">
-    <rect x="334" y="240" width="292" height="58" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <rect x="326" y="335" width="308" height="62" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
   </g>
-  <text x="354" y="266" fill="#14532d" font-size="13" font-weight="700">DB Proxy API</text>
-  <text x="608" y="266" text-anchor="end" fill="#166534" font-size="10" font-weight="600">:3100 · Bearer</text>
-  <text x="354" y="286" fill="#475569" font-size="11">SQL 화이트리스트 · TLS 종료 (Caddy)</text>
+  <text x="342" y="360" fill="#14532d" font-size="13" font-weight="700">DB Proxy API</text>
+  <text x="618" y="360" text-anchor="end" fill="#166534" font-size="10" font-weight="600">:3100 · Bearer · 루프백 바인딩</text>
+  <text x="342" y="380" fill="#475569" font-size="11">SQL 화이트리스트 · WHERE 필수 · 벌크 50행 제한</text>
 
   <!-- PostgreSQL -->
   <g filter="url(#shadow)">
-    <rect x="334" y="316" width="292" height="58" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <rect x="326" y="409" width="308" height="58" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
   </g>
-  <text x="354" y="342" fill="#1e3a8a" font-size="13" font-weight="700">PostgreSQL</text>
-  <text x="608" y="342" text-anchor="end" fill="#1e40af" font-size="10" font-weight="600">내부 전용 · Docker</text>
-  <text x="354" y="362" fill="#475569" font-size="11">일정 · 루틴 · 지출 · 일기 · 사주</text>
+  <text x="342" y="434" fill="#1e3a8a" font-size="13" font-weight="700">PostgreSQL 17</text>
+  <text x="618" y="434" text-anchor="end" fill="#1e40af" font-size="10" font-weight="600">내부 전용 · 포트 미노출</text>
+  <text x="342" y="454" fill="#475569" font-size="11">일정 · 루틴 · 지출 · 일기 · 사주</text>
 
   <!-- VM 내부 수직 연결 (점선) -->
-  <line x1="480" y1="220" x2="480" y2="240" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowGray)"/>
-  <line x1="480" y1="298" x2="480" y2="316" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowGray)"/>
+  <line x1="480" y1="323" x2="480" y2="335" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowGray)"/>
+  <line x1="480" y1="397" x2="480" y2="409" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowGray)"/>
 
   <!-- ===== Claude Sonnet card ===== -->
   <g filter="url(#shadow)">
-    <rect x="680" y="130" width="240" height="140" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
-    <rect x="680" y="130" width="240" height="38" rx="12" fill="#d97706"/>
-    <rect x="680" y="156" width="240" height="12" fill="#d97706"/>
-    <text x="700" y="156" fill="#ffffff" font-size="14" font-weight="700">Claude Sonnet</text>
-    <text x="910" y="156" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.85">Anthropic API</text>
+    <rect x="680" y="98" width="240" height="140" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <rect x="680" y="98" width="240" height="38" rx="12" fill="#d97706"/>
+    <rect x="680" y="124" width="240" height="12" fill="#d97706"/>
+    <text x="700" y="124" fill="#ffffff" font-size="14" font-weight="700">Claude Sonnet</text>
+    <text x="910" y="124" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.85">실시간 대화</text>
   </g>
-  <text x="700" y="192" fill="#475569" font-size="12">자연어 이해 · SQL 생성</text>
-  <text x="700" y="212" fill="#475569" font-size="12">크로스 분석 · 인사이트</text>
-  <text x="700" y="232" fill="#475569" font-size="12">크론/주간 리포트 작성</text>
-  <text x="700" y="256" fill="#b45309" font-size="10" font-weight="600">Tool Use: query_db · modify_db</text>
+  <text x="700" y="160" fill="#475569" font-size="12">자연어 이해 · SQL 생성</text>
+  <text x="700" y="180" fill="#475569" font-size="12">크론 알림 · 인사이트</text>
+  <text x="700" y="200" fill="#475569" font-size="12">프롬프트 캐싱 ephemeral</text>
+  <text x="700" y="224" fill="#b45309" font-size="10" font-weight="600">Tool Use: query_db · modify_db · get_schema</text>
+
+  <!-- ===== Claude Opus card ===== -->
+  <g filter="url(#shadow)">
+    <rect x="680" y="258" width="240" height="130" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <rect x="680" y="258" width="240" height="38" rx="12" fill="#be185d"/>
+    <rect x="680" y="284" width="240" height="12" fill="#be185d"/>
+    <text x="700" y="284" fill="#ffffff" font-size="14" font-weight="700">Claude Opus</text>
+    <text x="910" y="284" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.85">비동기 깊은 분석</text>
+  </g>
+  <text x="700" y="320" fill="#475569" font-size="12">주간 사주 패턴 상관 분석</text>
+  <text x="700" y="340" fill="#475569" font-size="12">일간 개발 리포트 (git)</text>
+  <text x="700" y="368" fill="#9d174d" font-size="10" font-weight="600">Scheduled Task · DB 저장 → Slack</text>
 
   <!-- ===== Connections ===== -->
 
   <!-- Slack ↔ Bolt (양방향) -->
-  <line x1="280" y1="135" x2="334" y2="135" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
-  <line x1="334" y1="151" x2="280" y2="151" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
-  <text x="287" y="124" fill="#4338ca" font-size="9" font-weight="600">Socket Mode</text>
+  <line x1="280" y1="135" x2="326" y2="190" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="326" y1="210" x2="280" y2="155" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="284" y="175" fill="#4338ca" font-size="9" font-weight="600" stroke="#f8fafc" stroke-width="3" paint-order="stroke" stroke-linejoin="round">Socket Mode</text>
 
-  <!-- Web → DB Proxy (HTTPS) -->
-  <line x1="280" y1="282" x2="334" y2="269" stroke="#10b981" stroke-width="2" marker-end="url(#arrowGreen)"/>
-  <text x="286" y="258" fill="#059669" font-size="9" font-weight="600">HTTPS</text>
+  <!-- Web → DB Proxy (HTTPS via Caddy) -->
+  <line x1="280" y1="285" x2="326" y2="355" stroke="#10b981" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <text x="286" y="325" fill="#059669" font-size="9" font-weight="600" stroke="#f8fafc" stroke-width="3" paint-order="stroke" stroke-linejoin="round">HTTPS (Caddy 경유)</text>
 
-  <!-- Bolt ↔ Claude (tool use) -->
-  <line x1="626" y1="158" x2="680" y2="158" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
-  <line x1="680" y1="174" x2="626" y2="174" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
-  <text x="636" y="147" fill="#4338ca" font-size="9" font-weight="600">Tool Use</text>
+  <!-- Bolt ↔ Sonnet (tool use) -->
+  <line x1="634" y1="215" x2="680" y2="170" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="680" y1="190" x2="634" y2="235" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="642" y="180" fill="#4338ca" font-size="9" font-weight="600" stroke="#f8fafc" stroke-width="3" paint-order="stroke" stroke-linejoin="round">Tool Use</text>
+
+  <!-- Opus → PostgreSQL (scheduled task 결과 저장) -->
+  <path d="M 680 345 Q 650 400 634 438" fill="none" stroke="#be185d" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowPink)"/>
+  <text x="676" y="410" text-anchor="end" fill="#9d174d" font-size="9" font-weight="600" stroke="#f8fafc" stroke-width="3" paint-order="stroke" stroke-linejoin="round">분석 결과 저장</text>
 
   <!-- ===== Security Footer ===== -->
   <g>
-    <rect x="40" y="410" width="880" height="32" rx="8" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
-    <text x="58" y="431" fill="#991b1b" font-size="11" font-weight="700">🛡 보안</text>
-    <text x="108" y="431" fill="#64748b" font-size="11">DB 포트 외부 미노출 · Bearer + 전 구간 TLS · SQL 화이트리스트 · userId 테넌트 격리 · Rate Limit · SQL 감사 로그 · 커밋 전 시크릿 스캔</text>
+    <rect x="40" y="498" width="880" height="32" rx="8" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+    <text x="58" y="519" fill="#991b1b" font-size="11" font-weight="700">🛡 보안</text>
+    <text x="108" y="519" fill="#64748b" font-size="11">호스트 Caddy TLS 종료 · DB 포트 미노출 · Bearer · SQL 화이트리스트 · modify_db 승인 · userId 격리 · Rate Limit · 감사 로그 · 시크릿 스캔</text>
   </g>
 </svg>
