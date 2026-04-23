@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { RoutineRecordRow, ScheduleRow } from '../../../shared/life-queries.js';
+import type { AffectedRow } from '../../../shared/pending-display.js';
 import { formatDateShort } from '../../../shared/kst.js';
 import {
   buildRoutineBlocks,
@@ -386,5 +387,86 @@ describe('buildConfirmModifyCard', () => {
     } else {
       throw new Error('header block shape unexpected');
     }
+  });
+
+  it('DELETE operation 헤더 문구', () => {
+    const { text, blocks } = buildConfirmModifyCard({
+      token: 't',
+      tableName: 'schedules',
+      rows: [{ title: '회의', category: '업무' }],
+      rowCount: 1,
+      operation: 'DELETE',
+    });
+    expect(text).toContain('삭제');
+    const header = blocks[0];
+    if (header?.type === 'section' && 'text' in header && header.text && 'text' in header.text) {
+      expect(header.text.text).toContain('삭제');
+    }
+  });
+
+  it('UPDATE operation 헤더 문구', () => {
+    const { text, blocks } = buildConfirmModifyCard({
+      token: 't',
+      tableName: 'schedules',
+      rows: [{ title: '회의', category: '업무' }],
+      rowCount: 1,
+      operation: 'UPDATE',
+    });
+    expect(text).toContain('변경');
+    const header = blocks[0];
+    if (header?.type === 'section' && 'text' in header && header.text && 'text' in header.text) {
+      expect(header.text.text).toContain('변경');
+    }
+  });
+
+  it('rowCount가 CONFIRM_ROW_LIMIT(20) 초과 시 "외 N개 더" 표시', () => {
+    const rows: AffectedRow[] = Array.from({ length: 20 }, (_, i) => ({
+      title: `항목${i + 1}`,
+      category: '업무',
+    }));
+    const { blocks } = buildConfirmModifyCard({
+      token: 't',
+      tableName: 'schedules',
+      rows,
+      rowCount: 25,
+      operation: 'DELETE',
+    });
+    const contextBlocks = blocks.filter((b) => b.type === 'context');
+    const text = contextBlocks
+      .map((b) =>
+        'elements' in b
+          ? (b.elements as Array<{ type: string; text: string }>).map((e) => e.text).join(' ')
+          : '',
+      )
+      .join(' ');
+    expect(text).toContain('외 5개 더');
+  });
+
+  it('rowCount가 CONFIRM_ROW_LIMIT(20) 이하면 "외 N개 더" 미표시', () => {
+    const rows: AffectedRow[] = [{ title: '회의', category: '업무' }];
+    const { blocks } = buildConfirmModifyCard({
+      token: 't',
+      tableName: 'schedules',
+      rows,
+      rowCount: 1,
+      operation: 'DELETE',
+    });
+    const contextBlocks = blocks.filter((b) => b.type === 'context');
+    expect(contextBlocks).toHaveLength(0);
+  });
+
+  it('tableName이 null이면 row 그룹 없이 action 버튼만', () => {
+    const { blocks } = buildConfirmModifyCard({
+      token: 't',
+      tableName: null,
+      rows: [],
+      rowCount: 3,
+      operation: 'DELETE',
+    });
+    // 헤더 + actions만 (row 그룹 없음)
+    const sectionBlocks = blocks.filter((b) => b.type === 'section');
+    expect(sectionBlocks).toHaveLength(1); // 헤더만
+    const actionsBlocks = blocks.filter((b) => b.type === 'actions');
+    expect(actionsBlocks).toHaveLength(1);
   });
 });
