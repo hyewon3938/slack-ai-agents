@@ -13,7 +13,6 @@ import {
   querySleepEventsForHome,
 } from './life-queries.js';
 import {
-  buildScheduleBlocks,
   buildRoutineBlocks,
   buildSleepBlocks,
   formatSchedulesAsText,
