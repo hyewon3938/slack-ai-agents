@@ -1,10 +1,3 @@
-import Groq from 'groq-sdk';
-import type {
-  ChatCompletion,
-  ChatCompletionMessageParam,
-  ChatCompletionTool,
-  ChatCompletionMessageToolCall,
-} from 'groq-sdk/resources/chat/completions';
 import Anthropic from '@anthropic-ai/sdk';
 import type {
   MessageParam,
@@ -18,9 +11,7 @@ import type {
 const withToolCacheControl = (tools: Tool[]): Tool[] => {
   if (tools.length === 0) return tools;
   return tools.map((tool, i) =>
-    i === tools.length - 1
-      ? { ...tool, cache_control: { type: 'ephemeral' } }
-      : tool,
+    i === tools.length - 1 ? { ...tool, cache_control: { type: 'ephemeral' } } : tool,
   );
 };
 
@@ -52,39 +43,7 @@ export interface LLMResponse {
 }
 
 export interface LLMClient {
-  chat(
-    messages: LLMMessage[],
-    tools?: LLMToolDefinition[],
-  ): Promise<LLMResponse>;
-}
-
-// ---- Groq 구현체 ----
-
-export class GroqLLMClient implements LLMClient {
-  private client: Groq;
-  private model: string;
-
-  constructor(apiKey: string, model = 'llama-3.3-70b-versatile') {
-    this.client = new Groq({ apiKey });
-    this.model = model;
-  }
-
-  async chat(
-    messages: LLMMessage[],
-    tools?: LLMToolDefinition[],
-  ): Promise<LLMResponse> {
-    const groqMessages = toGroqMessages(messages);
-    const groqTools = tools?.length ? toGroqTools(tools) : undefined;
-
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: groqMessages,
-      tools: groqTools,
-      tool_choice: groqTools ? 'auto' : undefined,
-    });
-
-    return fromGroqResponse(response);
-  }
+  chat(messages: LLMMessage[], tools?: LLMToolDefinition[]): Promise<LLMResponse>;
 }
 
 // ---- Claude 구현체 ----
@@ -98,10 +57,7 @@ export class ClaudeLLMClient implements LLMClient {
     this.model = model;
   }
 
-  async chat(
-    messages: LLMMessage[],
-    tools?: LLMToolDefinition[],
-  ): Promise<LLMResponse> {
+  async chat(messages: LLMMessage[], tools?: LLMToolDefinition[]): Promise<LLMResponse> {
     const { system, anthropicMessages } = toClaudeMessages(messages);
     const anthropicTools = tools?.length ? toClaudeTools(tools) : undefined;
 
@@ -129,9 +85,6 @@ export const createLLMClient = async (): Promise<LLMClient> => {
   const { CONFIG } = await import('./config.js');
   const modelOverride = CONFIG.llm.model || undefined;
 
-  if (CONFIG.llm.provider === 'groq') {
-    return new GroqLLMClient(CONFIG.llm.groqApiKey, modelOverride);
-  }
   if (CONFIG.llm.provider === 'anthropic') {
     return new ClaudeLLMClient(CONFIG.llm.anthropicApiKey, modelOverride);
   }
@@ -157,98 +110,12 @@ export const createCronLLMClient = async (): Promise<LLMClient> => {
   return createLLMClient();
 };
 
-// ---- Groq 변환 함수 (테스트 가능하도록 export) ----
-
-export function toGroqMessages(
-  messages: LLMMessage[],
-): ChatCompletionMessageParam[] {
-  return messages.map((msg): ChatCompletionMessageParam => {
-    if (msg.role === 'tool') {
-      if (!msg.toolCallId) {
-        throw new Error('tool 메시지에는 toolCallId가 필요합니다');
-      }
-      return {
-        role: 'tool',
-        content: msg.content,
-        tool_call_id: msg.toolCallId,
-      };
-    }
-
-    if (msg.role === 'assistant' && msg.toolCalls?.length) {
-      return {
-        role: 'assistant',
-        content: msg.content || null,
-        tool_calls: msg.toolCalls.map(
-          (tc): ChatCompletionMessageToolCall => ({
-            id: tc.id,
-            type: 'function',
-            function: {
-              name: tc.name,
-              arguments: JSON.stringify(tc.arguments),
-            },
-          }),
-        ),
-      };
-    }
-
-    return {
-      role: msg.role,
-      content: msg.content,
-    };
-  });
-}
-
-export function toGroqTools(
-  tools: LLMToolDefinition[],
-): ChatCompletionTool[] {
-  return tools.map((tool) => ({
-    type: 'function' as const,
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema,
-    },
-  }));
-}
-
-export function fromGroqResponse(response: ChatCompletion): LLMResponse {
-  const choice = response.choices[0];
-  if (!choice) {
-    return { text: null, toolCalls: [], finishReason: 'error' };
-  }
-
-  const message = choice.message;
-
-  const toolCalls: LLMToolCall[] = (message.tool_calls ?? []).map((tc) => ({
-    id: tc.id,
-    name: tc.function.name,
-    arguments: JSON.parse(tc.function.arguments) as Record<string, unknown>,
-  }));
-
-  let finishReason: LLMResponse['finishReason'];
-  switch (choice.finish_reason) {
-    case 'tool_calls':
-      finishReason = 'tool_calls';
-      break;
-    case 'length':
-      finishReason = 'length';
-      break;
-    default:
-      finishReason = 'stop';
-  }
-
-  return {
-    text: message.content,
-    toolCalls,
-    finishReason,
-  };
-}
-
 // ---- Claude 변환 함수 (테스트 가능하도록 export) ----
 
-export function toClaudeMessages(
-  messages: LLMMessage[],
-): { system: string | null; anthropicMessages: MessageParam[] } {
+export function toClaudeMessages(messages: LLMMessage[]): {
+  system: string | null;
+  anthropicMessages: MessageParam[];
+} {
   let system: string | null = null;
   const anthropicMessages: MessageParam[] = [];
 
@@ -326,9 +193,7 @@ export function toClaudeTools(tools: LLMToolDefinition[]): Tool[] {
   }));
 }
 
-export function fromClaudeResponse(
-  response: Anthropic.Messages.Message,
-): LLMResponse {
+export function fromClaudeResponse(response: Anthropic.Messages.Message): LLMResponse {
   let text: string | null = null;
   const toolCalls: LLMToolCall[] = [];
 

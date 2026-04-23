@@ -14,7 +14,7 @@
 | 변수, 함수 | camelCase | `createLLMClient()` |
 | 클래스, 인터페이스, 타입 | PascalCase | `LLMClient`, `ToolCall` |
 | 상수 | UPPER_SNAKE_CASE | `DEFAULT_TIMEOUT` |
-| 환경변수 | UPPER_SNAKE_CASE | `GROQ_API_KEY` |
+| 환경변수 | UPPER_SNAKE_CASE | `ANTHROPIC_API_KEY` |
 
 ## 파일 & 함수 크기
 
@@ -210,7 +210,7 @@ api/{domain}/[id]/route.ts  → GET (단건), PATCH (수정), DELETE (삭제)
 ### "확장성 있되 오버엔지니어링 아닌" 기준
 
 - 인터페이스/타입은 미리 정의해도 좋다 (비용 낮음, 확장성 높음)
-- 구현체는 현재 필요한 것만 (예: Groq 구현체만, Claude는 교체 시점에)
+- 구현체는 현재 필요한 것만 (예: Claude 구현체만, 교체 시점에 추가)
 - 공통 base class, 복잡한 DI 컨테이너 같은 건 만들지 않음
 - 3개 에이전트 중 2개 이상 패턴이 반복되면 그때 추상화
 
@@ -244,7 +244,7 @@ api/{domain}/[id]/route.ts  → GET (단건), PATCH (수정), DELETE (삭제)
 | Cron 알림 로직 | 단위 | 데이터 조회 → 메시지 포맷팅 |
 
 **원칙**:
-- 외부 API(Slack, Groq, Notion)는 mock 처리
+- 외부 API(Slack, Anthropic 등)는 mock 처리
 - 비즈니스 로직 중심 테스트 (유틸리티 함수 100% 커버리지 불필요)
 
 ---
