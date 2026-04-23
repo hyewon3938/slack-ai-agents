@@ -16,6 +16,7 @@ import {
   buildScheduleBlocks,
   buildRoutineBlocks,
   buildSleepBlocks,
+  formatSchedulesAsText,
 } from '../agents/life/blocks.js';
 import { getTodayISO } from './kst.js';
 import { query } from './db.js';
@@ -166,12 +167,16 @@ export const loadCurrentStateBlocks = async (
     case 'schedules': {
       const hasBacklog = ctx.affectedDates?.some((d) => !d) ?? false;
       const targetDate = ctx.affectedDates?.find((d) => !!d) ?? today;
-      if (hasBacklog) {
-        const items = await queryBacklogSchedules(ctx.userId);
-        return buildScheduleBlocks(items, 'backlog', undefined, { backlog: true });
-      }
-      const items = await queryTodaySchedules(targetDate, ctx.userId);
-      return buildScheduleBlocks(items, targetDate);
+      const items = hasBacklog
+        ? await queryBacklogSchedules(ctx.userId)
+        : await queryTodaySchedules(targetDate, ctx.userId);
+      const text = formatSchedulesAsText(items, hasBacklog ? 'backlog' : targetDate, {
+        backlog: hasBacklog,
+      });
+      return {
+        text,
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
+      };
     }
     case 'routine_records': {
       const targetDate = ctx.affectedDates?.[0] ?? today;
