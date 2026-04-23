@@ -12,6 +12,7 @@ import type {
 } from '../../shared/life-queries.js';
 import { frequencyBadge } from '../../shared/life-queries.js';
 import { formatDateShort } from '../../shared/kst.js';
+import { formatAffectedRows, type AffectedRow } from '../../shared/pending-display.js';
 
 // ─── 상수 ───────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ export const MOVE_TO_TODAY_ACTION = 'move_today';
 export const CONFIRM_MODIFY_EXECUTE_ACTION_ID = 'life_confirm_modify_execute';
 export const CONFIRM_MODIFY_CANCEL_ACTION_ID = 'life_confirm_modify_cancel';
 
-const CONFIRM_CARD_SQL_MAX_LEN = 500;
+const CONFIRM_ROW_LIMIT = 20;
 
 const TIME_SLOT_ORDER = ['낮', '밤'] as const;
 
@@ -171,57 +172,70 @@ export const buildMorningGreetingBlocks = (greetingText: string): KnownBlock[] =
   { type: 'section', text: { type: 'mrkdwn', text: greetingText } },
 ];
 
-
 // ─── 대량 변경 확인 카드 ────────────────────────────────
 
 /**
- * modify_db 확인 카드. value에 pending token 인코딩.
- * ⚠️ 경고 이모지는 Block Kit UI 요소로, 에이전트 대화체 이모지 금지 규칙과는 별개.
+ * modify_db 확인 카드. SQL 대신 영향받을 row 이름 리스트를 보여준다.
+ * - 최대 20개까지 노출, 초과 시 "외 N개 더"
+ * - DELETE/UPDATE별로 "삭제"/"변경" 어휘 분기
  */
 export const buildConfirmModifyCard = (params: {
   token: string;
-  sql: string;
+  tableName: string | null;
+  rows: AffectedRow[];
   rowCount: number;
+  operation: 'DELETE' | 'UPDATE';
 }): { text: string; blocks: KnownBlock[] } => {
-  const sqlPreview =
-    params.sql.length > CONFIRM_CARD_SQL_MAX_LEN
-      ? params.sql.slice(0, CONFIRM_CARD_SQL_MAX_LEN) + '...'
-      : params.sql;
+  const actionLabel = params.operation === 'DELETE' ? '삭제' : '변경';
+  const headerText = `*⚠️ 확인 필요* — 이 *${params.rowCount}개*가 ${actionLabel}될 예정이야. 진짜 실행할까?`;
 
-  return {
-    text: `${params.rowCount}개 행이 변경될 예정이야. 확인해줘.`,
-    blocks: [
+  const blocks: KnownBlock[] = [{ type: 'section', text: { type: 'mrkdwn', text: headerText } }];
+
+  const groups = params.tableName
+    ? formatAffectedRows(params.tableName, params.rows.slice(0, CONFIRM_ROW_LIMIT))
+    : [{ header: null, items: [] }];
+
+  for (const group of groups) {
+    const lines: string[] = [];
+    if (group.header) lines.push(`*[${group.header}]*`);
+    for (const item of group.items) lines.push(`• ${item}`);
+    if (lines.length === 0) continue;
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: lines.join('\n') },
+    });
+  }
+
+  if (params.rowCount > CONFIRM_ROW_LIMIT) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `_외 ${params.rowCount - CONFIRM_ROW_LIMIT}개 더_` }],
+    });
+  }
+
+  blocks.push({
+    type: 'actions',
+    elements: [
       {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*⚠️ 확인 필요* — 이 쿼리로 *${params.rowCount}개* 행이 변경돼. 진짜 실행할까?`,
-        },
+        type: 'button',
+        text: { type: 'plain_text', text: '실행', emoji: true },
+        action_id: CONFIRM_MODIFY_EXECUTE_ACTION_ID,
+        value: params.token,
+        style: 'primary',
       },
       {
-        type: 'section',
-        text: { type: 'mrkdwn', text: '```' + sqlPreview + '```' },
-      },
-      {
-        type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: '실행', emoji: true },
-            action_id: CONFIRM_MODIFY_EXECUTE_ACTION_ID,
-            value: params.token,
-            style: 'primary',
-          },
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: '취소', emoji: true },
-            action_id: CONFIRM_MODIFY_CANCEL_ACTION_ID,
-            value: params.token,
-            style: 'danger',
-          },
-        ],
+        type: 'button',
+        text: { type: 'plain_text', text: '취소', emoji: true },
+        action_id: CONFIRM_MODIFY_CANCEL_ACTION_ID,
+        value: params.token,
+        style: 'danger',
       },
     ],
+  });
+
+  return {
+    text: `${params.rowCount}개 행이 ${actionLabel}될 예정이야. 확인해줘.`,
+    blocks,
   };
 };
 
@@ -328,8 +342,7 @@ const groupByCategory = (items: ScheduleRow[]): CategoryGroup[] => {
 };
 
 /** event 타입 판별 (categories.type = 'event') */
-const isEventType = (item: ScheduleRow): boolean =>
-  item.category_type === 'event';
+const isEventType = (item: ScheduleRow): boolean => item.category_type === 'event';
 
 /** 일정 항목 제목 포맷 (메모 제외) */
 const formatScheduleTitle = (item: ScheduleRow): string => {
@@ -442,9 +455,7 @@ export const buildScheduleBlocks = (
   const backlog = options?.backlog ?? false;
   const formatted = backlog ? '' : formatDateShort(targetDate);
   const compact = options?.compact ?? false;
-  const headerLabel = backlog
-    ? `백로그 (${items.length}건)`
-    : `${formatted} 일정`;
+  const headerLabel = backlog ? `백로그 (${items.length}건)` : `${formatted} 일정`;
 
   blocks.push({
     type: 'section',

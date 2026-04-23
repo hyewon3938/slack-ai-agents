@@ -7,6 +7,7 @@ import {
   type DryRunResult,
 } from './db.js';
 import { createPendingModify } from './pending-modify.js';
+import { extractTargetTable } from './pending-display.js';
 
 // ---- 상수 ----
 
@@ -297,8 +298,10 @@ export interface SQLToolContext {
 
 export type ConfirmCardSender = (params: {
   token: string;
-  sql: string;
+  tableName: string | null;
+  rows: Record<string, unknown>[];
   rowCount: number;
+  operation: 'DELETE' | 'UPDATE';
   context: SQLToolContext & { userId: number };
 }) => Promise<void>;
 
@@ -383,11 +386,12 @@ export const executeSQLTool = async (
         }
 
         if (dryRun.rowCount >= threshold) {
+          const tableName = extractTargetTable(sql);
           const token = await createPendingModify({
             userId,
             sqlText: sql,
             rowCount: dryRun.rowCount,
-            tableName: null,
+            tableName,
             slackChannel: context?.slackChannel,
             slackThreadTs: context?.slackThreadTs,
           });
@@ -395,8 +399,10 @@ export const executeSQLTool = async (
           try {
             await confirmCardSender({
               token,
-              sql,
+              tableName,
+              rows: dryRun.rows,
               rowCount: dryRun.rowCount,
+              operation: keyword,
               context: { userId, ...context },
             });
           } catch (err: unknown) {
@@ -407,7 +413,7 @@ export const executeSQLTool = async (
           return JSON.stringify({
             pending: true,
             rowCount: dryRun.rowCount,
-            message: `${dryRun.rowCount}개 행이 변경될 예정이야. Slack 확인 카드에서 실행/취소해줘.`,
+            message: 'Slack 확인 카드를 보냈어. 거기서 실행/취소해줘.',
           });
         }
       }

@@ -221,7 +221,6 @@ describe('buildMorningGreetingBlocks', () => {
   });
 });
 
-
 // ─── buildScheduleBlocks ───────────────────────────────
 
 describe('buildScheduleBlocks', () => {
@@ -243,9 +242,7 @@ describe('buildScheduleBlocks', () => {
   });
 
   it('task 항목에 전체 overflow 메뉴 포함', () => {
-    const items = [
-      makeSchedule({ id: 1, title: '회의', category: '업무' }),
-    ];
+    const items = [makeSchedule({ id: 1, title: '회의', category: '업무' })];
 
     const { blocks } = buildScheduleBlocks(items, '2026-03-08');
 
@@ -253,7 +250,10 @@ describe('buildScheduleBlocks', () => {
     expect(overflowBlocks.length).toBe(1);
 
     if (overflowBlocks[0] && 'accessory' in overflowBlocks[0]) {
-      const accessory = overflowBlocks[0].accessory as { action_id: string; options: Array<{ text: { text: string } }> };
+      const accessory = overflowBlocks[0].accessory as {
+        action_id: string;
+        options: Array<{ text: { text: string } }>;
+      };
       expect(accessory.action_id).toBe(SCHEDULE_ACTION_ID);
       const labels = accessory.options.map((o) => o.text.text);
       expect(labels).toContain('완료');
@@ -278,7 +278,9 @@ describe('buildScheduleBlocks', () => {
     const overflowBlocks = blocks.filter((b) => b.type === 'section' && 'accessory' in b);
     expect(overflowBlocks.length).toBe(1);
     if (overflowBlocks[0] && 'accessory' in overflowBlocks[0]) {
-      const accessory = overflowBlocks[0].accessory as { options: Array<{ text: { text: string } }> };
+      const accessory = overflowBlocks[0].accessory as {
+        options: Array<{ text: { text: string } }>;
+      };
       const labels = accessory.options.map((o) => o.text.text);
       expect(labels).toEqual(['중요 표시', '삭제하기']);
     }
@@ -343,8 +345,10 @@ describe('buildConfirmModifyCard', () => {
   it('실행/취소 버튼에 token이 value로 들어간다', () => {
     const { blocks } = buildConfirmModifyCard({
       token: 'abc1234567890def',
-      sql: 'DELETE FROM schedules WHERE user_id = 1 AND category = \'old\'',
+      tableName: 'schedules',
+      rows: [{ title: 'A', category: '업무' }],
       rowCount: 5,
+      operation: 'DELETE',
     });
 
     const actionsBlock = blocks.find((b) => b.type === 'actions');
@@ -369,8 +373,10 @@ describe('buildConfirmModifyCard', () => {
   it('rowCount가 fallback text와 헤더에 노출된다', () => {
     const { text, blocks } = buildConfirmModifyCard({
       token: 't0',
-      sql: 'DELETE FROM schedules WHERE user_id = 1',
+      tableName: 'schedules',
+      rows: [{ title: 'A' }],
       rowCount: 17,
+      operation: 'DELETE',
     });
 
     expect(text).toContain('17개');
@@ -379,18 +385,6 @@ describe('buildConfirmModifyCard', () => {
       expect(header.text.text).toContain('17개');
     } else {
       throw new Error('header block shape unexpected');
-    }
-  });
-
-  it('긴 SQL은 500자로 잘린다', () => {
-    const longSql = 'DELETE FROM schedules WHERE user_id = 1 AND ' + 'a'.repeat(1000);
-    const { blocks } = buildConfirmModifyCard({ token: 't', sql: longSql, rowCount: 3 });
-    const codeBlock = blocks[1];
-    if (codeBlock?.type === 'section' && 'text' in codeBlock && codeBlock.text && 'text' in codeBlock.text) {
-      expect(codeBlock.text.text).toContain('...');
-      expect(codeBlock.text.text.length).toBeLessThan(longSql.length);
-    } else {
-      throw new Error('code block shape unexpected');
     }
   });
 });
