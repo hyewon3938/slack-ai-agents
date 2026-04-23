@@ -6,6 +6,38 @@
 
 ---
 
+## 2026-04-23: modify_db 확인 플로우 UX 재정비 (#348)
+
+2026-04-22 도입된 확인 플로우의 세 가지 UX 문제를 한 번에 정리.
+
+**1) 확인 카드: SQL 노출 → row 이름 리스트**
+- `dryRunRowCount`(카운트만) → `dryRunAffectedRows`(RETURNING \*로 영향 row 전체 반환)
+- `ensureReturningClause`: DELETE/UPDATE 쿼리에 `RETURNING *`을 자동 주입 (주석·문자열 리터럴 제거 후 검사하여 우회 방지)
+- `pending_modify.table_name` 컬럼(045 migration) 추가로 실행 시점까지 테이블 컨텍스트 보존
+- `pending-display.ts` 신규 모듈: 9개 테이블(schedules/routine_records/routine_templates/sleep_records/sleep_events/reminders/notification_settings/custom_instructions/categories)별 row formatter를 switch로 분기
+- 확인 카드: "⚠️ 확인 필요 — 이 N개가 삭제/변경될 예정이야" 헤더 + 테이블별 그룹 리스트 + 20행 초과 시 "외 N개 더"
+
+**2) pending 후 LLM 중복 응답 → earlyExit**
+- `modify_db`가 pending 처리한 경우 반환 JSON에 `__earlyExit: true` 마커 추가
+- `agent-loop.ts`: tool result에서 마커 감지 시 LLM 재호출 없이 즉시 종료(`{text: '', earlyExit: true}`)
+- `life/index.ts`: `result.earlyExit` true면 텍스트 메시지·history 추가 모두 스킵
+- 효과: 취소 시 예시 메시지가 남지 않아 혼선 제거
+
+**3) 실행 완료 "N개 변경" → 현재 상태 재표시**
+- `loadCurrentStateBlocks`: 테이블명 + 영향 날짜 컨텍스트로 현재 상태를 Block Kit으로 반환
+- `extractAffectedDates`: RETURNING 결과에서 date 컬럼 추출해 범위 조정(오늘/내일/백로그 자동 선택)
+- 실행 완료 카드: "✅ 실행 완료 — N개 변경됐어" + divider + 현재 상태 블록
+- 실패/미지원 테이블이면 요약 행만 표시하고 조용히 폴백
+
+**안전성**:
+- dry-run은 기존과 동일한 BEGIN → 실행 → ROLLBACK 구조 유지
+- `ensureReturningClause`는 기존 RETURNING이 있으면 그대로 둠(중복 주입 방지)
+- `loadCurrentStateBlocks` 실패는 fire-and-forget — 실행 자체는 영향받지 않음
+
+완료 작업: [ADR 0006](adr/0006-modify-db-confirm-flow.md)의 UX 완성. 판단 근거 자체는 기존 ADR에서 다루므로 신규 ADR 없이 project-history만 기록.
+
+---
+
 ## 2026-04-22: modify_db 대량 변경 확인 플로우 (#342, PR #343)
 
 LLM이 `modify_db` 도구로 생성한 DELETE/UPDATE의 영향 row가 임계치(기본 3) 이상이면 즉시 실행 대신 Slack 확인 카드로 전환해 사용자 승인을 받는 구조 추가.
