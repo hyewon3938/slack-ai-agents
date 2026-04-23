@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
-import { createSchedule, ensureCategoryExists } from '@/features/schedule/lib/queries';
-import { getCachedSchedulesByRange, getCachedBacklogSchedules } from '@/lib/cache';
+import {
+  createSchedule,
+  ensureCategoryExists,
+  querySchedulesByRange,
+  queryBacklogSchedules,
+} from '@/features/schedule/lib/queries';
 import { isValidStatus } from '@/features/schedule/lib/types';
 import { validateFields } from '@/lib/validation';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -19,12 +24,12 @@ export async function GET(request: Request) {
     const to = searchParams.get('to');
 
     if (backlog === 'true') {
-      const data = await getCachedBacklogSchedules(userId);
+      const data = await queryBacklogSchedules(userId);
       return NextResponse.json({ data });
     }
 
     if (from && to) {
-      const data = await getCachedSchedulesByRange(userId, from, to);
+      const data = await querySchedulesByRange(userId, from, to);
       return NextResponse.json({ data });
     }
 
@@ -85,8 +90,6 @@ export async function POST(request: Request) {
       important: body.important,
     });
 
-    revalidateTag('schedules', 'seconds');
-    if (body.category) revalidateTag('categories', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
   } catch {
     return NextResponse.json({ error: '일정 생성 실패' }, { status: 500 });

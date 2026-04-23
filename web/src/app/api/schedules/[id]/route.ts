@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import {
   queryScheduleById,
@@ -10,10 +9,9 @@ import {
 import { isValidStatus } from '@/features/schedule/lib/types';
 import { validateFields } from '@/lib/validation';
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export const dynamic = 'force-dynamic';
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -31,10 +29,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -75,18 +70,13 @@ export async function PATCH(
     if (!data) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
-    revalidateTag('schedules', 'seconds');
-    if (body.category) revalidateTag('categories', 'seconds');
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '일정 수정 실패' }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -98,7 +88,6 @@ export async function DELETE(
     if (!deleted) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
-    revalidateTag('schedules', 'seconds');
     return NextResponse.json({ data: { id: Number(id) } });
   } catch {
     return NextResponse.json({ error: '일정 삭제 실패' }, { status: 500 });
