@@ -15,7 +15,7 @@ vi.mock('../shared/db.js', () => ({
 vi.mock('../shared/config.js', () => ({
   CONFIG: {
     slack: { botToken: 't', signingSecret: 's', appToken: 'a' },
-    llm: { provider: 'anthropic', model: '', anthropicApiKey: 'k', groqApiKey: '' },
+    llm: { provider: 'anthropic', model: '', anthropicApiKey: 'k' },
     channels: { life: 'C1', project: '', insight: '', money: '' },
     db: { url: 'postgresql://test' },
     dbProxy: { apiKey: 'test-api-key-at-least-32-chars-long-xxxx' },
@@ -117,10 +117,7 @@ describe('DB Proxy Server', () => {
       });
       expect(status).toBe(200);
       expect(body).toEqual({ rows: [{ id: 1 }], rowCount: 1 });
-      expect(mockQuery).toHaveBeenCalledWith(
-        'SELECT * FROM schedules WHERE user_id = $1',
-        [1],
-      );
+      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM schedules WHERE user_id = $1', [1]);
     });
 
     it('WITH CTE 통과', async () => {
@@ -170,7 +167,7 @@ describe('DB Proxy Server', () => {
       ['GRANT', 'GRANT ALL ON schedules TO public'],
       ['REVOKE', 'REVOKE ALL ON schedules FROM public'],
       ['COPY', "COPY schedules TO '/tmp/out.csv'"],
-      ['DO block', "DO $$ BEGIN END $$"],
+      ['DO block', 'DO $$ BEGIN END $$'],
       ['CALL', 'CALL some_proc()'],
       ['pg_read_file', "SELECT pg_read_file('/etc/passwd')"],
       ['pg_sleep (SSRF probe)', 'SELECT pg_sleep(10)'],
