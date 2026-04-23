@@ -4,16 +4,16 @@
 
 ## 대상 문서
 
-- `docs/interview-prep.md` — 기술 개념, 면접 Q&A, 프로젝트 설계 판단 이유
-- `docs/my-strengths.md` — 핵심 강점, 성격·태도, 약점 대비
+- `docs/_personal/interview-prep.md` — 기술 개념, 면접 Q&A, 프로젝트 설계 판단 이유
+- `docs/_personal/my-strengths.md` — 핵심 강점, 성격·태도, 약점 대비
 
 ## 입력
 
 $ARGUMENTS
 
 - 입력이 비어있으면 → 최근 대화에서 면접/강점 관련 포인트를 자동 추출
-- `강점:` 으로 시작하면 → `docs/my-strengths.md`에 추가
-- `면접:` 또는 그 외 → `docs/interview-prep.md`에 추가
+- `강점:` 으로 시작하면 → `docs/_personal/my-strengths.md`에 추가
+- `면접:` 또는 그 외 → `docs/_personal/interview-prep.md`에 추가
 - 두 문서 모두 해당되면 각각에 추가
 
 ## 실행 규칙

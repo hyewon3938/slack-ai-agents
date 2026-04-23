@@ -6,9 +6,7 @@ dist/
 *.log
 *.tsbuildinfo
 .DS_Store
-docs/ai-workflow-portfolio.md
-docs/interview-prep.md
-docs/my-strengths.md
+docs/_personal/
 .env.production
 .mcp.json
 web/.next/

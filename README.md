@@ -223,7 +223,7 @@ docker compose down             # 전체 정지 (볼륨은 유지 → 데이터 
 | [docs/adr/](docs/adr/) | Architecture Decision Records — 되돌리기 어려운 설계 판단의 배경·대안·트레이드오프 기록 |
 | [docs/project-history.md](docs/project-history.md) | 설계 변화와 의사결정 과정 상세 기록 |
 | [docs/conventions.md](docs/conventions.md) | 코드 컨벤션 & 보안 체크리스트 |
-| [docs/pipeline-optimization.md](docs/pipeline-optimization.md) | 배포 파이프라인 최적화 (GHCR 이미지 빌드) |
-| [docs/operations/db-backup.md](docs/operations/db-backup.md) | DB 백업/복원 운영 가이드 |
+| [docs/optimization/](docs/optimization/) | 최적화 기록 — LLM 비용, 응답 속도, 배포 파이프라인, 의도 분류 제거 회고 |
+| [docs/ops/db-backup.md](docs/ops/db-backup.md) | DB 백업/복원 운영 가이드 |
 | [docs/ops/health-monitoring.md](docs/ops/health-monitoring.md) | 업타임 모니터링 운영 가이드 (GitHub Actions 기반) |
 | [docs/developer-profile.md](docs/developer-profile.md) | AI가 분석한 개발자 성향 프로필 (gitignored) |

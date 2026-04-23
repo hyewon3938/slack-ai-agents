@@ -153,7 +153,7 @@ Phase 5 남은 작업: 프론트엔드 전환 + 기존 코드 제거.
 
 예상 효과: 월 ~$30\~35 → ~$15\~21.
 
-자세한 내용: [docs/api-cost-optimization.md](api-cost-optimization.md)
+자세한 내용: [docs/optimization/llm-cost.md](optimization/llm-cost.md)
 
 ---
 
@@ -179,7 +179,7 @@ app 서비스는 `image:` 필드 기반으로 재구성.
 - **크리덴셜 로테이션 가이드**: `docs/credentials-internal.md`(gitignored)에 만료일·갱신 절차 기록. GitHub 자동 알림 + 개인 캘린더 이중화 방침 수립.
 - **보안 아키텍처 점검**: DB Proxy API 호스트 포트 바인딩을 `0.0.0.0:3100` → `127.0.0.1:3100`으로 전환. 외부 트래픽이 호스트 Caddy의 TLS 종료를 반드시 거치도록 defense-in-depth 강화. README의 인프라 클레임(테스트 수, 서비스 구성, 사용자 격리 범위 등)과 실제 코드·구성 간 정합성 재점검 및 보정.
 
-자세한 분석: [docs/pipeline-optimization.md](pipeline-optimization.md)
+자세한 분석: [docs/optimization/deployment-pipeline.md](optimization/deployment-pipeline.md)
 
 ---
 
@@ -341,7 +341,7 @@ Notion DB를 백엔드로 사용하는 일정(할일) 관리 에이전트.
 
 **핵심 교훈:** "분류"라는 별도 단계가 필요하다는 가정 자체가 틀렸다. LLM 에이전트는 이미 도구를 쓸지 말지 판단하는 능력이 있다.
 
-> 상세 기록: `docs/intent-classification.md`, `docs/speed-optimization.md`
+> 상세 기록: `docs/optimization/intent-classification-removal.md`, `docs/optimization/response-speed.md`
 
 ### 5-4. 쓰기 신뢰성 개선 (#23)
 - LLM 도구 미사용 환각 방지 (PR #26)
@@ -1349,5 +1349,5 @@ insight 채널의 핵심 목표: 일기 데이터와 일운 분석을 비교하�
 | 2026-04-15 | **예산 재설계 Phase 5 (최종)** — v2 아키텍처 전환 완료. 런웨이 프로젝션/월별 시뮬레이션/동적 일일 예산/cron 드리프트 보정 신규 구현. v1 API 라우트·queries.ts v1 함수·budget-calc.ts 전면 제거. budgets 테이블 DROP 마이그레이션 적용. 멀티유저 cron 지원. 3계층 구조(allocator/repository/facade) 완성 (Issue #291) |
 | 2026-04-15 | **설정/분석 계산 정합성 통합** — target\_date 있을 때 allocator 결과를 projection이 재사용하도록 리팩토링. current month prorated vs full-month drift(±1개월) 제거. `projectFromAllocator` 신규 추가 + `getRunwayProjection` 분기 적용 (Issue #294) |
 | 2026-04-19 | **수면 대시보드 시각화 개선** — `DailySleep` 단일 렌더 단위 도입. 아침잠(정오 전 nap)은 밤잠 연장으로 통합해 수면 타임라인·수면시간 추이·기상시간 추이에 반영. 낮잠(정오 이후 nap)은 별도 NapTimeline으로 분리(Y축 12\~24시). 낮잠 통계 요약 카드, 규칙성 점수 툴팁 추가. 모바일 터치 tap 툴팁 지원(useChartTooltip 공통 훅). (Issue #317) |
-| 2026-04-21 | **DB 자동 백업 파이프라인** — VM 호스트 crontab + shell script + Cloudflare R2 + rclone 조합. pg_dump -Fc -Z9 custom format으로 daily 업로드, 일요일 weekly 복사. 14일/8주 보관 정책, 실패 시 Slack 알림. 운영 의존성 분리: app 컨테이너와 무관하게 동작. 운영 가이드(docs/operations/db-backup.md) 신설. (Issue #326, PR #329) |
+| 2026-04-21 | **DB 자동 백업 파이프라인** — VM 호스트 crontab + shell script + Cloudflare R2 + rclone 조합. pg_dump -Fc -Z9 custom format으로 daily 업로드, 일요일 weekly 복사. 14일/8주 보관 정책, 실패 시 Slack 알림. 운영 의존성 분리: app 컨테이너와 무관하게 동작. 운영 가이드(docs/ops/db-backup.md) 신설. (Issue #326, PR #329) |
 | 2026-04-21 | **관측성 도입: 외부 업타임 모니터링 + 헬스체크 엔드포인트 분리** — 공개 `/health`(liveness 최소 정보)와 인증된 `/health/detail`(운영자용 상세: uptime/DB 레이턴시/타임스탬프) 분리(Kubernetes liveness/readiness 패턴). Vercel 웹 `/api/health` liveness 신규 추가. UptimeRobot 5분 간격 외부 폴링 + Slack `#project` 알림 연동 운영 가이드(docs/ops/health-monitoring.md) 작성. (Issue #327, PR #332) |

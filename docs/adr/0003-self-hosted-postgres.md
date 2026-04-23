@@ -66,7 +66,7 @@
 
 ### 후속 작업
 
-- [x] DB 자동 백업 파이프라인 구축 (완료: 2026-04-21, `docs/operations/db-backup.md`)
+- [x] DB 자동 백업 파이프라인 구축 (완료: 2026-04-21, `docs/ops/db-backup.md`)
 - [x] Vercel → DB 경로의 보안 재설계 (완료: ADR 0004)
 
 ---
