@@ -58,21 +58,19 @@ const startApp = async (): Promise<void> => {
   });
 
   // 대량 변경 확인 카드 전송자 주입
-  setConfirmCardSender(async ({ token, sql, rowCount, context }) => {
+  setConfirmCardSender(async ({ token, tableName, rows, rowCount, operation, context }) => {
     if (!context.slackChannel) {
-      console.warn(
-        `[Confirm] slackChannel 없음 — 카드 전송 스킵. token: ${token}`,
-      );
+      console.warn(`[Confirm] slackChannel 없음 — 카드 전송 스킵. token: ${token}`);
       return;
     }
-    const { text, blocks } = buildConfirmModifyCard({ token, sql, rowCount });
-    await postBlockMessage(
-      app.client,
-      context.slackChannel,
-      text,
-      blocks,
-      context.slackThreadTs,
-    );
+    const { text, blocks } = buildConfirmModifyCard({
+      token,
+      tableName,
+      rows,
+      rowCount,
+      operation,
+    });
+    await postBlockMessage(app.client, context.slackChannel, text, blocks, context.slackThreadTs);
   });
 
   // DB 프록시 서버 (웹 대시보드용 — Vercel → HTTPS → VM → DB)

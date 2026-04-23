@@ -48,6 +48,7 @@ describe('pending-modify', () => {
       userId: 1,
       sqlText: 'DELETE FROM schedules WHERE user_id = 1',
       rowCount: 5,
+      tableName: 'schedules',
       slackChannel: 'C123',
     });
 
@@ -55,12 +56,14 @@ describe('pending-modify', () => {
     expect(mockQuery).toHaveBeenCalledOnce();
     const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('INSERT INTO pending_modify');
+    expect(sql).toContain('table_name');
     expect(params[0]).toBe(token);
     expect(params[1]).toBe(1);
     expect(params[2]).toBe('DELETE FROM schedules WHERE user_id = 1');
     expect(params[3]).toBe(5);
-    expect(params[4]).toBe('C123');
-    expect(params[5]).toBeNull();
+    expect(params[4]).toBe('schedules');
+    expect(params[5]).toBe('C123');
+    expect(params[6]).toBeNull();
   });
 
   it('findActivePending: token + userId로 SELECT 수행', async () => {

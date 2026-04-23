@@ -36,7 +36,9 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
     const slackUserId = ('user' in message ? message.user : undefined) ?? '';
     const resolvedUserId = slackUserId ? await resolveUserId(slackUserId) : null;
     if (resolvedUserId === null && slackUserId) {
-      console.warn(`[Life Agent] slack_user_mappings 미등록: ${slackUserId} → DEFAULT_USER_ID 폴백`);
+      console.warn(
+        `[Life Agent] slack_user_mappings 미등록: ${slackUserId} → DEFAULT_USER_ID 폴백`,
+      );
     }
     const userId = resolvedUserId ?? DEFAULT_USER_ID;
 
@@ -48,9 +50,9 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
           await sendMessage(say, '백로그에 쌓인 거 없어.');
           return;
         }
-        const { text: fallback, blocks } = buildScheduleBlocks(
-          items, 'backlog', undefined, { backlog: true },
-        );
+        const { text: fallback, blocks } = buildScheduleBlocks(items, 'backlog', undefined, {
+          backlog: true,
+        });
         await sendBlockMessage(say, fallback, blocks);
       } catch (error: unknown) {
         console.error('[Life Agent] 백로그 fast path 오류:', error);
@@ -89,7 +91,10 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
         // "일정" 단독 → full (overflow 포함), 그 외 → compact (버튼 없이)
         const compact = trimmed !== '일정';
         const { text: fallback, blocks } = buildScheduleBlocks(
-          items, today, undefined, compact ? { compact: true } : undefined,
+          items,
+          today,
+          undefined,
+          compact ? { compact: true } : undefined,
         );
         await sendBlockMessage(say, fallback, blocks);
       } catch (error: unknown) {
@@ -107,17 +112,17 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
       ...(threadTs ? { slackThreadTs: threadTs } : {}),
     };
     try {
-      const result = await runAgentLoop(
-        llmClient,
-        text,
-        {
-          label: 'Life Agent',
-          buildSystemPrompt: () => buildLifeSystemPrompt(channelId, userId),
-          getTools: async () => SQL_TOOLS,
-          executeToolCall: (name, args) => executeSQLTool(name, args, userId, sqlContext),
-          historyMessages: history.toMessages(channelId),
-        },
-      );
+      const result = await runAgentLoop(llmClient, text, {
+        label: 'Life Agent',
+        buildSystemPrompt: () => buildLifeSystemPrompt(channelId, userId),
+        getTools: async () => SQL_TOOLS,
+        executeToolCall: (name, args) => executeSQLTool(name, args, userId, sqlContext),
+        historyMessages: history.toMessages(channelId),
+      });
+
+      // earlyExit: modify_db 확인 카드가 메시지를 대체 → 별도 텍스트 전송 안 함.
+      // history에도 남기지 않음 (확인 카드 자체가 현재 대화의 endpoint).
+      if (result.earlyExit) return;
 
       await sendMessage(say, result.text);
       history.add(channelId, text, result.text);

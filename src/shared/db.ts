@@ -5,9 +5,9 @@ const { Pool, types } = pg;
 // pg 드라이버가 DATE/TIMESTAMP를 JavaScript Date 객체로 변환하면
 // JSON.stringify 시 '2026-03-08T15:00:00.000Z' 같은 UTC 타임스탬프가 되어
 // LLM이 날짜를 오해함. 원본 문자열 그대로 반환하도록 설정.
-types.setTypeParser(1082, (val: string) => val);  // DATE → 'YYYY-MM-DD'
-types.setTypeParser(1114, (val: string) => val);  // TIMESTAMP
-types.setTypeParser(1184, (val: string) => val);  // TIMESTAMPTZ
+types.setTypeParser(1082, (val: string) => val); // DATE → 'YYYY-MM-DD'
+types.setTypeParser(1114, (val: string) => val); // TIMESTAMP
+types.setTypeParser(1184, (val: string) => val); // TIMESTAMPTZ
 
 let pool: pg.Pool | null = null;
 
@@ -69,7 +69,9 @@ export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResu
     const result = await client.query<T>(text);
     return result;
   } finally {
-    await client.query('SET statement_timeout = 0').catch(() => {/* 무시 */});
+    await client.query('SET statement_timeout = 0').catch(() => {
+      /* 무시 */
+    });
     client.release();
   }
 };
@@ -95,37 +97,69 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {/* 무시 */});
+    await client.query('ROLLBACK').catch(() => {
+      /* 무시 */
+    });
     throw err;
   } finally {
-    await client.query('SET statement_timeout = 0').catch(() => {/* 무시 */});
+    await client.query('SET statement_timeout = 0').catch(() => {
+      /* 무시 */
+    });
     client.release();
   }
 };
 
+export interface DryRunResult {
+  rowCount: number;
+  rows: Record<string, unknown>[];
+}
+
 /**
- * 쿼리를 BEGIN → 실행 → ROLLBACK으로 실행해 영향 row 수만 얻는다.
- * DB 상태는 변경되지 않는다. DELETE/UPDATE 실행 전 영향 범위 사전 점검용.
+ * DELETE/UPDATE를 BEGIN → 실행 → ROLLBACK으로 실행해 영향 row 수와 내용을 얻는다.
+ * DB 상태는 변경되지 않는다.
+ * SQL에 RETURNING이 없으면 "RETURNING *"를 자동 추가한다.
  */
-export const dryRunRowCount = async (
+export const dryRunAffectedRows = async (
   text: string,
   timeoutMs: number,
-): Promise<number> => {
+): Promise<DryRunResult> => {
   const p = getPool();
   const client = await p.connect();
   try {
     await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
     await client.query('BEGIN');
-    const result = await client.query(text);
+    const sqlWithReturning = ensureReturningClause(text);
+    const result = await client.query(sqlWithReturning);
     await client.query('ROLLBACK');
-    return result.rowCount ?? 0;
+    return {
+      rowCount: result.rowCount ?? 0,
+      rows: result.rows as Record<string, unknown>[],
+    };
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {/* 무시 */});
+    await client.query('ROLLBACK').catch(() => {
+      /* 무시 */
+    });
     throw err;
   } finally {
-    await client.query('SET statement_timeout = 0').catch(() => {/* 무시 */});
+    await client.query('SET statement_timeout = 0').catch(() => {
+      /* 무시 */
+    });
     client.release();
   }
+};
+
+/**
+ * SQL 끝부분에 RETURNING이 없으면 "RETURNING *"를 추가.
+ * 주석/문자열 리터럴 안의 RETURNING은 무시.
+ */
+export const ensureReturningClause = (sql: string): string => {
+  const stripped = sql
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--[^\n]*/g, '')
+    .replace(/'[^']*'/g, '')
+    .replace(/"[^"]*"/g, '');
+  if (/\bRETURNING\b/i.test(stripped)) return sql;
+  return sql.replace(/;?\s*$/, ' RETURNING *');
 };
 
 /** 연결 풀 종료 */

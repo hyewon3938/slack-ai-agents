@@ -1,6 +1,13 @@
 import type { LLMToolDefinition } from './llm.js';
-import { query, queryWithClient, queryWithRowLimit, dryRunRowCount } from './db.js';
+import {
+  query,
+  queryWithClient,
+  queryWithRowLimit,
+  dryRunAffectedRows,
+  type DryRunResult,
+} from './db.js';
 import { createPendingModify } from './pending-modify.js';
+import { extractTargetTable } from './pending-display.js';
 
 // ---- 상수 ----
 
@@ -58,11 +65,7 @@ const GET_SCHEMA_TOOL: LLMToolDefinition = {
 };
 
 /** SQL 도구 목록 */
-export const SQL_TOOLS: LLMToolDefinition[] = [
-  QUERY_DB_TOOL,
-  MODIFY_DB_TOOL,
-  GET_SCHEMA_TOOL,
-];
+export const SQL_TOOLS: LLMToolDefinition[] = [QUERY_DB_TOOL, MODIFY_DB_TOOL, GET_SCHEMA_TOOL];
 
 // ---- SQL 검증 ----
 
@@ -70,9 +73,9 @@ export const SQL_TOOLS: LLMToolDefinition[] = [
 const stripCommentsAndStrings = (sql: string): string =>
   sql
     .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
-    .replace(/--[^\n]*/g, '')         // line comments
-    .replace(/'[^']*'/g, '')          // single-quoted strings
-    .replace(/"[^"]*"/g, '');         // double-quoted strings
+    .replace(/--[^\n]*/g, '') // line comments
+    .replace(/'[^']*'/g, '') // single-quoted strings
+    .replace(/"[^"]*"/g, ''); // double-quoted strings
 
 /** SQL 앞쪽 주석 제거 후 첫 키워드 추출 */
 export const extractFirstKeyword = (sql: string): string => {
@@ -91,14 +94,7 @@ export const hasMultipleStatements = (sql: string): boolean => {
   return parts.length > 1;
 };
 
-const DANGEROUS_DDL = new Set([
-  'DROP',
-  'TRUNCATE',
-  'ALTER',
-  'CREATE',
-  'GRANT',
-  'REVOKE',
-]);
+const DANGEROUS_DDL = new Set(['DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE']);
 
 /** SELECT 쿼리 검증. 통과 시 null, 실패 시 에러 메시지 반환 */
 export const validateSelectQuery = (sql: string): string | null => {
@@ -150,17 +146,11 @@ export const clearSchemaCache = (): void => {
 
 const getSchemaInfo = async (tableName?: string): Promise<string> => {
   // 캐시 히트 (테이블 필터 없을 때만)
-  if (
-    !tableName &&
-    schemaCache &&
-    Date.now() - schemaCacheTime < SCHEMA_CACHE_TTL_MS
-  ) {
+  if (!tableName && schemaCache && Date.now() - schemaCacheTime < SCHEMA_CACHE_TTL_MS) {
     return schemaCache;
   }
 
-  const tableFilter = tableName
-    ? `AND c.table_name = $1`
-    : '';
+  const tableFilter = tableName ? `AND c.table_name = $1` : '';
   const params = tableName ? [tableName] : undefined;
 
   const result = await query<{
@@ -308,8 +298,10 @@ export interface SQLToolContext {
 
 export type ConfirmCardSender = (params: {
   token: string;
-  sql: string;
+  tableName: string | null;
+  rows: Record<string, unknown>[];
   rowCount: number;
+  operation: 'DELETE' | 'UPDATE';
   context: SQLToolContext & { userId: number };
 }) => Promise<void>;
 
@@ -328,7 +320,11 @@ export const clearConfirmCardSender = (): void => {
 // ---- 감사 로그 ----
 
 /** SQL 실행 로그 (도구명, SQL 앞부분, 결과 요약) */
-const logSQLExecution = (tool: string, sql: string, result: { rowCount?: number | null; error?: string }): void => {
+const logSQLExecution = (
+  tool: string,
+  sql: string,
+  result: { rowCount?: number | null; error?: string },
+): void => {
   const truncatedSQL = sql.length > 200 ? sql.slice(0, 200) + '...' : sql;
   if (result.error) {
     console.warn(`[SQL Audit] BLOCKED ${tool}: ${truncatedSQL} → ${result.error}`);
@@ -367,7 +363,10 @@ export const executeSQLTool = async (
 
     case 'modify_db': {
       const sql = args['sql'] as string;
-      const error = validateModifyQuery(sql) ?? validateUserIdFilter(sql, userId) ?? validateCustomInstruction(sql);
+      const error =
+        validateModifyQuery(sql) ??
+        validateUserIdFilter(sql, userId) ??
+        validateCustomInstruction(sql);
       if (error) {
         logSQLExecution('modify_db', sql, { error });
         return JSON.stringify({ error });
@@ -377,20 +376,22 @@ export const executeSQLTool = async (
       const keyword = extractFirstKeyword(sql);
       if ((keyword === 'DELETE' || keyword === 'UPDATE') && confirmCardSender) {
         const threshold = Number(process.env['MODIFY_CONFIRM_THRESHOLD'] ?? 3);
-        let dryRunCount: number;
+        let dryRun: DryRunResult;
         try {
-          dryRunCount = await dryRunRowCount(sql, SQL_TIMEOUT_MS);
+          dryRun = await dryRunAffectedRows(sql, SQL_TIMEOUT_MS);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           logSQLExecution('modify_db', sql, { error: `dry-run 실패: ${msg}` });
           return JSON.stringify({ error: `쿼리 검증 실패: ${msg}` });
         }
 
-        if (dryRunCount >= threshold) {
+        if (dryRun.rowCount >= threshold) {
+          const tableName = extractTargetTable(sql);
           const token = await createPendingModify({
             userId,
             sqlText: sql,
-            rowCount: dryRunCount,
+            rowCount: dryRun.rowCount,
+            tableName,
             slackChannel: context?.slackChannel,
             slackThreadTs: context?.slackThreadTs,
           });
@@ -398,19 +399,23 @@ export const executeSQLTool = async (
           try {
             await confirmCardSender({
               token,
-              sql,
-              rowCount: dryRunCount,
+              tableName,
+              rows: dryRun.rows,
+              rowCount: dryRun.rowCount,
+              operation: keyword,
               context: { userId, ...context },
             });
           } catch (err: unknown) {
             console.error('[SQL Tools] confirm card 전송 실패:', err);
           }
 
-          logSQLExecution('modify_db', sql, { error: `confirm pending (${dryRunCount} rows)` });
+          logSQLExecution('modify_db', sql, { error: `confirm pending (${dryRun.rowCount} rows)` });
+          // __earlyExit 마커: agent-loop가 감지해 LLM 재호출 없이 즉시 종료
           return JSON.stringify({
+            __earlyExit: true,
             pending: true,
-            rowCount: dryRunCount,
-            message: `${dryRunCount}개 행이 변경될 예정이야. Slack 확인 카드에서 실행/취소해줘.`,
+            rowCount: dryRun.rowCount,
+            message: 'Slack 확인 카드를 보냈어. 거기서 실행/취소해줘.',
           });
         }
       }

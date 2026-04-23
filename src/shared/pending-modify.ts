@@ -10,6 +10,7 @@ export interface PendingModifyRow {
   user_id: number;
   sql_text: string;
   dry_run_row_count: number;
+  table_name: string | null;
   slack_channel: string | null;
   slack_thread_ts: string | null;
   created_at: string;
@@ -25,20 +26,22 @@ export const createPendingModify = async (params: {
   userId: number;
   sqlText: string;
   rowCount: number;
+  tableName: string | null;
   slackChannel?: string;
   slackThreadTs?: string;
 }): Promise<string> => {
   const token = generateToken();
   await query(
     `INSERT INTO pending_modify
-       (token, user_id, sql_text, dry_run_row_count,
+       (token, user_id, sql_text, dry_run_row_count, table_name,
         slack_channel, slack_thread_ts, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '${TTL_MINUTES} minutes')`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW() + INTERVAL '${TTL_MINUTES} minutes')`,
     [
       token,
       params.userId,
       params.sqlText,
       params.rowCount,
+      params.tableName,
       params.slackChannel ?? null,
       params.slackThreadTs ?? null,
     ],
