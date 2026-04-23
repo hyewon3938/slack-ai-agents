@@ -410,7 +410,9 @@ export const executeSQLTool = async (
           }
 
           logSQLExecution('modify_db', sql, { error: `confirm pending (${dryRun.rowCount} rows)` });
+          // __earlyExit 마커: agent-loop가 감지해 LLM 재호출 없이 즉시 종료
           return JSON.stringify({
+            __earlyExit: true,
             pending: true,
             rowCount: dryRun.rowCount,
             message: 'Slack 확인 카드를 보냈어. 거기서 실행/취소해줘.',

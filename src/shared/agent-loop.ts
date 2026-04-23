@@ -84,6 +84,8 @@ export interface AgentLoopResult {
   toolNames: string[];
   /** 루프 중 호출된 도구의 arguments 목록 (toolNames와 순서 대응) */
   toolArgs: Record<string, unknown>[];
+  /** tool이 __earlyExit 마커를 반환했는지 — 호출자가 최종 메시지 전송을 스킵 */
+  earlyExit?: boolean;
 }
 
 /** 도구 실행기 타입 */
@@ -123,8 +125,7 @@ export const executeToolCalls = async (
         console.log(`[${label}] 도구 결과: ${tc.name}`, result.slice(0, 200));
         return { role: 'tool', content: result, toolCallId: tc.id };
       } catch (error: unknown) {
-        const errorMessage =
-          error instanceof Error ? error.message : '알 수 없는 오류';
+        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
         console.error(`[${label}] 도구 오류: ${tc.name}`, errorMessage);
         return {
           role: 'tool',
@@ -152,7 +153,10 @@ export const runAgentLoop = async (
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
-    ...(historyMessages ?? []).map((m) => ({ role: m.role as LLMMessage['role'], content: m.content })),
+    ...(historyMessages ?? []).map((m) => ({
+      role: m.role as LLMMessage['role'],
+      content: m.content,
+    })),
     { role: 'user', content: userText },
   ];
 
@@ -167,17 +171,14 @@ export const runAgentLoop = async (
 
     let response;
     try {
-      response = await withTimeout(
-        llmClient.chat(messages, tools),
-        LLM_TIMEOUT_MS,
-        'LLM 호출',
-      );
+      response = await withTimeout(llmClient.chat(messages, tools), LLM_TIMEOUT_MS, 'LLM 호출');
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
 
       console.error(`[${label}] LLM 호출 오류 (round ${round + 1}):`, errorMsg.slice(0, 500));
       try {
-        const props = error !== null && typeof error === 'object' ? Object.getOwnPropertyNames(error) : [];
+        const props =
+          error !== null && typeof error === 'object' ? Object.getOwnPropertyNames(error) : [];
         const detail = JSON.stringify(error, props, 2);
         console.error(`[${label}] LLM 에러 상세:`, detail?.slice(0, 1000));
       } catch {
@@ -185,7 +186,9 @@ export const runAgentLoop = async (
       }
 
       // 크레딧 부족 (402 / billing / credit) — 재시도 불필요, 즉시 안내
-      const isCreditError = /\b(402|credit_balance|insufficient.credit|billing|prepaid)\b/i.test(errorMsg);
+      const isCreditError = /\b(402|credit_balance|insufficient.credit|billing|prepaid)\b/i.test(
+        errorMsg,
+      );
       if (isCreditError) {
         return {
           text: 'API 크레딧이 부족해서 응답할 수 없어. 여기서 충전해줘: https://platform.claude.com/settings/billing',
@@ -195,39 +198,55 @@ export const runAgentLoop = async (
       }
 
       const isRateLimit = /\b(429|RESOURCE_EXHAUSTED|quota)\b/i.test(errorMsg);
-      const isTransient = /\b(500|503|429|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|overloaded|high demand|fetch failed|timeout)\b/i.test(errorMsg);
+      const isTransient =
+        /\b(500|503|429|INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|overloaded|high demand|fetch failed|timeout)\b/i.test(
+          errorMsg,
+        );
       const maxRetries = isRateLimit ? MAX_RATE_LIMIT_RETRIES : MAX_RETRIES;
 
       if (isTransient && retryCount < maxRetries) {
         retryCount++;
-        const delay = isRateLimit
-          ? parseRetryDelay(errorMsg, 60_000)
-          : retryCount * 3000;
+        const delay = isRateLimit ? parseRetryDelay(errorMsg, 60_000) : retryCount * 3000;
         // eslint-disable-next-line no-console
-        console.log(`[${label}] 일시적 API 오류 재시도 (${retryCount}/${maxRetries}, ${Math.round(delay / 1000)}s 대기)`);
+        console.log(
+          `[${label}] 일시적 API 오류 재시도 (${retryCount}/${maxRetries}, ${Math.round(delay / 1000)}s 대기)`,
+        );
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
 
       if (isRateLimit) {
-        return { text: 'API 호출 한도를 초과했어. 잠시 후에 다시 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
+        return {
+          text: 'API 호출 한도를 초과했어. 잠시 후에 다시 말해줘.',
+          toolNames: calledToolNames,
+          toolArgs: calledToolArgs,
+        };
       }
 
-      return { text: '일시적인 오류가 발생했어. 다시 한번 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
+      return {
+        text: '일시적인 오류가 발생했어. 다시 한번 말해줘.',
+        toolNames: calledToolNames,
+        toolArgs: calledToolArgs,
+      };
     }
 
     // eslint-disable-next-line no-console
-    console.log(`[${label}] finishReason: ${response.finishReason}, toolCalls: ${response.toolCalls.length}`);
+    console.log(
+      `[${label}] finishReason: ${response.finishReason}, toolCalls: ${response.toolCalls.length}`,
+    );
 
     if (response.finishReason === 'stop') {
       // 도구 미사용 환각 방지: 사용자가 데이터 변경/조회를 요청했는데 도구 호출 없이 응답하면 재시도
       if (!hallucinationRetried && calledToolNames.length === 0 && tools.length > 0) {
         const responseText = response.text ?? '';
         // 1) 사용자 메시지에 실제 액션 요청이 있는지 확인
-        const userRequestsAction = /보여|알려|조회|추가|삭제|수정|변경|기록|등록|설정|확인해|찾아/.test(userText);
+        const userRequestsAction =
+          /보여|알려|조회|추가|삭제|수정|변경|기록|등록|설정|확인해|찾아/.test(userText);
         // 2) 응답에 데이터 변경을 주장하는 동사가 있는지 확인
         const claimsAction = responseText
-          ? /했어|넣었|추가했|완료했|수정했|삭제했|처리했|변경했|옮겼|바꿨|등록했|기록했/.test(responseText)
+          ? /했어|넣었|추가했|완료했|수정했|삭제했|처리했|변경했|옮겼|바꿨|등록했|기록했/.test(
+              responseText,
+            )
           : true;
         if (userRequestsAction && claimsAction) {
           hallucinationRetried = true;
@@ -235,12 +254,17 @@ export const runAgentLoop = async (
           messages.push({ role: 'assistant', content: responseText || '(도구 호출 없이 응답)' });
           messages.push({
             role: 'user',
-            content: '방금 도구를 호출하지 않고 작업을 완료했다고 했어. 실제로 반영하려면 반드시 도구를 호출해야 해. 다시 처리해줘.',
+            content:
+              '방금 도구를 호출하지 않고 작업을 완료했다고 했어. 실제로 반영하려면 반드시 도구를 호출해야 해. 다시 처리해줘.',
           });
           continue;
         }
       }
-      return { text: response.text ?? '처리했어.', toolNames: calledToolNames, toolArgs: calledToolArgs };
+      return {
+        text: response.text ?? '처리했어.',
+        toolNames: calledToolNames,
+        toolArgs: calledToolArgs,
+      };
     }
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
@@ -255,6 +279,26 @@ export const runAgentLoop = async (
 
       const toolResults = await executeToolCalls(response.toolCalls, label, executor);
       messages.push(...toolResults);
+
+      // __earlyExit 마커 감지 — LLM 재호출 없이 즉시 종료
+      const earlyExitDetected = toolResults.some((tr) => {
+        if (tr.role !== 'tool') return false;
+        try {
+          const parsed = JSON.parse(tr.content) as { __earlyExit?: boolean };
+          return parsed.__earlyExit === true;
+        } catch {
+          return false;
+        }
+      });
+      if (earlyExitDetected) {
+        return {
+          text: '',
+          toolNames: calledToolNames,
+          toolArgs: calledToolArgs,
+          earlyExit: true,
+        };
+      }
+
       continue;
     }
 
@@ -267,14 +311,28 @@ export const runAgentLoop = async (
     }
 
     if (response.finishReason === 'error') {
-      return { text: '도구 호출에 문제가 생겼어. 다시 한번 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
+      return {
+        text: '도구 호출에 문제가 생겼어. 다시 한번 말해줘.',
+        toolNames: calledToolNames,
+        toolArgs: calledToolArgs,
+      };
     }
 
     // length 등 예상치 못한 종료
     // eslint-disable-next-line no-console
-    console.log(`[${label}] 예상치 못한 종료 — finishReason: ${response.finishReason}, text: ${response.text?.slice(0, 200) ?? 'null'}`);
-    return { text: response.text ?? '처리 중 문제가 생겼어. 다시 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
+    console.log(
+      `[${label}] 예상치 못한 종료 — finishReason: ${response.finishReason}, text: ${response.text?.slice(0, 200) ?? 'null'}`,
+    );
+    return {
+      text: response.text ?? '처리 중 문제가 생겼어. 다시 말해줘.',
+      toolNames: calledToolNames,
+      toolArgs: calledToolArgs,
+    };
   }
 
-  return { text: '요청이 너무 복잡해. 좀 더 간단하게 말해줘.', toolNames: calledToolNames, toolArgs: calledToolArgs };
+  return {
+    text: '요청이 너무 복잡해. 좀 더 간단하게 말해줘.',
+    toolNames: calledToolNames,
+    toolArgs: calledToolArgs,
+  };
 };
