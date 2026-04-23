@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
-import { createCategory } from '@/features/schedule/lib/queries';
-import { getCachedCategories } from '@/lib/cache';
+import { createCategory, queryCategories } from '@/features/schedule/lib/queries';
 import { validateFields } from '@/lib/validation';
 
 const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const userId = await requireAuth();
@@ -14,7 +14,7 @@ export async function GET() {
   }
 
   try {
-    const data = await getCachedCategories(userId);
+    const data = await queryCategories(userId);
     return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: '카테고리 조회 실패' }, { status: 500 });
@@ -28,7 +28,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { name?: string; color?: string; type?: string; parent_id?: number };
+    const body = (await request.json()) as {
+      name?: string;
+      color?: string;
+      type?: string;
+      parent_id?: number;
+    };
 
     if (!body.name?.trim()) {
       return NextResponse.json({ error: '이름을 입력해줘' }, { status: 400 });
@@ -50,7 +55,6 @@ export async function POST(request: Request) {
       type: body.type,
       parent_id: body.parent_id ?? null,
     });
-    revalidateTag('categories', 'seconds');
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : '카테고리 생성 실패';
