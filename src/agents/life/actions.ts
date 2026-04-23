@@ -4,6 +4,7 @@
  */
 
 import type { App } from '@slack/bolt';
+import type { KnownBlock } from '@slack/types';
 import {
   completeRecord,
   queryTodayRecords,
@@ -16,12 +17,9 @@ import {
   moveScheduleToDate,
 } from '../../shared/life-queries.js';
 import { updateMessage } from '../../shared/slack.js';
-import { queryWithRowLimit } from '../../shared/db.js';
-import {
-  findActivePending,
-  markExecuted,
-  markCanceled,
-} from '../../shared/pending-modify.js';
+import { queryWithRowLimit, dryRunAffectedRows } from '../../shared/db.js';
+import { findActivePending, markExecuted, markCanceled } from '../../shared/pending-modify.js';
+import { loadCurrentStateBlocks, extractAffectedDates } from '../../shared/pending-display.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {
@@ -46,9 +44,7 @@ const CONFIRM_EXECUTE_MAX_ROWS = 50;
 
 /** Slack body에서 userId 해석 (미등록이면 DEFAULT_USER_ID 폴백) */
 const resolveBodyUserId = async (body: { user?: string | { id: string } }): Promise<number> => {
-  const slackUserId = body.user
-    ? (typeof body.user === 'string' ? body.user : body.user.id)
-    : '';
+  const slackUserId = body.user ? (typeof body.user === 'string' ? body.user : body.user.id) : '';
   if (!slackUserId) return DEFAULT_USER_ID;
   return (await resolveUserId(slackUserId)) ?? DEFAULT_USER_ID;
 };
@@ -79,19 +75,20 @@ export const registerLifeActions = (app: App): void => {
         ? buildFilteredRoutineBlocks(records, today, filter.targetSlots, filter.incompleteFrom)
         : buildRoutineBlocks(records, today);
 
-      const channelId =
-        'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs =
-        'message' in body && body.message ? body.message.ts : undefined;
+      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
+      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
 
       if (channelId && messageTs) {
         await updateMessage(client, channelId, messageTs, text, blocks);
       }
 
       // Home 탭 갱신
-      const slackUserId = 'user' in body && body.user
-        ? (typeof body.user === 'string' ? body.user : body.user.id)
-        : undefined;
+      const slackUserId =
+        'user' in body && body.user
+          ? typeof body.user === 'string'
+            ? body.user
+            : body.user.id
+          : undefined;
       if (slackUserId) {
         await publishHomeView(client, slackUserId).catch(() => {});
       }
@@ -138,19 +135,20 @@ export const registerLifeActions = (app: App): void => {
         ? buildScheduleBlocks(items, 'backlog', undefined, { backlog: true })
         : buildScheduleBlocks(items, targetDate);
 
-      const channelId =
-        'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs =
-        'message' in body && body.message ? body.message.ts : undefined;
+      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
+      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
 
       if (channelId && messageTs) {
         await updateMessage(client, channelId, messageTs, text, blocks);
       }
 
       // Home 탭 갱신
-      const slackUserId = 'user' in body && body.user
-        ? (typeof body.user === 'string' ? body.user : body.user.id)
-        : undefined;
+      const slackUserId =
+        'user' in body && body.user
+          ? typeof body.user === 'string'
+            ? body.user
+            : body.user.id
+          : undefined;
       if (slackUserId) {
         await publishHomeView(client, slackUserId).catch(() => {});
       }
@@ -172,10 +170,8 @@ export const registerLifeActions = (app: App): void => {
     const userId = await resolveBodyUserId(body);
     const pending = await findActivePending(token, userId);
 
-    const channelId =
-      'channel' in body && body.channel ? body.channel.id : undefined;
-    const messageTs =
-      'message' in body && body.message ? body.message.ts : undefined;
+    const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
+    const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
 
     if (!pending) {
       if (channelId && messageTs) {
@@ -191,20 +187,40 @@ export const registerLifeActions = (app: App): void => {
     }
 
     try {
+      // 실행 전에 영향받을 row의 date를 dry-run으로 한 번 더 가져와
+      // 실행 후 currentState 조회 범위를 정확히 맞춘다.
+      let affectedDates: string[] = [];
+      try {
+        const pre = await dryRunAffectedRows(pending.sql_text, CONFIRM_EXECUTE_TIMEOUT_MS);
+        affectedDates = extractAffectedDates(pre.rows);
+      } catch {
+        // dry-run 재실패해도 실행은 진행. affectedDates 없이 오늘 기준으로 표시.
+      }
+
       const result = await queryWithRowLimit(
         pending.sql_text,
         CONFIRM_EXECUTE_TIMEOUT_MS,
         CONFIRM_EXECUTE_MAX_ROWS,
       );
       await markExecuted(pending.id);
+
+      const summaryText = `✅ 실행 완료 — ${result.rowCount ?? 0}개 행 변경됐어.`;
+      const blocks: KnownBlock[] = [
+        { type: 'section', text: { type: 'mrkdwn', text: summaryText } },
+      ];
+      if (pending.table_name) {
+        const state = await loadCurrentStateBlocks(pending.table_name, {
+          userId,
+          affectedDates,
+        }).catch(() => null);
+        if (state) {
+          blocks.push({ type: 'divider' });
+          blocks.push(...state.blocks);
+        }
+      }
+
       if (channelId && messageTs) {
-        await updateMessage(
-          client,
-          channelId,
-          messageTs,
-          `실행 완료. ${result.rowCount ?? 0}개 행 변경됐어.`,
-          [],
-        );
+        await updateMessage(client, channelId, messageTs, summaryText, blocks);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -228,19 +244,11 @@ export const registerLifeActions = (app: App): void => {
     const pending = await findActivePending(token, userId);
     if (pending) await markCanceled(pending.id);
 
-    const channelId =
-      'channel' in body && body.channel ? body.channel.id : undefined;
-    const messageTs =
-      'message' in body && body.message ? body.message.ts : undefined;
+    const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
+    const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
 
     if (channelId && messageTs) {
-      await updateMessage(
-        client,
-        channelId,
-        messageTs,
-        '취소했어. 아무것도 바뀌지 않았어.',
-        [],
-      );
+      await updateMessage(client, channelId, messageTs, '취소했어. 아무것도 바뀌지 않았어.', []);
     }
   });
 };
