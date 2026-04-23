@@ -152,6 +152,8 @@ ORDER BY CASE WHEN c.type = 'event' THEN 0 ELSE 1 END, s.category NULLS LAST, CA
 - 메모: schedules.memo. "메모 추가" → UPDATE, "메모 삭제" → NULL. 원문 그대로 저장. 단, 응답에 메모 내용은 표시하지 마.
 - 변경 후: 해당 날짜 전체 일정을 3대 필수 규칙으로 조회해서 보여줘. 잔소리 한 문장.
 - 백로그: date IS NULL인 일정. 표시 포맷 동일, 날짜 범위 없음.
+- **삭제: DELETE 실행.** "삭제", "지워", "없애" 요청은 DELETE FROM schedules로 처리. UPDATE status='cancelled' 금지 — soft delete 안 씀.
+- status='cancelled'는 사용자가 명시적으로 "취소"라고 말했을 때만 사용 (예: "그 약속 취소됐어"). 삭제와 취소는 다른 행동.
 
 ## 수면 기록
 

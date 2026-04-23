@@ -444,6 +444,31 @@ const buildBacklogOverflowOptions = (
   },
 ];
 
+/**
+ * 일정 목록을 줄글(단일 mrkdwn 문자열)로 변환.
+ * 프롬프트의 "일정 표시 포맷" 스펙과 동일. 카테고리 헤더 사이 빈 줄.
+ */
+export const formatSchedulesAsText = (
+  items: ScheduleRow[],
+  targetDate: string,
+  options?: { backlog?: boolean },
+): string => {
+  const backlog = options?.backlog ?? false;
+  const formatted = backlog ? '' : formatDateShort(targetDate);
+  const headerLabel = backlog ? `백로그 (${items.length}건)` : `${formatted} 일정`;
+
+  const groups = groupByCategory(items);
+  const sections: string[] = [];
+  for (const group of groups) {
+    const lines = [`*[${group.category}]*`];
+    for (const item of group.items) lines.push(formatScheduleTitle(item));
+    sections.push(lines.join('\n'));
+  }
+
+  if (sections.length === 0) return `*${headerLabel}*\n없음`;
+  return `*${headerLabel}*\n\n${sections.join('\n\n')}`;
+};
+
 /** 일정 목록 Block Kit 빌드 (카테고리별 그룹핑 + overflow 메뉴) */
 export const buildScheduleBlocks = (
   items: ScheduleRow[],
