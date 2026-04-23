@@ -12,7 +12,7 @@ if [ -f "$REPO_DIR/.env" ]; then
   set -a; . "$REPO_DIR/.env"; set +a
 fi
 
-LOG_DIR="${LOG_DIR:-/var/log/slack-ai-agents}"
+LOG_DIR="${LOG_DIR:-$HOME/.local/log/slack-ai-agents}"
 LOG_FILE="$LOG_DIR/backup.log"
 
 : "${POSTGRES_USER:?POSTGRES_USER 필요}"
