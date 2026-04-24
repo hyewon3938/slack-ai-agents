@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# 파일명/요일 판정을 KST 기준으로 (VM TZ=UTC라 그대로 두면 하루 밀려 혼동)
+export TZ=Asia/Seoul
+
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 # .env 로드 (POSTGRES_USER, POSTGRES_DB, R2_REMOTE, SLACK_BOT_TOKEN, PROJECT_CHANNEL_ID, LOG_DIR)
