@@ -161,10 +161,11 @@ export async function updateRoutineRecordMemo(
   id: number,
   memo: string | null,
 ): Promise<void> {
-  await query(
-    `UPDATE routine_records SET memo = $3 WHERE id = $1 AND user_id = $2`,
-    [id, userId, memo],
-  );
+  await query(`UPDATE routine_records SET memo = $3 WHERE id = $1 AND user_id = $2`, [
+    id,
+    userId,
+    memo,
+  ]);
 }
 
 // ─── 빈도 판별 ───────────────────────────────────────
@@ -172,8 +173,7 @@ export async function updateRoutineRecordMemo(
 function daysBetween(from: string, to: string): number {
   const msPerDay = 86_400_000;
   return Math.round(
-    (new Date(to + 'T00:00:00+09:00').getTime() -
-      new Date(from + 'T00:00:00+09:00').getTime()) /
+    (new Date(to + 'T00:00:00+09:00').getTime() - new Date(from + 'T00:00:00+09:00').getTime()) /
       msPerDay,
   );
 }
@@ -185,7 +185,12 @@ function parseIntervalDays(frequency: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function shouldCreateToday(frequency: string | null, lastDate: string | null, today: string, startDate?: string): boolean {
+function shouldCreateToday(
+  frequency: string | null,
+  lastDate: string | null,
+  today: string,
+  startDate?: string,
+): boolean {
   // 시작일이 미래면 생성하지 않음 (YYYY-MM-DD는 사전순 비교 = 시간순 비교)
   if (startDate && today < startDate) return false;
 
@@ -207,7 +212,11 @@ function shouldCreateToday(frequency: string | null, lastDate: string | null, to
 
 /** 오늘 기록 자동 생성 (아직 없는 active 템플릿만) */
 export async function ensureTodayRecords(userId: number, date: string): Promise<number> {
-  const { rows: templates } = await query<{ id: number; frequency: string | null; start_date: string }>(
+  const { rows: templates } = await query<{
+    id: number;
+    frequency: string | null;
+    start_date: string;
+  }>(
     `SELECT id, frequency, start_date::text FROM routine_templates WHERE active = true AND deleted_at IS NULL AND user_id = $1`,
     [userId],
   );
@@ -227,17 +236,22 @@ export async function ensureTodayRecords(userId: number, date: string): Promise<
   );
   const lastDateMap = new Map(lastRecords.map((r) => [r.template_id, r.last_date]));
 
-  let created = 0;
-  for (const t of templates) {
-    if (existingIds.has(t.id)) continue;
-    if (!shouldCreateToday(t.frequency, lastDateMap.get(t.id) ?? null, date, t.start_date)) continue;
-    await query(
-      `INSERT INTO routine_records (user_id, template_id, date, completed) VALUES ($1, $2, $3, false)`,
-      [userId, t.id, date],
-    );
-    created++;
-  }
-  return created;
+  const toInsertIds = templates
+    .filter((t) => !existingIds.has(t.id))
+    .filter((t) =>
+      shouldCreateToday(t.frequency, lastDateMap.get(t.id) ?? null, date, t.start_date),
+    )
+    .map((t) => t.id);
+
+  if (toInsertIds.length === 0) return 0;
+
+  const result = await query(
+    `INSERT INTO routine_records (user_id, template_id, date, completed)
+     SELECT $1, t.id, $2, false
+     FROM UNNEST($3::int[]) AS t(id)`,
+    [userId, date, toInsertIds],
+  );
+  return result.rowCount ?? 0;
 }
 
 // ─── 통계 ────────────────────────────────────────────
@@ -370,10 +384,7 @@ export async function updateInactivePeriod(
 }
 
 /** 비활성 기간 삭제 */
-export async function deleteInactivePeriod(
-  userId: number,
-  periodId: number,
-): Promise<boolean> {
+export async function deleteInactivePeriod(userId: number, periodId: number): Promise<boolean> {
   const result = await query(
     `DELETE FROM routine_inactive_periods WHERE id = $1 AND user_id = $2`,
     [periodId, userId],
