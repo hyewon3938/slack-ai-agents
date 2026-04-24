@@ -24,7 +24,13 @@ import {
   decrementReminderCount,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
-import { getTodayISO, getYesterdayISO, getEffectiveTodayISO, getKSTTimeString, getKSTDayOfWeek } from '../shared/kst.js';
+import {
+  getTodayISO,
+  getYesterdayISO,
+  getEffectiveTodayISO,
+  getKSTTimeString,
+  getKSTDayOfWeek,
+} from '../shared/kst.js';
 import {
   DEFAULT_USER_ID,
   queryAllUserMappings,
@@ -213,7 +219,10 @@ export const calcRoutineStats = (records: RoutineRecordRow[]): RoutineStats => {
 // ─── 루틴 기록 생성 ─────────────────────────────────────
 
 /** 활성 템플릿 → 빈도 체크 → 오늘 기록 생성 */
-export const createTodayRecords = async (today: string, userId: number = DEFAULT_USER_ID): Promise<number> => {
+export const createTodayRecords = async (
+  today: string,
+  userId: number = DEFAULT_USER_ID,
+): Promise<number> => {
   const templates = await queryActiveTemplates(userId);
   const existingIds = await queryExistingTemplateIds(today, userId);
 
@@ -224,7 +233,12 @@ export const createTodayRecords = async (today: string, userId: number = DEFAULT
     const shouldCreate =
       t.frequency === '매일'
         ? !t.start_date || today >= t.start_date
-        : shouldCreateToday(t.frequency, await queryLastRecordDate(t.id, userId), today, t.start_date);
+        : shouldCreateToday(
+            t.frequency,
+            await queryLastRecordDate(t.id, userId),
+            today,
+            t.start_date,
+          );
 
     if (shouldCreate) {
       try {
@@ -240,12 +254,141 @@ export const createTodayRecords = async (today: string, userId: number = DEFAULT
   return created;
 };
 
+// ─── 일별 예산 로그 자동 백필 (Vercel cron 누락 방어) ──
+
+/** 결제일 사이클(16일 시작)을 적용해 해당 날짜의 billing_month 'YYYY-MM' 반환 */
+const getBillingMonthForDate = (isoDate: string): string => {
+  const [yStr, mStr, dStr] = isoDate.split('-');
+  let year = Number(yStr);
+  let month = Number(mStr);
+  const day = Number(dStr);
+  if (day >= 16) {
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return `${year}-${String(month).padStart(2, '0')}`;
+};
+
+/**
+ * 어제자 daily_budget_logs 누락 감지 → 직접 INSERT 백필.
+ * - budget: 같은 billing_month의 직전 로그에서 복제 (allocation 로직 미복제)
+ * - spent: 기존 saveDailyBudgetLog와 동일한 SQL로 직접 계산
+ * - 백필 발생 시 #project 채널로 Slack 알림
+ */
+const backfillYesterdayBudgetLogIfMissing = async (app: App): Promise<void> => {
+  const yesterday = getYesterdayISO();
+  const billingMonth = getBillingMonthForDate(yesterday);
+
+  const usersResult = await query<{ id: number }>('SELECT id FROM users ORDER BY id');
+  const backfilled: Array<{ userId: number; budget: number; spent: number; saved: number }> = [];
+  const failures: Array<{ userId: number; reason: string }> = [];
+
+  for (const { id: userId } of usersResult.rows) {
+    try {
+      const existing = await query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM daily_budget_logs WHERE user_id = $1 AND date = $2',
+        [userId, yesterday],
+      );
+      if (Number(existing.rows[0]?.count ?? 0) > 0) continue;
+
+      const prevBudgetRow = await query<{ budget: number }>(
+        `SELECT budget FROM daily_budget_logs
+         WHERE user_id = $1 AND billing_month = $2 AND date < $3
+         ORDER BY date DESC LIMIT 1`,
+        [userId, billingMonth, yesterday],
+      );
+      const prevBudget = prevBudgetRow.rows[0];
+      if (!prevBudget) {
+        failures.push({ userId, reason: '같은 billing_month에 이전 로그 없음' });
+        continue;
+      }
+      const budget = prevBudget.budget;
+
+      const budgetStartRow = await query<{ updated_at: string }>(
+        'SELECT updated_at::text FROM budget_settings WHERE user_id = $1',
+        [userId],
+      );
+      const budgetStartAt = budgetStartRow.rows[0]?.updated_at ?? '9999-12-31T00:00:00Z';
+
+      const spentRow = await query<{ spent: string }>(
+        `SELECT COALESCE(SUM(amount), 0)::text AS spent
+         FROM expenses
+         WHERE user_id = $1 AND date = $2
+           AND (is_installment = false OR (is_installment = true AND created_at >= $3))
+           AND exclude_from_budget = false
+           AND COALESCE(type, 'expense') = 'expense'
+           AND planned_expense_id IS NULL`,
+        [userId, yesterday, budgetStartAt],
+      );
+      const spent = Number(spentRow.rows[0]?.spent ?? 0);
+      const saved = budget - spent;
+
+      await query(
+        `INSERT INTO daily_budget_logs (user_id, date, billing_month, budget, spent, saved)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_id, date) DO NOTHING`,
+        [userId, yesterday, billingMonth, budget, spent, saved],
+      );
+      backfilled.push({ userId, budget, spent, saved });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      failures.push({ userId, reason: msg });
+      console.error(`[Life Cron] 백필 실패 (user=${userId}):`, msg);
+    }
+  }
+
+  if (backfilled.length === 0 && failures.length === 0) return;
+
+  const projectChannel = process.env['PROJECT_CHANNEL_ID'] ?? '';
+  if (!projectChannel) {
+    console.warn('[Life Cron] PROJECT_CHANNEL_ID 미설정 — 백필 알림 생략');
+    return;
+  }
+
+  const lines: string[] = [];
+  if (backfilled.length > 0) {
+    lines.push('*백필 완료*');
+    for (const b of backfilled) {
+      lines.push(`• user_id=${b.userId}: budget=${b.budget}, spent=${b.spent}, saved=${b.saved}`);
+    }
+  }
+  if (failures.length > 0) {
+    lines.push('*백필 실패*');
+    for (const f of failures) {
+      lines.push(`• user_id=${f.userId}: ${f.reason}`);
+    }
+  }
+  const text = `Vercel cron 누락 감지 — 어제자(${yesterday}) 일별 예산 로그 자동 백필\n${lines.join('\n')}`;
+
+  try {
+    await postToChannel(app.client, projectChannel, text);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[Life Cron] 백필 알림 전송 실패:', msg);
+  }
+
+  console.warn(
+    `[Life Cron] 일별 예산 로그 백필: 성공 ${backfilled.length}명, 실패 ${failures.length}명`,
+  );
+};
+
 // ─── 크론 태스크 ────────────────────────────────────────
 
 /** 아침: 어제 루틴 최종 달성률 + 루틴 기록 생성 + 오늘 일정 + 낮 루틴 체크리스트 (LLM 없음) */
 const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const yesterday = getYesterdayISO();
+
+  // Vercel cron 누락 방어: 어제자 일별 예산 로그 자동 백필
+  try {
+    await backfillYesterdayBudgetLogIfMissing(app);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[Life Cron] 일별 예산 로그 백필 체크 실패:', msg);
+  }
 
   await forEachUser(config, 'life', '아침 알림', async (userId, channelId) => {
     // 1. 어제 루틴 최종 달성률
@@ -375,9 +518,7 @@ const insightMorningTask = async (app: App, config: LifeCronConfig): Promise<voi
 
     if (result.rows.length > 0) {
       const fortune = result.rows[0] as { analysis: string; summary: string | null };
-      const text = fortune.summary
-        ? `${fortune.summary}\n\n${fortune.analysis}`
-        : fortune.analysis;
+      const text = fortune.summary ? `${fortune.summary}\n\n${fortune.analysis}` : fortune.analysis;
       await postToChannel(app.client, channelId, text);
       console.warn(`[Life Cron] 일운 분석 알림 전송 완료 (유저=${userId})`);
     } else {
@@ -422,9 +563,7 @@ const insightNightTask = async (app: App, config: LifeCronConfig): Promise<void>
       [userId, today],
     );
     const fortune = fortuneResult.rows[0];
-    const fortuneContext = fortune?.summary
-      ? `\n오늘 일운 요약: ${fortune.summary}`
-      : '';
+    const fortuneContext = fortune?.summary ? `\n오늘 일운 요약: ${fortune.summary}` : '';
 
     const context = `오늘 일기:\n${diary.content}${fortuneContext}`;
 
@@ -628,9 +767,7 @@ export class CronScheduler {
   private async refreshReminderCache(): Promise<void> {
     this.reminderTimesCache = await queryActiveReminderTimes();
     this.reminderCacheUpdatedAt = Date.now();
-    console.warn(
-      `[Life Cron] 리마인더 캐시 갱신: ${this.reminderTimesCache.size}개 시간대`,
-    );
+    console.warn(`[Life Cron] 리마인더 캐시 갱신: ${this.reminderTimesCache.size}개 시간대`);
   }
 
   private async checkDueReminders(currentTime?: string): Promise<void> {
