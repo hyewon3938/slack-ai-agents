@@ -81,7 +81,14 @@ export const createSchedule = async (
 };
 
 const SCHEDULE_COLUMNS = new Set([
-  'title', 'date', 'end_date', 'status', 'category', 'subcategory', 'memo', 'important',
+  'title',
+  'date',
+  'end_date',
+  'status',
+  'category',
+  'subcategory',
+  'memo',
+  'important',
 ]);
 
 export const updateSchedule = async (
@@ -156,7 +163,14 @@ export const createCategory = async (
     `INSERT INTO categories (user_id, name, color, type, sort_order, parent_id)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id`,
-    [userId, data.name, data.color ?? 'gray', data.type ?? 'task', (maxOrder?.max ?? 0) + 1, parentId],
+    [
+      userId,
+      data.name,
+      data.color ?? 'gray',
+      data.type ?? 'task',
+      (maxOrder?.max ?? 0) + 1,
+      parentId,
+    ],
   );
   const row = result.rows[0];
   if (!row) throw new Error('createCategory: INSERT returned no rows');
@@ -203,9 +217,16 @@ export const reorderCategories = async (
   userId: number,
   orders: { id: number; sort_order: number }[],
 ): Promise<void> => {
-  for (const { id, sort_order } of orders) {
-    await query('UPDATE categories SET sort_order = $1 WHERE user_id = $2 AND id = $3', [sort_order, userId, id]);
-  }
+  if (orders.length === 0) return;
+  const ids = orders.map((o) => o.id);
+  const sortOrders = orders.map((o) => o.sort_order);
+  await query(
+    `UPDATE categories AS c
+     SET sort_order = u.sort_order
+     FROM UNNEST($1::int[], $2::int[]) AS u(id, sort_order)
+     WHERE c.user_id = $3 AND c.id = u.id`,
+    [ids, sortOrders, userId],
+  );
 };
 
 /** 일정에서 사용 중인 카테고리가 categories 테이블에 없으면 자동 추가 */
