@@ -49,7 +49,6 @@ import {
 import { weeklyReportTask } from './weekly-report.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView } from '../agents/life/home.js';
-import { CONFIG } from '../shared/config.js';
 
 export interface LifeCronConfig {
   channelId: string;
@@ -343,7 +342,8 @@ const backfillYesterdayBudgetLogIfMissing = async (app: App): Promise<void> => {
 
   if (backfilled.length === 0 && failures.length === 0) return;
 
-  if (!CONFIG.channels.project) {
+  const projectChannel = process.env['PROJECT_CHANNEL_ID'] ?? '';
+  if (!projectChannel) {
     console.warn('[Life Cron] PROJECT_CHANNEL_ID 미설정 — 백필 알림 생략');
     return;
   }
@@ -364,7 +364,7 @@ const backfillYesterdayBudgetLogIfMissing = async (app: App): Promise<void> => {
   const text = `Vercel cron 누락 감지 — 어제자(${yesterday}) 일별 예산 로그 자동 백필\n${lines.join('\n')}`;
 
   try {
-    await postToChannel(app.client, CONFIG.channels.project, text);
+    await postToChannel(app.client, projectChannel, text);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('[Life Cron] 백필 알림 전송 실패:', msg);
