@@ -196,7 +196,18 @@ export async function createInstallmentExpenses(
 }
 
 /** 지출 수정 (허용 컬럼 화이트리스트) */
-const EXPENSE_COLUMNS = new Set(['date', 'amount', 'category', 'description', 'payment_method', 'memo', 'type', 'planned_expense_id', 'exclude_from_budget', 'distribute_to_budget']);
+const EXPENSE_COLUMNS = new Set([
+  'date',
+  'amount',
+  'category',
+  'description',
+  'payment_method',
+  'memo',
+  'type',
+  'planned_expense_id',
+  'exclude_from_budget',
+  'distribute_to_budget',
+]);
 
 export async function updateExpense(
   userId: number,
@@ -350,7 +361,15 @@ export async function queryFixedCosts(userId: number): Promise<FixedCostRow[]> {
 }
 
 /** 고정비 수정 */
-const FIXED_COST_COLUMNS = new Set(['name', 'amount', 'category', 'is_variable', 'day_of_month', 'active', 'memo']);
+const FIXED_COST_COLUMNS = new Set([
+  'name',
+  'amount',
+  'category',
+  'is_variable',
+  'day_of_month',
+  'active',
+  'memo',
+]);
 
 export async function updateFixedCost(
   userId: number,
@@ -387,10 +406,10 @@ export async function createFixedCost(
 
 /** 고정비 삭제 */
 export async function deleteFixedCost(userId: number, id: number): Promise<boolean> {
-  const result = await query(
-    `DELETE FROM fixed_costs WHERE id = $1 AND user_id = $2`,
-    [id, userId],
-  );
+  const result = await query(`DELETE FROM fixed_costs WHERE id = $1 AND user_id = $2`, [
+    id,
+    userId,
+  ]);
   return (result.rowCount ?? 0) > 0;
 }
 
@@ -406,32 +425,42 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
 
   const todayStr = getTodayISO();
 
-  let created = 0;
+  const candidates = activeCostsWithDay
+    .map((fc) => {
+      const expenseDate = resolveFixedCostExpenseDate(yearMonth, fc.day_of_month!);
+      return { fc, expenseDate };
+    })
+    .filter((c) => c.expenseDate <= todayStr)
+    .map((c) => ({
+      ...c,
+      billingMonth: getBillingMonthForExpense(c.expenseDate, '현대카드'),
+    }));
 
-  for (const fc of activeCostsWithDay) {
-    const expenseDate = resolveFixedCostExpenseDate(yearMonth, fc.day_of_month!);
+  if (candidates.length === 0) return 0;
 
-    if (expenseDate > todayStr) continue;
+  const result = await query(
+    `INSERT INTO expenses
+       (user_id, date, amount, category, description, payment_method, source, memo, type, exclude_from_budget, billing_month)
+     SELECT $1, d.date, d.amount, d.category, d.description, '현대카드', 'fixed', d.memo, 'expense', true, d.billing_month
+     FROM UNNEST(
+       $2::date[], $3::numeric[], $4::text[], $5::text[], $6::text[], $7::text[]
+     ) AS d(date, amount, category, description, memo, billing_month)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM expenses e
+       WHERE e.user_id = $1 AND e.source = 'fixed' AND e.date = d.date AND e.description = d.description
+     )`,
+    [
+      userId,
+      candidates.map((c) => c.expenseDate),
+      candidates.map((c) => c.fc.amount),
+      candidates.map((c) => c.fc.category ?? '기타'),
+      candidates.map((c) => c.fc.name),
+      candidates.map((c) => `고정비 자동 기록 (fixed_cost_id: ${c.fc.id})`),
+      candidates.map((c) => c.billingMonth),
+    ],
+  );
 
-    const existing = await queryOne<{ id: number }>(
-      `SELECT id FROM expenses
-       WHERE user_id = $1 AND source = 'fixed' AND date = $2 AND description = $3`,
-      [userId, expenseDate, fc.name],
-    );
-
-    if (existing) continue;
-
-    const fixedBillingMonth = getBillingMonthForExpense(expenseDate, '현대카드');
-    await queryOne(
-      `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, source, memo, type, exclude_from_budget, billing_month)
-       VALUES ($1, $2, $3, $4, $5, '현대카드', 'fixed', $6, 'expense', true, $7)
-       RETURNING id`,
-      [userId, expenseDate, fc.amount, fc.category ?? '기타', fc.name, `고정비 자동 기록 (fixed_cost_id: ${fc.id})`, fixedBillingMonth],
-    );
-    created++;
-  }
-
-  return created;
+  return result.rowCount ?? 0;
 }
 
 // ─── 자산 ─────────────────────────────────────────────
@@ -467,7 +496,10 @@ export async function updateAsset(
 // ─── 예정 지출 ────────────────────────────────────────
 
 /** 예정 지출 목록 조회 (사용 금액 포함) */
-export async function queryPlannedExpenses(userId: number, yearMonth?: string): Promise<PlannedExpenseRow[]> {
+export async function queryPlannedExpenses(
+  userId: number,
+  yearMonth?: string,
+): Promise<PlannedExpenseRow[]> {
   const condition = yearMonth ? 'AND p.year_month = $2' : '';
   const params: unknown[] = yearMonth ? [userId, yearMonth] : [userId];
   const { rows } = await query<PlannedExpenseRow>(
@@ -525,20 +557,20 @@ export async function updatePlannedExpense(
 
 /** 예정 지출 삭제 */
 export async function deletePlannedExpense(userId: number, id: number): Promise<boolean> {
-  const result = await query(
-    'DELETE FROM planned_expenses WHERE id = $1 AND user_id = $2',
-    [id, userId],
-  );
+  const result = await query('DELETE FROM planned_expenses WHERE id = $1 AND user_id = $2', [
+    id,
+    userId,
+  ]);
   return (result.rowCount ?? 0) > 0;
 }
 
 // ─── 가용자금 실시간 계산 ────────────────────────────────
 
 interface EffectiveAvailable {
-  snapshot_total: number;  // 자산 스냅샷 합계
-  expense_since: number;   // 스냅샷 이후 지출
-  income_since: number;    // 스냅샷 이후 수입
-  effective: number;       // 실시간 가용자금
+  snapshot_total: number; // 자산 스냅샷 합계
+  expense_since: number; // 스냅샷 이후 지출
+  income_since: number; // 스냅샷 이후 수입
+  effective: number; // 실시간 가용자금
   latest_update: string | null;
 }
 
@@ -585,8 +617,8 @@ export type { DailyBudgetLog };
 
 export interface DailyBudgetLogSummary {
   logs: DailyBudgetLog[];
-  total_saved: number;     // 해당 월 누적 세이브 (음수 = 누적 초과)
-  days_logged: number;     // 기록된 일수
+  total_saved: number; // 해당 월 누적 세이브 (음수 = 누적 초과)
+  days_logged: number; // 기록된 일수
   avg_daily_saved: number; // 일평균 세이브
 }
 
