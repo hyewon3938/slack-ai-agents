@@ -13,9 +13,43 @@ import { addDays, getTodayISO } from './kst.js';
 // ─── 타입 ───────────────────────────────────────────────
 
 export type Cheongan = '갑' | '을' | '병' | '정' | '무' | '기' | '경' | '신' | '임' | '계';
-export type Jiji = '자' | '축' | '인' | '묘' | '진' | '사' | '오' | '미' | '신' | '유' | '술' | '해';
-export type Sipsung = '비견' | '겁재' | '식신' | '상관' | '편재' | '정재' | '편관' | '정관' | '편인' | '정인';
-export type Sibiunsung = '장생' | '목욕' | '관대' | '건록' | '제왕' | '쇠' | '병' | '사' | '묘' | '절' | '태' | '양';
+export type Jiji =
+  | '자'
+  | '축'
+  | '인'
+  | '묘'
+  | '진'
+  | '사'
+  | '오'
+  | '미'
+  | '신'
+  | '유'
+  | '술'
+  | '해';
+export type Sipsung =
+  | '비견'
+  | '겁재'
+  | '식신'
+  | '상관'
+  | '편재'
+  | '정재'
+  | '편관'
+  | '정관'
+  | '편인'
+  | '정인';
+export type Sibiunsung =
+  | '장생'
+  | '목욕'
+  | '관대'
+  | '건록'
+  | '제왕'
+  | '쇠'
+  | '병'
+  | '사'
+  | '묘'
+  | '절'
+  | '태'
+  | '양';
 
 export interface Pillar {
   index: number;
@@ -35,9 +69,9 @@ export interface SipsungResult {
 }
 
 export interface JijangganEntry {
-  yeogi: number;      // 여기 (잔기) — cheongan index
-  junggi?: number;    // 중기 — 자/묘/유는 없음
-  jeonggi: number;    // 정기 (본기) — cheongan index
+  yeogi: number; // 여기 (잔기) — cheongan index
+  junggi?: number; // 중기 — 자/묘/유는 없음
+  jeonggi: number; // 정기 (본기) — cheongan index
 }
 
 export interface Relations {
@@ -65,10 +99,58 @@ export interface DailyFortuneData {
 
 // ─── 상수: 천간/지지 ────────────────────────────────────
 
-const CHEONGAN_LIST: readonly Cheongan[] = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계'];
-const JIJI_LIST: readonly Jiji[] = ['자', '축', '인', '묘', '진', '사', '오', '미', '신', '유', '술', '해'];
-const CHEONGAN_HANJA: readonly string[] = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
-const JIJI_HANJA: readonly string[] = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+const CHEONGAN_LIST: readonly Cheongan[] = [
+  '갑',
+  '을',
+  '병',
+  '정',
+  '무',
+  '기',
+  '경',
+  '신',
+  '임',
+  '계',
+];
+const JIJI_LIST: readonly Jiji[] = [
+  '자',
+  '축',
+  '인',
+  '묘',
+  '진',
+  '사',
+  '오',
+  '미',
+  '신',
+  '유',
+  '술',
+  '해',
+];
+const CHEONGAN_HANJA: readonly string[] = [
+  '甲',
+  '乙',
+  '丙',
+  '丁',
+  '戊',
+  '己',
+  '庚',
+  '辛',
+  '壬',
+  '癸',
+];
+const JIJI_HANJA: readonly string[] = [
+  '子',
+  '丑',
+  '寅',
+  '卯',
+  '辰',
+  '巳',
+  '午',
+  '未',
+  '申',
+  '酉',
+  '戌',
+  '亥',
+];
 
 // ─── 상수: 오행 ─────────────────────────────────────────
 
@@ -87,33 +169,44 @@ const JIJI_BONGI: readonly number[] = [
 
 /** 지지 → 지장간 (여기/중기/정기) — 천간 index로 표현 */
 const JIJANGGAN: readonly JijangganEntry[] = [
-  { yeogi: 8, jeonggi: 9 },                   // 자(子): 임(여), 계(정)
-  { yeogi: 9, junggi: 7, jeonggi: 5 },        // 축(丑): 계(여), 신(중), 기(정)
-  { yeogi: 4, junggi: 2, jeonggi: 0 },        // 인(寅): 무(여), 병(중), 갑(정)
-  { yeogi: 0, jeonggi: 1 },                   // 묘(卯): 갑(여), 을(정)
-  { yeogi: 1, junggi: 9, jeonggi: 4 },        // 진(辰): 을(여), 계(중), 무(정)
-  { yeogi: 4, junggi: 6, jeonggi: 2 },        // 사(巳): 무(여), 경(중), 병(정)
-  { yeogi: 2, junggi: 5, jeonggi: 3 },        // 오(午): 병(여), 기(중), 정(정)
-  { yeogi: 3, junggi: 1, jeonggi: 5 },        // 미(未): 정(여), 을(중), 기(정)
-  { yeogi: 4, junggi: 8, jeonggi: 6 },        // 신(申): 무(여), 임(중), 경(정)
-  { yeogi: 6, jeonggi: 7 },                   // 유(酉): 경(여), 신(정)
-  { yeogi: 7, junggi: 3, jeonggi: 4 },        // 술(戌): 신(여), 정(중), 무(정)
-  { yeogi: 4, junggi: 0, jeonggi: 8 },        // 해(亥): 무(여), 갑(중), 임(정)
+  { yeogi: 8, jeonggi: 9 }, // 자(子): 임(여), 계(정)
+  { yeogi: 9, junggi: 7, jeonggi: 5 }, // 축(丑): 계(여), 신(중), 기(정)
+  { yeogi: 4, junggi: 2, jeonggi: 0 }, // 인(寅): 무(여), 병(중), 갑(정)
+  { yeogi: 0, jeonggi: 1 }, // 묘(卯): 갑(여), 을(정)
+  { yeogi: 1, junggi: 9, jeonggi: 4 }, // 진(辰): 을(여), 계(중), 무(정)
+  { yeogi: 4, junggi: 6, jeonggi: 2 }, // 사(巳): 무(여), 경(중), 병(정)
+  { yeogi: 2, junggi: 5, jeonggi: 3 }, // 오(午): 병(여), 기(중), 정(정)
+  { yeogi: 3, junggi: 1, jeonggi: 5 }, // 미(未): 정(여), 을(중), 기(정)
+  { yeogi: 4, junggi: 8, jeonggi: 6 }, // 신(申): 무(여), 임(중), 경(정)
+  { yeogi: 6, jeonggi: 7 }, // 유(酉): 경(여), 신(정)
+  { yeogi: 7, junggi: 3, jeonggi: 4 }, // 술(戌): 신(여), 정(중), 무(정)
+  { yeogi: 4, junggi: 0, jeonggi: 8 }, // 해(亥): 무(여), 갑(중), 임(정)
 ];
 
 // ─── 상수: 십이운성 ──────────────────────────────────────
 
 const SIBIUNSUNG_CYCLE: readonly Sibiunsung[] = [
-  '장생', '목욕', '관대', '건록', '제왕', '쇠', '병', '사', '묘', '절', '태', '양',
+  '장생',
+  '목욕',
+  '관대',
+  '건록',
+  '제왕',
+  '쇠',
+  '병',
+  '사',
+  '묘',
+  '절',
+  '태',
+  '양',
 ];
 
 /** 양간별 장생 시작 지지 index: 갑=해(11), 병=인(2), 무=인(2), 경=사(5), 임=신(8) */
 const YANG_JANGSEONG_START: Record<number, number> = {
   0: 11, // 갑 → 해
-  2: 2,  // 병 → 인
-  4: 2,  // 무 → 인
-  6: 5,  // 경 → 사
-  8: 8,  // 임 → 신
+  2: 2, // 병 → 인
+  4: 2, // 무 → 인
+  6: 5, // 경 → 사
+  8: 8, // 임 → 신
 };
 
 // ─── 상수: 합충형파해 ───────────────────────────────────
@@ -129,60 +222,60 @@ const CHEONGAN_HAP: readonly [number, number, string][] = [
 
 /** 지지육충: [a, b] */
 const JIJI_CHUNG: readonly [number, number][] = [
-  [0, 6],  // 자오충
-  [1, 7],  // 축미충
-  [2, 8],  // 인신충
-  [3, 9],  // 묘유충
+  [0, 6], // 자오충
+  [1, 7], // 축미충
+  [2, 8], // 인신충
+  [3, 9], // 묘유충
   [4, 10], // 진술충
   [5, 11], // 사해충
 ];
 
 /** 지지육합: [a, b, 합화오행] */
 const JIJI_YUKHAP: readonly [number, number, string][] = [
-  [0, 1, '토'],   // 자축합
-  [2, 11, '목'],  // 인해합
-  [3, 10, '화'],  // 묘술합
-  [4, 9, '금'],   // 진유합
-  [5, 8, '수'],   // 사신합
-  [6, 7, '토'],   // 오미합
+  [0, 1, '토'], // 자축합
+  [2, 11, '목'], // 인해합
+  [3, 10, '화'], // 묘술합
+  [4, 9, '금'], // 진유합
+  [5, 8, '수'], // 사신합
+  [6, 7, '토'], // 오미합
 ];
 
 /** 지지삼합: [a, b, c, 합화오행] */
 const JIJI_SAMHAP: readonly [number, number, number, string][] = [
-  [8, 0, 4, '수'],   // 신자진
-  [11, 3, 7, '목'],  // 해묘미
-  [2, 6, 10, '화'],  // 인오술
-  [5, 9, 1, '금'],   // 사유축
+  [8, 0, 4, '수'], // 신자진
+  [11, 3, 7, '목'], // 해묘미
+  [2, 6, 10, '화'], // 인오술
+  [5, 9, 1, '금'], // 사유축
 ];
 
 /** 지지형: [a, b] (방향성 있는 쌍) */
 const JIJI_HYUNG: readonly [number, number][] = [
-  [2, 5],  // 인사형 (삼형)
-  [5, 8],  // 사신형 (삼형)
-  [2, 8],  // 인신형 (삼형)
+  [2, 5], // 인사형 (삼형)
+  [5, 8], // 사신형 (삼형)
+  [2, 8], // 인신형 (삼형)
   [1, 10], // 축술형 (삼형)
   [10, 7], // 술미형 (삼형)
-  [1, 7],  // 축미형 (삼형)
-  [0, 3],  // 자묘형
-  [3, 0],  // 묘자형
+  [1, 7], // 축미형 (삼형)
+  [0, 3], // 자묘형
+  [3, 0], // 묘자형
 ];
 
 /** 지지파: [a, b] */
 const JIJI_PA: readonly [number, number][] = [
-  [0, 9],  // 자유파
-  [1, 4],  // 축진파
+  [0, 9], // 자유파
+  [1, 4], // 축진파
   [2, 11], // 인해파
-  [3, 6],  // 묘오파
-  [5, 8],  // 사신파
+  [3, 6], // 묘오파
+  [5, 8], // 사신파
   [10, 7], // 술미파
 ];
 
 /** 지지해: [a, b] */
 const JIJI_HAE: readonly [number, number][] = [
-  [0, 7],  // 자미해
-  [1, 6],  // 축오해
-  [2, 5],  // 인사해
-  [3, 4],  // 묘진해
+  [0, 7], // 자미해
+  [1, 6], // 축오해
+  [2, 5], // 인사해
+  [3, 4], // 묘진해
   [8, 11], // 신해해
   [9, 10], // 유술해
 ];
@@ -196,15 +289,93 @@ const JIJI_HAE: readonly [number, number][] = [
  * 출처: uncle.tools (NASA DE441 데이터 기반)
  */
 const JEOLGI_TABLE: Record<number, readonly string[]> = {
-  2024: ['01-06', '02-04', '03-05', '04-04', '05-05', '06-05', '07-06', '08-07', '09-07', '10-08', '11-07', '12-07'],
-  2025: ['01-05', '02-03', '03-05', '04-04', '05-05', '06-05', '07-07', '08-07', '09-07', '10-08', '11-07', '12-07'],
-  2026: ['01-05', '02-04', '03-05', '04-05', '05-05', '06-06', '07-07', '08-07', '09-07', '10-08', '11-07', '12-07'],
-  2027: ['01-05', '02-04', '03-06', '04-05', '05-06', '06-06', '07-07', '08-08', '09-08', '10-08', '11-08', '12-07'],
-  2028: ['01-06', '02-04', '03-05', '04-04', '05-05', '06-05', '07-06', '08-07', '09-07', '10-08', '11-07', '12-06'],
+  2024: [
+    '01-06',
+    '02-04',
+    '03-05',
+    '04-04',
+    '05-05',
+    '06-05',
+    '07-06',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-07',
+  ],
+  2025: [
+    '01-05',
+    '02-03',
+    '03-05',
+    '04-04',
+    '05-05',
+    '06-05',
+    '07-07',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-07',
+  ],
+  2026: [
+    '01-05',
+    '02-04',
+    '03-05',
+    '04-05',
+    '05-05',
+    '06-06',
+    '07-07',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-07',
+  ],
+  2027: [
+    '01-05',
+    '02-04',
+    '03-06',
+    '04-05',
+    '05-06',
+    '06-06',
+    '07-07',
+    '08-08',
+    '09-08',
+    '10-08',
+    '11-08',
+    '12-07',
+  ],
+  2028: [
+    '01-06',
+    '02-04',
+    '03-05',
+    '04-04',
+    '05-05',
+    '06-05',
+    '07-06',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-06',
+  ],
 };
 
 /** 절기 → 월지 매핑 (index 0-11 → 지지) */
-const JEOLGI_JIJI: readonly Jiji[] = ['축', '인', '묘', '진', '사', '오', '미', '신', '유', '술', '해', '자'];
+const JEOLGI_JIJI: readonly Jiji[] = [
+  '축',
+  '인',
+  '묘',
+  '진',
+  '사',
+  '오',
+  '미',
+  '신',
+  '유',
+  '술',
+  '해',
+  '자',
+];
 
 /** 절기 → 월 offset (인월=0 기준) */
 const JEOLGI_MONTH_OFFSET: readonly number[] = [11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -212,8 +383,7 @@ const JEOLGI_MONTH_OFFSET: readonly number[] = [11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
 // ─── 헬퍼 ───────────────────────────────────────────────
 
 /** YYYY-MM-DD → KST 정오 Date (날짜 경계 안전) */
-const parseDate = (dateStr: string): Date =>
-  new Date(`${dateStr}T12:00:00+09:00`);
+const parseDate = (dateStr: string): Date => new Date(`${dateStr}T12:00:00+09:00`);
 
 /** 두 날짜 간 일수 차이 */
 const daysDiff = (a: string, b: string): number => {
@@ -253,7 +423,7 @@ export const getYearPillar = (dateStr: string): Pillar => {
   const year = Number(dateStr.slice(0, 4));
   const ipchunDate = getIpchunDate(year);
   const sajuYear = dateStr < ipchunDate ? year - 1 : year;
-  const idx = ((sajuYear - 4) % 60 + 60) % 60;
+  const idx = (((sajuYear - 4) % 60) + 60) % 60;
   return indexToPillar(idx);
 };
 
@@ -289,8 +459,12 @@ const findGanjiIndex = (stemIdx: number, branchIdx: number): number => {
 };
 
 /** 날짜로 절기 구간 판별 → 월지, monthOffset, 사주년 반환 */
-const getJeolgiMonth = (dateStr: string): {
-  jiji: Jiji; monthOffset: number; sajuYear: number;
+const getJeolgiMonth = (
+  dateStr: string,
+): {
+  jiji: Jiji;
+  monthOffset: number;
+  sajuYear: number;
 } => {
   const year = Number(dateStr.slice(0, 4));
   const mmdd = dateStr.slice(5); // "MM-DD"
@@ -331,7 +505,8 @@ export const getSipsung = (dayMaster: Cheongan, targetStem: Cheongan): Sipsung =
   const dmIdx = cheonganIndex(dayMaster);
   const tIdx = cheonganIndex(targetStem);
   return classifySipsung(
-    CHEONGAN_ELEMENT[dmIdx], CHEONGAN_ELEMENT[tIdx],
+    CHEONGAN_ELEMENT[dmIdx],
+    CHEONGAN_ELEMENT[tIdx],
     CHEONGAN_YINYANG[dmIdx] === CHEONGAN_YINYANG[tIdx],
   );
 };
@@ -341,7 +516,8 @@ export const getJijiSipsung = (dayMaster: Cheongan, targetBranch: Jiji): Sipsung
   const dmIdx = cheonganIndex(dayMaster);
   const bongiIdx = JIJI_BONGI[jijiIndex(targetBranch)];
   return classifySipsung(
-    CHEONGAN_ELEMENT[dmIdx], CHEONGAN_ELEMENT[bongiIdx],
+    CHEONGAN_ELEMENT[dmIdx],
+    CHEONGAN_ELEMENT[bongiIdx],
     CHEONGAN_YINYANG[dmIdx] === CHEONGAN_YINYANG[bongiIdx],
   );
 };
@@ -399,19 +575,23 @@ export const getSibiunsung = (dayMaster: Cheongan, jiji: Jiji): Sibiunsung => {
   if (startJiji === undefined) throw new Error(`장생 시작 지지 없음: ${dayMaster}`);
 
   if (isYang) {
-    const offset = ((jIdx - startJiji) % 12 + 12) % 12;
+    const offset = (((jIdx - startJiji) % 12) + 12) % 12;
     return SIBIUNSUNG_CYCLE[offset];
   }
   // 음간: 역행
-  const offset = ((startJiji - jIdx) % 12 + 12) % 12;
+  const offset = (((startJiji - jIdx) % 12) + 12) % 12;
   return SIBIUNSUNG_CYCLE[offset];
 };
 
 // ─── 지장간 조회 ─────────────────────────────────────────
 
 /** 지지의 지장간 정보를 한글(천간)로 반환 */
-export const getJijanggan = (jiji: Jiji): {
-  yeogi: Cheongan; junggi?: Cheongan; jeonggi: Cheongan;
+export const getJijanggan = (
+  jiji: Jiji,
+): {
+  yeogi: Cheongan;
+  junggi?: Cheongan;
+  jeonggi: Cheongan;
 } => {
   const entry = JIJANGGAN[jijiIndex(jiji)];
   return {
@@ -448,9 +628,7 @@ export const getRelations = (
     const wIdx = cheonganIndex(wonkukStems[i]);
     for (const [a, b, element] of CHEONGAN_HAP) {
       if ((tStemIdx === a && wIdx === b) || (tStemIdx === b && wIdx === a)) {
-        result.cheonganHap.push(
-          `${CHEONGAN_LIST[tStemIdx]}-${wonkukStems[i]} 합(${element})`,
-        );
+        result.cheonganHap.push(`${CHEONGAN_LIST[tStemIdx]}-${wonkukStems[i]} 합(${element})`);
       }
     }
   }
@@ -476,9 +654,11 @@ export const getRelations = (
 
 /** 지지 관계 체크 (충/형/파/해) */
 const checkJijiRelation = (
-  a: number, b: number,
+  a: number,
+  b: number,
   table: readonly (readonly [number, number])[],
-  results: string[], label: string,
+  results: string[],
+  label: string,
 ): void => {
   for (const [x, y] of table) {
     if ((a === x && b === y) || (a === y && b === x)) {
@@ -489,9 +669,7 @@ const checkJijiRelation = (
 };
 
 /** 지지 육합 체크 */
-const checkJijiYukhap = (
-  a: number, b: number, results: string[],
-): void => {
+const checkJijiYukhap = (a: number, b: number, results: string[]): void => {
   for (const [x, y, element] of JIJI_YUKHAP) {
     if ((a === x && b === y) || (a === y && b === x)) {
       results.push(`${JIJI_LIST[a]}-${JIJI_LIST[b]} 합(${element})`);
@@ -513,13 +691,13 @@ const checkSamhap = (
     if (!trio.includes(targetBranch)) continue;
 
     // 일운 지지를 포함한 삼합에서, 원국에 나머지 2개 중 1개 이상 있으면 반삼합
-    const others = trio.filter(t => t !== targetBranch);
-    const matchCount = others.filter(t => wIdxSet.has(t)).length;
+    const others = trio.filter((t) => t !== targetBranch);
+    const matchCount = others.filter((t) => wIdxSet.has(t)).length;
 
     if (matchCount >= 2) {
       results.push(`${JIJI_LIST[a]}${JIJI_LIST[b]}${JIJI_LIST[c]} 삼합(${element})`);
     } else if (matchCount === 1) {
-      const matched = others.find(t => wIdxSet.has(t));
+      const matched = others.find((t) => wIdxSet.has(t));
       if (matched === undefined) return;
       results.push(`${JIJI_LIST[targetBranch]}-${JIJI_LIST[matched]} 반삼합(${element})`);
     }
@@ -573,7 +751,7 @@ const checkAmhap = (
       }
     }
 
-    found.forEach(label => results.push(label));
+    found.forEach((label) => results.push(label));
   }
 };
 
@@ -628,49 +806,122 @@ export const calculateFortuneRange = (
 
 // ─── CLI 모드 ───────────────────────────────────────────
 
-const runCLI = async (): Promise<void> => {
-  const args = process.argv.slice(2);
-  const startDate = args[0] ?? getTodayISO();
-  const count = Number(args[1] ?? 1);
+interface SajuProfileRow {
+  day_pillar: string;
+  year_pillar: string;
+  month_pillar: string;
+  hour_pillar: string;
+}
 
-  // DB에서 사주 프로필 조회
-  const dotenv = await import('dotenv');
-  dotenv.config();
+const isSajuProfileRow = (value: unknown): value is SajuProfileRow => {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v['day_pillar'] === 'string' &&
+    typeof v['year_pillar'] === 'string' &&
+    typeof v['month_pillar'] === 'string' &&
+    typeof v['hour_pillar'] === 'string'
+  );
+};
 
-  const dbUrl = process.env['DATABASE_URL'];
-  if (!dbUrl) throw new Error('DATABASE_URL 환경변수 필요');
+const PROFILE_QUERY =
+  'SELECT day_pillar, year_pillar, month_pillar, hour_pillar FROM saju_profiles WHERE user_id = $1';
 
+/**
+ * DB 프록시 API 경유로 사주 프로필 조회.
+ * 외부 환경(scheduled task 등)에서 호출 시 사용.
+ */
+const loadSajuProfileViaProxy = async (
+  proxyUrl: string,
+  apiKey: string,
+): Promise<SajuProfileRow> => {
+  const response = await fetch(`${proxyUrl}/api/db/query`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ text: PROFILE_QUERY, params: [1] }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`DB 프록시 요청 실패: HTTP ${response.status}`);
+  }
+
+  const data: unknown = await response.json();
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('DB 프록시 응답 형식 오류');
+  }
+  const rows = (data as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) {
+    throw new Error('DB 프록시 응답 형식 오류');
+  }
+  if (rows.length === 0) throw new Error('사주 프로필 미등록');
+
+  const row = rows[0];
+  if (!isSajuProfileRow(row)) {
+    throw new Error('사주 프로필 필드 누락');
+  }
+  return row;
+};
+
+/**
+ * PostgreSQL 직결로 사주 프로필 조회 (개발 환경 / VM 내부 fallback).
+ */
+const loadSajuProfileViaDirect = async (dbUrl: string): Promise<SajuProfileRow> => {
   const pg = await import('pg');
   const pool = new pg.default.Pool({
     connectionString: dbUrl,
     ssl: { rejectUnauthorized: false },
   });
-
   try {
-    const { rows } = await pool.query<{
-      day_pillar: string;
-      year_pillar: string;
-      month_pillar: string;
-      hour_pillar: string;
-    }>(
-      'SELECT day_pillar, year_pillar, month_pillar, hour_pillar FROM saju_profiles WHERE user_id = $1',
-      [1],
-    );
+    const { rows } = await pool.query<SajuProfileRow>(PROFILE_QUERY, [1]);
     if (rows.length === 0) throw new Error('사주 프로필 미등록');
-
-    const profile = rows[0];
-    // 일간 추출 (일주의 첫 글자)
-    const dayMaster = profile.day_pillar.charAt(0) as Cheongan;
-    // 원국 천간/지지 추출
-    const pillars = [profile.year_pillar, profile.month_pillar, profile.day_pillar, profile.hour_pillar];
-    const wonkukStems = pillars.map(p => p.charAt(0)) as Cheongan[];
-    const wonkukBranches = pillars.map(p => p.charAt(1)) as Jiji[];
-
-    const results = calculateFortuneRange(startDate, count, dayMaster, wonkukStems, wonkukBranches);
-    console.log(JSON.stringify(results, null, 2));
+    return rows[0];
   } finally {
     await pool.end();
   }
+};
+
+/**
+ * 사주 프로필 조회 — DB 프록시 우선, 없으면 DATABASE_URL 직결 fallback.
+ */
+const loadSajuProfile = async (): Promise<SajuProfileRow> => {
+  const proxyUrl = process.env['DB_PROXY_URL'];
+  const proxyKey = process.env['DB_PROXY_API_KEY'];
+  if (proxyUrl && proxyKey) {
+    return loadSajuProfileViaProxy(proxyUrl, proxyKey);
+  }
+
+  const dbUrl = process.env['DATABASE_URL'];
+  if (dbUrl) return loadSajuProfileViaDirect(dbUrl);
+
+  throw new Error('DB_PROXY_URL+DB_PROXY_API_KEY 또는 DATABASE_URL 환경변수 필요');
+};
+
+const runCLI = async (): Promise<void> => {
+  const args = process.argv.slice(2);
+  const startDate = args[0] ?? getTodayISO();
+  const count = Number(args[1] ?? 1);
+
+  const dotenv = await import('dotenv');
+  dotenv.config();
+
+  const profile = await loadSajuProfile();
+  // 일간 추출 (일주의 첫 글자)
+  const dayMaster = profile.day_pillar.charAt(0) as Cheongan;
+  // 원국 천간/지지 추출
+  const pillars = [
+    profile.year_pillar,
+    profile.month_pillar,
+    profile.day_pillar,
+    profile.hour_pillar,
+  ];
+  const wonkukStems = pillars.map((p) => p.charAt(0)) as Cheongan[];
+  const wonkukBranches = pillars.map((p) => p.charAt(1)) as Jiji[];
+
+  const results = calculateFortuneRange(startDate, count, dayMaster, wonkukStems, wonkukBranches);
+  console.log(JSON.stringify(results, null, 2));
 };
 
 // CLI 진입점
