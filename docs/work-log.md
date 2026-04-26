@@ -1,5 +1,25 @@
 # Work Log
 
+## 2026-04-25 (토)
+
+### 작업 요약
+- 일별 예산 로그 백필 파이프라인 완성 — 수동 `?date` 파라미터(#357) + 아침 크론 자동 백필(#358)로 2단계 완결
+- N+1 쿼리 패턴 3곳(budget/routine/schedule) 일괄 쿼리로 개선 (#362), 기존 테스트 리팩토링 포함
+- Claude 변환 함수 단위 테스트 237줄 신규 추가 (`src/shared/__tests__/llm.test.ts`)
+- DB 백업 파일명 KST 기준 통일 (#360), README LLM Guardrails 용어 정리 (#359)
+
+### 변경 규모
+- 6개 커밋, 9개 파일, +583 / -121 lines
+
+### 주요 변경
+- `src/cron/life-cron.ts` — 아침 크론에 예산 로그 자동 백필 로직 (+149줄)
+- `web/src/features/*/lib/queries.ts` — budget/routine/schedule 3개 도메인 쿼리 최적화
+- `src/shared/__tests__/llm.test.ts` — LLM 변환 함수 테스트 신규 (+237줄)
+- `scripts/backup-db.sh` — 백업 파일명 KST 기준 통일
+
+### 다음 할 일
+- llm.test.ts 엣지케이스 검토 (빈 응답, 파싱 실패 케이스)
+
 ## 2026-04-22 (수)
 
 ### 작업 요약
