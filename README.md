@@ -82,7 +82,7 @@ LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용
 
 - **Hooks (3)**: prettier/eslint 자동 실행, tsc+lint pre-commit, 시크릿 스캔
 - **Custom Skills**: `/init-project`, `/design`, `/build` — 계획서 파일로 세션 간 핸드오프
-- **MCP**: PostgreSQL(운영 DB 조회), Slack(에이전트 응답 품질 점검)
+- **MCP**: Slack(에이전트 응답 품질 점검) — *PostgreSQL 직결 MCP는 초기 개발 단계에 사용했으나, 외부 DB 직접 연결을 차단하는 보안 강화 작업 이후 비활성화*
 - **Scheduled Tasks (비동기 깊은 분석 전용)**:
   - `nightly-dev-report` (매일 22:00): Opus가 당일 git 활동·대화 이력을 분석 → 로컬 문서에 관찰 메모 자동 축적 → 다음 날 09:25/09:30 Slack으로 예약 전송, 매일 피드백 수신
   - `weekly-saju-review` (일요일 21:31): 최근 4주 일기·일운·수면 상관 분석 → 사주 패턴 감지/업데이트
