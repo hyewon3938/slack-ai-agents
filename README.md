@@ -84,7 +84,7 @@ LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용
 - **Custom Skills**: `/init-project`, `/design`, `/build` — 계획서 파일로 세션 간 핸드오프
 - **MCP**: Slack(에이전트 응답 품질 점검) — *PostgreSQL 직결 MCP는 초기 개발 단계에 사용했으나, 외부 DB 직접 연결을 차단하는 보안 강화 작업 이후 비활성화*
 - **Scheduled Tasks (비동기 깊은 분석 전용)**:
-  - `nightly-dev-report` (매일 22:00): Opus가 당일 git 활동·대화 이력을 분석 → 로컬 문서에 관찰 메모 자동 축적 → 다음 날 09:25/09:30 Slack으로 예약 전송, 매일 피드백 수신
+  - `nightly-dev-report` (매일 22:00): Opus가 당일 git 활동·대화 이력을 분석 → `docs/_personal/`(gitignored)에 작업 사실·성향 분석 누적 → 다음 날 09:25/09:30 Slack으로 예약 전송, 매일 피드백 수신
   - `weekly-saju-review` (일요일 21:31): 최근 4주 일기·일운·수면 상관 분석 → 사주 패턴 감지/업데이트
   - `weekly-fortune` (일요일 22:37): 7일 일운 + 월운/세운/대운 자동 갱신
   - `nightly-achievements` (매일 23:30): 오늘 해낸 일 3가지 + 일운 코멘트 응원 메시지 — 바쁘게 보낸 날에도 "아무것도 안 한 것 같은" 불안감 극복용
@@ -236,10 +236,13 @@ docker compose down             # 전체 정지 (볼륨은 유지 → 데이터 
 
 ## 관련 문서
 
+문서 운영 — 외부에 보여줄 마일스톤은 `project-history.md`, 되돌리기 어려운 설계 판단은 `adr/`, 일상 작업·성향 분석 등 비공개 정보는 `_personal/`(gitignored)로 분리.
+
 | 문서 | 내용 |
 |------|------|
 | [docs/adr/](docs/adr/) | Architecture Decision Records — 되돌리기 어려운 설계 판단의 배경·대안·트레이드오프 기록 |
-| [docs/project-history.md](docs/project-history.md) | 설계 변화와 의사결정 과정 상세 기록 |
+| [docs/project-history.md](docs/project-history.md) | 마일스톤 timeline — 기능 출시·아키텍처 전환·인프라 변화 (2026-04-07 이전 기록은 [archive-v1-v2.md](docs/history/archive-v1-v2.md)) |
+| [docs/domains/](docs/domains/) | 도메인별 명세 — 일정·루틴·사주·예산 각 도메인의 DB 스키마·API·로직 |
 | [docs/conventions.md](docs/conventions.md) | 코드 컨벤션 & 보안 체크리스트 |
 | [docs/optimization/](docs/optimization/) | 최적화 기록 — LLM 비용, 응답 속도, 배포 파이프라인, 의도 분류 제거 회고 |
 | [docs/ops/db-backup.md](docs/ops/db-backup.md) | DB 백업/복원 운영 가이드 |
