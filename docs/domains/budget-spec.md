@@ -189,5 +189,5 @@ detectSettlementTrigger() → 오늘이 16일 새벽인지 판정
 ## 8. 참조
 
 - 스키마 / 코드 구조: [budget.md](./budget.md)
-- 공개 표현 가이드: `docs/budget-internal.md` (비공개)
+- 공개 표현 가이드: `docs/_personal/budget-internal.md` (비공개)
 - 주요 PR: #292 (v2 전환), #293 (정합성 수정), #295 (projectFromAllocator 도입)

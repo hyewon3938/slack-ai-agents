@@ -171,6 +171,6 @@ features/budget/
 
 ## 비공개 참고
 
-> **Claude 필수 행동**: 지출/예산 기능 작업 시 `docs/budget-internal.md` (gitignored)를 반드시 읽을 것.
+> **Claude 필수 행동**: 지출/예산 기능 작업 시 `docs/_personal/budget-internal.md` (gitignored)를 반드시 읽을 것.
 > 실제 기능 의도, 공개 표현 치환표, 런웨이 계산 상세 로직이 기록되어 있다.
 > 이 문서(budget.md)에는 포트폴리오용 기능 설명만 기록하며, 개인 재정 데이터는 포함하지 않는다.

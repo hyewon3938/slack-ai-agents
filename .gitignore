@@ -15,10 +15,6 @@ pg-ssl/
 .claude/plans/
 .claude/settings.local.json
 .claude/worktrees/
-docs/developer-profile.md
-docs/work-log.md
-docs/budget-internal.md
-docs/credentials-internal.md
 .env.vercel
 .vercel/
 
