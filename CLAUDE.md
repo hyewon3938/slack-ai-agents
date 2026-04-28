@@ -132,7 +132,10 @@
 - GitHub Issues에 단계별 개발 계획 정리
 - 브랜치: feature/xxx, fix/xxx → main PR
 - PR 단위: Issue 1개 = PR 1개
-- 프로젝트 히스토리: docs/project-history.md
+- 프로젝트 히스토리(포트폴리오 timeline — 마일스톤급 변화만): docs/project-history.md
+- 일상 작업 로그(매일 작업 사실): docs/_personal/work-log.md (gitignored)
+- 설계 판단(되돌리기 어려운 결정): docs/adr/
+- 2026-04-07 이전 초기 마일스톤 archive: docs/history/archive-v1-v2.md
 
 ## Claude 작업 규칙
 

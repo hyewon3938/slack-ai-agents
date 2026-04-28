@@ -92,7 +92,9 @@ $ARGUMENTS
 ### 5단계: PR 생성
 - `gh pr create`로 PR 생성
 - 이슈 체크리스트 업데이트
-- `docs/project-history.md` 업데이트 (결과, 배운 점)
+- **마일스톤급 변화일 때만** `docs/project-history.md` 업데이트 (결과, 배운 점)
+  - 기준: 외부 청중에게 보여줄 만한 기능 출시·아키텍처 전환·인프라 변화
+  - 마일스톤급이 아니면 history.md에 기록하지 않는다 (일상 작업 사실은 work-log, 설계 판단은 ADR)
 - 설계 파일에 "구현 완료" 메모 추가
 
 ### 6단계: 결과 보고

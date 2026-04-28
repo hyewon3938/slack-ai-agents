@@ -17,8 +17,9 @@ $ARGUMENTS
 아래 파일들을 읽어 프로젝트 맥락을 파악한다:
 - `CLAUDE.md` — 프로젝트 규칙, 아키텍처
 - `docs/conventions.md` — 코드 컨벤션, 라벨 체계, 리팩토링 기준
-- `docs/project-history.md` — 지금까지의 의사결정 히스토리
+- `docs/project-history.md` — 포트폴리오 timeline (마일스톤급 변화만)
 - `docs/adr/README.md` — ADR 운영 규칙 (존재 시). 기존 ADR 목록 확인
+- `docs/_personal/work-log.md` (있으면) — 일상 작업 사실 로그. 최근 컨텍스트 보강용
 
 ## 기능 인터뷰
 
@@ -175,8 +176,10 @@ ADR 대상이면:
 
 - 설계 계획서를 `.claude/plans/{이슈번호}-{기능명}.md`로 저장
 - 이슈에 설계 내용 코멘트 추가 (`gh issue comment`)
-- `docs/project-history.md`에 마일스톤 기록:
-  - 날짜, 기능명, 왜 이 기능을 만들었는지, 설계 결정 사항
+- **마일스톤급 변화일 때만** `docs/project-history.md`에 기록:
+  - 기준: 외부 청중(포트폴리오 viewer)에게 보여줄 만한 기능 출시·아키텍처 전환·인프라 변화
+  - 형식: 날짜, 기능명, 왜 이 기능을 만들었는지, 설계 결정 사항
+  - 마일스톤급이 아니면 history.md에 기록하지 않는다 (일상 작업은 work-log, 설계 판단은 ADR)
 
 ### 6단계: 핸드오프 안내
 
