@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { queryExpenses, queryExpensesByBillingMonth, createExpense, createInstallmentExpenses } from '@/features/budget/lib/queries';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
+import {
+  queryExpenses,
+  queryExpensesByBillingMonth,
+  createExpense,
+  createInstallmentExpenses,
+} from '@/features/budget/lib/queries';
+import { ALL_EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { getTodayISO } from '@/lib/kst';
 import { validateFields } from '@/lib/validation';
 
-const VALID_EXPENSE_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES);
+const VALID_EXPENSE_CATEGORIES = new Set<string>(ALL_EXPENSE_CATEGORIES);
 const VALID_INCOME_CATEGORIES = new Set<string>(INCOME_CATEGORIES);
-const VALID_CATEGORIES = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
+const VALID_CATEGORIES = new Set<string>([...ALL_EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -25,7 +30,10 @@ export async function GET(request: Request) {
     const yearMonth = searchParams.get('yearMonth');
     if (yearMonth) {
       if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
-        return NextResponse.json({ error: 'yearMonth 형식이 올바르지 않습니다 (YYYY-MM)' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'yearMonth 형식이 올바르지 않습니다 (YYYY-MM)' },
+          { status: 400 },
+        );
       }
       const data = await queryExpensesByBillingMonth(userId, yearMonth, category);
       return NextResponse.json({ data });
@@ -38,10 +46,19 @@ export async function GET(request: Request) {
     const plannedExpenseId = searchParams.get('planned_expense_id');
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-      return NextResponse.json({ error: 'from/to 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'from/to 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)' },
+        { status: 400 },
+      );
     }
 
-    const data = await queryExpenses(userId, from, to, category, plannedExpenseId ? Number(plannedExpenseId) : undefined);
+    const data = await queryExpenses(
+      userId,
+      from,
+      to,
+      category,
+      plannedExpenseId ? Number(plannedExpenseId) : undefined,
+    );
     return NextResponse.json({ data });
   } catch (err) {
     console.error('[Expense API]', request.url, err);
@@ -77,7 +94,10 @@ export async function POST(request: Request) {
 
     const entryType = body.type ?? 'expense';
     if (entryType !== 'expense' && entryType !== 'income') {
-      return NextResponse.json({ error: 'type은 expense 또는 income이어야 합니다' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'type은 expense 또는 income이어야 합니다' },
+        { status: 400 },
+      );
     }
 
     // 수입이면 수입 카테고리, 지출이면 지출 카테고리 검증
@@ -95,7 +115,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: lengthError }, { status: 400 });
     }
 
-    const excludeFromBudget = typeof body.exclude_from_budget === 'boolean' ? body.exclude_from_budget : false;
+    const excludeFromBudget =
+      typeof body.exclude_from_budget === 'boolean' ? body.exclude_from_budget : false;
 
     // 할부 처리 (카드 2~12개월)
     const installmentMonths = body.installment_months ?? 1;

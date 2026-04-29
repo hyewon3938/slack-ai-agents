@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import type { ExpenseRow, PlannedExpenseRow } from '@/features/budget/lib/types';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_EXCLUDED_CATEGORIES } from '@/features/budget/lib/types';
+import {
+  ALL_EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
+  BUDGET_EXCLUDED_CATEGORIES,
+} from '@/features/budget/lib/types';
 import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 import { formatAmount } from '@/lib/types';
 import { Input, Select } from '@/components/ui/input';
@@ -94,7 +99,8 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         type: entryType,
         planned_expense_id: selectedPlanned,
         payment_method: entryType === 'expense' ? paymentMethod : '기타',
-        installment_months: entryType === 'expense' && paymentMethod !== '현금' ? installmentMonths : undefined,
+        installment_months:
+          entryType === 'expense' && paymentMethod !== '현금' ? installmentMonths : undefined,
         exclude_from_budget: entryType === 'expense' ? excludeFromBudget : false,
         distribute_to_budget: entryType === 'income' ? distributeToBudget : false,
       });
@@ -118,19 +124,24 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     setAmountStr(raw ? num.toLocaleString('ko-KR') : '');
   };
 
-  const currentCategories = entryType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const currentCategories: readonly string[] =
+    entryType === 'expense' ? ALL_EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   // 할부 미리보기 금액 계산
   const rawAmount = parseInt(amountStr.replace(/,/g, ''), 10);
-  const monthlyPreview = !isNaN(rawAmount) && rawAmount > 0 && installmentMonths > 1
-    ? Math.round(rawAmount / installmentMonths)
-    : null;
+  const monthlyPreview =
+    !isNaN(rawAmount) && rawAmount > 0 && installmentMonths > 1
+      ? Math.round(rawAmount / installmentMonths)
+      : null;
 
   // 귀속 월 계산 (지출 모드에서 실시간 표시)
   const billingMonthNum = parseInt(getBillingMonthForExpense(date, paymentMethod).slice(5), 10);
 
   return (
-    <form onSubmit={(e) => void handleSubmit(e)} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <form
+      onSubmit={(e) => void handleSubmit(e)}
+      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+    >
       {/* 지출 / 수입 토글 */}
       <div className="mb-3 flex items-center gap-2">
         <div className="flex rounded-lg border border-gray-200 p-0.5">
@@ -138,7 +149,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
             type="button"
             onClick={() => handleTypeChange('expense')}
             className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-              entryType === 'expense' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+              entryType === 'expense'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             지출
@@ -147,7 +160,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
             type="button"
             onClick={() => handleTypeChange('income')}
             className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-              entryType === 'income' ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
+              entryType === 'income'
+                ? 'bg-green-600 text-white'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             수입
@@ -157,9 +172,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
           <PlusIcon size={14} />
           {entryType === 'expense' ? '지출 추가' : '수입 추가'}
           {entryType === 'expense' && (
-            <span className="ml-1 text-xs font-normal text-gray-400">
-              {billingMonthNum}월 대금
-            </span>
+            <span className="ml-1 text-xs font-normal text-gray-400">{billingMonthNum}월 대금</span>
           )}
         </h2>
       </div>
@@ -167,7 +180,13 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {/* 날짜 */}
         <div className="col-span-1">
-          <Input label="날짜" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          <Input
+            label="날짜"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
         </div>
 
         {/* 금액 */}
@@ -185,9 +204,15 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
 
         {/* 카테고리 */}
         <div className="col-span-1">
-          <Select label="카테고리" value={category} onChange={(e) => handleCategoryChange(e.target.value)}>
+          <Select
+            label="카테고리"
+            value={category}
+            onChange={(e) => handleCategoryChange(e.target.value)}
+          >
             {currentCategories.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </Select>
         </div>
@@ -217,7 +242,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
                   type="button"
                   onClick={() => handlePaymentMethodChange(method)}
                   className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                    paymentMethod === method ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                    paymentMethod === method
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   {method}
@@ -236,7 +263,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
               >
                 <option value={1}>일시불</option>
                 {INSTALLMENT_OPTIONS.map((m) => (
-                  <option key={m} value={m}>{m}개월</option>
+                  <option key={m} value={m}>
+                    {m}개월
+                  </option>
                 ))}
               </Select>
             </div>
@@ -257,7 +286,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
                 type="button"
                 onClick={() => setExcludeFromBudget(false)}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  !excludeFromBudget ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                  !excludeFromBudget
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 포함
@@ -285,7 +316,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
               type="button"
               onClick={() => setDistributeToBudget(false)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                !distributeToBudget ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                !distributeToBudget
+                  ? 'bg-green-600 text-white'
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               이번 달
@@ -325,7 +358,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
             ))}
           </Select>
           {selectedPlanned && (
-            <p className="mt-1 text-[10px] text-blue-500">이 지출은 일일 예산에 영향을 주지 않습니다</p>
+            <p className="mt-1 text-[10px] text-blue-500">
+              이 지출은 일일 예산에 영향을 주지 않습니다
+            </p>
           )}
         </div>
       )}
@@ -341,7 +376,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         type="submit"
         disabled={loading}
         className={`mt-3 ml-auto flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50 ${
-          entryType === 'expense' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+          entryType === 'expense'
+            ? 'bg-blue-600 hover:bg-blue-700'
+            : 'bg-green-600 hover:bg-green-700'
         }`}
       >
         <PlusIcon size={13} />

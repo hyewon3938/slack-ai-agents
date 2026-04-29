@@ -100,28 +100,33 @@ export interface MonthSummary {
 export interface DailyBudgetLog {
   date: string;
   billing_month: string;
-  budget: number;   // 그날 할당 예산
-  spent: number;    // 그날 자유 지출
-  saved: number;    // budget - spent (음수 = 초과)
+  budget: number; // 그날 할당 예산
+  spent: number; // 그날 자유 지출
+  saved: number; // budget - spent (음수 = 초과)
 }
 
 /** 월별 시뮬레이션 프로젝션 */
 export interface MonthProjection {
-  month: string;          // YYYY-MM (결제주기 기준)
-  fixed: number;          // 고정비
-  installments: number;   // 할부 합계
-  locked: number;         // fixed + installments (줄일 수 없는 돈)
-  free_budget: number;    // 자유 예산
-  income: number;         // 수입
-  net_burn: number;       // locked + free_budget - income
-  remaining: number;      // 남은 가용자금
+  month: string; // YYYY-MM (결제주기 기준)
+  fixed: number; // 고정비
+  installments: number; // 할부 합계
+  locked: number; // fixed + installments (줄일 수 없는 돈)
+  free_budget: number; // 자유 예산
+  income: number; // 수입
+  net_burn: number; // locked + free_budget - income
+  remaining: number; // 남은 가용자금
 }
 
 /**
  * 예산 제외 기본 카테고리 (UI 토글 기본값 결정용).
  * SQL 쿼리에서는 사용하지 않음 — exclude_from_budget 컬럼으로 판단.
  */
-export const BUDGET_EXCLUDED_CATEGORIES = new Set(['통신비', '공과금', '리커밋 사업', '리커밋 택배']);
+export const BUDGET_EXCLUDED_CATEGORIES = new Set([
+  '통신비',
+  '공과금',
+  '리커밋 사업',
+  '리커밋 택배',
+]);
 
 /** 하루 최소 자유 예산 경고 기준 (원) */
 export const MIN_DAILY_BUDGET = 10000;
@@ -152,13 +157,14 @@ export const EXPENSE_CATEGORIES = [
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 /** 수입 카테고리 목록 */
-export const INCOME_CATEGORIES = [
-  '환불',
-  '수입',
-  '기타수입',
-] as const;
+export const INCOME_CATEGORIES = ['환불', '수입', '기타수입'] as const;
 
 export type IncomeCategory = (typeof INCOME_CATEGORIES)[number];
 
 /** 고정지출 카테고리 목록 */
 export const FIXED_COST_CATEGORIES = ['주거', '보험', '통신', '구독', '교육', '기타'] as const;
+
+/** 지출 select에 표시·검증할 전체 카테고리 (일반 지출 + 고정비 카테고리). 고정비 자동 생성 지출도 수정 가능하도록 둘 다 포함. */
+export const ALL_EXPENSE_CATEGORIES: readonly string[] = Array.from(
+  new Set<string>([...EXPENSE_CATEGORIES, ...FIXED_COST_CATEGORIES]),
+);

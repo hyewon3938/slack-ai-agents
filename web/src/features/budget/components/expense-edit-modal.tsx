@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { ExpenseRow, PlannedExpenseRow } from '@/features/budget/lib/types';
-import { EXPENSE_CATEGORIES, BUDGET_EXCLUDED_CATEGORIES } from '@/features/budget/lib/types';
+import { ALL_EXPENSE_CATEGORIES, BUDGET_EXCLUDED_CATEGORIES } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
 import { XMarkIcon } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
@@ -12,19 +12,28 @@ interface ExpenseEditModalProps {
   expense: ExpenseRow;
   /** 현재 보고 있는 결제주기 월 (예정 지출 목록용) */
   yearMonth?: string;
-  onSave: (id: number, updates: {
-    date: string;
-    amount: number;
-    category: string;
-    description: string | null;
-    exclude_from_budget: boolean;
-    planned_expense_id: number | null;
-  }) => Promise<void>;
+  onSave: (
+    id: number,
+    updates: {
+      date: string;
+      amount: number;
+      category: string;
+      description: string | null;
+      exclude_from_budget: boolean;
+      planned_expense_id: number | null;
+    },
+  ) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onClose: () => void;
 }
 
-export function ExpenseEditModal({ expense, yearMonth, onSave, onDelete, onClose }: ExpenseEditModalProps) {
+export function ExpenseEditModal({
+  expense,
+  yearMonth,
+  onSave,
+  onDelete,
+  onClose,
+}: ExpenseEditModalProps) {
   const [deleting, setDeleting] = useState(false);
   const [date, setDate] = useState(expense.date);
   const [amountStr, setAmountStr] = useState(expense.amount.toLocaleString('ko-KR'));
@@ -106,13 +115,15 @@ export function ExpenseEditModal({ expense, yearMonth, onSave, onDelete, onClose
         </div>
 
         {/* Installment badge */}
-        {expense.is_installment && expense.installment_num != null && expense.installment_total != null && (
-          <div className="mb-3">
-            <span className="inline-block rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600">
-              {expense.installment_num}/{expense.installment_total} 할부
-            </span>
-          </div>
-        )}
+        {expense.is_installment &&
+          expense.installment_num != null &&
+          expense.installment_total != null && (
+            <div className="mb-3">
+              <span className="inline-block rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600">
+                {expense.installment_num}/{expense.installment_total} 할부
+              </span>
+            </div>
+          )}
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
           {/* 날짜 */}
@@ -141,8 +152,10 @@ export function ExpenseEditModal({ expense, yearMonth, onSave, onDelete, onClose
             value={category}
             onChange={(e) => handleCategoryChange(e.target.value)}
           >
-            {EXPENSE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {ALL_EXPENSE_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </Select>
 
@@ -163,7 +176,9 @@ export function ExpenseEditModal({ expense, yearMonth, onSave, onDelete, onClose
                 type="button"
                 onClick={() => setExcludeFromBudget(false)}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  !excludeFromBudget ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                  !excludeFromBudget
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 포함
@@ -197,7 +212,9 @@ export function ExpenseEditModal({ expense, yearMonth, onSave, onDelete, onClose
                 ))}
               </Select>
               {selectedPlanned && (
-                <p className="mt-1 text-[10px] text-blue-500">이 지출은 일일 예산에 영향을 주지 않습니다</p>
+                <p className="mt-1 text-[10px] text-blue-500">
+                  이 지출은 일일 예산에 영향을 주지 않습니다
+                </p>
               )}
             </div>
           )}
@@ -219,7 +236,9 @@ export function ExpenseEditModal({ expense, yearMonth, onSave, onDelete, onClose
               onClick={() => {
                 if (!confirm('이 내역을 삭제할까요?')) return;
                 setDeleting(true);
-                void onDelete(expense.id).then(onClose).finally(() => setDeleting(false));
+                void onDelete(expense.id)
+                  .then(onClose)
+                  .finally(() => setDeleting(false));
               }}
             >
               {deleting ? '삭제 중...' : '삭제'}

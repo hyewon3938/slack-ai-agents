@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { updateExpense, deleteExpense } from '@/features/budget/lib/queries';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
+import { ALL_EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { validateFields } from '@/lib/validation';
 
-const VALID_CATEGORIES = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
+const VALID_CATEGORIES = new Set<string>([...ALL_EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
@@ -21,14 +21,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if ('amount' in body && (typeof body.amount !== 'number' || body.amount <= 0)) {
       return NextResponse.json({ error: 'amount는 양수 숫자여야 합니다' }, { status: 400 });
     }
-    if ('category' in body && typeof body.category === 'string' && !VALID_CATEGORIES.has(body.category)) {
+    if (
+      'category' in body &&
+      typeof body.category === 'string' &&
+      !VALID_CATEGORIES.has(body.category)
+    ) {
       return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
     }
     if ('date' in body && typeof body.date === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
       return NextResponse.json({ error: 'date 형식이 올바르지 않습니다' }, { status: 400 });
     }
     if ('exclude_from_budget' in body && typeof body.exclude_from_budget !== 'boolean') {
-      return NextResponse.json({ error: 'exclude_from_budget는 boolean이어야 합니다' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'exclude_from_budget는 boolean이어야 합니다' },
+        { status: 400 },
+      );
     }
 
     const lengthError = validateFields([
