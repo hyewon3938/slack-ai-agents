@@ -48,8 +48,8 @@
     <text x="60" y="256" fill="#ffffff" font-size="14" font-weight="700">Web</text>
     <text x="260" y="256" text-anchor="end" fill="#ffffff" font-size="10" opacity="0.85">Vercel · Next.js</text>
   </g>
-  <text x="60" y="292" fill="#475569" font-size="12">캘린더 · 백로그 · 루틴</text>
-  <text x="60" y="312" fill="#475569" font-size="12">지출 · 수면 기록</text>
+  <text x="60" y="292" fill="#475569" font-size="12">캘린더 · 백로그 · 카테고리</text>
+  <text x="60" y="312" fill="#475569" font-size="12">루틴 히트맵 · 수면 차트 · 지출</text>
 
   <!-- ===== Oracle Cloud VM (center) ===== -->
   <g>
@@ -74,10 +74,10 @@
   <text x="342" y="188" fill="#1e3a8a" font-size="13" font-weight="700">Slack Bolt App</text>
   <text x="618" y="188" text-anchor="end" fill="#1e40af" font-size="10" font-weight="600">Node · TS</text>
   <text x="342" y="210" fill="#475569" font-size="11">• Agent Loop — LLM ↔ SQL 도구 자율 반복</text>
-  <text x="342" y="229" fill="#475569" font-size="11">• Pure SQL 패턴 감지 5종 — streak·sleep·slot…</text>
+  <text x="342" y="229" fill="#475569" font-size="11">• Pure SQL 패턴 5종 (CTE·window 기반)</text>
   <text x="342" y="248" fill="#475569" font-size="11">• node-cron — 아침/밤/주간 알림 (KST)</text>
   <text x="342" y="267" fill="#475569" font-size="11">• Fast path — 정규식 → Block Kit (~1초)</text>
-  <text x="342" y="286" fill="#475569" font-size="11">• modify_db 승인 플로우 — dry-run 카드 → 승인</text>
+  <text x="342" y="286" fill="#475569" font-size="11">• modify_db 승인 — dry-run 카드 → 사용자 승인</text>
   <text x="342" y="305" fill="#475569" font-size="11">• Rate Limit · userId 격리 · 인젝션 차단</text>
 
   <!-- DB Proxy API -->
@@ -86,7 +86,7 @@
   </g>
   <text x="342" y="360" fill="#14532d" font-size="13" font-weight="700">DB Proxy API</text>
   <text x="618" y="360" text-anchor="end" fill="#166534" font-size="10" font-weight="600">:3100 · Bearer · 루프백 바인딩</text>
-  <text x="342" y="380" fill="#475569" font-size="11">SQL 화이트리스트 · WHERE 필수 · 벌크 50행 제한</text>
+  <text x="342" y="380" fill="#475569" font-size="11">SQL 화이트리스트 · WHERE 필수 · 벌크 행 수 제한</text>
 
   <!-- PostgreSQL -->
   <g filter="url(#shadow)">
