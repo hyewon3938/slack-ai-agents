@@ -10,7 +10,12 @@ import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
 import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
-import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent, readAvgVariableMonthly } from './repository/expenses-repo';
+import {
+  readFlexibleSpent,
+  readExcludedSpent,
+  readTodayFlexSpent,
+  readAvgVariableMonthly,
+} from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
 
@@ -65,21 +70,27 @@ export async function getMonthlyAllocation(
 ): Promise<MonthAllocatorResult> {
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
-  const [totalAvailable, fixedMonthly, installments, targetMonth, currentMonthOnlyIncome] = await Promise.all([
-    computeTotalAvailable(userId, todayStr),
-    readFixedCostsMonthlyTotal(userId),
-    readActiveInstallments(userId, cycle.yearMonth),
-    readTargetMonth(userId),
-    readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
-  ]);
+  const [totalAvailable, fixedMonthly, installments, targetMonth, currentMonthOnlyIncome] =
+    await Promise.all([
+      computeTotalAvailable(userId, todayStr),
+      readFixedCostsMonthlyTotal(userId),
+      readActiveInstallments(userId, cycle.yearMonth),
+      readTargetMonth(userId),
+      readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
+    ]);
   const planned = await readPlannedExpenses(
-    userId, cycle.yearMonth, targetMonth ?? cycle.yearMonth,
+    userId,
+    cycle.yearMonth,
+    targetMonth ?? cycle.yearMonth,
   );
   return allocateMonthlyBudgets({
-    totalAvailable, fixedMonthly, installments,
+    totalAvailable,
+    fixedMonthly,
+    installments,
     plannedExpenses: planned,
     currentBillingMonth: cycle.yearMonth,
-    targetMonth, today: todayStr,
+    targetMonth,
+    today: todayStr,
     currentMonthOnlyIncome,
   });
 }
@@ -93,12 +104,18 @@ export async function getTodayAllocation(
   const monthly = await getMonthlyAllocation(userId, now);
   const currentMonth = monthly.monthlyBudgets.find((m) => m.isCurrent);
   if (!currentMonth) {
-    return { todayBudget: 0, todayRemaining: 0, monthBudgetRemaining: 0, todayFlexSpent: 0, targetDate: null };
+    return {
+      todayBudget: 0,
+      todayRemaining: 0,
+      monthBudgetRemaining: 0,
+      todayFlexSpent: 0,
+      targetDate: null,
+    };
   }
   const todayStr = formatKSTDate(now);
   const [flex, todayFlex, targetDate] = await Promise.all([
     readFlexibleSpent(userId, cycle.yearMonth, todayStr),
-    readTodayFlexSpent(userId, todayStr),
+    readTodayFlexSpent(userId, todayStr, cycle.yearMonth),
     readTargetMonth(userId),
   ]);
   return {
@@ -237,13 +254,18 @@ export async function runSettlementIfDue(
   }
 
   const prevSnapshot = await readLatestSnapshot(userId);
-  const availableAtStart = prevSnapshot?.available_at_end ?? await readDistributableAssetBalance(userId);
+  const availableAtStart =
+    prevSnapshot?.available_at_end ?? (await readDistributableAssetBalance(userId));
   const availableAtEnd = availableAtStart + income - flex - excluded;
 
   const snapshot = buildSettlementSnapshot({
-    yearMonth: targetMonth, monthlyBudget,
-    actualFlexibleSpent: flex, actualExcludedSpent: excluded, actualIncome: income,
-    availableAtStart, availableAtEnd,
+    yearMonth: targetMonth,
+    monthlyBudget,
+    actualFlexibleSpent: flex,
+    actualExcludedSpent: excluded,
+    actualIncome: income,
+    availableAtStart,
+    availableAtEnd,
   });
   const result = await saveSnapshotIfAbsent(userId, snapshot);
   return { settled: result.saved, snapshot };
