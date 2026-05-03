@@ -291,11 +291,9 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   );
   const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
 
-  // 예정 지출 연결 건: 예정 금액까지만 제외, 초과분은 자유 지출에 포함
-  const plannedLinkedResult = await query<{ linked: string; overflow: string }>(
-    `SELECT
-       COALESCE(SUM(LEAST(used, budget)), 0) as linked,
-       COALESCE(SUM(GREATEST(used - budget, 0)), 0) as overflow
+  // 예정 지출 연결 건: 예정 금액 초과분만 자유 지출에 가산 (capped 금액은 예정 락에 귀속)
+  const plannedLinkedResult = await query<{ overflow: string }>(
+    `SELECT COALESCE(SUM(GREATEST(used - budget, 0)), 0) as overflow
      FROM (
        SELECT p.amount as budget, COALESCE(SUM(e.amount), 0) as used
        FROM planned_expenses p
@@ -306,8 +304,21 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
      ) sub`,
     [userId, yearMonth],
   );
-  const plannedLinkedTotal = Number(plannedLinkedResult.rows[0]?.linked ?? 0);
-  const flexibleSpent = variableTotal - installmentTotal - plannedLinkedTotal;
+  const plannedOverflow = Number(plannedLinkedResult.rows[0]?.overflow ?? 0);
+
+  // 자유 지출 정의 (readFlexibleSpent와 동일):
+  // 비할부 + 신규 할부 1회차(billing_month=대상 사이클), 예정지출 연결 건 제외, 예정 overflow 가산.
+  const flexResult = await queryOne<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text as total FROM expenses
+     WHERE user_id = $1 AND billing_month = $2
+       AND exclude_from_budget = false
+       AND COALESCE(type, 'expense') = 'expense'
+       AND planned_expense_id IS NULL
+       AND (is_installment = false OR (is_installment = true AND installment_num = 1))`,
+    [userId, yearMonth],
+  );
+  const directFlex = Number(flexResult?.total ?? 0);
+  const flexibleSpent = directFlex + plannedOverflow;
 
   // 수입 합계 (type='income')
   const incomeResult = await query<{ total: string }>(
@@ -640,27 +651,23 @@ export async function saveDailyBudgetLog(
   // v2 facade로 오늘 예산 계산
   const daily = await getTodayAllocation(userId, now);
   const budget = daily.todayBudget;
+  const billingMonth = getCurrentBillingMonth(now);
 
-  // targetDate의 자유 지출을 DB에서 직접 조회 (드리프트로 인해 live today 기준이 다를 수 있음)
-  const budgetStartRow = await queryOne<{ updated_at: string }>(
-    'SELECT updated_at::text FROM budget_settings WHERE user_id = $1',
-    [userId],
-  );
-  const budgetStartAtParam = budgetStartRow?.updated_at ?? '9999-12-31T00:00:00Z';
+  // targetDate의 자유 지출을 DB에서 직접 조회 (드리프트로 인해 live today 기준이 다를 수 있음).
+  // readFlexibleSpent와 동일 정의: 비할부 + 신규 할부 1회차(billing_month=현재 사이클).
   const targetSpentRow = await queryOne<{ spent: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text as spent
      FROM expenses
      WHERE user_id=$1 AND date=$2
-       AND (is_installment=false OR (is_installment=true AND created_at>=$3))
+       AND (is_installment=false OR (is_installment=true AND installment_num=1 AND billing_month=$3))
        AND exclude_from_budget = false
        AND COALESCE(type,'expense')='expense'
        AND planned_expense_id IS NULL`,
-    [userId, targetDate, budgetStartAtParam],
+    [userId, targetDate, billingMonth],
   );
   const spent = Number(targetSpentRow?.spent ?? 0);
 
   const saved = budget - spent;
-  const billingMonth = getCurrentBillingMonth(now);
 
   // UPSERT: 같은 날 다시 실행해도 최신 값으로 갱신
   await query(
