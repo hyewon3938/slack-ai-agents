@@ -209,6 +209,9 @@ const EXPENSE_COLUMNS = new Set([
   'distribute_to_budget',
 ]);
 
+/** source='fixed' 행의 exclude_from_budget 변경 시도 시 throw되는 sentinel error */
+export const FIXED_SOURCE_EXCLUDE_LOCKED = 'FIXED_SOURCE_EXCLUDE_LOCKED';
+
 export async function updateExpense(
   userId: number,
   id: number,
@@ -216,6 +219,18 @@ export async function updateExpense(
 ): Promise<ExpenseRow | null> {
   const keys = Object.keys(updates).filter((k) => EXPENSE_COLUMNS.has(k));
   if (keys.length === 0) return queryExpense(userId, id);
+
+  // source='fixed' 행: 자유지출/고정비 이중 카운트 방지 — exclude_from_budget 변경 차단.
+  // amount 등 다른 필드는 자유 수정 가능 (변동성 있는 고정비 케이스 지원).
+  if (keys.includes('exclude_from_budget')) {
+    const existing = await queryOne<{ source: string | null }>(
+      `SELECT source FROM expenses WHERE id = $1 AND user_id = $2`,
+      [id, userId],
+    );
+    if (existing?.source === 'fixed') {
+      throw new Error(FIXED_SOURCE_EXCLUDE_LOCKED);
+    }
+  }
 
   const setClauses = keys.map((k, i) => `${k} = $${i + 3}`);
   const values = keys.map((k) => updates[k]);

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { updateExpense, deleteExpense } from '@/features/budget/lib/queries';
+import {
+  updateExpense,
+  deleteExpense,
+  FIXED_SOURCE_EXCLUDE_LOCKED,
+} from '@/features/budget/lib/queries';
 import { ALL_EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { validateFields } from '@/lib/validation';
 
@@ -51,6 +55,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!data) return NextResponse.json({ error: '지출을 찾을 수 없습니다' }, { status: 404 });
     return NextResponse.json({ data });
   } catch (err) {
+    if (err instanceof Error && err.message === FIXED_SOURCE_EXCLUDE_LOCKED) {
+      return NextResponse.json(
+        { error: '자동 등록 고정비 항목은 예산 제외 설정을 변경할 수 없습니다' },
+        { status: 400 },
+      );
+    }
     console.error('[Expense API]', request.url, err);
     return NextResponse.json({ error: '지출 수정 실패' }, { status: 500 });
   }
