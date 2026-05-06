@@ -4,6 +4,7 @@ import { getTodayAllocation } from './facade';
 import { getCurrentBillingMonth, getBillingRange, calcCycleDays } from './billing/cycle';
 import { resolveFixedCostExpenseDate } from './billing/fixed-cost-date';
 import { getBillingMonthForExpense } from './billing/card-billing';
+import { readFlexibleSpent, readTodayFlexSpent } from './repository/expenses-repo';
 import type {
   ExpenseRow,
   FixedCostRow,
@@ -306,34 +307,8 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   );
   const installmentTotal = Number(installmentResult.rows[0]?.total ?? 0);
 
-  // 예정 지출 연결 건: 예정 금액 초과분만 자유 지출에 가산 (capped 금액은 예정 락에 귀속)
-  const plannedLinkedResult = await query<{ overflow: string }>(
-    `SELECT COALESCE(SUM(GREATEST(used - budget, 0)), 0) as overflow
-     FROM (
-       SELECT p.amount as budget, COALESCE(SUM(e.amount), 0) as used
-       FROM planned_expenses p
-       LEFT JOIN expenses e ON e.planned_expense_id = p.id
-         AND e.billing_month = $2
-       WHERE p.user_id = $1
-       GROUP BY p.id, p.amount
-     ) sub`,
-    [userId, yearMonth],
-  );
-  const plannedOverflow = Number(plannedLinkedResult.rows[0]?.overflow ?? 0);
-
-  // 자유 지출 정의 (readFlexibleSpent와 동일):
-  // 비할부 + 신규 할부 1회차(billing_month=대상 사이클), 예정지출 연결 건 제외, 예정 overflow 가산.
-  const flexResult = await queryOne<{ total: string }>(
-    `SELECT COALESCE(SUM(amount), 0)::text as total FROM expenses
-     WHERE user_id = $1 AND billing_month = $2
-       AND exclude_from_budget = false
-       AND COALESCE(type, 'expense') = 'expense'
-       AND planned_expense_id IS NULL
-       AND (is_installment = false OR (is_installment = true AND installment_num = 1))`,
-    [userId, yearMonth],
-  );
-  const directFlex = Number(flexResult?.total ?? 0);
-  const flexibleSpent = directFlex + plannedOverflow;
+  // 자유 지출 정의는 readFlexibleSpent 단일 정의에 의존 (SSOT)
+  const flexibleSpent = await readFlexibleSpent(userId, yearMonth, to);
 
   // 수입 합계 (type='income')
   const incomeResult = await query<{ total: string }>(
@@ -668,19 +643,8 @@ export async function saveDailyBudgetLog(
   const budget = daily.todayBudget;
   const billingMonth = getCurrentBillingMonth(now);
 
-  // targetDate의 자유 지출을 DB에서 직접 조회 (드리프트로 인해 live today 기준이 다를 수 있음).
-  // readFlexibleSpent와 동일 정의: 비할부 + 신규 할부 1회차(billing_month=현재 사이클).
-  const targetSpentRow = await queryOne<{ spent: string }>(
-    `SELECT COALESCE(SUM(amount), 0)::text as spent
-     FROM expenses
-     WHERE user_id=$1 AND date=$2
-       AND (is_installment=false OR (is_installment=true AND installment_num=1 AND billing_month=$3))
-       AND exclude_from_budget = false
-       AND COALESCE(type,'expense')='expense'
-       AND planned_expense_id IS NULL`,
-    [userId, targetDate, billingMonth],
-  );
-  const spent = Number(targetSpentRow?.spent ?? 0);
+  // targetDate의 자유 지출은 readTodayFlexSpent 단일 정의 사용 (SSOT)
+  const spent = await readTodayFlexSpent(userId, targetDate, billingMonth);
 
   const saved = budget - spent;
 
