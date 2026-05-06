@@ -28,7 +28,7 @@ export function useBudget() {
   const [error, setError] = useState<string | null>(null);
   const [expenseVersion, setExpenseVersion] = useState(0);
 
-  const fetchJson = useCallback(async <T,>(url: string): Promise<T | null> => {
+  const fetchJson = useCallback(async <T>(url: string): Promise<T | null> => {
     try {
       const res = await fetchWithTimeout(url);
       if (!res.ok) return null;
@@ -45,12 +45,14 @@ export function useBudget() {
     target_date: string | null;
     cycle_days: number;
     today_budget: number;
+    today_recommended: number;
     today_flex_spent: number;
     today_remaining: number;
   }
 
   interface TodayV2Response {
     todayBudget: number;
+    todayRecommended: number;
     todayRemaining: number;
     monthBudgetRemaining: number;
     todayFlexSpent: number;
@@ -62,17 +64,15 @@ export function useBudget() {
   }
 
   /** v2 today + monthly 응답을 RunwayResponse로 합성 */
-  function buildRunwayFromV2(
-    today: TodayV2Response,
-    monthly: MonthlyV2Response,
-  ): RunwayResponse {
+  function buildRunwayFromV2(today: TodayV2Response, monthly: MonthlyV2Response): RunwayResponse {
     return {
       free_per_month: monthly.freePerMonth,
-      dynamic_daily: today.todayBudget,
+      dynamic_daily: today.todayRecommended,
       month_budget_remaining: today.monthBudgetRemaining,
       target_date: today.targetDate,
       cycle_days: 30,
       today_budget: today.todayBudget,
+      today_recommended: today.todayRecommended,
       today_flex_spent: today.todayFlexSpent,
       today_remaining: today.todayRemaining,
     };
@@ -97,6 +97,7 @@ export function useBudget() {
       sum.auto_daily = rd.dynamic_daily;
       sum.month_budget_remaining = rd.month_budget_remaining;
       sum.today_budget = rd.today_budget;
+      sum.today_recommended = rd.today_recommended;
       sum.today_flex_spent = rd.today_flex_spent;
       sum.today_remaining = rd.today_remaining;
     } else {
@@ -109,77 +110,83 @@ export function useBudget() {
   }, []);
 
   /** summary + 런웨이 재조회 (지출 추가/삭제/수정 후 호출) */
-  const refreshBudget = useCallback(async (month: string) => {
-    const [sumRes, todayRes, monthlyRes] = await Promise.all([
-      fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
-      fetchJson<{ data: TodayV2Response }>('/api/budget/today'),
-      fetchJson<{ data: MonthlyV2Response }>('/api/budget/monthly'),
-    ]);
-    if (sumRes) {
-      const updated = { ...sumRes.data };
-      if (todayRes?.data && monthlyRes?.data) {
-        applyAutoBudget(updated, buildRunwayFromV2(todayRes.data, monthlyRes.data), month);
-      }
-      setSummary(updated);
-    }
-  }, [fetchJson, applyAutoBudget]);
-
-  const fetchAll = useCallback(async (month: string) => {
-    setLoading(true);
-    setError(null);
-    setExpenses([]);
-    setSummary(null);
-    try {
-      // ── 1차: 핵심 데이터 (지출목록 + 요약 → 화면 즉시 표시) ──
-      // billing_month 컬럼 기준 조회 → 카드별 결제주기(현대 14일, 국민 13일) 자동 반영
-      const [expData, sumData] = await Promise.all([
-        fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?yearMonth=${month}`),
+  const refreshBudget = useCallback(
+    async (month: string) => {
+      const [sumRes, todayRes, monthlyRes] = await Promise.all([
         fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
-      ]);
-
-      if (expData) setExpenses(expData.data);
-      if (sumData) setSummary(sumData.data);
-
-      if (!expData && !sumData) {
-        // 둘 다 실패 시 1회 재시도
-        const [retryExp, retrySum] = await Promise.all([
-          fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?yearMonth=${month}`),
-          fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
-        ]);
-        if (retryExp) setExpenses(retryExp.data);
-        if (retrySum) setSummary(retrySum.data);
-        if (!retryExp && !retrySum) setError('데이터 조회 실패 — 새로고침 해주세요');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '오류 발생');
-    } finally {
-      setLoading(false);
-    }
-
-    // ── 2차: 런웨이 + 보조 데이터 (로딩 해제 후 백그라운드) ──
-    try {
-      const [assetData, fixedData, todayData, monthlyData] = await Promise.all([
-        fetchJson<{ data: AssetRow[] }>('/api/budget/assets'),
-        fetchJson<{ data: FixedCostRow[] }>('/api/budget/fixed-costs'),
         fetchJson<{ data: TodayV2Response }>('/api/budget/today'),
         fetchJson<{ data: MonthlyV2Response }>('/api/budget/monthly'),
       ]);
-
-      if (todayData?.data && monthlyData?.data) {
-        const synthesized = buildRunwayFromV2(todayData.data, monthlyData.data);
-        setSummary((prev) => {
-          if (!prev) return prev;
-          const updated = { ...prev };
-          applyAutoBudget(updated, synthesized, month);
-          return updated;
-        });
+      if (sumRes) {
+        const updated = { ...sumRes.data };
+        if (todayRes?.data && monthlyRes?.data) {
+          applyAutoBudget(updated, buildRunwayFromV2(todayRes.data, monthlyRes.data), month);
+        }
+        setSummary(updated);
       }
-      if (assetData) setAssets(assetData.data);
-      if (fixedData) setFixedCosts(fixedData.data);
-    } catch {
-      // 2차 실패는 무시 (핵심 데이터는 이미 표시됨)
-    }
-  }, [fetchJson, applyAutoBudget]);
+    },
+    [fetchJson, applyAutoBudget],
+  );
+
+  const fetchAll = useCallback(
+    async (month: string) => {
+      setLoading(true);
+      setError(null);
+      setExpenses([]);
+      setSummary(null);
+      try {
+        // ── 1차: 핵심 데이터 (지출목록 + 요약 → 화면 즉시 표시) ──
+        // billing_month 컬럼 기준 조회 → 카드별 결제주기(현대 14일, 국민 13일) 자동 반영
+        const [expData, sumData] = await Promise.all([
+          fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?yearMonth=${month}`),
+          fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
+        ]);
+
+        if (expData) setExpenses(expData.data);
+        if (sumData) setSummary(sumData.data);
+
+        if (!expData && !sumData) {
+          // 둘 다 실패 시 1회 재시도
+          const [retryExp, retrySum] = await Promise.all([
+            fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?yearMonth=${month}`),
+            fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),
+          ]);
+          if (retryExp) setExpenses(retryExp.data);
+          if (retrySum) setSummary(retrySum.data);
+          if (!retryExp && !retrySum) setError('데이터 조회 실패 — 새로고침 해주세요');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '오류 발생');
+      } finally {
+        setLoading(false);
+      }
+
+      // ── 2차: 런웨이 + 보조 데이터 (로딩 해제 후 백그라운드) ──
+      try {
+        const [assetData, fixedData, todayData, monthlyData] = await Promise.all([
+          fetchJson<{ data: AssetRow[] }>('/api/budget/assets'),
+          fetchJson<{ data: FixedCostRow[] }>('/api/budget/fixed-costs'),
+          fetchJson<{ data: TodayV2Response }>('/api/budget/today'),
+          fetchJson<{ data: MonthlyV2Response }>('/api/budget/monthly'),
+        ]);
+
+        if (todayData?.data && monthlyData?.data) {
+          const synthesized = buildRunwayFromV2(todayData.data, monthlyData.data);
+          setSummary((prev) => {
+            if (!prev) return prev;
+            const updated = { ...prev };
+            applyAutoBudget(updated, synthesized, month);
+            return updated;
+          });
+        }
+        if (assetData) setAssets(assetData.data);
+        if (fixedData) setFixedCosts(fixedData.data);
+      } catch {
+        // 2차 실패는 무시 (핵심 데이터는 이미 표시됨)
+      }
+    },
+    [fetchJson, applyAutoBudget],
+  );
 
   useEffect(() => {
     void fetchAll(selectedMonth);
@@ -208,7 +215,10 @@ export function useBudget() {
       }
       const { data: newExpense } = (await res.json()) as { data: ExpenseRow };
       // 현재 보고 있는 결제주기에 해당하면 목록에 추가
-      const expBillingMonth = getBillingMonthForExpense(data.date, data.payment_method ?? '현대카드');
+      const expBillingMonth = getBillingMonthForExpense(
+        data.date,
+        data.payment_method ?? '현대카드',
+      );
       if (expBillingMonth === selectedMonth) {
         setExpenses((prev) => [newExpense, ...prev]);
         void refreshBudget(selectedMonth).catch(() => {});
@@ -219,19 +229,32 @@ export function useBudget() {
     [selectedMonth, refreshBudget],
   );
 
-  const deleteExpense = useCallback(async (id: number): Promise<void> => {
-    const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      const err = (await res.json()) as { error?: string };
-      throw new Error(err.error ?? '지출 삭제 실패');
-    }
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
-    setExpenseVersion((v) => v + 1);
-    void refreshBudget(selectedMonth).catch(() => {});
-  }, [selectedMonth, refreshBudget]);
+  const deleteExpense = useCallback(
+    async (id: number): Promise<void> => {
+      const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? '지출 삭제 실패');
+      }
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
+      setExpenseVersion((v) => v + 1);
+      void refreshBudget(selectedMonth).catch(() => {});
+    },
+    [selectedMonth, refreshBudget],
+  );
 
   const updateExpense = useCallback(
-    async (id: number, updates: { date: string; amount: number; category: string; description: string | null; exclude_from_budget?: boolean; planned_expense_id?: number | null }): Promise<void> => {
+    async (
+      id: number,
+      updates: {
+        date: string;
+        amount: number;
+        category: string;
+        description: string | null;
+        exclude_from_budget?: boolean;
+        planned_expense_id?: number | null;
+      },
+    ): Promise<void> => {
       const res = await fetch(`/api/expenses/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

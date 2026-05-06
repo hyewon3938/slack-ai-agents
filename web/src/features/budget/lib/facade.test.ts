@@ -25,7 +25,10 @@ vi.mock('./repository/settings-repo', () => ({
 }));
 
 import {
-  getMonthlyAllocation, getTodayAllocation, getRunwayProjection, getBudgetPreview,
+  getMonthlyAllocation,
+  getTodayAllocation,
+  getRunwayProjection,
+  getBudgetPreview,
   runSettlementIfDue,
 } from './facade';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
@@ -34,7 +37,12 @@ import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
 import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
-import { readFlexibleSpent, readExcludedSpent, readTodayFlexSpent, readAvgVariableMonthly } from './repository/expenses-repo';
+import {
+  readFlexibleSpent,
+  readExcludedSpent,
+  readTodayFlexSpent,
+  readAvgVariableMonthly,
+} from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 
 // April 10 21:00 KST — billing cycle: 2026-04 (Mar 14 ~ Apr 13)
@@ -74,10 +82,19 @@ describe('getMonthlyAllocation', () => {
 
   it('스냅샷 있어도 → 현재 자산 잔액을 totalAvailable로 사용', async () => {
     vi.mocked(readLatestSnapshot).mockResolvedValue({
-      id: 1, user_id: 1, year_month: '2026-03', sealed_at: '2026-03-16T00:00:00Z',
-      allocated_budget: 500_000, fixed_total: 0, installment_total: 0,
-      planned_total: 0, flexible_spent: 0, excluded_spent: 0, income_total: 0,
-      available_at_start: 1_000_000, available_at_end: 900_000,
+      id: 1,
+      user_id: 1,
+      year_month: '2026-03',
+      sealed_at: '2026-03-16T00:00:00Z',
+      allocated_budget: 500_000,
+      fixed_total: 0,
+      installment_total: 0,
+      planned_total: 0,
+      flexible_spent: 0,
+      excluded_spent: 0,
+      income_total: 0,
+      available_at_start: 1_000_000,
+      available_at_end: 900_000,
     });
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(999_999);
 
@@ -176,26 +193,53 @@ describe('getTodayAllocation', () => {
     vi.mocked(readTodayFlexSpent).mockResolvedValue(30_000);
   });
 
-  it('결과에 todayFlexSpent + targetDate 포함', async () => {
+  it('결과에 todayFlexSpent + targetDate + todayRecommended 포함', async () => {
     const result = await getTodayAllocation(1, DEFAULT_NOW);
 
     expect(result.todayFlexSpent).toBe(30_000);
     expect(result.targetDate).toBe('2026-06');
     expect(typeof result.todayBudget).toBe('number');
+    expect(typeof result.todayRecommended).toBe('number');
     expect(typeof result.todayRemaining).toBe('number');
     expect(typeof result.monthBudgetRemaining).toBe('number');
   });
 
-  it('currentMonth 없으면 빈 값 + targetDate null 반환', async () => {
+  it('currentMonth 없으면 빈 값 + targetDate null 반환 (todayRecommended 0 포함)', async () => {
     vi.mocked(readTargetMonth).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(0);
 
     const result = await getTodayAllocation(1, DEFAULT_NOW);
 
     expect(result.todayBudget).toBe(0);
+    expect(result.todayRecommended).toBe(0);
     expect(result.todayRemaining).toBe(0);
+    expect(result.monthBudgetRemaining).toBe(0);
     expect(result.todayFlexSpent).toBe(0);
     expect(result.targetDate).toBeNull();
+  });
+
+  it('readCurrentMonthOnlyIncome 을 (userId, billingMonth, todayStr) 시그니처로 호출', async () => {
+    await getTodayAllocation(1, DEFAULT_NOW);
+    // DEFAULT_NOW = 2026-04-10 21:00 KST → billing_month '2026-04', todayStr '2026-04-10'
+    expect(readCurrentMonthOnlyIncome).toHaveBeenCalledWith(1, '2026-04', '2026-04-10');
+  });
+
+  it('수입 입력 + 자산 동시 갱신 (실제 플로우) → todayBudget(기준) 불변', async () => {
+    vi.mocked(readTodayFlexSpent).mockResolvedValue(0);
+
+    // 수입 0, 자산 3M
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(3_000_000);
+    vi.mocked(readCurrentMonthOnlyIncome).mockResolvedValue(0);
+    const r0 = await getTodayAllocation(1, DEFAULT_NOW);
+
+    // 수입 100k, 자산 3.1M (사용자가 자산에도 반영)
+    // allocator 식: monthBudget = (자산 − 수입) × Days/sumDays + 수입
+    // base = monthBudget − 수입 = (자산 − 수입) × Days/sumDays = 자산 갱신 전 값
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(3_100_000);
+    vi.mocked(readCurrentMonthOnlyIncome).mockResolvedValue(100_000);
+    const r1 = await getTodayAllocation(1, DEFAULT_NOW);
+
+    expect(r1.todayBudget).toBe(r0.todayBudget);
   });
 });
 

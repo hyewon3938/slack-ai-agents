@@ -1,4 +1,4 @@
-import { getBillingCycle, getBillingRange } from './billing/cycle';
+import { getBillingCycle, getBillingRange, calcCycleDays } from './billing/cycle';
 import { calcAllocatedDays } from './allocator/proration';
 import { allocateMonthlyBudgets } from './allocator/month-allocator';
 import { allocateTodayBudget } from './allocator/day-allocator';
@@ -106,6 +106,7 @@ export async function getTodayAllocation(
   if (!currentMonth) {
     return {
       todayBudget: 0,
+      todayRecommended: 0,
       todayRemaining: 0,
       monthBudgetRemaining: 0,
       todayFlexSpent: 0,
@@ -113,17 +114,24 @@ export async function getTodayAllocation(
     };
   }
   const todayStr = formatKSTDate(now);
-  const [flex, todayFlex, targetDate] = await Promise.all([
+  const [flex, todayFlex, targetDate, currentMonthIncome] = await Promise.all([
     readFlexibleSpent(userId, cycle.yearMonth, todayStr),
     readTodayFlexSpent(userId, todayStr, cycle.yearMonth),
     readTargetMonth(userId),
+    readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
   ]);
+
+  // 오늘 포함 사이클 끝까지 남은 일자. 사이클 종료 후엔 1로 클램프 (0 division 방어).
+  const daysFromToday = Math.max(1, calcCycleDays(todayStr, cycle.to));
+
   return {
     ...allocateTodayBudget({
       monthBudget: currentMonth.free,
       flexibleSpent: flex,
       todayFlexSpent: todayFlex,
       cycleTotalDays: cycle.totalDays,
+      daysFromToday,
+      currentMonthIncome,
     }),
     todayFlexSpent: todayFlex,
     targetDate,

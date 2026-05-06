@@ -342,6 +342,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     auto_daily: null,
     month_budget_remaining: null,
     today_budget: null,
+    today_recommended: null,
     today_flex_spent: null,
     today_remaining: null,
     by_category: byCategory,
@@ -638,9 +639,10 @@ export async function saveDailyBudgetLog(
   // T12:00:00Z = KST 21:00 → 당일 날짜 유지 (드리프트 보정은 호출 측에서 처리)
   const now = new Date(`${targetDate}T12:00:00Z`);
 
-  // v2 facade로 오늘 예산 계산
+  // v2 facade로 오늘 예산 계산. 동적 권장값(todayRecommended)을 일별 로그에 저장 —
+  // 사이클 락이 풀린 후의 잔여/남은일자 기반 값이 실제 권장 행동선과 일치한다.
   const daily = await getTodayAllocation(userId, now);
-  const budget = daily.todayBudget;
+  const budget = daily.todayRecommended;
   const billingMonth = getCurrentBillingMonth(now);
 
   // targetDate의 자유 지출은 readTodayFlexSpent 단일 정의 사용 (SSOT)

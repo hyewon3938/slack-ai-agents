@@ -28,7 +28,7 @@ function InfoTooltip({ text }: { text: string }) {
 
 interface DailyBudgetLogProps {
   yearMonth: string;
-  /** 현재 todayBudget (런웨이 일수 환산용, null이면 런웨이 표시 생략) */
+  /** 현재 오늘 예산(todayRecommended, 동적). 일별 로그도 같은 의미로 저장됨 — 런웨이 일수 환산용. null이면 런웨이 표시 생략. */
   todayBudget: number | null;
 }
 
@@ -45,7 +45,12 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
       const res = await fetch(`/api/budget/daily-logs?yearMonth=${yearMonth}`);
       if (!res.ok) return;
       const { data } = (await res.json()) as {
-        data: { logs: DailyBudgetLog[]; total_saved: number; days_logged: number; avg_daily_saved: number };
+        data: {
+          logs: DailyBudgetLog[];
+          total_saved: number;
+          days_logged: number;
+          avg_daily_saved: number;
+        };
       };
       setLogs(data.logs);
       setTotalSaved(data.total_saved);
@@ -74,7 +79,9 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
       {/* 누적 요약 카드 */}
       <div className="mb-4 rounded-xl bg-gray-50 p-4">
         <div className="mb-1 text-xs text-gray-500">이번 달 현황</div>
-        <div className={`text-lg font-bold ${totalSaved >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+        <div
+          className={`text-lg font-bold ${totalSaved >= 0 ? 'text-emerald-600' : 'text-red-500'}`}
+        >
           {totalSaved >= 0 ? '+' : ''}
           {formatAmount(totalSaved)} {totalSaved >= 0 ? '세이브' : '초과'}
           <InfoTooltip text="예산 대비 절약/초과 금액의 합산이야. 실제 다음 달로 이월되는 금액과는 다를 수 있어" />
@@ -143,9 +150,7 @@ function LoadingSkeleton() {
 function EmptyState() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="py-12 text-center text-sm text-gray-400">
-        아직 기록된 예산 현황이 없어
-      </div>
+      <div className="py-12 text-center text-sm text-gray-400">아직 기록된 예산 현황이 없어</div>
     </div>
   );
 }

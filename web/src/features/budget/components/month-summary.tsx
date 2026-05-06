@@ -28,6 +28,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
   const dailyBudget = summary.auto_daily;
   const monthRemaining = summary.month_budget_remaining;
   const todayBudget = summary.today_budget;
+  const todayRecommended = summary.today_recommended;
   const todayFlexSpent = summary.today_flex_spent ?? 0;
   const todayRemaining = summary.today_remaining;
 
@@ -69,32 +70,51 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       {hasRemainingView ? (
         <div className="mb-4">
           {/* 오늘의 현황 (가장 중요한 영역) */}
-          {todayBudget !== null && todayRemaining !== null ? (
+          {todayRecommended !== null && todayRemaining !== null ? (
             <div className="mb-3 rounded-lg bg-gray-50 px-3 py-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-gray-500">오늘의 현황</span>
-                <span className="text-xs text-gray-400">예산 {formatAmount(todayBudget)}</span>
+                <span className="text-xs text-gray-400">예산 {formatAmount(todayRecommended)}</span>
               </div>
 
               {/* 오늘 남은/초과 (가장 큰 숫자) */}
-              <div className={`text-2xl font-bold ${todayRemaining < 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                {todayRemaining < 0 ? '-' : ''}{formatAmount(Math.abs(todayRemaining))}
+              <div
+                className={`text-2xl font-bold ${todayRemaining < 0 ? 'text-red-500' : 'text-gray-900'}`}
+              >
+                {todayRemaining < 0 ? '-' : ''}
+                {formatAmount(Math.abs(todayRemaining))}
                 <span className="ml-1 text-sm font-medium text-gray-400">
                   {todayRemaining < 0 ? '초과' : '남음'}
                 </span>
               </div>
 
-              {/* 오늘 지출 */}
-              {todayFlexSpent > 0 && (
-                <div className="mt-1 text-xs text-gray-500">
-                  오늘 지출 {formatAmount(todayFlexSpent)}
+              {/* 오늘 지출 + 기준 일 예산 (보조) */}
+              <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                {todayFlexSpent > 0 ? (
+                  <span>오늘 지출 {formatAmount(todayFlexSpent)}</span>
+                ) : (
+                  <span />
+                )}
+                {todayBudget !== null && (
+                  <span className="text-gray-400">기준 {formatAmount(todayBudget)}</span>
+                )}
+              </div>
+
+              {/* 회복 모드: 잔여 음수 + 오늘 예산 0 */}
+              {todayRecommended === 0 && monthRemaining! < 0 && todayBudget !== null && (
+                <div className="mt-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
+                  오늘 예산 0원 — 기준 {formatAmount(todayBudget)} 참고. 남은 {daysLeft}일 회복 모드
                 </div>
               )}
 
               {/* 하루 분석 메시지 */}
               {(() => {
                 const shortenDays = calcRunwayShorten({
-                  todayRemaining, todayBudget, totalBudget, totalDays, daysLeft,
+                  todayRemaining,
+                  todayBudget,
+                  totalBudget,
+                  totalDays,
+                  daysLeft,
                 });
                 if (shortenDays != null && shortenDays > 0) {
                   return (
@@ -114,19 +134,24 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
               {/* 이번 달 예산 초과 경고 */}
               {isRemainingNegative && (
                 <div className="mt-2 text-xs text-red-500">
-                  이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일 최대한 아껴봐
+                  이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일
+                  최대한 아껴봐
                 </div>
               )}
             </div>
           ) : (
             <div className="mb-3 rounded-lg bg-gray-50 px-3 py-3">
               <div className="text-xs text-gray-500 mb-1">하루 자유 예산</div>
-              <div className={`text-2xl font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}>
-                {isRemainingNegative ? '-' : ''}{formatAmount(Math.abs(dailyBudget!))}
+              <div
+                className={`text-2xl font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}
+              >
+                {isRemainingNegative ? '-' : ''}
+                {formatAmount(Math.abs(dailyBudget!))}
               </div>
               {isRemainingNegative && (
                 <div className="mt-1 text-xs text-red-500">
-                  이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일 최대한 아껴봐
+                  이번 달 예산 {formatAmount(Math.abs(monthRemaining!))} 초과 — 남은 {daysLeft}일
+                  최대한 아껴봐
                 </div>
               )}
             </div>
@@ -138,8 +163,11 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
               <BanknotesIcon size={13} />
               남은 자유 예산
             </span>
-            <span className={`text-sm font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}>
-              {isRemainingNegative ? '-' : ''}{formatAmount(Math.abs(monthRemaining!))}
+            <span
+              className={`text-sm font-bold ${isRemainingNegative ? 'text-red-500' : 'text-gray-900'}`}
+            >
+              {isRemainingNegative ? '-' : ''}
+              {formatAmount(Math.abs(monthRemaining!))}
             </span>
           </div>
           {!isRemainingNegative && totalBudget !== null && (
@@ -164,7 +192,9 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
               <BanknotesIcon size={13} />
               자유 지출
             </span>
-            <span className="text-lg font-bold text-gray-900">{formatAmount(summary.flexible_spent)}</span>
+            <span className="text-lg font-bold text-gray-900">
+              {formatAmount(summary.flexible_spent)}
+            </span>
           </div>
           <ProgressBar
             value={summary.flexible_spent}
@@ -185,7 +215,9 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
         <div className="mb-4">
           <div className="mb-1 flex items-end justify-between">
             <span className="text-xs text-gray-500">자유 지출</span>
-            <span className="text-lg font-bold text-gray-900">{formatAmount(summary.flexible_spent)}</span>
+            <span className="text-lg font-bold text-gray-900">
+              {formatAmount(summary.flexible_spent)}
+            </span>
           </div>
           <div className="rounded-lg bg-gray-50 px-3 py-1.5 text-xs text-gray-500">
             설정 탭에서 목표 기간을 설정하면 예산이 자동 산정됩니다
@@ -196,13 +228,22 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
       {/* 핵심 지표 */}
       <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
         <div className="text-center">
-          <div className="text-xs text-gray-400">하루 예산</div>
-          {(isCurrentCycle && todayBudget !== null) ? (
-            <div className={`text-sm font-semibold ${todayBudget < 0 ? 'text-red-500' : 'text-gray-800'}`}>
-              {formatAmount(Math.abs(todayBudget))}
-            </div>
+          <div className="text-xs text-gray-400">오늘 예산</div>
+          {isCurrentCycle && todayRecommended !== null ? (
+            <>
+              <div className="text-sm font-semibold text-gray-800">
+                {formatAmount(todayRecommended)}
+              </div>
+              {todayBudget !== null && (
+                <div className="mt-0.5 text-[10px] text-gray-300">
+                  기준 {formatAmount(todayBudget)}
+                </div>
+              )}
+            </>
           ) : dailyBudget !== null ? (
-            <div className={`text-sm font-semibold ${dailyBudget < 0 ? 'text-red-500' : 'text-gray-800'}`}>
+            <div
+              className={`text-sm font-semibold ${dailyBudget < 0 ? 'text-red-500' : 'text-gray-800'}`}
+            >
               {formatAmount(Math.abs(dailyBudget))}
             </div>
           ) : (

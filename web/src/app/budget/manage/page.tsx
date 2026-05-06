@@ -25,11 +25,16 @@ const SUB_TABS: { id: SubTab; label: string }[] = [
 
 export default function ManagePage() {
   const {
-    selectedMonth, setSelectedMonth,
-    expenses, summary,
-    loading, error,
+    selectedMonth,
+    setSelectedMonth,
+    expenses,
+    summary,
+    loading,
+    error,
     expenseVersion,
-    addExpense, deleteExpense, updateExpense,
+    addExpense,
+    deleteExpense,
+    updateExpense,
   } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<SubTab>('list');
@@ -74,8 +79,8 @@ export default function ManagePage() {
       <PillTabs tabs={SUB_TABS} active={subTab} onChange={setSubTab} className="mb-3" />
 
       {/* 서브 탭 내용 */}
-      {subTab === 'list' && (
-        loading ? (
+      {subTab === 'list' &&
+        (loading ? (
           <ListSkeleton rows={6} rowHeight="h-14" />
         ) : (
           <ExpenseList
@@ -84,13 +89,12 @@ export default function ManagePage() {
             selectedCategory={selectedCategory}
             onCategoryChange={setSelectedCategory}
           />
-        )
-      )}
+        ))}
 
       {subTab === 'daily' && (
         <DailyBudgetLogView
           yearMonth={selectedMonth}
-          todayBudget={summary?.today_budget ?? null}
+          todayBudget={summary?.today_recommended ?? null}
         />
       )}
 
