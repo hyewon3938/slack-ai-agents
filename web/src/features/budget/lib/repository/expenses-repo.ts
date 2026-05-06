@@ -61,6 +61,32 @@ export async function readTodayFlexSpent(
   return Number(result.rows[0]?.total ?? 0);
 }
 
+// 예정지출별 누적 사용량이 예산을 초과한 부분의 합.
+// Σ max(0, used(p, upToDate) - p.amount). 미달/일치는 0, 초과한 만큼만 가산.
+// upToDate 파라미터화로 일/월 단위 모두 같은 함수 재사용.
+export async function readPlannedOverflow(
+  userId: number,
+  billingMonth: string,
+  upToDate: string,
+): Promise<number> {
+  const result = await query<{ overflow: string }>(
+    `SELECT COALESCE(SUM(GREATEST(used - budget, 0)), 0)::text AS overflow
+     FROM (
+       SELECT p.amount AS budget, COALESCE(SUM(e.amount), 0) AS used
+       FROM planned_expenses p
+       LEFT JOIN expenses e
+         ON e.planned_expense_id = p.id
+         AND e.user_id = p.user_id
+         AND e.billing_month = $2
+         AND e.date <= $3
+       WHERE p.user_id = $1
+       GROUP BY p.id, p.amount
+     ) sub`,
+    [userId, billingMonth, upToDate],
+  );
+  return Number(result.rows[0]?.overflow ?? 0);
+}
+
 /** 최근 N개월 변동 지출 월평균 (고정비 제외 일반 지출만) */
 export async function readAvgVariableMonthly(userId: number, months = 3): Promise<number> {
   const result = await query<{ avg_monthly: string }>(
