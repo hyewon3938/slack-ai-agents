@@ -86,11 +86,13 @@ export interface MonthSummary {
   auto_daily: number | null;
   /** 이번 달 남은 자유 예산 (현재 달 전용) */
   month_budget_remaining: number | null;
-  /** 오늘 할당 예산 (B방식 — 하루 고정, 현재 달 전용) */
+  /** 기준 일 예산 — 사이클 시작 시 약속, 사이클 동안 사실상 불변 (보조 표시용) */
   today_budget: number | null;
+  /** 오늘 예산 — 동적 권장값, 잔여/남은일자 (메인 표시용) */
+  today_recommended: number | null;
   /** 오늘 자유 지출 (현재 달 전용) */
   today_flex_spent: number | null;
-  /** 오늘 남음(양수)/초과(음수) (현재 달 전용) */
+  /** 오늘 남음(양수)/초과(음수) — todayRecommended 기준 */
   today_remaining: number | null;
   by_category: CategoryStat[];
   daily_avg: number;
