@@ -92,10 +92,7 @@ export default function ManagePage() {
         ))}
 
       {subTab === 'daily' && (
-        <DailyBudgetLogView
-          yearMonth={selectedMonth}
-          todayBudget={summary?.today_recommended ?? null}
-        />
+        <DailyBudgetLogView yearMonth={selectedMonth} todayBudget={summary?.today_budget ?? null} />
       )}
 
       {subTab === 'chart' && summary && (

@@ -28,7 +28,7 @@ function InfoTooltip({ text }: { text: string }) {
 
 interface DailyBudgetLogProps {
   yearMonth: string;
-  /** 현재 오늘 예산(todayRecommended, 동적). 일별 로그도 같은 의미로 저장됨 — 런웨이 일수 환산용. null이면 런웨이 표시 생략. */
+  /** 기준 일 예산(todayBudget, 사이클 락). 일별 로그가 같은 의미로 저장되어 런웨이 일수 환산에 사용됨. null이면 런웨이 표시 생략. */
   todayBudget: number | null;
 }
 
@@ -84,7 +84,7 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
         >
           {totalSaved >= 0 ? '+' : ''}
           {formatAmount(totalSaved)} {totalSaved >= 0 ? '세이브' : '초과'}
-          <InfoTooltip text="예산 대비 절약/초과 금액의 합산이야. 실제 다음 달로 이월되는 금액과는 다를 수 있어" />
+          <InfoTooltip text="기준 일 예산(사이클 시작 시 약속된 동일한 값) 대비 절약/초과 금액의 합산이야. 실제 다음 달로 이월되는 금액과는 다를 수 있어" />
         </div>
         <div className="mt-1 flex gap-3 text-xs text-gray-500">
           <span>

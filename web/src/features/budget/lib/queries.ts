@@ -639,10 +639,10 @@ export async function saveDailyBudgetLog(
   // T12:00:00Z = KST 21:00 → 당일 날짜 유지 (드리프트 보정은 호출 측에서 처리)
   const now = new Date(`${targetDate}T12:00:00Z`);
 
-  // v2 facade로 오늘 예산 계산. 동적 권장값(todayRecommended)을 일별 로그에 저장 —
-  // 사이클 락이 풀린 후의 잔여/남은일자 기반 값이 실제 권장 행동선과 일치한다.
+  // 일별 로그는 기준 일 예산(todayBudget) 기준으로 평가 — 사이클 시작 시 약속된
+  // anchor 대비 그날 얼마나 잘 지켰는지가 누적 분석(세이브 합계, 일평균, 런웨이 환산)과 정합.
   const daily = await getTodayAllocation(userId, now);
-  const budget = daily.todayRecommended;
+  const budget = daily.todayBudget;
   const billingMonth = getCurrentBillingMonth(now);
 
   // targetDate의 자유 지출은 readTodayFlexSpent 단일 정의 사용 (SSOT)
