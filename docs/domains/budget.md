@@ -32,10 +32,15 @@
 - 목표 기간이 설정되면 남은 모든 월에 **일수 비례로 균등** 분배
 - 현재 월은 결제주기 잔여일 기준으로 `allocatedDays` 비례 축소
 
-### 일일 예산 (Daily Budget)
-- 일일 예산 = (이번 달 자유 예산 − 이번 달 자유 지출) / 남은 일수
-- 월 초과 시 `0`으로 클램프
-- 구현: [day-allocator.ts](../../web/src/features/budget/lib/allocator/day-allocator.ts)
+### 일일 예산 (Daily Budget) — 이중 모델
+
+ADR 0008 도입 후 일 예산은 두 값으로 분리된다:
+
+- **기준 일 예산 (`todayBudget`)**: `round((monthBudget − currentMonthIncome) / cycleTotalDays)`. 사이클 시작 시점의 약속, 사이클 동안 사실상 불변. UI에선 회색 보조 텍스트로 노출.
+- **오늘 예산 (`todayRecommended`)**: `max(0, round((monthBudgetRemaining + todayFlexSpent) / daysFromToday))`. 매일 갱신되는 동적 권장값. 잔여 음수 시 0으로 클램프되어 회복 모드 진입 신호. UI 메인 표시.
+- **오늘 남음 (`todayRemaining`)**: `todayRecommended − todayFlexSpent`. 음수 가능 (UI에서 초과 표시).
+- 일별 예산 로그(`daily_budget_logs.budget`)는 `todayRecommended`를 저장 (ADR 0008 이후 의미 정렬).
+- 구현: [day-allocator.ts](../../web/src/features/budget/lib/allocator/day-allocator.ts), 판단 근거: [ADR 0008](../adr/0008-daily-budget-base-vs-recommended.md)
 
 ### 수입 처리의 두 축 ⚠️
 
