@@ -625,11 +625,11 @@ export interface DailyBudgetLogSummary {
 }
 
 /**
- * 오늘의 예산 스냅샷 저장 (Vercel cron에서 호출)
+ * 일별 예산 스냅샷 저장 (Vercel cron에서 호출 — 전일 데이터)
  *
  * @param userId
  * @param opts.targetDate 스냅샷 대상 날짜 (생략 시 KST 오늘).
- *   Vercel cron 드리프트 방지용으로 cron 핸들러에서 `resolveSnapshotDate(new Date())` 를 넘긴다.
+ *   Cron 핸들러는 `resolvePreviousDayDate(new Date())` 로 전일 날짜를 넘긴다.
  */
 export async function saveDailyBudgetLog(
   userId: number,
