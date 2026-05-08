@@ -117,6 +117,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0008](0008-daily-budget-base-vs-recommended.md) | 일 예산 산정 모델 이중화 — 기준 일 예산 + 오늘 예산 | Accepted | 2026-05-06 | data, budget, ux |
 | [0009](0009-daily-log-baseline-anchor.md) | 일별 로그 평가 기준 — 기준 일 예산 단일 anchor | Accepted | 2026-05-06 | data, budget, ux |
 | [0010](0010-daily-log-cron-schedule.md) | 일별 예산 로그 cron 시각 — KST 새벽 5시 + 전일 스냅샷 | Accepted | 2026-05-07 | infra, data, process |
+| [0011](0011-saju-patterns-cross-domain.md) | 사주 패턴 cross-domain 통합 + evidence JSONB 표준화 | Accepted | 2026-05-08 | data, insight, process |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
