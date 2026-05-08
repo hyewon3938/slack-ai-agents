@@ -104,6 +104,25 @@ saju_patterns:
 - `세운` / `올해 세운` -> period='yearly', date=해당 년 1월 1일
 - `대운` -> period='major', ORDER BY date DESC LIMIT 1
 
+표시 포맷: 공유 헬퍼 `src/shared/fortune-format.ts`의 `formatFortuneText` — `summary` *볼드* + `analysis` 본문 + `advice` _기울임_ 결합. insightMorningTask(아침 일운 푸시)도 동일 헬퍼 사용.
+
+### 1-1. 운세 분석 생성 정책 (weekly-fortune)
+weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyses 필드 활용:
+- `analysis`: 자연 prose 본문 (마크다운 헤더/이모지/라벨 X, 단락은 빈 줄 구분)
+- `summary`: 한 줄 hook (50자 내외)
+- `advice`: 1\~2문장 명리학적 격언/권유
+- `warnings` / `recommendations`: **빈 배열 `'[]'::jsonb`** — 본문에 녹임
+
+**분석 프레임워크 8 관점**: ① 십성 ② 합·충·형·파·해 ③ 십이운성 ④ 월운 맥락 ⑤ 개인 패턴(saju_patterns) ⑥ 라이프 테마 연결 ⑦ 의사결정 가이드 ⑧ 잠재 카테고리 surface
+
+**라이프 테마 연결 두 트랙**:
+- **활성** (`life_themes.active = true`) — 본문에서 명시적 연결 + 의사결정 가이드 직접 제공
+- **잠재** — day_pillar 십성 → 영역 매핑(식상/재성/관성/인성/비겁)으로 추론 → active life_themes 미포함 영역도 한 문장으로 부드럽게 surface
+
+**period별 길이**: daily 350\~500자 / monthly 600\~800자 / yearly·major 800\~1200자. advice는 모든 period에서 1\~2문장.
+
+**톤**: 명리학자가 애정을 담아 풀어주는 / 사실 숨기지 않는 / 권유형. 상세는 [ADR 0012](../adr/0012-fortune-personalization.md) 참조.
+
 ### 2. 일기 자동 저장
 - 사용자 메시지가 일기/감정/이벤트 성격이면 `diary_entries`에 자동 저장
 - 같은 날짜에 이미 기록 있으면 기존 content에 줄바꿸으로 append (중복 제거)
