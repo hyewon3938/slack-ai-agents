@@ -1,49 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSnapshotDate } from '../snapshot-date';
+import { resolvePreviousDayDate } from '../snapshot-date';
 
-// cron 예약: 14:50 UTC (KST 23:50)
-// 버퍼 차감 후: 13:50 UTC (KST 22:50) → 당일
+// cron 예약: 20:00 UTC (KST 05:00, 익일)
+// 전일 기준: KST 05:00 - 24h = 전날 KST 05:00 → 전일 날짜 반환
 
-describe('resolveSnapshotDate', () => {
-  it('정시 발화 — 당일 KST 날짜 반환', () => {
-    // 14:50 UTC → 13:50 UTC → KST 22:50 → 2026-04-15
-    const utc = new Date('2026-04-15T14:50:00Z');
-    expect(resolveSnapshotDate(utc)).toBe('2026-04-15');
+describe('resolvePreviousDayDate', () => {
+  it('정시 발화(KST 05:00) — 전일 KST 날짜 반환', () => {
+    // 2026-04-15 20:00 UTC = KST 2026-04-16 05:00 → 전일 = 2026-04-15
+    const utc = new Date('2026-04-15T20:00:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2026-04-15');
   });
 
-  it('30분 드리프트 — 당일 KST 날짜 유지', () => {
-    // 15:20 UTC → 14:20 UTC → KST 23:20 → 2026-04-15
-    const utc = new Date('2026-04-15T15:20:00Z');
-    expect(resolveSnapshotDate(utc)).toBe('2026-04-15');
+  it('30분 드리프트 — 전일 유지', () => {
+    // 2026-04-15 20:30 UTC = KST 2026-04-16 05:30 → 전일 = 2026-04-15
+    const utc = new Date('2026-04-15T20:30:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2026-04-15');
   });
 
-  it('1시간 드리프트 — 당일 KST 날짜 유지', () => {
-    // 15:50 UTC → 14:50 UTC → KST 23:50 → 2026-04-15
-    const utc = new Date('2026-04-15T15:50:00Z');
-    expect(resolveSnapshotDate(utc)).toBe('2026-04-15');
+  it('수 시간 드리프트 — KST 날짜가 같은 한 전일 유지', () => {
+    // 2026-04-15 23:59 UTC = KST 2026-04-16 08:59 → 전일 = 2026-04-15
+    const utc = new Date('2026-04-15T23:59:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2026-04-15');
   });
 
-  it('1시간 초과 드리프트 — 다음날로 넘어감 (버퍼 한계)', () => {
-    // 16:10 UTC → 15:10 UTC → KST 00:10 → 2026-04-16
-    const utc = new Date('2026-04-15T16:10:00Z');
-    expect(resolveSnapshotDate(utc)).toBe('2026-04-16');
+  it('발화 시각이 KST 다음날로 넘어가면 그날의 전일 반환', () => {
+    // 2026-04-16 00:00 UTC = KST 2026-04-16 09:00 → 전일 = 2026-04-15
+    const utc = new Date('2026-04-16T00:00:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2026-04-15');
   });
 
-  it('KST 자정 직전 — 당일 유지', () => {
-    // 14:59:59 UTC → 13:59:59 UTC → KST 22:59:59 → 2026-04-15
-    const utc = new Date('2026-04-15T14:59:59Z');
-    expect(resolveSnapshotDate(utc)).toBe('2026-04-15');
+  it('월말 경계 — 4월 30일 발화 시 전일은 4월 30일 (당해)', () => {
+    // 2026-04-30 20:00 UTC = KST 2026-05-01 05:00 → 전일 = 2026-04-30
+    const utc = new Date('2026-04-30T20:00:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2026-04-30');
   });
 
-  it('월말 경계 — 올바른 날짜 반환', () => {
-    // 2026-04-30 15:00 UTC → 14:00 UTC → KST 23:00 → 2026-04-30
-    const utc = new Date('2026-04-30T15:00:00Z');
-    expect(resolveSnapshotDate(utc)).toBe('2026-04-30');
+  it('월 초 경계 — 5월 1일 발화 시 전일은 5월 1일 (당해)', () => {
+    // 2026-05-01 20:00 UTC = KST 2026-05-02 05:00 → 전일 = 2026-05-01
+    const utc = new Date('2026-05-01T20:00:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2026-05-01');
   });
 
-  it('커스텀 버퍼 적용', () => {
-    // 버퍼 30분: 2026-04-15T15:00Z → 14:30Z → KST 23:30 → 2026-04-15
-    const utc = new Date('2026-04-15T15:00:00Z');
-    expect(resolveSnapshotDate(utc, 30 * 60 * 1000)).toBe('2026-04-15');
+  it('연말 경계 — 12월 31일 발화 시 전일은 12월 31일 (당해)', () => {
+    // 2026-12-31 20:00 UTC = KST 2027-01-01 05:00 → 전일 = 2026-12-31
+    const utc = new Date('2026-12-31T20:00:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2026-12-31');
+  });
+
+  it('윤년 2월 29일 — 정상 처리', () => {
+    // 2028-02-29 20:00 UTC = KST 2028-03-01 05:00 → 전일 = 2028-02-29
+    const utc = new Date('2028-02-29T20:00:00Z');
+    expect(resolvePreviousDayDate(utc)).toBe('2028-02-29');
   });
 });

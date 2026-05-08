@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { saveDailyBudgetLog } from '@/features/budget/lib/queries';
-import { resolveSnapshotDate } from '@/features/budget/lib/billing/snapshot-date';
+import { resolvePreviousDayDate } from '@/features/budget/lib/billing/snapshot-date';
 import { listAllUserIds } from '@/lib/users';
 
 export const dynamic = 'force-dynamic';
@@ -14,13 +14,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Vercel cron 드리프트 방어: 발화 시각에서 1시간 버퍼를 차감한 KST 날짜로 저장.
+    // 새벽 5시(KST) cron 발화 → 전일 KST 날짜로 스냅샷 저장.
     // 크론 누락 시 수동 백필 용도로 ?date=YYYY-MM-DD override 허용.
     const dateParam = new URL(request.url).searchParams.get('date');
     const targetDate =
       dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
         ? dateParam
-        : resolveSnapshotDate(new Date());
+        : resolvePreviousDayDate(new Date());
     const userIds = await listAllUserIds();
 
     const results = await Promise.all(

@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/daily-budget-log",
-      "schedule": "50 14 * * *"
+      "schedule": "0 20 * * *"
     },
     {
       "path": "/api/cron/monthly-settlement",
