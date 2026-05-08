@@ -66,14 +66,15 @@ life_themes:
   mention_count INTEGER,
   created_at TIMESTAMPTZ
 
--- 사주 패턴 (일기 x 일운 상관 분석)
+-- 사주 패턴 (cross-domain x 일운 상관 분석)
 saju_patterns:
   id SERIAL PK,
   user_id INTEGER,
   pattern_type TEXT,     -- 'sipsin' | 'ganji' | 'relation' | 'sibiunsung'
   trigger_element TEXT,
   description TEXT,
-  evidence JSONB,
+  evidence JSONB,        -- [{date, domain, summary, fortune_element, ...domain_specific}]
+                         -- domain: 'diary' | 'sleep' | 'expense' | 'schedule' | 'routine'
   active BOOLEAN,
   detection_count INTEGER,
   first_detected TIMESTAMPTZ,
@@ -116,8 +117,11 @@ saju_patterns:
 - 해결 시 `active = false`
 
 ### 4. 사주 패턴 (saju_patterns)
-- 월간 자동 분석(Opus)으로 감지, 사용자 수동 관리 가능
+- 주간 자동 분석(weekly-saju-review)으로 감지, 사용자 수동 관리 가능
 - pattern_type: sipsin(십신) / ganji(특정 글자) / relation(합/형/충) / sibiunsung(십이운성)
+- **분석 도메인**: 일기, 수면, 지출, 일정, 루틴 (cross-domain 통합 분석, 28일 롤링 윈도우)
+- **evidence 표준 형식**: `{date, domain, summary, fortune_element, ...domain_specific}` — 도메인 추가(식사·운동 등) 시 마이그레이션 없이 확장 가능. 상세는 [ADR 0011](../adr/0011-saju-patterns-cross-domain.md) 참조
+- 같은 trigger_element가 여러 도메인에 발현하면 분리하지 않고 같은 row의 evidence에 누적
 - 감지 횟수 추적 (detection_count), 신뢰도 평가 (confidence)
 - 비활성화 시 `active = false`, `deactivated_at = NOW()`
 
