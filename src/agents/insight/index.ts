@@ -4,11 +4,8 @@ import { sendMessage } from '../../shared/slack.js';
 import { queryOne } from '../../shared/db.js';
 import { getTodayISO, getEffectiveTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
-import {
-  saveDiaryEntry,
-  pickDiaryConfirmation,
-  naturalDelay,
-} from './diary-fast-path.js';
+import { saveDiaryEntry, pickDiaryConfirmation, naturalDelay } from './diary-fast-path.js';
+import { formatFortuneText } from '../../shared/fortune-format.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
@@ -36,12 +33,8 @@ interface FortuneRow {
   advice: string | null;
 }
 
-/** fortune_analyses 조회 → Slack mrkdwn 포맷 */
-const formatFortune = (row: FortuneRow): string => {
-  const parts: string[] = [];
-  if (row.analysis) parts.push(row.analysis);
-  return parts.join('\n\n');
-};
+/** fortune_analyses 조회 → Slack mrkdwn 포맷 (summary + analysis + advice) */
+const formatFortune = (row: FortuneRow): string => formatFortuneText(row);
 
 /** fast path 운세 조회 시도. 매칭되면 응답 전송 후 true 반환. */
 const tryFortuneFastPath = async (
@@ -104,10 +97,7 @@ const tryFortuneFastPath = async (
 };
 
 /** 오늘 일기 조회 fast path */
-const showTodayDiary = async (
-  say: Parameters<AgentHandler>[1],
-  userId: number,
-): Promise<void> => {
+const showTodayDiary = async (say: Parameters<AgentHandler>[1], userId: number): Promise<void> => {
   const today = getEffectiveTodayISO();
   try {
     const row = await queryOne<{ content: string }>(
@@ -144,7 +134,9 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
     const slackUserId = ('user' in message ? message.user : undefined) ?? '';
     const resolvedUserId = slackUserId ? await resolveUserId(slackUserId) : null;
     if (resolvedUserId === null && slackUserId) {
-      console.warn(`[Insight Agent] slack_user_mappings 미등록: ${slackUserId} → DEFAULT_USER_ID 폴백`);
+      console.warn(
+        `[Insight Agent] slack_user_mappings 미등록: ${slackUserId} → DEFAULT_USER_ID 폴백`,
+      );
     }
     const userId = resolvedUserId ?? DEFAULT_USER_ID;
 

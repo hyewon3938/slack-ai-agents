@@ -24,6 +24,7 @@ import {
   decrementReminderCount,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
+import { formatFortuneText } from '../shared/fortune-format.js';
 import {
   getTodayISO,
   getYesterdayISO,
@@ -510,15 +511,19 @@ const insightMorningTask = async (app: App, config: LifeCronConfig): Promise<voi
 
   await forEachUser(config, 'insight', '일운 분석 알림', async (userId, channelId) => {
     const result = await query(
-      `SELECT analysis, summary FROM fortune_analyses
+      `SELECT analysis, summary, advice FROM fortune_analyses
        WHERE user_id = $1 AND date = $2 AND period = 'daily'
        ORDER BY created_at DESC LIMIT 1`,
       [userId, today],
     );
 
     if (result.rows.length > 0) {
-      const fortune = result.rows[0] as { analysis: string; summary: string | null };
-      const text = fortune.summary ? `${fortune.summary}\n\n${fortune.analysis}` : fortune.analysis;
+      const fortune = result.rows[0] as {
+        analysis: string;
+        summary: string | null;
+        advice: string | null;
+      };
+      const text = formatFortuneText(fortune);
       await postToChannel(app.client, channelId, text);
       console.warn(`[Life Cron] 일운 분석 알림 전송 완료 (유저=${userId})`);
     } else {
