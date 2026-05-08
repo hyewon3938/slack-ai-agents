@@ -27,14 +27,11 @@ interface FortuneRow {
   period: string;
   day_pillar: string | null;
   analysis: string;
-  summary: string;
+  summary: string | null;
   warnings: unknown;
   recommendations: unknown;
   advice: string | null;
 }
-
-/** fortune_analyses 조회 → Slack mrkdwn 포맷 (summary + analysis + advice) */
-const formatFortune = (row: FortuneRow): string => formatFortuneText(row);
 
 /** fast path 운세 조회 시도. 매칭되면 응답 전송 후 true 반환. */
 const tryFortuneFastPath = async (
@@ -87,7 +84,7 @@ const tryFortuneFastPath = async (
     if (!row) {
       await sendMessage(say, `아직 ${label} 분석이 준비되지 않았어.`);
     } else {
-      await sendMessage(say, formatFortune(row));
+      await sendMessage(say, formatFortuneText(row));
     }
   } catch (error: unknown) {
     console.error(`[Insight Agent] ${label} fast path 오류:`, error);
