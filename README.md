@@ -49,7 +49,7 @@ LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용
 ```mermaid
 graph LR
     U([Slack 메시지]) --> R[라우터<br/>Rate Limit]
-    R --> F{정규식<br/>매칭?}
+    R --> F{Fast Path<br/>정규식 매칭?}
     F -->|적중| FP[SQL 직접 조회]
     F -->|미적중| AL[Agent Loop<br/>Sonnet ↔ SQL 도구]
     AL -. modify_db .-> A[승인 카드<br/>dry-run]
