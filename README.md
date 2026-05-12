@@ -46,6 +46,44 @@ LLM이 그날의 라이프 데이터(일정·루틴·수면·일기) + 명리학
 
 LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용·안전 문제가 따라온다. 이를 두 층의 하네스로 제어한다.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 사용자
+    participant Bolt as Slack Bolt
+    participant DB as PostgreSQL
+    participant LLM as Claude Sonnet
+
+    U->>Bolt: 자연어 메시지
+    Note over Bolt: 채널 라우팅 / Rate Limit / 인젝션 패턴 차단
+
+    alt Fast Path 적중 (정규식 매칭)
+        Bolt->>DB: SELECT (단순 조회)
+        DB-->>Bolt: 결과
+        Bolt-->>U: Block Kit (~1초)
+    else Agent Loop
+        loop LLM 자율 반복 (도구 호출이 끝날 때까지)
+            Bolt->>LLM: 프롬프트 + 도구 정의 (ephemeral 캐싱)
+            LLM-->>Bolt: tool_use (query_db / modify_db / get_schema)
+
+            alt modify_db (변경 쿼리)
+                Note over Bolt: 화이트리스트 검증 + dry-run
+                Bolt-->>U: 승인 카드 (영향 행 미리보기)
+                U-->>Bolt: 사용자 승인
+                Bolt->>DB: INSERT / UPDATE / DELETE
+            else query_db / get_schema
+                Note over Bolt: 화이트리스트 검증 (WHERE 필수 / DDL 차단)
+                Bolt->>DB: SELECT / 스키마 조회
+            end
+
+            DB-->>Bolt: 결과 (또는 에러)
+            Bolt-->>LLM: tool_result
+        end
+        LLM-->>Bolt: 최종 응답 합성
+        Bolt-->>U: 잔소리 / 결과 응답 (7~11초)
+    end
+```
+
 **안전 가드레일**
 
 - **DB Proxy + SQL 화이트리스트** — DDL(테이블 생성·삭제·구조 변경) 차단, 위험 함수 차단, WHERE 필수, 벌크 처리 행 수 제한
