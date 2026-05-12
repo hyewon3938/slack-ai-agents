@@ -23,6 +23,22 @@
 
 LLM이 그날의 라이프 데이터(일정·루틴·수면·일기) + 명리학 해석을 크로스 분석해 잔소리를 먼저 건넨다. **패턴 감지는 직접 짠 SQL이, 잔소리 합성은 LLM이** — 역할을 명확히 나눠 비용·속도·품질을 동시에 잡았다.
 
+```mermaid
+graph LR
+    D[일정 · 루틴 · 수면 · 일기] -->|즉시| P[SQL 패턴 5종<br/>비용 0]
+    D -->|사전 누적| L[(일기 테마 · 사주 패턴<br/>· 일운)]
+    P --> SY[잔소리 합성<br/>Sonnet]
+    L --> SY
+    SY --> O([Slack 잔소리<br/>아침 · 밤 크론])
+
+    classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef fast fill:#ecfdf5,stroke:#10b981,color:#065f46
+    classDef loop fill:#fff7ed,stroke:#f97316,color:#9a3412
+    class D,O io
+    class P fast
+    class L,SY loop
+```
+
 **SQL이 잡는 패턴** (LLM 미경유, 비용 0)
 
 - **5가지 감지 패턴** — `streak`(연속 기록), `sleepTrend`(수면 추세), `slotGap`(시간대별 루틴 격차), `weekComparison`(전주 대비), `overdueAlert`(기한 초과). CTE·window function으로 직접 감지
@@ -31,7 +47,7 @@ LLM이 그날의 라이프 데이터(일정·루틴·수면·일기) + 명리학
 **LLM이 합성하는 영역**
 
 - **일기 테마 추출** — 일기 텍스트에서 반복 테마/감정을 LLM이 추출 → `life_themes`에 누적. 2회 이상 감지되면 활성으로 승격되어 응답 프롬프트에 자동 주입
-- **주간 사주 패턴 분석** — 매주 일요일 Opus가 일기·일운 비교에서 구조적 반응 패턴을 감지 → `saju_patterns`에 누적
+- **주간 사주 패턴 분석** — 매주 일요일 Opus가 일기·지출·일정·루틴·수면 + 일운을 28일 윈도우로 cross-domain 분석 → `saju_patterns`에 누적
 - **잔소리 합성** — SQL이 모은 패턴 + 일기 + 사주 패턴을 받아 그날 톤·맥락에 맞는 잔소리로 합성
 
 **하루 두 번 작동** — 밤은 그날 데이터를 엮은 잔소리, 아침은 어제 루틴 달성도 + 오늘 일정 안내.
@@ -45,6 +61,27 @@ LLM이 그날의 라이프 데이터(일정·루틴·수면·일기) + 명리학
 ### 2. LLM 자율 SQL 에이전트 + 운영 하네스
 
 LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용·안전 문제가 따라온다. 이를 두 층의 하네스로 제어한다.
+
+```mermaid
+graph LR
+    U([Slack 메시지]) --> R[라우터<br/>Rate Limit]
+    R --> F{Fast Path<br/>정규식 매칭}
+    F -->|적중| FP[SQL 직접 조회]
+    F -->|미적중| AL[Agent Loop<br/>Sonnet ↔ SQL 도구]
+    AL -. modify_db .-> A[승인 카드<br/>dry-run]
+    A -. 사용자 승인 .-> AL
+    FP --> O1([Block Kit · ~1초])
+    AL --> O2([합성 응답 · 7~11초])
+
+    classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef fast fill:#ecfdf5,stroke:#10b981,color:#065f46
+    classDef loop fill:#fff7ed,stroke:#f97316,color:#9a3412
+    classDef guard fill:#fef2f2,stroke:#ef4444,color:#991b1b
+    class U,O1,O2 io
+    class FP fast
+    class AL loop
+    class A guard
+```
 
 **안전 가드레일**
 
@@ -89,7 +126,7 @@ LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용
 - **Hooks**: 자동 포맷·린트·타입체크·시크릿 스캔
 - **Custom Skills**: `/init-project`, `/design`, `/build` — 계획서 파일로 세션 간 핸드오프
 - **MCP**: Slack(에이전트 응답 품질 점검)
-- **Scheduled Tasks (비동기 깊은 분석 전용)**: 개발 리포트(Opus 분석), 주간 사주 패턴 분석, 자동 일운 갱신, 밤 응원 메시지
+- **Scheduled Tasks (비동기 깊은 분석 전용)**: 개발 리포트(Opus 분석), 주간 사주 패턴 분석, 주간 일운 사전 분석, 밤 응원 메시지
 - **ADR (Architecture Decision Records)**: 되돌리기 어려운 설계 판단을 표준 포맷(Status·Context·Decision·Consequences = 상태·배경·결정·결과)으로 기록 → `/design`·`/build` 스킬에 ADR 판단 로직 내장
 - **자체 업타임 모니터링**: GitHub Actions cron으로 봇·웹 5분 간격 폴링 + Slack DOWN/RECOVERY 알림
 
@@ -132,11 +169,26 @@ AI를 **코딩 보조**가 아니라 협업 개발자로 취급하고, 작업 �
 
 `#insight` 채널은 일기와 명리학 해석이 함께 모이는 곳. 일기 패턴 위에 **명리학(사주) 해석 프레임**을 결합 — 라이프 데이터에 사주 기반 패턴 분석을 더한 실험.
 
-**(1) 매일 일운 자동 게시** — 매일 아침 봇이 그날의 일운(천간·지지·십성)을 자동 분석해 #insight에 게시. 활성 사주 패턴이 있으면 그 해석도 함께.
+```mermaid
+graph LR
+    D[(7일치 라이프 데이터<br/>일기 · 지출 · 일정<br/>루틴 · 수면)]
+    D -->|매주 일요일 Opus<br/>cross-domain 분석| W1[life_themes ·<br/>saju_patterns 갱신]
+    W1 -->|활성 패턴 · 테마 반영| W2[일주일치 일운<br/>사전 분석]
+    W2 --> FA[(fortune_analyses<br/>7일치 캐싱)]
+    FA -->|매일 아침 크론<br/>SELECT만| O([Slack 일운 게시])
+    O -. 일주일간 다시 누적 .-> D
+
+    classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef loop fill:#fff7ed,stroke:#f97316,color:#9a3412
+    class D,O io
+    class W1,W2,FA loop
+```
+
+**(1) 매일 일운 자동 게시** — 매일 아침 봇이 사전 분석된 그날의 일운(천간·지지·십성)을 #insight에 게시. 활성 사주 패턴 + 라이프 테마 해석이 자동 반영.
 
 **(2) 순간순간 일기 작성** — 체감·감정·메모를 짧은 텍스트로 슬랙에 자유롭게 입력. 같은 날의 메시지는 자동으로 묶여 `diary_entries`에 누적.
 
-**(3) 주간 사주 패턴 분석** — 매주 일요일 Opus가 누적된 일기와 일운을 비교해 구조적 반응 패턴을 감지, `saju_patterns`에 누적. 활성 패턴은 다음 일운 메시지부터 자동 반영 → 해석이 매주 강화되는 루프.
+**(3) 주간 분석 (두 routine 순차)** — 매주 일요일 Opus가 두 단계로 작동. 먼저 누적된 일기·지출·일정·루틴·수면 + 일운을 28일 윈도우로 cross-domain 분석해 `saju_patterns`·`life_themes`를 갱신, 이어서 다음 일주일치 일운을 사전 분석해 `fortune_analyses`에 저장. 활성 패턴은 다음 주 일운부터 자동 반영 → 해석이 매주 강화되는 루프.
 
 **(4) 잔소리에 재활용** — 같은 날의 일기는 1번 차별점의 밤 잔소리 LLM에도 주입. 본인 진술과 데이터 패턴을 함께 짚는 잔소리가 가능.
 
@@ -201,7 +253,7 @@ AI를 **코딩 보조**가 아니라 협업 개발자로 취급하고, 작업 �
 **비동기 분석 파이프라인**
 
 - **node-cron** (Asia/Seoul): 아침/밤 알림 + 일요일 주간 리포트 — Sonnet으로 합성
-- **Scheduled Task**: 매주 일요일 사주 패턴 분석 + 매일 개발 리포트 — Opus가 분석 후 DB에 결과 영속화 → 실시간 응답 시 SELECT로 주입해 비용·지연 분리
+- **Scheduled Task**: 매주 일요일 사주 패턴·테마 갱신 + 일주일치 일운 사전 분석 + 매일 개발 리포트 — Opus가 분석 후 DB에 결과 영속화 → 매일 크론·실시간 응답 시점엔 SELECT만으로 비용·지연 분리
 
 **배포·관측**
 
