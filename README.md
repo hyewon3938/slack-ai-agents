@@ -47,41 +47,24 @@ LLM이 그날의 라이프 데이터(일정·루틴·수면·일기) + 명리학
 LLM이 SQL을 직접 쓰는 구조는 강력하지만 할루시네이션·비용·안전 문제가 따라온다. 이를 두 층의 하네스로 제어한다.
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant U as 사용자
-    participant Bolt as Slack Bolt
-    participant DB as PostgreSQL
-    participant LLM as Claude Sonnet
+graph LR
+    U([Slack 메시지]) --> R[라우터<br/>Rate Limit]
+    R --> F{정규식<br/>매칭?}
+    F -->|적중| FP[SQL 직접 조회]
+    F -->|미적중| AL[Agent Loop<br/>Sonnet ↔ SQL 도구]
+    AL -. modify_db .-> A[승인 카드<br/>dry-run]
+    A -. 사용자 승인 .-> AL
+    FP --> O1([Block Kit · ~1초])
+    AL --> O2([합성 응답 · 7~11초])
 
-    U->>Bolt: 자연어 메시지
-    Note over Bolt: 채널 라우팅 / Rate Limit / 인젝션 패턴 차단
-
-    alt Fast Path 적중 (정규식 매칭)
-        Bolt->>DB: SELECT (단순 조회)
-        DB-->>Bolt: 결과
-        Bolt-->>U: Block Kit (~1초)
-    else Agent Loop
-        loop LLM 자율 반복 (도구 호출이 끝날 때까지)
-            Bolt->>LLM: 프롬프트 + 도구 정의 (ephemeral 캐싱)
-            LLM-->>Bolt: tool_use (query_db / modify_db / get_schema)
-
-            alt modify_db (변경 쿼리)
-                Note over Bolt: 화이트리스트 검증 + dry-run
-                Bolt-->>U: 승인 카드 (영향 행 미리보기)
-                U-->>Bolt: 사용자 승인
-                Bolt->>DB: INSERT / UPDATE / DELETE
-            else query_db / get_schema
-                Note over Bolt: 화이트리스트 검증 (WHERE 필수 / DDL 차단)
-                Bolt->>DB: SELECT / 스키마 조회
-            end
-
-            DB-->>Bolt: 결과 (또는 에러)
-            Bolt-->>LLM: tool_result
-        end
-        LLM-->>Bolt: 최종 응답 합성
-        Bolt-->>U: 잔소리 / 결과 응답 (7~11초)
-    end
+    classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef fast fill:#ecfdf5,stroke:#10b981,color:#065f46
+    classDef loop fill:#fff7ed,stroke:#f97316,color:#9a3412
+    classDef guard fill:#fef2f2,stroke:#ef4444,color:#991b1b
+    class U,O1,O2 io
+    class FP fast
+    class AL loop
+    class A guard
 ```
 
 **안전 가드레일**
