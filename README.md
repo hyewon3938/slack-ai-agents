@@ -169,6 +169,18 @@ AI를 **코딩 보조**가 아니라 협업 개발자로 취급하고, 작업 �
 
 `#insight` 채널은 일기와 명리학 해석이 함께 모이는 곳. 일기 패턴 위에 **명리학(사주) 해석 프레임**을 결합 — 라이프 데이터에 사주 기반 패턴 분석을 더한 실험.
 
+```mermaid
+graph LR
+    F[매일 아침<br/>일운 게시] -->|활성 사주 패턴<br/>반영| D[(일기 누적<br/>diary_entries)]
+    D -->|매주 일요일<br/>Opus 비교 분석| SP[(saju_patterns)]
+    SP -->|다음 일운부터<br/>해석 강화| F
+
+    classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef loop fill:#fff7ed,stroke:#f97316,color:#9a3412
+    class D io
+    class F,SP loop
+```
+
 **(1) 매일 일운 자동 게시** — 매일 아침 봇이 그날의 일운(천간·지지·십성)을 자동 분석해 #insight에 게시. 활성 사주 패턴이 있으면 그 해석도 함께.
 
 **(2) 순간순간 일기 작성** — 체감·감정·메모를 짧은 텍스트로 슬랙에 자유롭게 입력. 같은 날의 메시지는 자동으로 묶여 `diary_entries`에 누적.
