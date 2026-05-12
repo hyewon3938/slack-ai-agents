@@ -23,6 +23,22 @@
 
 LLM이 그날의 라이프 데이터(일정·루틴·수면·일기) + 명리학 해석을 크로스 분석해 잔소리를 먼저 건넨다. **패턴 감지는 직접 짠 SQL이, 잔소리 합성은 LLM이** — 역할을 명확히 나눠 비용·속도·품질을 동시에 잡았다.
 
+```mermaid
+graph LR
+    D[일정 · 루틴 · 수면<br/>일기 · 일운] -->|즉시| P[SQL 패턴 5종<br/>비용 0]
+    D -->|사전 누적| L[(일기 테마<br/>주간 사주 패턴)]
+    P --> SY[잔소리 합성<br/>Sonnet]
+    L --> SY
+    SY --> O([Slack 잔소리<br/>아침 · 밤 크론])
+
+    classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef fast fill:#ecfdf5,stroke:#10b981,color:#065f46
+    classDef loop fill:#fff7ed,stroke:#f97316,color:#9a3412
+    class D,O io
+    class P fast
+    class L,SY loop
+```
+
 **SQL이 잡는 패턴** (LLM 미경유, 비용 0)
 
 - **5가지 감지 패턴** — `streak`(연속 기록), `sleepTrend`(수면 추세), `slotGap`(시간대별 루틴 격차), `weekComparison`(전주 대비), `overdueAlert`(기한 초과). CTE·window function으로 직접 감지
