@@ -171,14 +171,17 @@ AI를 **코딩 보조**가 아니라 협업 개발자로 취급하고, 작업 �
 
 ```mermaid
 graph LR
-    F[매일 아침<br/>일운 게시] -->|활성 사주 패턴<br/>반영| D[(일기 누적<br/>diary_entries)]
-    D -->|매주 일요일<br/>Opus 비교 분석| SP[(saju_patterns)]
-    SP -->|다음 일운부터<br/>해석 강화| F
+    D[(7일치 라이프 데이터<br/>일기 · 지출 · 일정<br/>루틴 · 수면)]
+    D -->|매주 일요일 Opus<br/>cross-domain 분석| W1[life_themes ·<br/>saju_patterns 갱신]
+    W1 -->|활성 패턴 · 테마 반영| W2[일주일치 일운<br/>사전 분석]
+    W2 --> FA[(fortune_analyses<br/>7일치 캐싱)]
+    FA -->|매일 아침 크론<br/>SELECT만| O([Slack 일운 게시])
+    O -. 일주일간 다시 누적 .-> D
 
     classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
     classDef loop fill:#fff7ed,stroke:#f97316,color:#9a3412
-    class D io
-    class F,SP loop
+    class D,O io
+    class W1,W2,FA loop
 ```
 
 **(1) 매일 일운 자동 게시** — 매일 아침 봇이 그날의 일운(천간·지지·십성)을 자동 분석해 #insight에 게시. 활성 사주 패턴이 있으면 그 해석도 함께.
