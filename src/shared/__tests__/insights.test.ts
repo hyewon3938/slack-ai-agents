@@ -28,8 +28,15 @@ import {
   detectSlotGap,
   detectWeekComparison,
   detectOverdue,
+  detectCategorySkew,
+  detectDrift,
+  detectRecovery,
+  detectLapseAlert,
+  detectWeeklyRegression,
+  detectSpottyPattern,
   pickMorningNudges,
   pickNightNudges,
+  pickWeeklyInsights,
 } from '../insights.js';
 
 /** null이 아님을 보장하고 타입 좁히기 */
@@ -49,6 +56,7 @@ beforeEach(async () => {
 type MockRow = Record<string, unknown>;
 
 const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
+  // 패턴 순서 주의: 더 구체적인 패턴을 먼저 두어야 더 일반적인 패턴이 가로채지 않는다.
   const defaultResponses: Record<string, MockRow[]> = {
     // streak: 연속 달성 쿼리
     'grp = 0': [],
@@ -56,10 +64,32 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
     'sleep_type.*night.*ORDER BY date DESC.*LIMIT 3': [],
     // slotGap: 시간대별 달성률
     'time_slot.*GROUP BY.*time_slot.*HAVING': [],
-    // weekComparison: 이번주 vs 지난주
-    'this_week.*last_week': [{ this_rate: null, last_rate: null }],
     // overdue: 밀린 일정
     "status = 'todo'.*date < ": [{ overdue_count: 0 }],
+    // categorySkew: 카테고리 편향
+    'window_schedules.*top_category': [],
+    // drift: 수면 드리프트
+    this_week_avg_bedtime_minutes: [
+      {
+        this_week_avg_bedtime_minutes: null,
+        prev_weeks_avg_bedtime_minutes: null,
+        this_week_avg_wake_minutes: null,
+        prev_weeks_avg_wake_minutes: null,
+        this_week_mid_wake: 0,
+        prev_weeks_mid_wake_per_week: 0,
+        this_week_nights: 0,
+      },
+    ],
+    // recovery: 루틴 회복
+    'recent_records.*break_events.*next_completion': [],
+    // lapseAlert: 연속 누락
+    'today_miss.*prev_streaks': [],
+    // spottyPattern: 산발성 누락
+    'miss_groups.*max_consecutive_miss': [],
+    // weeklyRegression: 주간 회귀 (weekComparison 패턴보다 먼저 — WHERE last_week.rate가 있는 경우 먼저 매칭)
+    'this_week.*last_week.*WHERE last_week.rate': [],
+    // weekComparison: 이번주 vs 지난주 (가장 일반적이므로 마지막)
+    'this_week.*last_week': [{ this_rate: null, last_rate: null }],
   };
 
   const responses = { ...defaultResponses, ...overrides };
@@ -330,52 +360,308 @@ describe('detectOverdue', () => {
   });
 });
 
-// ─── pickMorningNudge / pickNightNudge ────────────────────
+// ─── detectCategorySkew ──────────────────────────────────
 
-describe('pickMorningNudge', () => {
-  it('아침 타이밍 인사이트만 선택', async () => {
+describe('detectCategorySkew', () => {
+  it('지배 카테고리 ≥50%이면 감지', async () => {
     setupQueryMock({
-      // streak: morning
-      'grp = 0': [{ name: '유산균 먹기', streak: '5' }],
-      // overdue: morning, priority 7
-      "status = 'todo'.*date < ": [{ overdue_count: 4 }],
-      // slotGap: night only → 아침에 선택 안 됨
-      'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '낮', total: '14', done: '14', rate: 100 },
-        { time_slot: '밤', total: '12', done: '2', rate: 17 },
-      ],
+      'window_schedules.*top_category': [{ category_name: '사업', count: 6, total: 10 }],
     });
 
-    const result = await pickMorningNudges('2026-03-15', 1);
-    expect(result).not.toBeNull();
-    // overdue(7) > streak 5일(10) → streak이 높음
-    expect(result).toContain('유산균 먹기');
+    const result = defined(await detectCategorySkew('2026-03-15', 1));
+    expect(result.type).toBe('categorySkew');
+    expect(result.priority).toBe(5);
+    expect(result.timing).toBe('night');
+    expect(result.message).toContain('사업');
   });
 
-  it('아침 타이밍에 밤 전용 인사이트는 제외', async () => {
-    // slotGap은 night only
+  it('weekly timing 전달 시 메시지 톤 변경', async () => {
     setupQueryMock({
-      'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '낮', total: '14', done: '14', rate: 100 },
-        { time_slot: '밤', total: '12', done: '2', rate: 17 },
-      ],
+      'window_schedules.*top_category': [{ category_name: '사업', count: 6, total: 10 }],
     });
 
-    const result = await pickMorningNudges('2026-03-15', 1);
-    // slotGap은 night only → 아침에는 null
+    const result = defined(await detectCategorySkew('2026-03-15', 1, 'weekly'));
+    expect(result.timing).toBe('weekly');
+    expect(result.message).toContain('지난주');
+  });
+
+  it('전체 일정 5건 미만이면 null', async () => {
+    setupQueryMock({
+      'window_schedules.*top_category': [{ category_name: '사업', count: 3, total: 4 }],
+    });
+
+    const result = await detectCategorySkew('2026-03-15', 1);
     expect(result).toBeNull();
   });
 
-  it('모든 감지가 임계값 미달이면 null', async () => {
-    setupQueryMock();
+  it('지배 비율 50% 미만이면 null', async () => {
+    setupQueryMock({
+      'window_schedules.*top_category': [{ category_name: '사업', count: 4, total: 10 }],
+    });
 
-    const result = await pickMorningNudges('2026-03-15', 1);
+    const result = await detectCategorySkew('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
 
-describe('pickNightNudge', () => {
-  it('밤 타이밍 인사이트만 선택', async () => {
+// ─── detectDrift ─────────────────────────────────────────
+
+describe('detectDrift', () => {
+  it('취침 시간 30분+ 늦어지면 감지', async () => {
+    setupQueryMock({
+      this_week_avg_bedtime_minutes: [
+        {
+          this_week_avg_bedtime_minutes: 1470, // 24:30
+          prev_weeks_avg_bedtime_minutes: 1410, // 23:30
+          this_week_avg_wake_minutes: 480,
+          prev_weeks_avg_wake_minutes: 480,
+          this_week_mid_wake: 0,
+          prev_weeks_mid_wake_per_week: 0,
+          this_week_nights: 5,
+        },
+      ],
+    });
+
+    const result = defined(await detectDrift('2026-03-15', 1));
+    expect(result.type).toBe('drift');
+    expect(result.timing).toBe('weekly');
+    expect(result.message).toContain('취침');
+  });
+
+  it('중간기상 1.5배 이상 증가하면 감지', async () => {
+    setupQueryMock({
+      this_week_avg_bedtime_minutes: [
+        {
+          this_week_avg_bedtime_minutes: 1410,
+          prev_weeks_avg_bedtime_minutes: 1410,
+          this_week_avg_wake_minutes: 480,
+          prev_weeks_avg_wake_minutes: 480,
+          this_week_mid_wake: 6,
+          prev_weeks_mid_wake_per_week: 3,
+          this_week_nights: 5,
+        },
+      ],
+    });
+
+    const result = defined(await detectDrift('2026-03-15', 1));
+    expect(result.message).toContain('중간기상');
+  });
+
+  it('이번주 표본 4박 미만이면 null', async () => {
+    setupQueryMock({
+      this_week_avg_bedtime_minutes: [
+        {
+          this_week_avg_bedtime_minutes: 1470,
+          prev_weeks_avg_bedtime_minutes: 1410,
+          this_week_avg_wake_minutes: 480,
+          prev_weeks_avg_wake_minutes: 480,
+          this_week_mid_wake: 0,
+          prev_weeks_mid_wake_per_week: 0,
+          this_week_nights: 3,
+        },
+      ],
+    });
+
+    const result = await detectDrift('2026-03-15', 1);
+    expect(result).toBeNull();
+  });
+
+  it('드리프트 없으면 null', async () => {
+    setupQueryMock({
+      this_week_avg_bedtime_minutes: [
+        {
+          this_week_avg_bedtime_minutes: 1410,
+          prev_weeks_avg_bedtime_minutes: 1410,
+          this_week_avg_wake_minutes: 480,
+          prev_weeks_avg_wake_minutes: 480,
+          this_week_mid_wake: 1,
+          prev_weeks_mid_wake_per_week: 1,
+          this_week_nights: 6,
+        },
+      ],
+    });
+
+    const result = await detectDrift('2026-03-15', 1);
+    expect(result).toBeNull();
+  });
+});
+
+// ─── detectRecovery ──────────────────────────────────────
+
+describe('detectRecovery', () => {
+  it('5일+ 연속 후 빠졌다가 다음 날 회복하면 감지', async () => {
+    setupQueryMock({
+      'recent_records.*break_events.*next_completion': [
+        { name: '스트레칭하기', break_date: '2026-03-14', recovery_gap_days: 1 },
+      ],
+    });
+
+    const result = defined(await detectRecovery('2026-03-15', 1));
+    expect(result.type).toBe('recovery');
+    expect(result.timing).toBe('morning');
+    expect(result.message).toContain('스트레칭하기');
+  });
+
+  it('회복 케이스 없으면 null', async () => {
+    setupQueryMock();
+
+    const result = await detectRecovery('2026-03-15', 1);
+    expect(result).toBeNull();
+  });
+});
+
+// ─── detectLapseAlert ────────────────────────────────────
+
+describe('detectLapseAlert', () => {
+  it('7일 연속 달성 후 오늘 빠지면 감지', async () => {
+    setupQueryMock({
+      'today_miss.*prev_streaks': [{ name: '유산균 먹기' }],
+    });
+
+    const result = defined(await detectLapseAlert('2026-03-15', 1));
+    expect(result.type).toBe('lapseAlert');
+    expect(result.timing).toBe('night');
+    expect(result.priority).toBe(7);
+    expect(result.message).toContain('유산균 먹기');
+  });
+
+  it('조건 미달이면 null', async () => {
+    setupQueryMock();
+
+    const result = await detectLapseAlert('2026-03-15', 1);
+    expect(result).toBeNull();
+  });
+});
+
+// ─── detectWeeklyRegression ──────────────────────────────
+
+describe('detectWeeklyRegression', () => {
+  it('지난주 90%+ → 이번주 60% 이하면 감지', async () => {
+    setupQueryMock({
+      'this_week.*last_week.*WHERE last_week.rate': [
+        { name: '스트레칭하기', this_rate: 45, last_rate: 95 },
+      ],
+    });
+
+    const result = defined(await detectWeeklyRegression('2026-03-15', 1));
+    expect(result.type).toBe('weeklyRegression');
+    expect(result.timing).toBe('weekly');
+    expect(result.message).toContain('스트레칭하기');
+    expect(result.message).toContain('45%');
+  });
+
+  it('해당 없으면 null', async () => {
+    setupQueryMock();
+
+    const result = await detectWeeklyRegression('2026-03-15', 1);
+    expect(result).toBeNull();
+  });
+});
+
+// ─── detectSpottyPattern ─────────────────────────────────
+
+describe('detectSpottyPattern', () => {
+  it('7일 중 3~4번 산발 누락 + 연속 누락 아님이면 감지', async () => {
+    setupQueryMock({
+      'miss_groups.*max_consecutive_miss': [
+        { name: '스트레칭하기', miss_count: 3, max_consecutive_miss: 1 },
+      ],
+    });
+
+    const result = defined(await detectSpottyPattern('2026-03-15', 1));
+    expect(result.type).toBe('spottyPattern');
+    expect(result.timing).toBe('night');
+    expect(result.message).toContain('스트레칭하기');
+    expect(result.message).toContain('3번');
+  });
+
+  it('연속 누락이면 (spotty 아님) null', async () => {
+    setupQueryMock({
+      'miss_groups.*max_consecutive_miss': [
+        // max_consecutive_miss === miss_count → 연속이라 spotty 패턴 아님
+      ],
+    });
+
+    const result = await detectSpottyPattern('2026-03-15', 1);
+    expect(result).toBeNull();
+  });
+
+  it('해당 없으면 null', async () => {
+    setupQueryMock();
+
+    const result = await detectSpottyPattern('2026-03-15', 1);
+    expect(result).toBeNull();
+  });
+});
+
+// ─── pickMorningNudges / pickNightNudges / pickWeeklyInsights ──
+
+describe('pickMorningNudges (priority threshold + domain dedupe + max items)', () => {
+  it('priority ≥5인 morning 인사이트만 반환', async () => {
+    setupQueryMock({
+      // streak: morning, priority = streak * 2 = 10 (routine)
+      'grp = 0': [{ name: '유산균 먹기', streak: '5' }],
+      // overdue: morning, priority 7 (schedule)
+      "status = 'todo'.*date < ": [{ overdue_count: 4 }],
+    });
+
+    const insights = await pickMorningNudges('2026-03-15', 1);
+    expect(insights.length).toBeGreaterThan(0);
+    // priority desc 정렬: streak(10) > overdue(7)
+    expect(insights[0]?.type).toBe('streak');
+    expect(insights[0]?.message).toContain('유산균 먹기');
+  });
+
+  it('같은 도메인 인사이트는 priority 높은 것만 선택', async () => {
+    setupQueryMock({
+      // streak: morning, priority 10 (routine)
+      'grp = 0': [{ name: '유산균 먹기', streak: '5' }],
+      // recovery: morning, priority 6 (routine) — 같은 도메인이라 dedupe 대상
+      'recent_records.*break_events.*next_completion': [
+        { name: '스트레칭하기', break_date: '2026-03-14', recovery_gap_days: 1 },
+      ],
+    });
+
+    const insights = await pickMorningNudges('2026-03-15', 1);
+    const routineCount = insights.filter((i) => i.domain === 'routine').length;
+    expect(routineCount).toBe(1); // dedupe: priority 높은 streak만 남음
+    expect(insights[0]?.type).toBe('streak');
+  });
+
+  it('최대 3개만 반환 (도메인은 routine/sleep/schedule 3종)', async () => {
+    setupQueryMock({
+      'grp = 0': [{ name: '유산균 먹기', streak: '5' }], // routine, prio 10
+      "status = 'todo'.*date < ": [{ overdue_count: 5 }], // schedule, prio 7
+    });
+
+    const insights = await pickMorningNudges('2026-03-15', 1);
+    expect(insights.length).toBeLessThanOrEqual(3);
+  });
+
+  it('priority <5인 인사이트는 제외', async () => {
+    setupQueryMock({
+      // sleepTrend(증가): priority 4 (임계값 미달)
+      'sleep_type.*night.*ORDER BY date DESC.*LIMIT 3': [
+        { date: '2026-03-15', duration_minutes: 480 },
+        { date: '2026-03-14', duration_minutes: 420 },
+        { date: '2026-03-13', duration_minutes: 360 },
+      ],
+    });
+
+    const insights = await pickMorningNudges('2026-03-15', 1);
+    expect(insights.length).toBe(0);
+  });
+
+  it('아무 인사이트도 없으면 빈 배열', async () => {
+    setupQueryMock();
+
+    const insights = await pickMorningNudges('2026-03-15', 1);
+    expect(insights).toEqual([]);
+  });
+});
+
+describe('pickNightNudges', () => {
+  it('night 타이밍 인사이트만 선택', async () => {
     setupQueryMock({
       // sleepTrend: night, priority 8
       'sleep_type.*night.*ORDER BY date DESC.*LIMIT 3': [
@@ -383,24 +669,35 @@ describe('pickNightNudge', () => {
         { date: '2026-03-14', duration_minutes: 360 },
         { date: '2026-03-13', duration_minutes: 420 },
       ],
-      // slotGap: night, priority 5
-      'time_slot.*GROUP BY.*time_slot.*HAVING': [
-        { time_slot: '낮', total: '14', done: '14', rate: 100 },
-        { time_slot: '밤', total: '12', done: '2', rate: 17 },
+    });
+
+    const insights = await pickNightNudges('2026-03-15', 1);
+    expect(insights[0]?.type).toBe('sleepTrend');
+    expect(insights[0]?.message).toContain('줄고');
+  });
+});
+
+describe('pickWeeklyInsights', () => {
+  it('weekly 타이밍 인사이트만 선택', async () => {
+    setupQueryMock({
+      // weeklyRegression: weekly, priority 6
+      'this_week.*last_week.*WHERE last_week.rate': [
+        { name: '스트레칭하기', this_rate: 50, last_rate: 95 },
       ],
     });
 
-    const result = await pickNightNudges('2026-03-15', 1);
-    expect(result).not.toBeNull();
-    // sleepTrend(8) > slotGap(5)
-    expect(result).toContain('줄고');
+    const insights = await pickWeeklyInsights('2026-03-15', 1);
+    expect(insights[0]?.type).toBe('weeklyRegression');
   });
 
-  it('모든 감지가 임계값 미달이면 null', async () => {
-    setupQueryMock();
+  it('weekly 타이밍에 morning 인사이트는 제외', async () => {
+    setupQueryMock({
+      // streak는 morning만 → weekly에서는 안 잡힘
+      'grp = 0': [{ name: '유산균 먹기', streak: '5' }],
+    });
 
-    const result = await pickNightNudges('2026-03-15', 1);
-    expect(result).toBeNull();
+    const insights = await pickWeeklyInsights('2026-03-15', 1);
+    expect(insights.find((i) => i.type === 'streak')).toBeUndefined();
   });
 });
 
@@ -415,12 +712,18 @@ describe('에러 처리', () => {
     expect(await detectSlotGap('2026-03-15', 1)).toBeNull();
     expect(await detectWeekComparison('2026-03-15', 1)).toBeNull();
     expect(await detectOverdue('2026-03-15', 1)).toBeNull();
+    expect(await detectCategorySkew('2026-03-15', 1)).toBeNull();
+    expect(await detectDrift('2026-03-15', 1)).toBeNull();
+    expect(await detectRecovery('2026-03-15', 1)).toBeNull();
+    expect(await detectLapseAlert('2026-03-15', 1)).toBeNull();
+    expect(await detectWeeklyRegression('2026-03-15', 1)).toBeNull();
+    expect(await detectSpottyPattern('2026-03-15', 1)).toBeNull();
   });
 
-  it('DB 오류 시 pickMorningNudge는 null 반환', async () => {
+  it('DB 오류 시 pickMorningNudges는 빈 배열 반환', async () => {
     mockQuery.mockRejectedValue(new Error('DB connection lost'));
 
-    const result = await pickMorningNudges('2026-03-15', 1);
-    expect(result).toBeNull();
+    const insights = await pickMorningNudges('2026-03-15', 1);
+    expect(insights).toEqual([]);
   });
 });
