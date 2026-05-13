@@ -6,8 +6,8 @@ export interface ScheduleRow {
   date: string | null;
   end_date: string | null;
   status: string;
-  category: string | null;
-  subcategory: string | null;
+  /** 일정에 직접 매핑된 카테고리 id (FK → categories.id). 미지정 시 null */
+  category_id: number | null;
   memo: string | null;
   important: boolean;
   created_at?: string;
@@ -49,17 +49,50 @@ export function isMultiDaySchedule(s: ScheduleRow): boolean {
   return !!s.end_date && s.end_date !== s.date;
 }
 
+/** 카테고리 id에서 type/sort_order/최상위/최상위이름 lookup. type은 child가 비어있으면 parent 상속. */
+export const lookupCategory = (
+  categories: CategoryRow[],
+  categoryId: number | null,
+): {
+  type: string | null;
+  sortOrder: number | null;
+  topId: number | null;
+  topName: string | null;
+} => {
+  if (categoryId == null) return { type: null, sortOrder: null, topId: null, topName: null };
+  const cat = categories.find((c) => c.id === categoryId);
+  if (!cat) return { type: null, sortOrder: null, topId: null, topName: null };
+  const top = cat.parent_id == null ? cat : categories.find((c) => c.id === cat.parent_id);
+  return {
+    type: cat.type ?? top?.type ?? null,
+    sortOrder: top?.sort_order ?? cat.sort_order ?? null,
+    topId: top?.id ?? cat.id,
+    topName: top?.name ?? cat.name ?? null,
+  };
+};
+
+/** 일정의 카테고리 타입 (event/task 등) — 없으면 null */
+export const getScheduleType = (s: ScheduleRow, categories: CategoryRow[]): string | null =>
+  lookupCategory(categories, s.category_id).type;
+
+/** 일정의 최상위 카테고리 이름 — 없으면 null */
+export const getScheduleTopCategoryName = (
+  s: ScheduleRow,
+  categories: CategoryRow[],
+): string | null => lookupCategory(categories, s.category_id).topName;
+
 /** 일정 우선순위 정렬: 기간 일정 → 중요 → 카테고리순 → 상태순 */
 export function compareSchedulePriority(
   a: ScheduleRow,
   b: ScheduleRow,
   categories: CategoryRow[],
 ): number {
+  const lookupA = lookupCategory(categories, a.category_id);
+  const lookupB = lookupCategory(categories, b.category_id);
+
   // 1. event 타입 최상위
-  const catA = categories.find((c) => c.name === a.category);
-  const catB = categories.find((c) => c.name === b.category);
-  const aEvent = catA?.type === 'event';
-  const bEvent = catB?.type === 'event';
+  const aEvent = lookupA.type === 'event';
+  const bEvent = lookupB.type === 'event';
   if (aEvent !== bEvent) return aEvent ? -1 : 1;
 
   // 2. 기간 일정
@@ -79,8 +112,8 @@ export function compareSchedulePriority(
   const statusDiff = compareByStatus(a, b);
   if (statusDiff !== 0) return statusDiff;
 
-  // 5. 카테고리 sort_order
-  const orderA = a.category ? (catA?.sort_order ?? 999) : 9999;
-  const orderB = b.category ? (catB?.sort_order ?? 999) : 9999;
+  // 5. 최상위 카테고리 sort_order
+  const orderA = lookupA.sortOrder ?? 9999;
+  const orderB = lookupB.sortOrder ?? 9999;
   return orderA - orderB;
 }

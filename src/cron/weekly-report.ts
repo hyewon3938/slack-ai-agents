@@ -132,8 +132,13 @@ export const aggregateWeeklyRoutine = async (
   userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklyRoutineData> => {
   const empty: WeeklyRoutineData = {
-    thisWeekRate: 0, thisWeekCompleted: 0, thisWeekTotal: 0,
-    lastWeekRate: null, slotBreakdown: [], bestRoutine: null, worstRoutine: null,
+    thisWeekRate: 0,
+    thisWeekCompleted: 0,
+    thisWeekTotal: 0,
+    lastWeekRate: null,
+    slotBreakdown: [],
+    bestRoutine: null,
+    worstRoutine: null,
   };
 
   try {
@@ -202,9 +207,10 @@ export const aggregateWeeklyRoutine = async (
       lastWeekRate: rate.last_week_rate,
       slotBreakdown: slotResult.rows.map((r) => ({ slot: r.slot, rate: r.rate })),
       bestRoutine: routines.length > 0 ? { name: routines[0].name, rate: routines[0].rate } : null,
-      worstRoutine: routines.length > 1
-        ? { name: routines[routines.length - 1].name, rate: routines[routines.length - 1].rate }
-        : null,
+      worstRoutine:
+        routines.length > 1
+          ? { name: routines[routines.length - 1].name, rate: routines[routines.length - 1].rate }
+          : null,
     };
   } catch {
     return empty;
@@ -234,34 +240,41 @@ export const aggregateWeeklySchedule = async (
   userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklyScheduleData> => {
   const empty: WeeklyScheduleData = {
-    completedCount: 0, incompleteCount: 0, cancelledCount: 0,
-    categories: [], overdueCount: 0,
+    completedCount: 0,
+    incompleteCount: 0,
+    cancelledCount: 0,
+    categories: [],
+    overdueCount: 0,
   };
 
   try {
+    // 카테고리 type은 schedule이 직접 가리키는 c.type, 없으면 부모 p.type에서 가져옴
     const summaryResult = await query<ScheduleSummaryRow>(
       `SELECT
         COUNT(*) FILTER (WHERE s.status = 'done')::int AS completed_count,
         COUNT(*) FILTER (WHERE s.status IN ('todo', 'in-progress'))::int AS incomplete_count,
         COUNT(*) FILTER (WHERE s.status = 'cancelled')::int AS cancelled_count
       FROM schedules s
-      LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
+      LEFT JOIN categories c ON c.id = s.category_id
+      LEFT JOIN categories p ON p.id = c.parent_id
       WHERE s.date BETWEEN $1 AND $2
-        AND COALESCE(c.type, 'task') = 'task'
+        AND COALESCE(c.type, p.type, 'task') = 'task'
         AND s.user_id = $3`,
       [weekStart, weekEnd, userId],
     );
 
     const summary = summaryResult.rows[0] ?? empty;
 
+    // 그룹화는 항상 최상위 카테고리 이름 기준
     const catResult = await query<CategoryRow>(
-      `SELECT COALESCE(s.category, '미분류') AS category, COUNT(*)::int AS count
+      `SELECT COALESCE(p.name, c.name, '미분류') AS category, COUNT(*)::int AS count
       FROM schedules s
-      LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
+      LEFT JOIN categories c ON c.id = s.category_id
+      LEFT JOIN categories p ON p.id = c.parent_id
       WHERE s.date BETWEEN $1 AND $2
-        AND COALESCE(c.type, 'task') = 'task'
+        AND COALESCE(c.type, p.type, 'task') = 'task'
         AND s.user_id = $3
-      GROUP BY s.category
+      GROUP BY COALESCE(p.name, c.name)
       ORDER BY count DESC`,
       [weekStart, weekEnd, userId],
     );
@@ -269,9 +282,10 @@ export const aggregateWeeklySchedule = async (
     const overdueResult = await query<OverdueRow>(
       `SELECT COUNT(*)::int AS overdue_count
       FROM schedules s
-      LEFT JOIN categories c ON s.category = c.name AND c.parent_id IS NULL
+      LEFT JOIN categories c ON c.id = s.category_id
+      LEFT JOIN categories p ON p.id = c.parent_id
       WHERE s.status = 'todo' AND s.date < $1 AND s.date IS NOT NULL
-        AND COALESCE(c.type, 'task') = 'task'
+        AND COALESCE(c.type, p.type, 'task') = 'task'
         AND s.user_id = $2`,
       [weekEnd, userId],
     );
@@ -368,10 +382,7 @@ const formatDuration = (minutes: number): string => {
 };
 
 /** 주간 리포트 Block Kit 빌드 */
-const buildWeeklyReportBlocks = (
-  data: WeeklyReportData,
-  summary: string,
-): KnownBlock[] => {
+const buildWeeklyReportBlocks = (data: WeeklyReportData, summary: string): KnownBlock[] => {
   const { sleep, routine, schedule, correlation, weekStart, weekEnd } = data;
   const blocks: KnownBlock[] = [];
 
@@ -387,9 +398,15 @@ const buildWeeklyReportBlocks = (
   // ── 수면 ──
   blocks.push({ type: 'divider' });
   if (sleep.recordCount < 2) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*수면*\n데이터 부족 (2건 미만)' } });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: '*수면*\n데이터 부족 (2건 미만)' },
+    });
   } else {
-    const lines = [`*수면*`, `평균 ${formatDuration(sleep.avgDuration)} (${sleep.recordCount}일 기록)`];
+    const lines = [
+      `*수면*`,
+      `평균 ${formatDuration(sleep.avgDuration)} (${sleep.recordCount}일 기록)`,
+    ];
     if (sleep.bestDay && sleep.worstDay && sleep.bestDay.date !== sleep.worstDay.date) {
       lines.push(
         `가장 잘 잔 날: ${formatDateShort(sleep.bestDay.date)} ${formatDuration(sleep.bestDay.duration)} | 가장 못 잔 날: ${formatDateShort(sleep.worstDay.date)} ${formatDuration(sleep.worstDay.duration)}`,
@@ -401,7 +418,10 @@ const buildWeeklyReportBlocks = (
   // ── 루틴 ──
   blocks.push({ type: 'divider' });
   if (routine.thisWeekTotal < 2) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*루틴*\n데이터 부족 (2건 미만)' } });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: '*루틴*\n데이터 부족 (2건 미만)' },
+    });
   } else {
     const lastPart = routine.lastWeekRate != null ? ` — 지난주 ${routine.lastWeekRate}%` : '';
     const lines = [
@@ -409,10 +429,14 @@ const buildWeeklyReportBlocks = (
       `주간 달성률: ${routine.thisWeekRate}% (${routine.thisWeekCompleted}/${routine.thisWeekTotal})${lastPart}`,
     ];
     if (routine.slotBreakdown.length > 0) {
-      lines.push(`시간대별: ${routine.slotBreakdown.map((s) => `${s.slot} ${s.rate}%`).join(', ')}`);
+      lines.push(
+        `시간대별: ${routine.slotBreakdown.map((s) => `${s.slot} ${s.rate}%`).join(', ')}`,
+      );
     }
     if (routine.bestRoutine) {
-      const worstPart = routine.worstRoutine ? ` | 최저: ${routine.worstRoutine.name} ${routine.worstRoutine.rate}%` : '';
+      const worstPart = routine.worstRoutine
+        ? ` | 최저: ${routine.worstRoutine.name} ${routine.worstRoutine.rate}%`
+        : '';
       lines.push(`최고: ${routine.bestRoutine.name} ${routine.bestRoutine.rate}%${worstPart}`);
     }
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
@@ -422,14 +446,19 @@ const buildWeeklyReportBlocks = (
   blocks.push({ type: 'divider' });
   const total = schedule.completedCount + schedule.incompleteCount + schedule.cancelledCount;
   if (total < 2) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*일정*\n데이터 부족 (2건 미만)' } });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: '*일정*\n데이터 부족 (2건 미만)' },
+    });
   } else {
     const lines = [
       `*일정*`,
       `완료 ${schedule.completedCount}건 / 미완료 ${schedule.incompleteCount}건 / 취소 ${schedule.cancelledCount}건`,
     ];
     if (schedule.categories.length > 0) {
-      lines.push(`카테고리: ${schedule.categories.map((c) => `${c.category} ${c.count}건`).join(', ')}`);
+      lines.push(
+        `카테고리: ${schedule.categories.map((c) => `${c.category} ${c.count}건`).join(', ')}`,
+      );
     }
     if (schedule.overdueCount > 0) {
       lines.push(`밀린 일정: ${schedule.overdueCount}건`);
@@ -442,7 +471,10 @@ const buildWeeklyReportBlocks = (
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*🔗 수면 × 루틴 상관관계*\n7시간+ 잔 날 루틴 ${correlation.goodSleepRate}% vs 6시간 미만 ${correlation.badSleepRate}%` },
+      text: {
+        type: 'mrkdwn',
+        text: `*🔗 수면 × 루틴 상관관계*\n7시간+ 잔 날 루틴 ${correlation.goodSleepRate}% vs 6시간 미만 ${correlation.badSleepRate}%`,
+      },
     });
   }
 
@@ -469,11 +501,16 @@ const generateWeeklySummary = async (
     correlation.goodSleepRate != null && correlation.badSleepRate != null
       ? `수면-루틴 상관: 7시간+ ${correlation.goodSleepRate}% vs 6시간 미만 ${correlation.badSleepRate}%`
       : '',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   try {
     const messages: LLMMessage[] = [
-      { role: 'system', content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로.` },
+      {
+        role: 'system',
+        content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로.`,
+      },
       { role: 'user', content: context },
     ];
     const response = await llmClient.chat(messages);

@@ -55,18 +55,14 @@ export const formatAffectedRows = (tableName: string, rows: AffectedRow[]): Disp
   }
 };
 
-// schedules: [카테고리] 제목 형식, 카테고리별 그룹
+// schedules: 제목 + 중요 표시 (FK 전환 후 RETURNING에 카테고리 이름이 없으므로 평면 리스트)
 const formatSchedules = (rows: AffectedRow[]): DisplayGroup[] => {
-  const groups = new Map<string, string[]>();
-  for (const r of rows) {
-    const cat = (r['category'] as string | null) ?? '미분류';
+  const items = rows.map((r) => {
     const title = (r['title'] as string | null) ?? '(제목 없음)';
     const important = r['important'] ? ' ★' : '';
-    const list = groups.get(cat) ?? [];
-    list.push(`${title}${important}`);
-    groups.set(cat, list);
-  }
-  return [...groups.entries()].map(([header, items]) => ({ header, items }));
+    return `${title}${important}`;
+  });
+  return [{ header: null, items }];
 };
 
 const formatRoutineRecords = (rows: AffectedRow[]): DisplayGroup[] => {

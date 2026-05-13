@@ -6,32 +6,21 @@ import {
 } from '../pending-display.js';
 
 describe('formatAffectedRows', () => {
-  it('schedules: 카테고리별 그룹핑, 제목에 중요 표시', () => {
+  it('schedules: 평면 리스트, 제목에 중요 표시', () => {
+    // FK 전환 후 RETURNING 결과에 카테고리 이름이 없으므로 평면 리스트로 렌더
     const rows = [
-      { title: '회의', category: '업무', important: true },
-      { title: '보고서', category: '업무', important: false },
-      { title: '장보기', category: '생활', important: false },
+      { title: '회의', important: true },
+      { title: '보고서', important: false },
+      { title: '장보기', important: false },
     ];
     const groups = formatAffectedRows('schedules', rows);
-    expect(groups).toHaveLength(2);
-
-    const 업무 = groups.find((g) => g.header === '업무');
-    const 생활 = groups.find((g) => g.header === '생활');
-    expect(업무?.items).toEqual(['회의 ★', '보고서']);
-    expect(생활?.items).toEqual(['장보기']);
-  });
-
-  it('schedules: category null이면 미분류', () => {
-    const groups = formatAffectedRows('schedules', [
-      { title: '기타', category: null, important: false },
-    ]);
-    expect(groups[0]?.header).toBe('미분류');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.header).toBeNull();
+    expect(groups[0]?.items).toEqual(['회의 ★', '보고서', '장보기']);
   });
 
   it('schedules: title null이면 (제목 없음)', () => {
-    const groups = formatAffectedRows('schedules', [
-      { title: null, category: '업무', important: false },
-    ]);
+    const groups = formatAffectedRows('schedules', [{ title: null, important: false }]);
     expect(groups[0]?.items).toEqual(['(제목 없음)']);
   });
 

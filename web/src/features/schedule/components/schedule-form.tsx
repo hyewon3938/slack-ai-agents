@@ -6,7 +6,6 @@ import { SCHEDULE_STATUSES, STATUS_LABELS } from '@/features/schedule/lib/types'
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 
-
 interface ScheduleFormProps {
   schedule?: ScheduleRow | null;
   categories: CategoryRow[];
@@ -16,6 +15,27 @@ interface ScheduleFormProps {
   onClose: () => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
+
+/** categoryId가 가리키는 카테고리의 최상위(parent_id IS NULL) id */
+const getTopCategoryId = (categoryId: number | null, categories: CategoryRow[]): number | null => {
+  if (categoryId == null) return null;
+  const cat = categories.find((c) => c.id === categoryId);
+  if (!cat) return null;
+  return cat.parent_id ?? cat.id;
+};
+
+/** categoryId가 가리키는 카테고리의 type (child 우선, 없으면 parent) */
+const getCategoryTypeById = (
+  categoryId: number | null,
+  categories: CategoryRow[],
+): string | null => {
+  if (categoryId == null) return null;
+  const cat = categories.find((c) => c.id === categoryId);
+  if (!cat) return null;
+  if (cat.type) return cat.type;
+  const top = categories.find((c) => c.id === cat.parent_id);
+  return top?.type ?? null;
+};
 
 export function ScheduleForm({
   schedule,
@@ -31,36 +51,37 @@ export function ScheduleForm({
   const [endDate, setEndDate] = useState(schedule?.end_date ?? '');
   const [showEndDate, setShowEndDate] = useState(!!schedule?.end_date);
   const [status, setStatus] = useState(schedule?.status ?? 'todo');
-  const [category, setCategory] = useState(schedule?.category ?? '');
-  const [subcategory, setSubcategory] = useState(schedule?.subcategory ?? '');
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(
-    schedule?.subcategory && schedule?.category ? schedule.category : null,
-  );
+  const [categoryId, setCategoryId] = useState<number | null>(schedule?.category_id ?? null);
+  // child가 선택돼 있으면 그 parent를 펼침. parent만 선택 또는 null이면 펼침 없음.
+  const initialExpandedTop = (() => {
+    if (!schedule?.category_id) return null;
+    const cat = categories.find((c) => c.id === schedule.category_id);
+    return cat?.parent_id ?? null;
+  })();
+  const [expandedTopId, setExpandedTopId] = useState<number | null>(initialExpandedTop);
   const [memo, setMemo] = useState(schedule?.memo ?? '');
   const [important, setImportant] = useState(schedule?.important ?? false);
   const [saving, setSaving] = useState(false);
 
   const parentCategories = categories.filter((c) => c.parent_id === null);
-  const getChildren = (parentName: string) => {
-    const parent = categories.find((c) => c.name === parentName && c.parent_id === null);
-    return parent ? categories.filter((c) => c.parent_id === parent.id) : [];
-  };
+  const getChildrenById = (parentId: number) => categories.filter((c) => c.parent_id === parentId);
+  const topCategoryId = getTopCategoryId(categoryId, categories);
+  const categoryType = getCategoryTypeById(categoryId, categories);
 
   const isDirty = useCallback(() => {
     if (!schedule) {
-      return !!(title || date || endDate || memo || category || subcategory || important);
+      return !!(title || date || endDate || memo || categoryId != null || important);
     }
     return (
       title !== (schedule.title ?? '') ||
       date !== (schedule.date ?? '') ||
       endDate !== (schedule.end_date ?? '') ||
       status !== schedule.status ||
-      category !== (schedule.category ?? '') ||
-      subcategory !== (schedule.subcategory ?? '') ||
+      categoryId !== (schedule.category_id ?? null) ||
       memo !== (schedule.memo ?? '') ||
       important !== (schedule.important ?? false)
     );
-  }, [title, date, endDate, status, category, subcategory, memo, important, schedule]);
+  }, [title, date, endDate, status, categoryId, memo, important, schedule]);
 
   useEffect(() => {
     onDirtyChange?.(isDirty());
@@ -88,8 +109,7 @@ export function ScheduleForm({
         date: date || null,
         end_date: showEndDate && endDate ? endDate : null,
         status,
-        category: category || null,
-        subcategory: subcategory || null,
+        category_id: categoryId,
         memo: memo || null,
         important,
       });
@@ -161,7 +181,7 @@ export function ScheduleForm({
       )}
 
       {/* 상태 — event 타입 카테고리는 상태 변경 불필요 */}
-      {categories.find((c) => c.name === category)?.type !== 'event' && (
+      {categoryType !== 'event' && (
         <div>
           <label className="mb-1 block text-xs text-gray-500">상태</label>
           <div className="flex gap-1">
@@ -187,17 +207,17 @@ export function ScheduleForm({
       <div>
         <label className="mb-2 block text-xs text-gray-500">카테고리</label>
         <div className="flex flex-wrap gap-1.5">
-          {expandedCategory ? (
+          {expandedTopId != null ? (
             <>
               {/* 펼쳐진 상위 카테고리 */}
               {(() => {
-                const parent = parentCategories.find((c) => c.name === expandedCategory);
+                const parent = parentCategories.find((c) => c.id === expandedTopId);
                 if (!parent) return null;
                 const style = getCategoryStyle(parent.color);
                 return (
                   <button
                     type="button"
-                    onClick={() => setExpandedCategory(null)}
+                    onClick={() => setExpandedTopId(null)}
                     className="rounded-full px-3 py-1.5 text-xs font-medium"
                     style={{
                       backgroundColor: style.bg,
@@ -216,9 +236,12 @@ export function ScheduleForm({
               {/* 없음 버튼 */}
               <button
                 type="button"
-                onClick={() => { setCategory(''); setSubcategory(''); setExpandedCategory(null); }}
+                onClick={() => {
+                  setCategoryId(null);
+                  setExpandedTopId(null);
+                }}
                 className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  category === ''
+                  categoryId == null
                     ? 'bg-gray-200 ring-2 ring-gray-400 ring-offset-1'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
@@ -228,22 +251,15 @@ export function ScheduleForm({
               {/* 상위 카테고리 버튼들 */}
               {parentCategories.map((c) => {
                 const style = getCategoryStyle(c.color);
-                const selected = category === c.name;
-                const children = getChildren(c.name);
+                const selected = topCategoryId === c.id;
+                const children = getChildrenById(c.id);
                 return (
                   <button
                     key={c.id}
                     type="button"
                     onClick={() => {
-                      if (children.length > 0) {
-                        setCategory(c.name);
-                        setSubcategory('');
-                        setExpandedCategory(c.name);
-                      } else {
-                        setCategory(c.name);
-                        setSubcategory('');
-                        setExpandedCategory(null);
-                      }
+                      setCategoryId(c.id);
+                      setExpandedTopId(children.length > 0 ? c.id : null);
                     }}
                     className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                       selected ? '' : 'opacity-60 hover:opacity-100'
@@ -264,16 +280,16 @@ export function ScheduleForm({
           )}
         </div>
         {/* 하위 카테고리 목록 */}
-        {expandedCategory && (
+        {expandedTopId != null && (
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {getChildren(expandedCategory).map((sub) => {
+            {getChildrenById(expandedTopId).map((sub) => {
               const style = getCategoryStyle(sub.color);
-              const selected = subcategory === sub.name;
+              const selected = categoryId === sub.id;
               return (
                 <button
                   key={sub.id}
                   type="button"
-                  onClick={() => setSubcategory(selected ? '' : sub.name)}
+                  onClick={() => setCategoryId(selected ? expandedTopId : sub.id)}
                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                     selected ? '' : 'opacity-60 hover:opacity-100'
                   }`}

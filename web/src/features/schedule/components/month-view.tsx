@@ -14,7 +14,11 @@ import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
-import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedule/lib/calendar-utils';
+import {
+  computeWeekLayout,
+  WEEK_START,
+  type WeekSpan,
+} from '@/features/schedule/lib/calendar-utils';
 import { ScheduleCard } from './schedule-card';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
@@ -192,7 +196,10 @@ function SpanningBar({
   const showLeftHandle = !span.startsBeforeWeek;
   const showRightHandle = !span.endsAfterWeek;
 
-  const cat = categories.find((c) => c.name === span.schedule.category);
+  const cat =
+    span.schedule.category_id != null
+      ? categories.find((c) => c.id === span.schedule.category_id)
+      : null;
   const colorKey = cat?.color ?? 'gray';
   const catStyle = getCategoryStyle(colorKey);
   const isDone = span.schedule.status === 'done' || span.schedule.status === 'cancelled';
@@ -253,4 +260,3 @@ function SpanningBar({
     </div>
   );
 }
-

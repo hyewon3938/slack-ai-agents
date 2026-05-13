@@ -4,7 +4,7 @@ import {
   queryScheduleById,
   updateSchedule,
   deleteSchedule,
-  ensureCategoryExists,
+  validateCategoryOwnership,
 } from '@/features/schedule/lib/queries';
 import { isValidStatus } from '@/features/schedule/lib/types';
 import { validateFields } from '@/lib/validation';
@@ -42,8 +42,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       date: string | null;
       end_date: string | null;
       status: string;
-      category: string | null;
-      subcategory: string | null;
+      category_id: number | null;
       memo: string | null;
       important: boolean;
     }>;
@@ -51,8 +50,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const lengthError = validateFields([
       [body.title, 'title'],
       [body.memo, 'memo'],
-      [body.category, 'category'],
-      [body.subcategory, 'subcategory'],
     ]);
     if (lengthError) {
       return NextResponse.json({ error: lengthError }, { status: 400 });
@@ -62,8 +59,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: '유효하지 않은 상태값이야' }, { status: 400 });
     }
 
-    if (body.category) {
-      await ensureCategoryExists(userId, body.category);
+    if (body.category_id != null) {
+      if (!Number.isInteger(body.category_id) || body.category_id <= 0) {
+        return NextResponse.json({ error: '카테고리 값이 잘못됐어' }, { status: 400 });
+      }
+      const ok = await validateCategoryOwnership(userId, body.category_id);
+      if (!ok) {
+        return NextResponse.json({ error: '카테고리를 찾을 수 없어' }, { status: 400 });
+      }
     }
 
     const data = await updateSchedule(userId, Number(id), body);

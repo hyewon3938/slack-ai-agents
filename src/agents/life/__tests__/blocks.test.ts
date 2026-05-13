@@ -31,18 +31,27 @@ const makeRecord = (overrides: Partial<RoutineRecordRow> = {}): RoutineRecordRow
   ...overrides,
 });
 
-const makeSchedule = (overrides: Partial<ScheduleRow> = {}): ScheduleRow => ({
-  id: 1,
-  title: '회의',
-  date: '2026-03-08',
-  end_date: null,
-  status: 'todo',
-  category: '업무',
-  category_type: 'task',
-  memo: null,
-  important: false,
-  ...overrides,
-});
+const makeSchedule = (
+  overrides: Partial<ScheduleRow> & { category?: string | null } = {},
+): ScheduleRow => {
+  // 테스트 편의 헬퍼: 옛 `category` 필드를 받으면 신규 스키마로 매핑
+  const { category, ...rest } = overrides;
+  const topName = category !== undefined ? category : '업무';
+  return {
+    id: 1,
+    title: '회의',
+    date: '2026-03-08',
+    end_date: null,
+    status: 'todo',
+    category_id: topName ? 1 : null,
+    category_name: topName,
+    category_type: 'task',
+    top_category_name: topName,
+    memo: null,
+    important: false,
+    ...rest,
+  };
+};
 
 // ─── formatDateShort ───────────────────────────────────
 

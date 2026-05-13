@@ -235,14 +235,16 @@ const queryScheduleContext = async ({ today, userId }: DateParams): Promise<stri
   const parts: string[] = [];
 
   // 오늘 일정 (전체 + 미완료 — event 타입은 미완료에서 제외)
+  // category_type은 child 우선, 없으면 parent에서 가져옴
   const todayResult = await query<{ total: string; incomplete: string }>(
     `SELECT COUNT(*)::text as total,
             COUNT(*) FILTER (
               WHERE (s.status = 'todo' OR s.status = 'in-progress')
-                AND COALESCE(c.type, 'task') = 'task'
+                AND COALESCE(c.type, p.type, 'task') = 'task'
             )::text as incomplete
      FROM schedules s
-     LEFT JOIN categories c ON c.name = s.category
+     LEFT JOIN categories c ON c.id = s.category_id
+     LEFT JOIN categories p ON p.id = c.parent_id
      WHERE s.status != 'cancelled' AND s.user_id = $1
        AND (s.date = $2 OR (s.date <= $2 AND s.end_date >= $2))`,
     [userId, today],
@@ -278,9 +280,10 @@ const queryScheduleContext = async ({ today, userId }: DateParams): Promise<stri
   const overdueResult = await query<ScheduleCountRow>(
     `SELECT COUNT(*)::text as count
      FROM schedules s
-     LEFT JOIN categories c ON c.name = s.category
+     LEFT JOIN categories c ON c.id = s.category_id
+     LEFT JOIN categories p ON p.id = c.parent_id
      WHERE s.status = 'todo' AND s.date < $2 AND s.date IS NOT NULL AND s.user_id = $1
-       AND COALESCE(c.type, 'task') = 'task'`,
+       AND COALESCE(c.type, p.type, 'task') = 'task'`,
     [userId, today],
   );
   const overdueCount = Number(overdueResult.rows[0]?.count ?? 0);
@@ -375,7 +378,10 @@ const queryFortuneContext = async ({ today, userId }: DateParams): Promise<strin
  * 타이밍에 따라 데이터 부재 처리가 달라진다.
  * 데이터가 전혀 없으면 빈 문자열 반환.
  */
-export const buildLifeContext = async (timing: ContextTiming = 'conversation', userId: number): Promise<string> => {
+export const buildLifeContext = async (
+  timing: ContextTiming = 'conversation',
+  userId: number,
+): Promise<string> => {
   try {
     const dates: DateParams = {
       today: getTodayISO(),

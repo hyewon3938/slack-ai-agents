@@ -34,8 +34,13 @@ export interface ScheduleRow {
   date: string | null;
   end_date: string | null;
   status: string;
-  category: string | null;
+  category_id: number | null;
+  /** 일정에 직접 매핑된 카테고리 이름 (child일 수도 parent일 수도) */
+  category_name: string | null;
+  /** event/task 분류 — child 우선, 없으면 parent */
   category_type: string | null;
+  /** 그룹화용 최상위 카테고리 이름 */
+  top_category_name: string | null;
   memo: string | null;
   important: boolean;
 }
@@ -115,7 +120,10 @@ export const queryActiveTemplates = async (userId: number): Promise<RoutineTempl
   ).rows;
 
 /** 특정 날짜의 루틴 기록 조회 (템플릿 JOIN) */
-export const queryTodayRecords = async (today: string, userId: number): Promise<RoutineRecordRow[]> =>
+export const queryTodayRecords = async (
+  today: string,
+  userId: number,
+): Promise<RoutineRecordRow[]> =>
   (
     await query<RoutineRecordRow>(
       `SELECT r.id, r.template_id, r.date::text, r.completed, r.completed_at::text, r.memo,
@@ -132,7 +140,10 @@ export const queryTodayRecords = async (today: string, userId: number): Promise<
   ).rows;
 
 /** 특정 날짜에 이미 생성된 기록의 template_id 집합 */
-export const queryExistingTemplateIds = async (today: string, userId: number): Promise<Set<number>> => {
+export const queryExistingTemplateIds = async (
+  today: string,
+  userId: number,
+): Promise<Set<number>> => {
   const rows = (
     await query<{ template_id: number }>(
       'SELECT template_id FROM routine_records WHERE date = $1 AND user_id = $2',
@@ -143,7 +154,10 @@ export const queryExistingTemplateIds = async (today: string, userId: number): P
 };
 
 /** 특정 템플릿의 가장 최근 기록 날짜 */
-export const queryLastRecordDate = async (templateId: number, userId: number): Promise<string | null> => {
+export const queryLastRecordDate = async (
+  templateId: number,
+  userId: number,
+): Promise<string | null> => {
   const result = await query<{ date: string }>(
     'SELECT date::text FROM routine_records WHERE template_id = $1 AND user_id = $2 ORDER BY date DESC LIMIT 1',
     [templateId, userId],
@@ -152,7 +166,11 @@ export const queryLastRecordDate = async (templateId: number, userId: number): P
 };
 
 /** 루틴 기록 생성 */
-export const createRecord = async (templateId: number, today: string, userId: number): Promise<number> => {
+export const createRecord = async (
+  templateId: number,
+  today: string,
+  userId: number,
+): Promise<number> => {
   const result = await query<{ id: number }>(
     'INSERT INTO routine_records (template_id, date, completed, user_id) VALUES ($1, $2, false, $3) RETURNING id',
     [templateId, today, userId],
@@ -164,53 +182,83 @@ export const createRecord = async (templateId: number, today: string, userId: nu
 
 /** 루틴 완료 처리 (완료 시점 기록) */
 export const completeRecord = async (id: number, userId: number): Promise<void> => {
-  await query('UPDATE routine_records SET completed = true, completed_at = NOW() WHERE id = $1 AND user_id = $2', [
-    id,
-    userId,
-  ]);
+  await query(
+    'UPDATE routine_records SET completed = true, completed_at = NOW() WHERE id = $1 AND user_id = $2',
+    [id, userId],
+  );
 };
 
 // ─── 일정 쿼리 ──────────────────────────────────────────
 
-/** 특정 날짜의 일정 조회 (당일 + 기간 일정 포함, categories JOIN) */
+/** 특정 날짜의 일정 조회 (당일 + 기간 일정 포함, categories 계층 JOIN) */
 export const queryTodaySchedules = async (today: string, userId: number): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
       `SELECT s.id, s.title, s.date::text, s.end_date::text, s.status,
-              s.category, c.type AS category_type, s.memo, s.important
+              s.category_id,
+              c.name AS category_name,
+              COALESCE(c.type, p.type) AS category_type,
+              COALESCE(p.name, c.name) AS top_category_name,
+              s.memo, s.important
      FROM schedules s
-     LEFT JOIN categories c ON c.name = s.category
+     LEFT JOIN categories c ON c.id = s.category_id
+     LEFT JOIN categories p ON p.id = c.parent_id
      WHERE s.status != 'cancelled' AND s.user_id = $1
        AND (s.date = $2 OR (s.date <= $2 AND s.end_date >= $2))
      ORDER BY
-       CASE WHEN c.type = 'event' THEN 0 ELSE 1 END,
-       s.category NULLS LAST, s.status, s.title`,
+       CASE WHEN COALESCE(c.type, p.type) = 'event' THEN 0 ELSE 1 END,
+       COALESCE(p.name, c.name) NULLS LAST,
+       c.name NULLS LAST,
+       s.status, s.title`,
       [userId, today],
     )
   ).rows;
 
-/** 백로그 일정 조회 (날짜 미지정 항목, categories JOIN) */
+/** 백로그 일정 조회 (날짜 미지정 항목, categories 계층 JOIN) */
 export const queryBacklogSchedules = async (userId: number): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
       `SELECT s.id, s.title, s.date::text, s.end_date::text, s.status,
-              s.category, c.type AS category_type, s.memo, s.important
+              s.category_id,
+              c.name AS category_name,
+              COALESCE(c.type, p.type) AS category_type,
+              COALESCE(p.name, c.name) AS top_category_name,
+              s.memo, s.important
      FROM schedules s
-     LEFT JOIN categories c ON c.name = s.category
+     LEFT JOIN categories c ON c.id = s.category_id
+     LEFT JOIN categories p ON p.id = c.parent_id
      WHERE s.date IS NULL AND s.status != 'cancelled' AND s.user_id = $1
-     ORDER BY s.category NULLS LAST, s.important DESC, s.title`,
+     ORDER BY COALESCE(p.name, c.name) NULLS LAST,
+              c.name NULLS LAST,
+              s.important DESC, s.title`,
       [userId],
     )
   ).rows;
 
 /** 일정을 특정 날짜로 이동 */
-export const moveScheduleToDate = async (id: number, date: string, userId: number): Promise<void> => {
-  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2 AND user_id = $3", [date, id, userId]);
+export const moveScheduleToDate = async (
+  id: number,
+  date: string,
+  userId: number,
+): Promise<void> => {
+  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2 AND user_id = $3", [
+    date,
+    id,
+    userId,
+  ]);
 };
 
 /** 일정 상태 변경 */
-export const updateScheduleStatus = async (id: number, status: string, userId: number): Promise<void> => {
-  await query('UPDATE schedules SET status = $1 WHERE id = $2 AND user_id = $3', [status, id, userId]);
+export const updateScheduleStatus = async (
+  id: number,
+  status: string,
+  userId: number,
+): Promise<void> => {
+  await query('UPDATE schedules SET status = $1 WHERE id = $2 AND user_id = $3', [
+    status,
+    id,
+    userId,
+  ]);
 };
 
 /** 일정 삭제 */
@@ -220,12 +268,23 @@ export const deleteSchedule = async (id: number, userId: number): Promise<void> 
 
 /** 일정 중요 표시 토글 */
 export const toggleScheduleImportant = async (id: number, userId: number): Promise<void> => {
-  await query('UPDATE schedules SET important = NOT important WHERE id = $1 AND user_id = $2', [id, userId]);
+  await query('UPDATE schedules SET important = NOT important WHERE id = $1 AND user_id = $2', [
+    id,
+    userId,
+  ]);
 };
 
 /** 일정 내일로 미루기 (date 변경 + status → todo) */
-export const postponeSchedule = async (id: number, newDate: string, userId: number): Promise<void> => {
-  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2 AND user_id = $3", [newDate, id, userId]);
+export const postponeSchedule = async (
+  id: number,
+  newDate: string,
+  userId: number,
+): Promise<void> => {
+  await query("UPDATE schedules SET date = $1, status = 'todo' WHERE id = $2 AND user_id = $3", [
+    newDate,
+    id,
+    userId,
+  ]);
 };
 
 // ─── 수면 쿼리 ──────────────────────────────────────
@@ -349,7 +408,10 @@ export interface SleepEventRow {
 // ─── 수면 쿼리 (Home 탭) ────────────────────────────
 
 /** Home 탭용 수면 기록 조회: 오늘 날짜 밤잠 + 낮잠 (effective date 기준) */
-export const querySleepForHome = async (today: string, userId: number): Promise<SleepRecordRow[]> => {
+export const querySleepForHome = async (
+  today: string,
+  userId: number,
+): Promise<SleepRecordRow[]> => {
   const result = await query<SleepRecordRow>(
     `(SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
       FROM sleep_records
