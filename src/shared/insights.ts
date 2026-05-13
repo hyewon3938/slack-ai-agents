@@ -9,13 +9,28 @@ import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
-export type InsightType = 'streak' | 'sleepTrend' | 'slotGap' | 'weekComparison' | 'overdueAlert';
-type InsightTiming = 'morning' | 'night';
+export type InsightType =
+  | 'streak'
+  | 'sleepTrend'
+  | 'slotGap'
+  | 'weekComparison'
+  | 'overdueAlert'
+  | 'categorySkew'
+  | 'drift'
+  | 'recovery'
+  | 'lapseAlert'
+  | 'weeklyRegression'
+  | 'spottyPattern';
+
+export type InsightTiming = 'morning' | 'night' | 'weekly';
+
+export type InsightDomain = 'routine' | 'sleep' | 'schedule';
 
 export interface Insight {
   type: InsightType;
   priority: number;
   timing: InsightTiming;
+  domain: InsightDomain;
   message: string;
 }
 
@@ -71,6 +86,7 @@ export const detectStreak = async (today: string, userId: number): Promise<Insig
       type: 'streak',
       priority: streak * 2,
       timing: 'morning',
+      domain: 'routine',
       message: `${row.name} ${streak}일 연속 달성 중! 대단하다`,
     };
   } catch {
@@ -111,6 +127,7 @@ export const detectSleepTrend = async (today: string, userId: number): Promise<I
         type: 'sleepTrend',
         priority: 8,
         timing: 'night',
+        domain: 'sleep',
         message: '수면 시간이 3일째 줄고 있어. 좀 일찍 자자',
       };
     }
@@ -120,6 +137,7 @@ export const detectSleepTrend = async (today: string, userId: number): Promise<I
         type: 'sleepTrend',
         priority: 4,
         timing: 'night',
+        domain: 'sleep',
         message: '수면 시간이 3일째 늘고 있어. 좋은 흐름이야!',
       };
     }
@@ -171,6 +189,7 @@ export const detectSlotGap = async (today: string, userId: number): Promise<Insi
       type: 'slotGap',
       priority: 5,
       timing: 'night',
+      domain: 'routine',
       message: `${best.time_slot} 루틴은 ${best.rate}%인데 ${worst.time_slot} 루틴이 ${worst.rate}%야`,
     };
   } catch {
@@ -222,6 +241,7 @@ export const detectWeekComparison = async (
       type: 'weekComparison',
       priority: Math.abs(diff) >= largeDiff ? 6 : 4,
       timing: isPositive ? 'morning' : 'night',
+      domain: 'routine',
       message: isPositive
         ? `이번 주 루틴 ${row.this_rate}%, 지난주 ${row.last_rate}%에서 올랐어!`
         : `이번 주 루틴 ${row.this_rate}%, 지난주 ${row.last_rate}%에서 떨어졌어. 힘내자`,
@@ -254,6 +274,7 @@ export const detectOverdue = async (today: string, userId: number): Promise<Insi
       type: 'overdueAlert',
       priority: 7,
       timing: 'morning',
+      domain: 'schedule',
       message: `밀린 일정이 ${count}건이야. 오늘 하나라도 정리하자`,
     };
   } catch {
