@@ -5,6 +5,7 @@
  */
 
 import { query } from './db.js';
+import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -20,8 +21,7 @@ export interface Insight {
 
 // ─── 상수 ───────────────────────────────────────────────
 
-/** streak 넛지를 보내는 마일스톤 일수 */
-const STREAK_MILESTONES = new Set([3, 5, 7, 10, 14, 21, 30]);
+const STREAK_MILESTONES = new Set<number>(INSIGHT_THRESHOLDS.streak.milestones);
 
 // ─── 감지: 루틴 연속 달성 ────────────────────────────────
 
@@ -31,13 +31,14 @@ interface StreakRow {
 }
 
 export const detectStreak = async (today: string, userId: number): Promise<Insight | null> => {
+  const { lookbackDays, minStreak } = INSIGHT_THRESHOLDS.streak;
   try {
     const result = await query<StreakRow>(
       `WITH daily AS (
         SELECT r.template_id, t.name, r.date, r.completed
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
-        WHERE r.date BETWEEN ($1::date - 30) AND $1
+        WHERE r.date BETWEEN ($1::date - ${lookbackDays}) AND $1
           AND t.active = true AND t.frequency = '매일'
           AND r.user_id = $2
         ORDER BY r.template_id, r.date DESC
@@ -55,7 +56,7 @@ export const detectStreak = async (today: string, userId: number): Promise<Insig
         GROUP BY template_id, name
       )
       SELECT name, streak::text FROM streaks
-      WHERE streak >= 3
+      WHERE streak >= ${minStreak}
       ORDER BY streak DESC LIMIT 1`,
       [today, userId],
     );
@@ -85,26 +86,27 @@ interface SleepTrendRow {
 }
 
 export const detectSleepTrend = async (today: string, userId: number): Promise<Insight | null> => {
+  const { windowDays, shortSleepMinutes } = INSIGHT_THRESHOLDS.sleepTrend;
   try {
     const result = await query<SleepTrendRow>(
       `SELECT date::text, duration_minutes
        FROM sleep_records
        WHERE sleep_type = 'night'
-         AND date BETWEEN ($1::date - 3) AND $1
+         AND date BETWEEN ($1::date - ${windowDays}) AND $1
          AND duration_minutes IS NOT NULL
          AND user_id = $2
        ORDER BY date DESC
-       LIMIT 3`,
+       LIMIT ${windowDays}`,
       [today, userId],
     );
 
-    if (result.rows.length < 3) return null;
+    if (result.rows.length < windowDays) return null;
 
     const durations = result.rows.map((r) => r.duration_minutes);
     const isDecreasing = durations[0] < durations[1] && durations[1] < durations[2];
     const isIncreasing = durations[0] > durations[1] && durations[1] > durations[2];
 
-    if (isDecreasing && durations[0] < 420) {
+    if (isDecreasing && durations[0] < shortSleepMinutes) {
       return {
         type: 'sleepTrend',
         priority: 8,
@@ -138,6 +140,7 @@ interface SlotRow {
 }
 
 export const detectSlotGap = async (today: string, userId: number): Promise<Insight | null> => {
+  const { minGap, minSampleSize, lookbackDays } = INSIGHT_THRESHOLDS.slotGap;
   try {
     const result = await query<SlotRow>(
       `SELECT t.time_slot,
@@ -147,11 +150,11 @@ export const detectSlotGap = async (today: string, userId: number): Promise<Insi
           / NULLIF(COUNT(*), 0) * 100)::int AS rate
        FROM routine_records r
        JOIN routine_templates t ON r.template_id = t.id
-       WHERE r.date BETWEEN ($1::date - 6) AND $1
+       WHERE r.date BETWEEN ($1::date - ${lookbackDays - 1}) AND $1
          AND r.date >= t.created_at::date
          AND r.user_id = $2
        GROUP BY t.time_slot
-       HAVING COUNT(*) >= 3
+       HAVING COUNT(*) >= ${minSampleSize}
        ORDER BY rate`,
       [today, userId],
     );
@@ -162,7 +165,7 @@ export const detectSlotGap = async (today: string, userId: number): Promise<Insi
     const worst = result.rows[0];
     const gap = best.rate - worst.rate;
 
-    if (gap < 30) return null;
+    if (gap < minGap) return null;
 
     return {
       type: 'slotGap',
@@ -182,7 +185,11 @@ interface WeekCompRow {
   last_rate: number | null;
 }
 
-export const detectWeekComparison = async (today: string, userId: number): Promise<Insight | null> => {
+export const detectWeekComparison = async (
+  today: string,
+  userId: number,
+): Promise<Insight | null> => {
+  const { significantDiff, largeDiff } = INSIGHT_THRESHOLDS.weekComparison;
   try {
     const result = await query<WeekCompRow>(
       `WITH this_week AS (
@@ -208,12 +215,12 @@ export const detectWeekComparison = async (today: string, userId: number): Promi
     if (!row || row.this_rate == null || row.last_rate == null) return null;
 
     const diff = row.this_rate - row.last_rate;
-    if (Math.abs(diff) < 5) return null;
+    if (Math.abs(diff) < significantDiff) return null;
 
     const isPositive = diff > 0;
     return {
       type: 'weekComparison',
-      priority: Math.abs(diff) >= 10 ? 6 : 4,
+      priority: Math.abs(diff) >= largeDiff ? 6 : 4,
       timing: isPositive ? 'morning' : 'night',
       message: isPositive
         ? `이번 주 루틴 ${row.this_rate}%, 지난주 ${row.last_rate}%에서 올랐어!`
@@ -231,6 +238,7 @@ interface OverdueRow {
 }
 
 export const detectOverdue = async (today: string, userId: number): Promise<Insight | null> => {
+  const { minCount } = INSIGHT_THRESHOLDS.overdueAlert;
   try {
     const result = await query<OverdueRow>(
       `SELECT COUNT(*)::int AS overdue_count
@@ -240,7 +248,7 @@ export const detectOverdue = async (today: string, userId: number): Promise<Insi
     );
 
     const count = result.rows[0]?.overdue_count ?? 0;
-    if (count < 3) return null;
+    if (count < minCount) return null;
 
     return {
       type: 'overdueAlert',
@@ -266,7 +274,11 @@ const detectAll = async (today: string, userId: number): Promise<Insight[]> => {
   return results.filter((r): r is Insight => r !== null);
 };
 
-const pickByTiming = async (today: string, userId: number, timing: InsightTiming): Promise<string | null> => {
+const pickByTiming = async (
+  today: string,
+  userId: number,
+  timing: InsightTiming,
+): Promise<string | null> => {
   const all = await detectAll(today, userId);
   const candidates = all.filter((i) => i.timing === timing);
   if (candidates.length === 0) return null;
