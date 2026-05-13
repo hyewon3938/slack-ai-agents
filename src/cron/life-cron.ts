@@ -45,8 +45,7 @@ import {
   buildNightScheduleText,
   buildYesterdayIncompleteText,
 } from '../agents/life/blocks.js';
-// insights.ts 넛지는 제거 — Sonnet이 생활 맥락에서 직접 인사이트 도출
-// 복원 시: import { pickMorningNudge, pickNightNudge } from '../shared/insights.js';
+import { pickMorningNudges, pickNightNudges } from '../shared/insights.js';
 import { weeklyReportTask } from './weekly-report.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView } from '../agents/life/home.js';
@@ -417,6 +416,16 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
       await postToChannel(app.client, channelId, yesterdayIncompleteText);
     }
 
+    // 1-3. 프로액티브 인사이트 (priority ≥5인 패턴 0~3개)
+    // 월요일은 09:00 주간 리포트가 별도 발송 → 중복 방지
+    if (getKSTDayOfWeek() !== 1) {
+      const insights = await pickMorningNudges(today, userId);
+      if (insights.length > 0) {
+        const text = insights.map((i) => i.message).join('\n');
+        await postToChannel(app.client, channelId, text);
+      }
+    }
+
     // 2. 오늘 루틴 기록 생성
     const created = await createTodayRecords(today, userId);
 
@@ -497,6 +506,13 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[Life Cron] 밤 마무리 메시지 전송 실패 (유저=${userId}): ${msg}`);
+    }
+
+    // 프로액티브 인사이트 (priority ≥5인 패턴 0~3개)
+    const insights = await pickNightNudges(today, userId);
+    if (insights.length > 0) {
+      const text = insights.map((i) => i.message).join('\n');
+      await postToChannel(app.client, channelId, text);
     }
 
     console.warn(`[Life Cron] 밤 요약 전송 완료 (유저=${userId})`);
