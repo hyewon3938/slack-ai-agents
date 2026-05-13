@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  hexToStyles,
-  getCategoryStyle,
-  colorToHex,
-} from '../types';
-import {
-  isValidStatus,
-  compareByStatus,
-} from '@/features/schedule/lib/types';
+import { hexToStyles, getCategoryStyle, colorToHex } from '../types';
+import { isValidStatus, compareByStatus } from '@/features/schedule/lib/types';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
 
 // ─── isValidStatus ──────────────────────────────────────
@@ -38,8 +31,7 @@ describe('compareByStatus', () => {
     date: '2026-03-01',
     end_date: null,
     status,
-    category: null,
-    subcategory: null,
+    category_id: null,
     memo: null,
     important: false,
   });

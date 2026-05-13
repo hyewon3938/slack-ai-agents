@@ -15,6 +15,7 @@ import {
   endOfWeek,
 } from 'date-fns';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
+import { lookupCategory } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import type { CalendarView } from '@/features/schedule/components/calendar-header';
 import { WEEK_START } from '@/features/schedule/lib/calendar-utils';
@@ -32,8 +33,10 @@ export function useSchedules(initialView?: CalendarView) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-  const [selectedSubcategories, setSelectedSubcategories] = useState<Set<string>>(new Set());
+  // 카테고리 필터: 최상위 id 기준
+  const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
+  // 하위 카테고리 필터: child id 기준
+  const [selectedSubcategories, setSelectedSubcategories] = useState<Set<number>>(new Set());
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const mutatingRef = useRef(0);
@@ -117,7 +120,7 @@ export function useSchedules(initialView?: CalendarView) {
     };
   }, [fetchData]);
 
-  // 필터링
+  // 필터링: 최상위 카테고리 id 단위로 매칭, 하위 선택 시 child id로 매칭
   const filteredSchedules = useMemo(
     () =>
       schedules.filter((s) => {
@@ -125,14 +128,15 @@ export function useSchedules(initialView?: CalendarView) {
           return false;
         }
         if (selectedCategories.size > 0) {
-          if (!selectedCategories.has(s.category ?? '미분류')) return false;
-          // 하위카테고리 필터
+          const lookup = lookupCategory(categories, s.category_id);
+          const topId = lookup.topId;
+          if (topId == null || !selectedCategories.has(topId)) return false;
+          // 하위카테고리 필터: 같은 parent에서 child 선택이 있으면 그 child만 포함
           if (selectedSubcategories.size > 0) {
-            const parent = categories.find((c) => c.name === s.category && c.parent_id === null);
-            if (parent) {
-              const childNames = categories.filter((c) => c.parent_id === parent.id).map((c) => c.name);
-              const activeForParent = childNames.filter((n) => selectedSubcategories.has(n));
-              if (activeForParent.length > 0 && !selectedSubcategories.has(s.subcategory ?? '')) {
+            const childIds = categories.filter((c) => c.parent_id === topId).map((c) => c.id);
+            const activeForParent = childIds.filter((id) => selectedSubcategories.has(id));
+            if (activeForParent.length > 0) {
+              if (s.category_id == null || !selectedSubcategories.has(s.category_id)) {
                 return false;
               }
             }
@@ -256,9 +260,7 @@ export function useSchedules(initialView?: CalendarView) {
         body: JSON.stringify({ date: newDate }),
       });
       if (res.ok) {
-        setSchedules((prev) =>
-          prev.map((s) => (s.id === id ? { ...s, date: newDate } : s)),
-        );
+        setSchedules((prev) => prev.map((s) => (s.id === id ? { ...s, date: newDate } : s)));
       }
     } catch {
       // ignore
@@ -273,9 +275,7 @@ export function useSchedules(initialView?: CalendarView) {
         body: JSON.stringify({ end_date: endDate || null }),
       });
       if (res.ok) {
-        setSchedules((prev) =>
-          prev.map((s) => (s.id === id ? { ...s, end_date: endDate } : s)),
-        );
+        setSchedules((prev) => prev.map((s) => (s.id === id ? { ...s, end_date: endDate } : s)));
       }
     } catch {
       // ignore
@@ -287,7 +287,9 @@ export function useSchedules(initialView?: CalendarView) {
     if (!schedule) return;
     const newImportant = !schedule.important;
     const prev = schedules;
-    setSchedules((s) => s.map((item) => (item.id === id ? { ...item, important: newImportant } : item)));
+    setSchedules((s) =>
+      s.map((item) => (item.id === id ? { ...item, important: newImportant } : item)),
+    );
     mutatingRef.current++;
     try {
       const res = await fetch(`/api/schedules/${id}`, {
@@ -350,33 +352,31 @@ export function useSchedules(initialView?: CalendarView) {
     setSelectedDate(dateStr === selectedDate ? null : dateStr);
   };
 
-  const toggleCategory = (name: string) => {
+  /** 최상위 카테고리 id 토글. 해제 시 같은 부모의 자식 선택도 함께 정리 */
+  const toggleCategory = (topId: number) => {
     setSelectedCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-        // 상위 해제 시 해당 하위도 제거
-        const parent = categories.find((c) => c.name === name && c.parent_id === null);
-        if (parent) {
-          const childNames = categories.filter((c) => c.parent_id === parent.id).map((c) => c.name);
-          setSelectedSubcategories((prev) => {
-            const nextSub = new Set(prev);
-            childNames.forEach((n) => nextSub.delete(n));
-            return nextSub;
-          });
-        }
+      if (next.has(topId)) {
+        next.delete(topId);
+        const childIds = categories.filter((c) => c.parent_id === topId).map((c) => c.id);
+        setSelectedSubcategories((prev) => {
+          const nextSub = new Set(prev);
+          childIds.forEach((id) => nextSub.delete(id));
+          return nextSub;
+        });
       } else {
-        next.add(name);
+        next.add(topId);
       }
       return next;
     });
   };
 
-  const toggleSubcategory = (name: string) => {
+  /** 하위 카테고리 id 토글 */
+  const toggleSubcategory = (childId: number) => {
     setSelectedSubcategories((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(childId)) next.delete(childId);
+      else next.add(childId);
       return next;
     });
   };

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
+import { getScheduleTopCategoryName } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 
 export function useBacklog() {
@@ -48,20 +49,20 @@ export function useBacklog() {
     return () => clearInterval(id);
   }, [fetchData]);
 
-  // 카테고리별 그룹핑
+  // 최상위 카테고리 이름 기준 그룹핑
   const grouped = new Map<string, ScheduleRow[]>();
   for (const s of schedules) {
-    const cat = s.category ?? '미분류';
-    const list = grouped.get(cat) ?? [];
+    const top = getScheduleTopCategoryName(s, categories) ?? '미분류';
+    const list = grouped.get(top) ?? [];
     list.push(s);
-    grouped.set(cat, list);
+    grouped.set(top, list);
   }
 
   const sortedCategories = [...grouped.keys()].sort((a, b) => {
     if (a === '미분류') return 1;
     if (b === '미분류') return -1;
-    const catA = categories.find((c) => c.name === a);
-    const catB = categories.find((c) => c.name === b);
+    const catA = categories.find((c) => c.name === a && c.parent_id === null);
+    const catB = categories.find((c) => c.name === b && c.parent_id === null);
     return (catA?.sort_order ?? 999) - (catB?.sort_order ?? 999);
   });
 

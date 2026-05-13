@@ -38,11 +38,17 @@ export function ScheduleCard({
   action,
 }: ScheduleCardProps) {
   const [memoExpanded, setMemoExpanded] = useState(false);
-  const cat = categories.find((c) => c.name === schedule.category);
+  const cat =
+    schedule.category_id != null ? categories.find((c) => c.id === schedule.category_id) : null;
+  const parentCat = cat?.parent_id != null ? categories.find((c) => c.id === cat.parent_id) : null;
+  // 카드 색상은 자식이 있으면 자식 색, 없으면 최상위 색
   const colorKey = cat?.color ?? 'gray';
   const catStyle = getCategoryStyle(colorKey);
-  const isEvent = cat?.type === 'event';
+  // event 타입은 자식에 명시되지 않으면 parent에서 상속
+  const isEvent = (cat?.type ?? parentCat?.type) === 'event';
   const isDone = schedule.status === 'done' || schedule.status === 'cancelled';
+  // event 배지에 표시할 카테고리 이름 (최상위 우선)
+  const topCategoryName = parentCat?.name ?? cat?.name ?? null;
 
   const handleStatusClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -62,12 +68,16 @@ export function ScheduleCard({
       <div
         onClick={handleCardClick}
         className={`cursor-pointer truncate rounded border-l-2 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''} ${isEvent ? 'px-1.5 py-1' : 'px-1.5 py-0.5'}`}
-        style={{ backgroundColor: catStyle.bg, color: catStyle.text, borderLeftColor: catStyle.border }}
+        style={{
+          backgroundColor: catStyle.bg,
+          color: catStyle.text,
+          borderLeftColor: catStyle.border,
+        }}
       >
         {isEvent && <span className="mr-0.5">📅</span>}
         {schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
-        {isEvent && schedule.category && (
-          <span className="mr-0.5 text-[10px] opacity-50">{schedule.category}</span>
+        {isEvent && topCategoryName && (
+          <span className="mr-0.5 text-[10px] opacity-50">{topCategoryName}</span>
         )}
         {schedule.title}
       </div>
@@ -78,7 +88,10 @@ export function ScheduleCard({
     <div
       onClick={handleCardClick}
       className={`cursor-pointer rounded-lg border p-3 transition hover:shadow-sm ${STATUS_BG[schedule.status] ?? 'bg-white'} ${
-        !isDone && schedule.date && new Date(schedule.date + 'T12:00:00+09:00') < new Date(getTodayISO() + 'T12:00:00+09:00') && schedule.status === 'todo'
+        !isDone &&
+        schedule.date &&
+        new Date(schedule.date + 'T12:00:00+09:00') < new Date(getTodayISO() + 'T12:00:00+09:00') &&
+        schedule.status === 'todo'
           ? 'border-red-300'
           : 'border-gray-200'
       }`}
@@ -97,7 +110,9 @@ export function ScheduleCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+            <span
+              className={`text-sm font-medium ${isDone && !isEvent ? 'text-gray-400 line-through' : 'text-gray-800'}`}
+            >
               {schedule.important && <span className="mr-1 text-amber-500">★</span>}
               {schedule.title}
             </span>
@@ -105,12 +120,8 @@ export function ScheduleCard({
 
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <StatusBadge status={schedule.status} />
-            {schedule.category && <CategoryBadge colorKey={colorKey} label={schedule.category} />}
-            {schedule.subcategory && (() => {
-              const sub = categories.find((c) => c.name === schedule.subcategory && c.parent_id !== null);
-              const subColor = sub?.color ?? 'gray';
-              return <CategoryBadge colorKey={subColor} label={schedule.subcategory} />;
-            })()}
+            {parentCat && <CategoryBadge colorKey={parentCat.color} label={parentCat.name} />}
+            {cat && <CategoryBadge colorKey={cat.color} label={cat.name} />}
             {schedule.end_date && schedule.end_date !== schedule.date && (
               <span className="text-xs text-gray-400">
                 {formatDateRange(schedule.date, schedule.end_date)}
@@ -120,12 +131,17 @@ export function ScheduleCard({
 
           {schedule.memo && (
             <div className="mt-1.5">
-              <p className={`whitespace-pre-wrap text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'} ${memoExpanded ? '' : 'line-clamp-3'}`}>
+              <p
+                className={`whitespace-pre-wrap text-xs leading-relaxed ${isDone ? 'text-gray-300' : 'text-gray-500'} ${memoExpanded ? '' : 'line-clamp-3'}`}
+              >
                 {schedule.memo}
               </p>
               {schedule.memo.split('\n').length > 3 || schedule.memo.length > 120 ? (
                 <button
-                  onClick={(e) => { e.stopPropagation(); setMemoExpanded(!memoExpanded); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMemoExpanded(!memoExpanded);
+                  }}
                   className="mt-0.5 text-xs text-blue-500 hover:text-blue-600"
                 >
                   {memoExpanded ? '줄이기' : '더보기'}

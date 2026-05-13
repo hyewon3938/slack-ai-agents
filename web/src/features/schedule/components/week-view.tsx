@@ -5,11 +5,19 @@ import { startOfWeek, addDays, format, isToday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
-import { compareSchedulePriority } from '@/features/schedule/lib/types';
+import {
+  compareSchedulePriority,
+  getScheduleType,
+  lookupCategory,
+} from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
-import { computeWeekLayout, WEEK_START, type WeekSpan } from '@/features/schedule/lib/calendar-utils';
+import {
+  computeWeekLayout,
+  WEEK_START,
+  type WeekSpan,
+} from '@/features/schedule/lib/calendar-utils';
 import { StatusBadge } from './status-badge';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
@@ -68,10 +76,7 @@ export function WeekView({
   const laneHeights: number[] = [];
   for (let lane = 0; lane < layout.laneCount; lane++) {
     const spansInLane = layout.spans.filter((s) => s.lane === lane);
-    const hasTask = spansInLane.some((s) => {
-      const cat = categories.find((c) => c.name === s.schedule.category && c.parent_id === null);
-      return !cat || cat.type !== 'event';
-    });
+    const hasTask = spansInLane.some((s) => getScheduleType(s.schedule, categories) !== 'event');
     laneHeights.push(hasTask ? TASK_LANE_HEIGHT : EVENT_LANE_HEIGHT);
   }
   // lane별 누적 top 위치
@@ -82,8 +87,8 @@ export function WeekView({
 
   // span별 실제 bar 높이 (event=compact, task=lane 높이)
   const getSpanBarHeight = (span: WeekSpan): number => {
-    const cat = categories.find((c) => c.name === span.schedule.category && c.parent_id === null);
-    return cat?.type === 'event' ? EVENT_LANE_HEIGHT : laneHeights[span.lane]!;
+    const isEvent = getScheduleType(span.schedule, categories) === 'event';
+    return isEvent ? EVENT_LANE_HEIGHT : laneHeights[span.lane]!;
   };
   // event 바는 lane 내 중앙 정렬 offset
   const getSpanTopOffset = (span: WeekSpan): number => {
@@ -125,7 +130,11 @@ export function WeekView({
               <div className="relative z-20 mb-3 text-center">
                 <div
                   className={`text-xs ${
-                    dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-gray-500'
+                    dayOfWeek === 0
+                      ? 'text-red-400'
+                      : dayOfWeek === 6
+                        ? 'text-blue-400'
+                        : 'text-gray-500'
                   }`}
                 >
                   {format(day, 'EEE', { locale: ko })}
@@ -134,14 +143,18 @@ export function WeekView({
                   {today && (
                     <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500" />
                   )}
-                  <span className={`relative text-sm font-medium ${today ? 'text-white' : 'text-gray-700'}`}>
+                  <span
+                    className={`relative text-sm font-medium ${today ? 'text-white' : 'text-gray-700'}`}
+                  >
                     {format(day, 'd')}
                   </span>
                 </div>
               </div>
 
               {/* 스패닝 바 공간 확보 — 열별 실제 레인 수 기준 */}
-              {daySpanHeight > 0 && <div className="mb-1.5" style={{ height: `${daySpanHeight}px` }} />}
+              {daySpanHeight > 0 && (
+                <div className="mb-1.5" style={{ height: `${daySpanHeight}px` }} />
+              )}
 
               {/* 단일 일정 */}
               <div className="space-y-1.5">
@@ -255,7 +268,11 @@ export function WeekView({
 }
 
 /** 모바일용: 해당 날짜의 모든 일정 (다일 포함, 우선순위 정렬) */
-function getMobileSchedules(date: Date, schedules: ScheduleRow[], categories: CategoryRow[]): ScheduleRow[] {
+function getMobileSchedules(
+  date: Date,
+  schedules: ScheduleRow[],
+  categories: CategoryRow[],
+): ScheduleRow[] {
   const dateStr = format(date, 'yyyy-MM-dd');
   return schedules
     .filter((s) => {
@@ -311,10 +328,16 @@ function WeekSpanBar({
   const showLeftHandle = !span.startsBeforeWeek;
   const showRightHandle = !span.endsAfterWeek;
 
-  const cat = categories.find((c) => c.name === span.schedule.category);
+  const cat =
+    span.schedule.category_id != null
+      ? (categories.find((c) => c.id === span.schedule.category_id) ?? null)
+      : null;
+  const parentCat = cat?.parent_id != null ? categories.find((c) => c.id === cat.parent_id) : null;
   const colorKey = cat?.color ?? 'gray';
   const catStyle = getCategoryStyle(colorKey);
-  const isEvent = cat?.type === 'event';
+  const lookup = lookupCategory(categories, span.schedule.category_id);
+  const isEvent = lookup.type === 'event';
+  const topName = lookup.topName;
   const isDone = span.schedule.status === 'done' || span.schedule.status === 'cancelled';
   const isOverdue =
     !isEvent &&
@@ -366,13 +389,15 @@ function WeekSpanBar({
           {...moveListeners}
           {...moveAttrs}
           className={`flex h-full items-center truncate rounded border-l-2 px-2 py-1 text-xs leading-tight ${isDone ? 'line-through opacity-60' : ''}`}
-          style={{ backgroundColor: catStyle.bg, color: catStyle.text, borderLeftColor: catStyle.border }}
+          style={{
+            backgroundColor: catStyle.bg,
+            color: catStyle.text,
+            borderLeftColor: catStyle.border,
+          }}
         >
           <span className="mr-0.5">📅</span>
           {span.schedule.important && <span className="mr-0.5 text-amber-500">★</span>}
-          {span.schedule.category && (
-            <span className="mr-0.5 text-[10px] opacity-50">{span.schedule.category}</span>
-          )}
+          {topName && <span className="mr-0.5 text-[10px] opacity-50">{topName}</span>}
           {span.schedule.title}
         </div>
       ) : (
@@ -398,21 +423,19 @@ function WeekSpanBar({
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className={`truncate text-sm font-medium ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                <span
+                  className={`truncate text-sm font-medium ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}
+                >
                   {span.schedule.important && <span className="mr-1 text-amber-500">★</span>}
                   {span.schedule.title}
                 </span>
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <StatusBadge status={span.schedule.status} />
-                {span.schedule.category && (
-                  <CategoryBadge colorKey={colorKey} label={span.schedule.category} />
+                {parentCat && <CategoryBadge colorKey={parentCat.color} label={parentCat.name} />}
+                {cat && (cat.parent_id == null || span.endCol - span.startCol >= 2) && (
+                  <CategoryBadge colorKey={cat.color} label={cat.name} />
                 )}
-                {span.schedule.subcategory && span.endCol - span.startCol >= 2 && (() => {
-                  const sub = categories.find((c) => c.name === span.schedule.subcategory && c.parent_id !== null);
-                  const subColor = sub?.color ?? 'gray';
-                  return <CategoryBadge colorKey={subColor} label={span.schedule.subcategory} />;
-                })()}
               </div>
             </div>
 

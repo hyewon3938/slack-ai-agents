@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import {
   createSchedule,
-  ensureCategoryExists,
+  validateCategoryOwnership,
   querySchedulesByRange,
   queryBacklogSchedules,
 } from '@/features/schedule/lib/queries';
@@ -51,8 +51,7 @@ export async function POST(request: Request) {
       date?: string | null;
       end_date?: string | null;
       status?: string;
-      category?: string | null;
-      subcategory?: string | null;
+      category_id?: number | null;
       memo?: string | null;
       important?: boolean;
     };
@@ -64,8 +63,6 @@ export async function POST(request: Request) {
     const lengthError = validateFields([
       [body.title, 'title'],
       [body.memo, 'memo'],
-      [body.category, 'category'],
-      [body.subcategory, 'subcategory'],
     ]);
     if (lengthError) {
       return NextResponse.json({ error: lengthError }, { status: 400 });
@@ -75,8 +72,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '유효하지 않은 상태값이야' }, { status: 400 });
     }
 
-    if (body.category) {
-      await ensureCategoryExists(userId, body.category);
+    if (body.category_id != null) {
+      if (!Number.isInteger(body.category_id) || body.category_id <= 0) {
+        return NextResponse.json({ error: '카테고리 값이 잘못됐어' }, { status: 400 });
+      }
+      const ok = await validateCategoryOwnership(userId, body.category_id);
+      if (!ok) {
+        return NextResponse.json({ error: '카테고리를 찾을 수 없어' }, { status: 400 });
+      }
     }
 
     const data = await createSchedule(userId, {
@@ -84,8 +87,7 @@ export async function POST(request: Request) {
       date: body.date,
       end_date: body.end_date,
       status: body.status,
-      category: body.category,
-      subcategory: body.subcategory,
+      category_id: body.category_id ?? null,
       memo: body.memo,
       important: body.important,
     });

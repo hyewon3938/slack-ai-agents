@@ -10,8 +10,7 @@ const makeSchedule = (overrides: Partial<ScheduleRow> = {}): ScheduleRow => ({
   date: '2026-03-09',
   end_date: null,
   status: 'todo',
-  category: null,
-  subcategory: null,
+  category_id: null,
   memo: null,
   important: false,
   ...overrides,
@@ -92,39 +91,33 @@ describe('computeWeekLayout', () => {
   // ─── 다일(스패닝) 일정 ────────────────────────────
 
   it('다일 일정을 spans에 분류한다', () => {
-    const schedules = [
-      makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-12' }),
-    ];
+    const schedules = [makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-12' })];
     const result = computeWeekLayout(weekDays, schedules);
 
     expect(result.spans).toHaveLength(1);
     expect(result.spans[0]!.startCol).toBe(1); // 화(10일) = col 1
-    expect(result.spans[0]!.endCol).toBe(3);   // 목(12일) = col 3
+    expect(result.spans[0]!.endCol).toBe(3); // 목(12일) = col 3
     expect(result.spans[0]!.lane).toBe(0);
   });
 
   it('주간 시작 전에 시작하는 다일 일정을 클램핑한다', () => {
-    const schedules = [
-      makeSchedule({ id: 1, date: '2026-03-07', end_date: '2026-03-11' }),
-    ];
+    const schedules = [makeSchedule({ id: 1, date: '2026-03-07', end_date: '2026-03-11' })];
     const result = computeWeekLayout(weekDays, schedules);
 
     expect(result.spans).toHaveLength(1);
-    expect(result.spans[0]!.startCol).toBe(0);  // 주 시작(월)으로 클램핑
-    expect(result.spans[0]!.endCol).toBe(2);    // 수(11일)
+    expect(result.spans[0]!.startCol).toBe(0); // 주 시작(월)으로 클램핑
+    expect(result.spans[0]!.endCol).toBe(2); // 수(11일)
     expect(result.spans[0]!.startsBeforeWeek).toBe(true);
     expect(result.spans[0]!.endsAfterWeek).toBe(false);
   });
 
   it('주간 끝 후에 끝나는 다일 일정을 클램핑한다', () => {
-    const schedules = [
-      makeSchedule({ id: 1, date: '2026-03-13', end_date: '2026-03-18' }),
-    ];
+    const schedules = [makeSchedule({ id: 1, date: '2026-03-13', end_date: '2026-03-18' })];
     const result = computeWeekLayout(weekDays, schedules);
 
     expect(result.spans).toHaveLength(1);
-    expect(result.spans[0]!.startCol).toBe(4);  // 금(13일)
-    expect(result.spans[0]!.endCol).toBe(6);    // 주 끝(일)으로 클램핑
+    expect(result.spans[0]!.startCol).toBe(4); // 금(13일)
+    expect(result.spans[0]!.endCol).toBe(6); // 주 끝(일)으로 클램핑
     expect(result.spans[0]!.startsBeforeWeek).toBe(false);
     expect(result.spans[0]!.endsAfterWeek).toBe(true);
   });
@@ -186,9 +179,7 @@ describe('computeWeekLayout', () => {
   });
 
   it('end_date가 date와 같으면 단일 일정으로 처리한다', () => {
-    const schedules = [
-      makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-10' }),
-    ];
+    const schedules = [makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-10' })];
     const result = computeWeekLayout(weekDays, schedules);
 
     expect(result.spans).toHaveLength(0);
@@ -199,9 +190,7 @@ describe('computeWeekLayout', () => {
 
   it('기간일정이 지나는 요일만 레인 수를 가진다', () => {
     // 화~수(col 1~2) 기간일정
-    const schedules = [
-      makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-11' }),
-    ];
+    const schedules = [makeSchedule({ id: 1, date: '2026-03-10', end_date: '2026-03-11' })];
     const result = computeWeekLayout(weekDays, schedules);
 
     // 월(0)=0, 화(1)=1, 수(2)=1, 목~일(3~6)=0

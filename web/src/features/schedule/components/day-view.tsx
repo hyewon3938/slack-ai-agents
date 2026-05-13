@@ -3,7 +3,13 @@
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
-import { compareByStatus, isMultiDaySchedule } from '@/features/schedule/lib/types';
+import {
+  compareByStatus,
+  isMultiDaySchedule,
+  lookupCategory,
+  getScheduleType,
+  getScheduleTopCategoryName,
+} from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import { ScheduleCard } from './schedule-card';
 import { ActionMenu } from './action-menu';
@@ -48,14 +54,9 @@ export function DayView({
   // 3단 섹션 분리: 기간 일정 → 중요 → 카테고리별
   const sections = buildDaySections(daySchedules, categories);
 
-  const isTask = (s: ScheduleRow) => {
-    const cat = categories.find((c) => c.name === s.category);
-    return cat?.type !== 'event';
-  };
+  const isTask = (s: ScheduleRow) => getScheduleType(s, categories) !== 'event';
   const totalTasks = daySchedules.filter(isTask).length;
-  const doneTasks = daySchedules.filter(
-    (s) => isTask(s) && s.status === 'done',
-  ).length;
+  const doneTasks = daySchedules.filter((s) => isTask(s) && s.status === 'done').length;
 
   return (
     <div className="mx-auto w-full max-w-3xl p-4 pb-24 md:flex-1 md:pb-4">
@@ -110,16 +111,11 @@ export function DayView({
 
 /** 일정을 이벤트 → 기간 → 중요 → 카테고리별 섹션으로 분리 */
 function buildDaySections(schedules: ScheduleRow[], categories: CategoryRow[]): Section[] {
-  const isEvent = (s: ScheduleRow) => {
-    const cat = categories.find((c) => c.name === s.category);
-    return cat?.type === 'event';
-  };
+  const isEvent = (s: ScheduleRow) => getScheduleType(s, categories) === 'event';
 
   const byCatThenStatus = (a: ScheduleRow, b: ScheduleRow) => {
-    const catA = categories.find((c) => c.name === a.category);
-    const catB = categories.find((c) => c.name === b.category);
-    const orderA = a.category ? (catA?.sort_order ?? 999) : 9999;
-    const orderB = b.category ? (catB?.sort_order ?? 999) : 9999;
+    const orderA = lookupCategory(categories, a.category_id).sortOrder ?? 9999;
+    const orderB = lookupCategory(categories, b.category_id).sortOrder ?? 9999;
     if (orderA !== orderB) return orderA - orderB;
     return compareByStatus(a, b);
   };
@@ -128,31 +124,33 @@ function buildDaySections(schedules: ScheduleRow[], categories: CategoryRow[]): 
   const events = schedules.filter(isEvent).sort(byCatThenStatus);
 
   // 1. 기간 일정 (이벤트 제외)
-  const multiDay = schedules.filter((s) => !isEvent(s) && isMultiDaySchedule(s)).sort(byCatThenStatus);
+  const multiDay = schedules
+    .filter((s) => !isEvent(s) && isMultiDaySchedule(s))
+    .sort(byCatThenStatus);
 
   // 2. 중요 단일 일정 (기간·이벤트 제외)
   const importantSingle = schedules
     .filter((s) => !isEvent(s) && !isMultiDaySchedule(s) && s.important)
     .sort(byCatThenStatus);
 
-  // 3. 나머지 → 카테고리별 그룹
+  // 3. 나머지 → 최상위 카테고리별 그룹
   const regular = schedules
     .filter((s) => !isEvent(s) && !isMultiDaySchedule(s) && !s.important)
     .sort(compareByStatus);
 
   const grouped = new Map<string, ScheduleRow[]>();
   for (const s of regular) {
-    const cat = s.category ?? '미분류';
-    const list = grouped.get(cat) ?? [];
+    const top = getScheduleTopCategoryName(s, categories) ?? '미분류';
+    const list = grouped.get(top) ?? [];
     list.push(s);
-    grouped.set(cat, list);
+    grouped.set(top, list);
   }
 
   const sortedCats = [...grouped.keys()].sort((a, b) => {
     if (a === '미분류') return 1;
     if (b === '미분류') return -1;
-    const catA = categories.find((c) => c.name === a);
-    const catB = categories.find((c) => c.name === b);
+    const catA = categories.find((c) => c.name === a && c.parent_id === null);
+    const catB = categories.find((c) => c.name === b && c.parent_id === null);
     return (catA?.sort_order ?? 999) - (catB?.sort_order ?? 999);
   });
 

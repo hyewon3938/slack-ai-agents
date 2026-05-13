@@ -4,6 +4,12 @@ import type { CategoryRow } from '@/lib/types';
 
 // ─── 일정 조회 ──────────────────────────────────────────
 
+const SCHEDULE_SELECT = `s.id, s.title, s.date::text, s.end_date::text, s.status,
+  s.category_id, s.memo, s.important`;
+
+// 클라이언트에서 categories store와 join하므로 SELECT는 단순 FK만 반환.
+// 정렬 보조용 최상위 카테고리 이름은 ORDER BY 단계에서만 사용.
+
 /** 날짜 범위 일정 조회 (캘린더용) */
 export const querySchedulesByRange = async (
   userId: number,
@@ -12,12 +18,16 @@ export const querySchedulesByRange = async (
 ): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
-      `SELECT id, title, date::text, end_date::text, status, category, subcategory, memo, important
-       FROM schedules
-       WHERE user_id = $1 AND ((date >= $2 AND date <= $3) OR (date <= $3 AND end_date >= $2))
-       ORDER BY date NULLS LAST,
-         CASE status WHEN 'in-progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END,
-         category NULLS LAST, title`,
+      `SELECT ${SCHEDULE_SELECT}
+       FROM schedules s
+       LEFT JOIN categories c ON c.id = s.category_id
+       LEFT JOIN categories p ON p.id = c.parent_id
+       WHERE s.user_id = $1 AND ((s.date >= $2 AND s.date <= $3) OR (s.date <= $3 AND s.end_date >= $2))
+       ORDER BY s.date NULLS LAST,
+         CASE s.status WHEN 'in-progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END,
+         COALESCE(p.name, c.name) NULLS LAST,
+         c.name NULLS LAST,
+         s.title`,
       [userId, from, to],
     )
   ).rows;
@@ -26,12 +36,16 @@ export const querySchedulesByRange = async (
 export const queryBacklogSchedules = async (userId: number): Promise<ScheduleRow[]> =>
   (
     await query<ScheduleRow>(
-      `SELECT id, title, date::text, end_date::text, status, category, subcategory, memo, important
-       FROM schedules
-       WHERE user_id = $1 AND date IS NULL
+      `SELECT ${SCHEDULE_SELECT}
+       FROM schedules s
+       LEFT JOIN categories c ON c.id = s.category_id
+       LEFT JOIN categories p ON p.id = c.parent_id
+       WHERE s.user_id = $1 AND s.date IS NULL
        ORDER BY
-         CASE status WHEN 'in-progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END,
-         category NULLS LAST, important DESC, title`,
+         CASE s.status WHEN 'in-progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END,
+         COALESCE(p.name, c.name) NULLS LAST,
+         c.name NULLS LAST,
+         s.important DESC, s.title`,
       [userId],
     )
   ).rows;
@@ -39,8 +53,9 @@ export const queryBacklogSchedules = async (userId: number): Promise<ScheduleRow
 /** 단건 조회 (userId로 소유권 확인) */
 export const queryScheduleById = async (userId: number, id: number): Promise<ScheduleRow | null> =>
   queryOne<ScheduleRow>(
-    `SELECT id, title, date::text, end_date::text, status, category, subcategory, memo, important
-     FROM schedules WHERE user_id = $1 AND id = $2`,
+    `SELECT ${SCHEDULE_SELECT}
+     FROM schedules s
+     WHERE s.user_id = $1 AND s.id = $2`,
     [userId, id],
   );
 
@@ -53,24 +68,22 @@ export const createSchedule = async (
     date?: string | null;
     end_date?: string | null;
     status?: string;
-    category?: string | null;
-    subcategory?: string | null;
+    category_id?: number | null;
     memo?: string | null;
     important?: boolean;
   },
 ): Promise<ScheduleRow> => {
   const result = await query<ScheduleRow>(
-    `INSERT INTO schedules (user_id, title, date, end_date, status, category, subcategory, memo, important)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id, title, date::text, end_date::text, status, category, subcategory, memo, important`,
+    `INSERT INTO schedules (user_id, title, date, end_date, status, category_id, memo, important)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, title, date::text, end_date::text, status, category_id, memo, important`,
     [
       userId,
       data.title,
       data.date ?? null,
       data.end_date ?? null,
       data.status ?? 'todo',
-      data.category ?? null,
-      data.subcategory ?? null,
+      data.category_id ?? null,
       data.memo ?? null,
       data.important ?? false,
     ],
@@ -85,8 +98,7 @@ const SCHEDULE_COLUMNS = new Set([
   'date',
   'end_date',
   'status',
-  'category',
-  'subcategory',
+  'category_id',
   'memo',
   'important',
 ]);
@@ -99,8 +111,7 @@ export const updateSchedule = async (
     date: string | null;
     end_date: string | null;
     status: string;
-    category: string | null;
-    subcategory: string | null;
+    category_id: number | null;
     memo: string | null;
     important: boolean;
   }>,
@@ -122,7 +133,7 @@ export const updateSchedule = async (
   values.push(id);
   const result = await query<ScheduleRow>(
     `UPDATE schedules SET ${fields.join(', ')} WHERE user_id = $1 AND id = $${idx}
-     RETURNING id, title, date::text, end_date::text, status, category, subcategory, memo, important`,
+     RETURNING id, title, date::text, end_date::text, status, category_id, memo, important`,
     values,
   );
   return result.rows[0] ?? null;
@@ -229,13 +240,14 @@ export const reorderCategories = async (
   );
 };
 
-/** 일정에서 사용 중인 카테고리가 categories 테이블에 없으면 자동 추가 */
-export const ensureCategoryExists = async (userId: number, name: string): Promise<void> => {
-  const existing = await queryOne<CategoryRow>(
-    "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id FROM categories WHERE user_id = $1 AND name = $2 AND parent_id IS NULL",
-    [userId, name],
+/** category_id가 해당 user의 categories에 존재하는지 검증 (cross-user FK 차단) */
+export const validateCategoryOwnership = async (
+  userId: number,
+  categoryId: number,
+): Promise<boolean> => {
+  const row = await queryOne<{ id: number }>(
+    'SELECT id FROM categories WHERE user_id = $1 AND id = $2',
+    [userId, categoryId],
   );
-  if (!existing) {
-    await createCategory(userId, { name });
-  }
+  return row !== null;
 };
