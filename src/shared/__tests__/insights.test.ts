@@ -28,8 +28,8 @@ import {
   detectSlotGap,
   detectWeekComparison,
   detectOverdue,
-  pickMorningNudge,
-  pickNightNudge,
+  pickMorningNudges,
+  pickNightNudges,
 } from '../insights.js';
 
 /** null이 아님을 보장하고 타입 좁히기 */
@@ -346,7 +346,7 @@ describe('pickMorningNudge', () => {
       ],
     });
 
-    const result = await pickMorningNudge('2026-03-15', 1);
+    const result = await pickMorningNudges('2026-03-15', 1);
     expect(result).not.toBeNull();
     // overdue(7) > streak 5일(10) → streak이 높음
     expect(result).toContain('유산균 먹기');
@@ -361,7 +361,7 @@ describe('pickMorningNudge', () => {
       ],
     });
 
-    const result = await pickMorningNudge('2026-03-15', 1);
+    const result = await pickMorningNudges('2026-03-15', 1);
     // slotGap은 night only → 아침에는 null
     expect(result).toBeNull();
   });
@@ -369,7 +369,7 @@ describe('pickMorningNudge', () => {
   it('모든 감지가 임계값 미달이면 null', async () => {
     setupQueryMock();
 
-    const result = await pickMorningNudge('2026-03-15', 1);
+    const result = await pickMorningNudges('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -390,7 +390,7 @@ describe('pickNightNudge', () => {
       ],
     });
 
-    const result = await pickNightNudge('2026-03-15', 1);
+    const result = await pickNightNudges('2026-03-15', 1);
     expect(result).not.toBeNull();
     // sleepTrend(8) > slotGap(5)
     expect(result).toContain('줄고');
@@ -399,7 +399,7 @@ describe('pickNightNudge', () => {
   it('모든 감지가 임계값 미달이면 null', async () => {
     setupQueryMock();
 
-    const result = await pickNightNudge('2026-03-15', 1);
+    const result = await pickNightNudges('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });
@@ -420,7 +420,7 @@ describe('에러 처리', () => {
   it('DB 오류 시 pickMorningNudge는 null 반환', async () => {
     mockQuery.mockRejectedValue(new Error('DB connection lost'));
 
-    const result = await pickMorningNudge('2026-03-15', 1);
+    const result = await pickMorningNudges('2026-03-15', 1);
     expect(result).toBeNull();
   });
 });

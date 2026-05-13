@@ -676,34 +676,64 @@ export const detectSpottyPattern = async (
 
 // ─── 통합 감지 + 넛지 선택 ──────────────────────────────
 
-const detectAll = async (today: string, userId: number): Promise<Insight[]> => {
-  const results = await Promise.all([
+const detectAllForTiming = async (
+  today: string,
+  userId: number,
+  timing: InsightTiming,
+): Promise<Insight[]> => {
+  const morning = timing === 'morning';
+  const weekly = timing === 'weekly';
+
+  const tasks: Array<Promise<Insight | null>> = [
     detectStreak(today, userId),
     detectSleepTrend(today, userId),
     detectSlotGap(today, userId),
     detectWeekComparison(today, userId),
     detectOverdue(today, userId),
-  ]);
-  return results.filter((r): r is Insight => r !== null);
+  ];
+
+  if (!morning) tasks.push(detectCategorySkew(today, userId, weekly ? 'weekly' : 'night'));
+  if (weekly) tasks.push(detectDrift(today, userId));
+  if (morning) tasks.push(detectRecovery(today, userId));
+  if (!morning && !weekly) tasks.push(detectLapseAlert(today, userId));
+  if (weekly) tasks.push(detectWeeklyRegression(today, userId));
+  if (!morning && !weekly) tasks.push(detectSpottyPattern(today, userId));
+
+  const results = await Promise.all(tasks);
+  return results.filter((r): r is Insight => r !== null && r.timing === timing);
 };
 
 const pickByTiming = async (
   today: string,
   userId: number,
   timing: InsightTiming,
-): Promise<string | null> => {
-  const all = await detectAll(today, userId);
-  const candidates = all.filter((i) => i.timing === timing);
-  if (candidates.length === 0) return null;
+): Promise<Insight[]> => {
+  const { minPriority, maxItems } = INSIGHT_THRESHOLDS.pickByTiming;
+  const all = await detectAllForTiming(today, userId, timing);
 
-  candidates.sort((a, b) => b.priority - a.priority);
-  return candidates[0].message;
+  const filtered = all.filter((i) => i.priority >= minPriority);
+  filtered.sort((a, b) => b.priority - a.priority);
+
+  const seen = new Set<InsightDomain>();
+  const deduped: Insight[] = [];
+  for (const insight of filtered) {
+    if (seen.has(insight.domain)) continue;
+    seen.add(insight.domain);
+    deduped.push(insight);
+    if (deduped.length >= maxItems) break;
+  }
+
+  return deduped;
 };
 
-/** 아침 크론용: 아침 타이밍 인사이트 중 최고 우선순위 1개 */
-export const pickMorningNudge = (today: string, userId: number): Promise<string | null> =>
+/** 아침 크론용: priority ≥5인 morning 인사이트, 같은 도메인 dedupe, 최대 3개 */
+export const pickMorningNudges = (today: string, userId: number): Promise<Insight[]> =>
   pickByTiming(today, userId, 'morning');
 
-/** 밤 크론용: 밤 타이밍 인사이트 중 최고 우선순위 1개 */
-export const pickNightNudge = (today: string, userId: number): Promise<string | null> =>
+/** 밤 크론용: priority ≥5인 night 인사이트, 같은 도메인 dedupe, 최대 3개 */
+export const pickNightNudges = (today: string, userId: number): Promise<Insight[]> =>
   pickByTiming(today, userId, 'night');
+
+/** 주간 리포트용: weekly 인사이트 (도메인 dedupe + cap 동일) */
+export const pickWeeklyInsights = (today: string, userId: number): Promise<Insight[]> =>
+  pickByTiming(today, userId, 'weekly');
