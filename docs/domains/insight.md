@@ -161,6 +161,40 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 - `ChatHistory` 클래스로 채널별 대화 기록 유지
 - LLM 에이전트 루프에 이전 대화 맥락 전달
 
+### 8. 프로액티브 인사이트 엔진 (Phase 1)
+
+`src/shared/insights.ts`의 SQL 기반 패턴 감지 엔진. LLM 호출 없음 (비용 0).
+
+#### 패턴 일람
+
+| type | timing | domain | 톤 | 트리거 |
+|------|--------|--------|----|--------|
+| streak | morning | routine | 칭찬 | 매일 루틴 3·5·7·10·14·21·30일 연속 |
+| sleepTrend ↓ | night | sleep | 잔소리 | 최근 3일 수면 감소 + 7h 미만 |
+| sleepTrend ↑ | night | sleep | 칭찬 | 최근 3일 수면 증가 |
+| slotGap | night | routine | 관찰 | 시간대별 달성률 격차 30%p+ |
+| weekComparison ↑ | morning | routine | 칭찬 | 이번주 - 지난주 ≥5%p |
+| weekComparison ↓ | night | routine | 잔소리 | 이번주 - 지난주 ≤-5%p |
+| overdueAlert | morning | schedule | 잔소리 | 밀린 일정 3건+ |
+| categorySkew | night/weekly | schedule | 관찰 | 7일/지난주 1위 카테고리 ≥50% |
+| drift | weekly | sleep | 관찰/잔소리 | 4주 평균 대비 취침·기상 30분+ 또는 중간기상 1.5배+ |
+| recovery | morning | routine | 칭찬 | streak 5일+ 깨진 후 1일 만에 재시작 |
+| lapseAlert | night | routine | 잔소리 | 7일 100% 루틴이 오늘 빠짐 |
+| weeklyRegression | weekly | routine | 잔소리 | 지난주 ≥90% → 이번주 ≤60% |
+| spottyPattern | night | routine | 잔소리 | 7일 중 3\~4일 산발 빠짐 |
+
+#### 동적 노출
+
+- 매일 morning(09:05) / night(23:55): priority ≥5인 패턴 최대 3개, 같은 도메인은 priority 최상위 1개만
+- 주간 리포트(월요일 09:00): weekly 패턴 전체 (cap 없음, Block Kit으로 표시)
+- 0건이면 매일 메시지 발송 안 함 (no-news is good news). 주간 리포트는 "잔잔했어" 한 줄 발송.
+
+#### 임계치
+
+모든 임계치는 `src/shared/insight-thresholds.ts`의 `INSIGHT_THRESHOLDS`에서 단일 관리. Phase 4 사주 매핑 단계에서 튜닝 가능.
+
+상세 배경 및 대안 비교는 [ADR 0014](../adr/0014-insight-engine-unification.md) 참조.
+
 ## 파일 구조
 
 ```
