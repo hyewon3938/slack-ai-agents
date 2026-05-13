@@ -118,9 +118,10 @@ describe('buildLifeSystemPrompt', () => {
     expect(prompt).toContain('직접 언급하지 않은');
   });
 
-  it('220줄 이내의 간결한 프롬프트', async () => {
+  it('240줄 이내의 간결한 프롬프트', async () => {
+    // 카테고리 FK 전환(#394)으로 JOIN/category_id 가이드 추가됨. 한도 +20.
     const prompt = await buildLifeSystemPrompt('C123', 1);
     const lineCount = prompt.split('\n').length;
-    expect(lineCount).toBeLessThan(220);
+    expect(lineCount).toBeLessThan(240);
   });
 });

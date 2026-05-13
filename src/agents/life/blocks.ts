@@ -299,12 +299,12 @@ const STATUS_ORDER: Record<string, number> = {
   todo: 2,
 };
 
-/** 일정을 카테고리별로 그룹핑 */
+/** 일정을 카테고리별로 그룹핑 (최상위 카테고리 기준) */
 const groupByCategory = (items: ScheduleRow[]): CategoryGroup[] => {
   const categoryMap = new Map<string, ScheduleRow[]>();
 
   for (const item of items) {
-    const cat = item.category ?? '미분류';
+    const cat = item.top_category_name ?? '미분류';
     const existing = categoryMap.get(cat);
     if (existing) {
       existing.push(item);

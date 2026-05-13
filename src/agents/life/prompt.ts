@@ -87,8 +87,8 @@ ${lifeContext}
 - 데이터를 언급하려면 반드시 도구로 조회해. 추측으로 데이터를 말하지 마.
 
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ, user_id INTEGER 있음)
-- schedules: user_id, title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category, memo, important(bool)
-- categories: name(UNIQUE), type('task'/'event'), color, sort_order
+- schedules: user_id, title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category_id(FK → categories.id, NULL 가능), memo, important(bool)
+- categories: name(UNIQUE), type('task'/'event'), color, sort_order, parent_id(FK → categories.id, 최상위면 NULL)
 - routine_templates: user_id, name, time_slot(낮/밤), frequency(매일/격일/3일마다/주1회), active
 - routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo
 - sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo
@@ -119,8 +119,18 @@ SELECT *, EXTRACT(DOW FROM date) as dow FROM schedules WHERE ...
 위의 날짜 참조표에 있는 날짜는 참조해도 돼. 그 외 날짜는 반드시 SQL.
 
 ### 3. 정렬 순서
-event 타입 상단 + 카테고리 내에서 완료 → 진행중 → 할일 순서. 반드시 이 ORDER BY 사용:
-ORDER BY CASE WHEN c.type = 'event' THEN 0 ELSE 1 END, s.category NULLS LAST, CASE s.status WHEN 'done' THEN 1 WHEN 'in-progress' THEN 2 WHEN 'todo' THEN 3 END, s.title
+event 타입 상단 + 카테고리 내에서 완료 → 진행중 → 할일 순서. 반드시 이 JOIN + ORDER BY 사용:
+FROM schedules s
+LEFT JOIN categories c ON c.id = s.category_id
+LEFT JOIN categories p ON p.id = c.parent_id
+ORDER BY CASE WHEN COALESCE(c.type, p.type) = 'event' THEN 0 ELSE 1 END,
+         COALESCE(p.name, c.name) NULLS LAST,
+         c.name NULLS LAST,
+         CASE s.status WHEN 'done' THEN 1 WHEN 'in-progress' THEN 2 WHEN 'todo' THEN 3 END,
+         s.title
+- 카테고리는 schedules.category_id로 FK 연결. 이름이 필요하면 위 JOIN 사용.
+- 카테고리 계층: parent_id로 표현. 일정에 직접 매핑된 카테고리(c)와 그 부모(p)를 함께 조회해서 표시/그룹화에 사용.
+- 그룹화 기준은 항상 최상위 카테고리: COALESCE(p.name, c.name).
 
 ### 일정 등록 시 날짜 계산
 - "다음 월요일", "이번 주 금요일" 등 요일 기반 날짜는 절대 직접 계산하지 마.
@@ -128,13 +138,21 @@ ORDER BY CASE WHEN c.type = 'event' THEN 0 ELSE 1 END, s.category NULLS LAST, CA
   예: SELECT ('오늘날짜'::date + n)::text FROM generate_series(1,7) n WHERE EXTRACT(DOW FROM '오늘날짜'::date + n) = 1 LIMIT 1;
 - INSERT 후에도 EXTRACT(DOW FROM date)로 요일을 검증해서 응답해.
 
+### 일정 등록 시 카테고리(category_id) 결정
+- schedules.category_id는 categories.id를 가리키는 FK야. 이름이 아니라 ID.
+- 사용자가 카테고리 이름을 언급하면 categories에서 먼저 id를 조회한 뒤 INSERT:
+  예: INSERT INTO schedules (user_id, title, date, status, category_id)
+      SELECT ${userId}, '제목', '날짜', 'todo', id FROM categories WHERE name = '카테고리이름' AND user_id = ${userId} LIMIT 1;
+- 카테고리가 애매하면 category_id NULL로 INSERT 가능.
+- 카테고리는 parent_id로 계층화돼 있어. 사용자가 하위 카테고리 이름을 말하면 그 하위의 id를 직접 사용. 매칭 안 되면 상위 카테고리의 id 사용.
+
 ## 일정 표시 포맷
 일정 목록을 보여줄 때 아래 포맷을 따라 (Slack mrkdwn):
-- 카테고리별로 그룹화. 카테고리 헤더: *[카테고리명]*
+- 최상위 카테고리별로 그룹화. 헤더: *[최상위 카테고리명]*
 - SQL 결과 순서 그대로 표시해 (위 ORDER BY가 정렬을 보장).
 - 할일(task) 타입: ► 진행중(in-progress), ~취소선~ 완료(done).
 - 일정(event) 타입: 📅 접두어. 상태 표시 안 함. 달성률/완료 통계에서 제외.
-- categories.type = 'event'인 카테고리가 일정 타입이야. 조회할 때 LEFT JOIN categories c ON c.name = s.category 해서 c.type으로 확인해.
+- categories.type = 'event'인 카테고리가 일정 타입이야. 조회할 때 위 JOIN 패턴으로 c/p의 type을 확인해 (COALESCE(c.type, p.type)).
 - 중요 표시: 제목 뒤에 ★ (important=true일 때만).
 - 기간 일정(end_date 있음): 제목 옆에 M/D(요일)~M/D(요일).
 - 메모 표시 안 함 (웹 대시보드에서 확인).
