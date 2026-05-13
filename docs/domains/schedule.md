@@ -8,25 +8,59 @@ schedules:
   id SERIAL PK,
   user_id INTEGER,
   title TEXT,
-  date DATE,           -- NULL이면 백로그
-  end_date DATE,       -- 기간 일정용
-  status TEXT,         -- 'todo' | 'in-progress' | 'done' | 'cancelled'
-  category TEXT,       -- categories.name 참조
-  subcategory TEXT,    -- 하위 카테고리
+  date DATE,                -- NULL이면 백로그
+  end_date DATE,            -- 기간 일정용
+  status TEXT,              -- 'todo' | 'in-progress' | 'done' | 'cancelled'
+  category_id INTEGER       -- FK → categories.id, ON DELETE RESTRICT (NULL 가능)
+                            --   하위 카테고리에 직접 매핑되며, 부모는 categories.parent_id로 추적
   memo TEXT,
   important BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ
 
--- 카테고리
+-- 카테고리 (계층은 parent_id로 표현)
 categories:
   id SERIAL PK,
   user_id INTEGER,
   name TEXT UNIQUE,
   color TEXT,          -- 프리셋명('violet','amber'...) 또는 hex('#ddd6fe')
-  type TEXT,           -- 'task' (할일) | 'event' (일정/약속)
+  type TEXT,           -- 'task' (할일) | 'event' (일정/약속). 하위는 NULL이면 상위 type 상속
   sort_order INTEGER,
-  parent_id INTEGER    -- 하위 카테고리 시 상위 카테고리 id
+  parent_id INTEGER    -- FK → categories.id. 최상위면 NULL
 ```
+
+### FK 마이그레이션 (2026-05-13, #394)
+
+- 이전 스키마: `schedules.category TEXT` + `schedules.subcategory TEXT` (rename 시 데이터 연결 끊김)
+- 신규 스키마: `schedules.category_id INTEGER FK` (단일 컬럼, `parent_id`로 계층화)
+- 설계 판단: [ADR-0013](../adr/0013-schedule-category-fk-migration.md)
+
+### 카테고리 JOIN 패턴 (필수)
+
+일정 표시·그룹화·필터링은 모두 아래 JOIN을 통해 카테고리 이름/타입을 얻는다:
+
+```sql
+SELECT s.*,
+       s.category_id,
+       c.name AS category_name,
+       COALESCE(c.type, p.type) AS category_type,   -- 하위에 type 없으면 상위 상속
+       COALESCE(p.name, c.name) AS top_category_name -- 그룹화 기준은 항상 최상위
+FROM schedules s
+LEFT JOIN categories c ON c.id = s.category_id
+LEFT JOIN categories p ON p.id = c.parent_id
+WHERE s.user_id = $1 AND ...
+ORDER BY
+  CASE WHEN COALESCE(c.type, p.type) = 'event' THEN 0 ELSE 1 END,
+  COALESCE(p.name, c.name) NULLS LAST,
+  c.name NULLS LAST,
+  CASE s.status WHEN 'done' THEN 1 WHEN 'in-progress' THEN 2 WHEN 'todo' THEN 3 END,
+  s.title;
+```
+
+### 카테고리 ID 결정 (INSERT 시)
+
+- 이름이 아닌 ID 사용: `INSERT INTO schedules (..., category_id) SELECT ..., id FROM categories WHERE name = ? AND user_id = ? LIMIT 1`
+- 사용자가 하위 카테고리 이름을 말하면 그 하위 ID 사용. 매칭 안 되면 상위 카테고리 ID로 fallback.
+- 카테고리가 애매하면 `category_id NULL`로 INSERT 가능.
 
 ## API 엔드포인트
 
