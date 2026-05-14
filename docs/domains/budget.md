@@ -12,20 +12,17 @@
 ## 핵심 개념
 
 ### 결제주기 (Billing Cycle)
-- 1개 결제월 = **전월 16일 \~ 당월 15일**
-- 예: `2026-04` → `2026-03-16 \~ 2026-04-15`
+- 1개 결제월 = **전월 14일 \~ 당월 13일**
+- 예: `2026-04` → `2026-03-14 \~ 2026-04-13`
 - 모든 예산/정산/고정비 계산의 기준 단위
 - 구현: [billing/cycle.ts](../../web/src/features/budget/lib/billing/cycle.ts)
 
 ### 가용자금 (Total Available)
-두 가지 모드로 계산:
-
-| 조건 | 계산식 |
-|------|--------|
-| 최신 월 스냅샷이 있음 | `available_at_end` + 이후 기간의 배분 가능 수입 − 자유 지출 − 제외 지출 |
-| 스냅샷 없음 | 자산 테이블의 `available_amount` 합계 (비상금 제외) |
-
-- 구현: [facade.ts `computeTotalAvailable`](../../web/src/features/budget/lib/facade.ts)
+- `assets.available_amount` 합계 (`is_emergency=false`)
+- 결제주기 종료 cron이 이전 사이클의 자유+제외 지출을 default 자산에서 자동 차감하고 수입을 default 자산에 증액 — 자산 테이블이 곧 가용자금이 되도록 유지
+- 할부 2+회차는 INSERT 즉시 자산에서 차감 (allocator의 monthBudget 락에서는 제외해 수학적 동등)
+- 구현: [facade.ts `runSettlementIfDue`](../../web/src/features/budget/lib/facade.ts), [assets-repo.ts](../../web/src/features/budget/lib/repository/assets-repo.ts)
+- 판단 근거: [ADR 0015](../adr/0015-asset-auto-deduction-policy.md)
 
 ### 자유 예산 (Free Budget)
 - 월 자유 예산 = 월 가용자금 − (월 고정비 + 할부 월분 + 예정 지출)
@@ -211,8 +208,8 @@ features/budget/
 | 9 | 일 예산 배분 | month-summary 오늘 예산 | `/api/budget/today` | day-allocator.ts | 초과 클램프 |
 | 10 | 장기 예산 시뮬레이션 | runway-card | `/api/budget/runway` | runway-projection.ts | 월별 burn 시뮬 |
 | 11 | 일별 예산 로그 | daily-budget-log | `/api/budget/daily-logs` + cron | `saveDailyBudgetLog` | UNIQUE(user, date) |
-| 12 | 월별 예산 스냅샷 | — (내부) | 정산 cron 진입점 | `buildSettlementSnapshot` | 15일 자정 idempotent |
-| 13 | 결제주기 유틸 | — | — | billing/cycle.ts | 전월 16일\~당월 15일 |
+| 12 | 월별 예산 스냅샷 | — (내부) | 정산 cron 진입점 | `buildSettlementSnapshot` | 13일 종료 → 14일 새벽 cron, idempotent |
+| 13 | 결제주기 유틸 | — | — | billing/cycle.ts | 전월 14일\~당월 13일 |
 
 ### 🟡 부분 구현 (4)
 
@@ -228,7 +225,7 @@ features/budget/
 | # | 항목 | 설명 |
 |---|------|------|
 | A | 수입 "이번 달" 옵션 | `distribute_to_budget=false` 시 예산 계산에 미반영. UI 레이블과 동작 불일치 — 의도 확인 + 구현 필요 |
-| B | 할부 `isNew` 경계 판정 | 빌링 시작일(당월 16일) 전후로 선택된 할부의 신규 여부 판정이 의도대로 동작하는지 경계 테스트 필요 |
+| B | 할부 `isNew` 경계 판정 | 빌링 시작일(당월 14일) 전후로 선택된 할부의 신규 여부 판정이 의도대로 동작하는지 경계 테스트 필요 |
 | C | 고정비 자동 기록 강제 `exclude_from_budget=true` | [queries.ts `ensureFixedCostExpenses`](../../web/src/features/budget/lib/queries.ts)에서 강제. 사용자 정책 재검토 필요 |
 
 ## 데이터 흐름
@@ -256,12 +253,13 @@ expense-form (type=expense)
   → allocateTodayBudget() 의 todayRemaining 감소
 ```
 
-### 월 경계 정산 (15일 자정 cron)
+### 월 경계 정산 (13일 종료 → 14일 새벽 cron)
 ```
-detectSettlementTrigger() → 오늘이 16일 새벽인지 판정
+detectSettlementTrigger() → 어제가 13일(주기 마지막)인지 판정
   → getMonthlyAllocation() 재실행
   → readFlexibleSpent/Excluded/Income (범위: 정산 대상 월)
   → buildSettlementSnapshot() 로 monthly_budget_snapshots 저장 (idempotent)
+  → applyAssetDeduction(flex + excluded) + applyAssetIncrease(income) — 자산 자동 반영
   → 다음 월의 available_at_start 로 연쇄
 ```
 
