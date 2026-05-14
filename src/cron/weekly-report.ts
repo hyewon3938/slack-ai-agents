@@ -1,12 +1,14 @@
 /**
  * 주간 리포트.
- * 매주 일요일 실행: SQL 집계 → Block Kit + LLM 한줄 총평.
- * 일요일 아닌 날은 early return.
+ * 매주 월요일 09:00 실행 (지난주 회고): SQL 집계 + 인사이트 + LLM 총평.
+ * 월요일 아닌 날은 early return.
  */
 
 import type { App } from '@slack/bolt';
 import type { LifeCronConfig } from './life-cron.js';
 import type { LLMMessage } from '../shared/llm.js';
+import type { Insight } from '../shared/insights.js';
+import { pickWeeklyInsights } from '../shared/insights.js';
 import { query } from '../shared/db.js';
 import { getTodayISO, getKSTDayOfWeek, addDays, formatDateShort } from '../shared/kst.js';
 import { postBlockMessage } from '../shared/slack.js';
@@ -381,106 +383,54 @@ const formatDuration = (minutes: number): string => {
   return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
 };
 
-/** 주간 리포트 Block Kit 빌드 */
-const buildWeeklyReportBlocks = (data: WeeklyReportData, summary: string): KnownBlock[] => {
-  const { sleep, routine, schedule, correlation, weekStart, weekEnd } = data;
+/** 주간 리포트 Block Kit 빌드: 인사이트 우선 → 한눈에 보기 → 총평. */
+const buildWeeklyReportBlocks = (
+  data: WeeklyReportData,
+  insights: Insight[],
+  summary: string,
+): KnownBlock[] => {
+  const { sleep, routine, schedule, weekStart, weekEnd } = data;
   const blocks: KnownBlock[] = [];
 
   blocks.push({
     type: 'header',
     text: {
       type: 'plain_text',
-      text: `📊 주간 리포트 (${formatDateShort(weekStart)} ~ ${formatDateShort(weekEnd)})`,
-      emoji: true,
+      text: `지난주 리포트 (${formatDateShort(weekStart)} ~ ${formatDateShort(weekEnd)})`,
+      emoji: false,
     },
   });
 
-  // ── 수면 ──
+  // ── 인사이트 ──
   blocks.push({ type: 'divider' });
-  if (sleep.recordCount < 2) {
+  if (insights.length > 0) {
+    const lines = ['*이번 주 인사이트*', ...insights.map((i) => `• ${i.message}`)];
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
+  } else {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: '*수면*\n데이터 부족 (2건 미만)' },
+      text: { type: 'mrkdwn', text: '이번 주는 특별한 패턴 없이 잔잔했어' },
     });
-  } else {
-    const lines = [
-      `*수면*`,
-      `평균 ${formatDuration(sleep.avgDuration)} (${sleep.recordCount}일 기록)`,
-    ];
-    if (sleep.bestDay && sleep.worstDay && sleep.bestDay.date !== sleep.worstDay.date) {
-      lines.push(
-        `가장 잘 잔 날: ${formatDateShort(sleep.bestDay.date)} ${formatDuration(sleep.bestDay.duration)} | 가장 못 잔 날: ${formatDateShort(sleep.worstDay.date)} ${formatDuration(sleep.worstDay.duration)}`,
-      );
-    }
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
   }
 
-  // ── 루틴 ──
+  // ── 한눈에 보기 (집계 압축) ──
   blocks.push({ type: 'divider' });
-  if (routine.thisWeekTotal < 2) {
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: '*루틴*\n데이터 부족 (2건 미만)' },
-    });
-  } else {
-    const lastPart = routine.lastWeekRate != null ? ` — 지난주 ${routine.lastWeekRate}%` : '';
-    const lines = [
-      `*루틴*`,
-      `주간 달성률: ${routine.thisWeekRate}% (${routine.thisWeekCompleted}/${routine.thisWeekTotal})${lastPart}`,
-    ];
-    if (routine.slotBreakdown.length > 0) {
-      lines.push(
-        `시간대별: ${routine.slotBreakdown.map((s) => `${s.slot} ${s.rate}%`).join(', ')}`,
-      );
-    }
-    if (routine.bestRoutine) {
-      const worstPart = routine.worstRoutine
-        ? ` | 최저: ${routine.worstRoutine.name} ${routine.worstRoutine.rate}%`
-        : '';
-      lines.push(`최고: ${routine.bestRoutine.name} ${routine.bestRoutine.rate}%${worstPart}`);
-    }
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
+  const glance: string[] = ['*한눈에 보기*'];
+  if (sleep.recordCount >= 2) {
+    glance.push(`수면 평균 ${formatDuration(sleep.avgDuration)} (${sleep.recordCount}일 기록)`);
   }
-
-  // ── 일정 ──
-  blocks.push({ type: 'divider' });
-  const total = schedule.completedCount + schedule.incompleteCount + schedule.cancelledCount;
-  if (total < 2) {
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: '*일정*\n데이터 부족 (2건 미만)' },
-    });
-  } else {
-    const lines = [
-      `*일정*`,
-      `완료 ${schedule.completedCount}건 / 미완료 ${schedule.incompleteCount}건 / 취소 ${schedule.cancelledCount}건`,
-    ];
-    if (schedule.categories.length > 0) {
-      lines.push(
-        `카테고리: ${schedule.categories.map((c) => `${c.category} ${c.count}건`).join(', ')}`,
-      );
-    }
-    if (schedule.overdueCount > 0) {
-      lines.push(`밀린 일정: ${schedule.overdueCount}건`);
-    }
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } });
+  if (routine.thisWeekTotal >= 2) {
+    const lastPart = routine.lastWeekRate != null ? ` (지난주 ${routine.lastWeekRate}%)` : '';
+    glance.push(`루틴 달성률 ${routine.thisWeekRate}%${lastPart}`);
   }
-
-  // ── 수면 × 루틴 상관관계 ──
-  if (correlation.goodSleepRate != null && correlation.badSleepRate != null) {
-    blocks.push({ type: 'divider' });
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*🔗 수면 × 루틴 상관관계*\n7시간+ 잔 날 루틴 ${correlation.goodSleepRate}% vs 6시간 미만 ${correlation.badSleepRate}%`,
-      },
-    });
+  if (schedule.completedCount + schedule.incompleteCount >= 2) {
+    glance.push(`일정 완료 ${schedule.completedCount}건 / 미완료 ${schedule.incompleteCount}건`);
   }
+  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: glance.join('\n') } });
 
   // ── 총평 ──
   blocks.push({ type: 'divider' });
-  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: summary } });
+  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*총평*\n${summary}` } });
 
   return blocks;
 };
@@ -490,17 +440,24 @@ const buildWeeklyReportBlocks = (data: WeeklyReportData, summary: string): Known
 const generateWeeklySummary = async (
   llmClient: LifeCronConfig['llmClient'],
   data: WeeklyReportData,
+  insights: Insight[],
 ): Promise<string> => {
   const { sleep, routine, schedule, correlation } = data;
 
+  const insightContext =
+    insights.length > 0
+      ? `\n감지된 인사이트:\n${insights.map((i) => `- ${i.message}`).join('\n')}`
+      : '';
+
   const context = [
-    `주간 리포트 데이터를 보고 총평을 써줘. 잘한 점은 칭찬하고, 개선할 점은 잔소리해. 반말로, 따뜻하게.`,
+    `지난주 리포트 데이터를 보고 총평을 써줘. 잘한 점은 칭찬하고, 개선할 점은 잔소리해. 반말로, 따뜻하게.`,
     `수면: 평균 ${Math.floor(sleep.avgDuration / 60)}시간 ${sleep.avgDuration % 60}분 (${sleep.recordCount}일)`,
     `루틴: ${routine.thisWeekRate}% (${routine.thisWeekCompleted}/${routine.thisWeekTotal})${routine.lastWeekRate != null ? `, 지난주 ${routine.lastWeekRate}%` : ''}`,
     `일정: 완료 ${schedule.completedCount}, 미완료 ${schedule.incompleteCount}`,
     correlation.goodSleepRate != null && correlation.badSleepRate != null
       ? `수면-루틴 상관: 7시간+ ${correlation.goodSleepRate}% vs 6시간 미만 ${correlation.badSleepRate}%`
       : '',
+    insightContext,
   ]
     .filter(Boolean)
     .join('\n');
@@ -509,27 +466,27 @@ const generateWeeklySummary = async (
     const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: `${CHARACTER_PROMPT}\n주간 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로.`,
+        content: `${CHARACTER_PROMPT}\n지난주 리포트 데이터를 보고 총평 써줘. 잘한 점 칭찬, 개선점 잔소리. 자연스러운 길이로.`,
       },
       { role: 'user', content: context },
     ];
     const response = await llmClient.chat(messages);
-    return response.text ?? '이번 주도 수고했어!';
+    return response.text ?? '지난주도 수고했어!';
   } catch {
-    return '이번 주도 수고했어!';
+    return '지난주도 수고했어!';
   }
 };
 
 // ─── 주간 리포트 크론 태스크 ────────────────────────────
 
 export const weeklyReportTask = async (app: App, config: LifeCronConfig): Promise<void> => {
-  // 일요일(0)만 실행
-  if (getKSTDayOfWeek() !== 0) return;
+  // 월요일(1)만 실행 — 지난주 회고 시점
+  if (getKSTDayOfWeek() !== 1) return;
 
   const today = getTodayISO();
-  const weekStart = addDays(today, -6); // 월요일
-  const weekEnd = today; // 일요일
-  const headerText = `📊 주간 리포트 (${formatDateShort(weekStart)} ~ ${formatDateShort(weekEnd)})`;
+  const weekStart = addDays(today, -7); // 지난주 월요일
+  const weekEnd = addDays(today, -1); // 지난주 일요일
+  const headerText = `지난주 리포트 (${formatDateShort(weekStart)} ~ ${formatDateShort(weekEnd)})`;
 
   const mappings = await queryAllUserMappings();
 
@@ -542,8 +499,10 @@ export const weeklyReportTask = async (app: App, config: LifeCronConfig): Promis
     if (!target.channelId) continue;
     try {
       const data = await aggregateWeeklyReport(weekStart, weekEnd, target.userId);
-      const summary = await generateWeeklySummary(config.llmClient, data);
-      const blocks = buildWeeklyReportBlocks(data, summary);
+      // 인사이트는 지난주 마지막 날 기준으로 추출
+      const insights = await pickWeeklyInsights(weekEnd, target.userId);
+      const summary = await generateWeeklySummary(config.llmClient, data, insights);
+      const blocks = buildWeeklyReportBlocks(data, insights, summary);
       await postBlockMessage(app.client, target.channelId, headerText, blocks);
       console.warn(`[Life Cron] 주간 리포트 전송 완료 (유저=${target.userId})`);
     } catch (error: unknown) {
