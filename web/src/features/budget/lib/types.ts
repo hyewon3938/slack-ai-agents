@@ -68,6 +68,22 @@ export interface CategoryStat {
   count: number;
 }
 
+export interface CategoryLimitRow {
+  id: number;
+  user_id: number;
+  category: string;
+  target_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CategoryLimitWithUsage {
+  id: number;
+  category: string;
+  target_count: number;
+  used_count: number;
+}
+
 export interface MonthSummary {
   year_month: string;
   total: number;

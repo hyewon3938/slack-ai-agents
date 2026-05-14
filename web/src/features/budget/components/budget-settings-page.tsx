@@ -1,8 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { FixedCostRow, AssetRow } from '@/features/budget/lib/types';
-import { MIN_DAILY_BUDGET, FIXED_COST_CATEGORIES } from '@/features/budget/lib/types';
+import type { FixedCostRow, AssetRow, CategoryLimitWithUsage } from '@/features/budget/lib/types';
+import {
+  MIN_DAILY_BUDGET,
+  FIXED_COST_CATEGORIES,
+  ALL_EXPENSE_CATEGORIES,
+} from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 
@@ -239,6 +243,186 @@ function FixedCostAddForm({
           onClick={() => void handleSubmit()}
           disabled={saving || !name.trim() || !amount}
           className="rounded-md bg-blue-600 px-3 py-1 text-xs text-white disabled:opacity-40 hover:bg-blue-700"
+        >
+          {saving ? '추가 중...' : '추가'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── 카테고리 한도 아이템 ─────────────────────────────
+
+function CategoryLimitItem({
+  limit,
+  onUpdate,
+  onDelete,
+}: {
+  limit: CategoryLimitWithUsage;
+  onUpdate: (id: number, target_count: number) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [target, setTarget] = useState(String(limit.target_count));
+
+  const handleSave = async () => {
+    const t = Number(target);
+    if (Number.isNaN(t) || t < 1 || t > 50) return;
+    setSaving(true);
+    try {
+      await onUpdate(limit.id, t);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="px-4 py-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-700">{limit.category}</span>
+        {!editing && (
+          <button
+            onClick={() => {
+              setTarget(String(limit.target_count));
+              setEditing(true);
+            }}
+            className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
+          >
+            <PencilIcon size={14} />
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <label className="w-16 text-xs text-gray-400">한도</label>
+            <input
+              type="number"
+              min="1"
+              max="50"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
+            />
+            <span className="text-xs text-gray-400">회</span>
+          </div>
+          <div className="flex justify-between">
+            <button
+              onClick={() => {
+                if (confirm('이 한도를 삭제할까?')) void onDelete(limit.id);
+              }}
+              disabled={saving}
+              className="text-xs text-red-400 hover:text-red-600"
+            >
+              삭제
+            </button>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setEditing(false)}
+                disabled={saving}
+                className="rounded-md p-1 text-gray-400 hover:bg-gray-100"
+              >
+                <XMarkIcon size={16} />
+              </button>
+              <button
+                onClick={() => void handleSave()}
+                disabled={saving}
+                className="rounded-md p-1 text-blue-500 hover:bg-blue-50"
+              >
+                <CheckCircleIcon size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1 text-sm text-gray-500">주기당 {limit.target_count}회</div>
+      )}
+    </div>
+  );
+}
+
+// ─── 카테고리 한도 추가 폼 ──────────────────────────────
+
+function CategoryLimitAddForm({
+  existingCategories,
+  onAdd,
+}: {
+  existingCategories: string[];
+  onAdd: (data: { category: string; target_count: number }) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState('');
+  const [target, setTarget] = useState('5');
+  const [saving, setSaving] = useState(false);
+
+  const available = ALL_EXPENSE_CATEGORIES.filter((c) => !existingCategories.includes(c));
+
+  const handleSubmit = async () => {
+    const t = Number(target);
+    if (!category || Number.isNaN(t) || t < 1 || t > 50) return;
+    setSaving(true);
+    try {
+      await onAdd({ category, target_count: t });
+      setCategory('');
+      setTarget('5');
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        disabled={available.length === 0}
+        className="w-full border-t border-gray-100 px-4 py-2.5 text-left text-xs text-blue-500 hover:bg-blue-50 disabled:text-gray-300 disabled:hover:bg-transparent"
+      >
+        {available.length === 0 ? '모든 카테고리에 한도가 설정됨' : '+ 카테고리 한도 추가'}
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2 border-t border-gray-100 px-4 py-3">
+      <select
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+        className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-700 focus:border-blue-400 focus:outline-none"
+      >
+        <option value="">카테고리 선택</option>
+        {available.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-400">주기당</label>
+        <input
+          type="number"
+          min="1"
+          max="50"
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          className="w-20 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+        />
+        <span className="text-xs text-gray-400">회까지</span>
+      </div>
+      <div className="flex justify-end gap-1.5">
+        <button
+          onClick={() => setOpen(false)}
+          className="rounded-md px-3 py-1 text-xs text-gray-400 hover:bg-gray-100"
+        >
+          취소
+        </button>
+        <button
+          onClick={() => void handleSubmit()}
+          disabled={saving || !category}
+          className="rounded-md bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-40"
         >
           {saving ? '추가 중...' : '추가'}
         </button>
@@ -563,16 +747,18 @@ function TargetDateCard({
 export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: () => void }) {
   const [fixedCosts, setFixedCosts] = useState<FixedCostRow[]>([]);
   const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [categoryLimits, setCategoryLimits] = useState<CategoryLimitWithUsage[]>([]);
   const [savedTarget, setSavedTarget] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [fixedRes, assetsRes, settingsRes] = await Promise.all([
+      const [fixedRes, assetsRes, settingsRes, limitsRes] = await Promise.all([
         fetch('/api/budget/fixed-costs'),
         fetch('/api/budget/assets'),
         fetch('/api/budget/settings'),
+        fetch('/api/budget/category-limits'),
       ]);
       if (fixedRes.ok) {
         const d = (await fixedRes.json()) as { data: FixedCostRow[] };
@@ -585,6 +771,10 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
       if (settingsRes.ok) {
         const d = (await settingsRes.json()) as { data: { target_date: string | null } };
         setSavedTarget(d.data.target_date);
+      }
+      if (limitsRes.ok) {
+        const d = (await limitsRes.json()) as { data: CategoryLimitWithUsage[] };
+        setCategoryLimits(d.data);
       }
     } finally {
       setLoading(false);
@@ -652,6 +842,38 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
     if (!res.ok) throw new Error('기본 자산 설정 실패');
     // 다른 자산의 is_default가 변경되었을 수 있어 전체 재조회
     await fetchAll();
+    onSettingsChange?.();
+  };
+
+  const handleAddCategoryLimit = async (data: { category: string; target_count: number }) => {
+    const res = await fetch('/api/budget/category-limits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? '한도 추가 실패');
+    }
+    await fetchAll();
+    onSettingsChange?.();
+  };
+
+  const handleUpdateCategoryLimit = async (id: number, target_count: number) => {
+    const res = await fetch(`/api/budget/category-limits/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_count }),
+    });
+    if (!res.ok) throw new Error('한도 수정 실패');
+    setCategoryLimits((prev) => prev.map((l) => (l.id === id ? { ...l, target_count } : l)));
+    onSettingsChange?.();
+  };
+
+  const handleDeleteCategoryLimit = async (id: number) => {
+    const res = await fetch(`/api/budget/category-limits/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('한도 삭제 실패');
+    setCategoryLimits((prev) => prev.filter((l) => l.id !== id));
     onSettingsChange?.();
   };
 
@@ -725,6 +947,36 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
             결제일 설정 시 해당 날짜에 자동으로 지출 내역에 기록됩니다.
           </p>
         </div>
+      </div>
+
+      {/* 카테고리 한도 */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded-t-xl">
+          <h2 className="text-sm font-semibold text-gray-700">카테고리 한도</h2>
+          <span className="text-xs text-gray-500">{categoryLimits.length}개</span>
+        </div>
+
+        {categoryLimits.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-gray-400">
+            카테고리별 결제주기 한도를 설정해두면 지출 페이지에서 트래커 카드로 보여줄게.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {categoryLimits.map((limit) => (
+              <CategoryLimitItem
+                key={limit.id}
+                limit={limit}
+                onUpdate={handleUpdateCategoryLimit}
+                onDelete={handleDeleteCategoryLimit}
+              />
+            ))}
+          </div>
+        )}
+
+        <CategoryLimitAddForm
+          existingCategories={categoryLimits.map((l) => l.category)}
+          onAdd={handleAddCategoryLimit}
+        />
       </div>
 
       {/* 자산/자금 */}
