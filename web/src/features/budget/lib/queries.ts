@@ -5,6 +5,7 @@ import { getCurrentBillingMonth, getBillingRange, calcCycleDays } from './billin
 import { resolveFixedCostExpenseDate } from './billing/fixed-cost-date';
 import { getBillingMonthForExpense } from './billing/card-billing';
 import { readFlexibleSpent, readTodayFlexSpent } from './repository/expenses-repo';
+import { applyAssetDeduction, applyAssetIncrease } from './repository/assets-repo';
 import type {
   ExpenseRow,
   FixedCostRow,
@@ -154,6 +155,7 @@ export async function createInstallmentExpenses(
   const excludeFromBudget = data.exclude_from_budget ?? false;
 
   let firstRow: ExpenseRow | null = null;
+  let futureSum = 0;
 
   for (let i = 0; i < data.months; i++) {
     const amount = i === data.months - 1 ? lastMonthAmount : monthlyAmount;
@@ -190,9 +192,19 @@ export async function createInstallmentExpenses(
       ],
     );
     if (i === 0) firstRow = row ?? null;
+    else futureSum += amount;
   }
 
   if (!firstRow) throw new Error('createInstallmentExpenses: INSERT returned no rows');
+
+  // 할부 2+회차는 INSERT 즉시 자산에서 차감 (allocator는 미래 회차를 installmentSum에서 제외).
+  // 1회차는 현재 결제주기에서 자유지출로 잡혀 결제주기 종료 cron에서 일괄 차감되므로 제외.
+  // 수입/제외지출 할부는 결제주기 종료 cron에서 일괄 처리되므로 즉시 차감 안 함.
+  const isCountable = (data.type ?? 'expense') === 'expense' && !excludeFromBudget;
+  if (isCountable && futureSum > 0) {
+    await applyAssetDeduction(userId, futureSum);
+  }
+
   return firstRow;
 }
 
@@ -212,6 +224,23 @@ const EXPENSE_COLUMNS = new Set([
 
 /** source='fixed' 행의 exclude_from_budget 변경 시도 시 throw되는 sentinel error */
 export const FIXED_SOURCE_EXCLUDE_LOCKED = 'FIXED_SOURCE_EXCLUDE_LOCKED';
+
+interface ExistingForAsset {
+  amount: number;
+  is_installment: boolean | null;
+  installment_num: number | null;
+  type: string;
+  exclude_from_budget: boolean;
+}
+
+function isFutureInstallment(row: ExistingForAsset): boolean {
+  return (
+    row.is_installment === true &&
+    (row.installment_num ?? 0) >= 2 &&
+    row.type === 'expense' &&
+    !row.exclude_from_budget
+  );
+}
 
 export async function updateExpense(
   userId: number,
@@ -233,9 +262,21 @@ export async function updateExpense(
     }
   }
 
+  // 할부 미래 회차 amount 변경 시 자산 보정용 사전 조회
+  const amountChanging = keys.includes('amount');
+  const existingForAsset = amountChanging
+    ? await queryOne<ExistingForAsset>(
+        `SELECT amount, is_installment, installment_num,
+                COALESCE(type, 'expense') as type,
+                COALESCE(exclude_from_budget, false) as exclude_from_budget
+         FROM expenses WHERE id = $1 AND user_id = $2`,
+        [id, userId],
+      )
+    : null;
+
   const setClauses = keys.map((k, i) => `${k} = $${i + 3}`);
   const values = keys.map((k) => updates[k]);
-  return queryOne<ExpenseRow>(
+  const row = await queryOne<ExpenseRow>(
     `UPDATE expenses SET ${setClauses.join(', ')}
      WHERE id = $1 AND user_id = $2
      RETURNING id, date::text, amount, category, description, payment_method,
@@ -245,12 +286,31 @@ export async function updateExpense(
             COALESCE(distribute_to_budget, false) as distribute_to_budget`,
     [id, userId, ...values],
   );
+
+  if (row && existingForAsset && isFutureInstallment(existingForAsset)) {
+    const diff = Number(updates['amount']) - existingForAsset.amount;
+    if (diff > 0) await applyAssetDeduction(userId, diff);
+    else if (diff < 0) await applyAssetIncrease(userId, -diff);
+  }
+
+  return row;
 }
 
-/** 지출 삭제 */
+/** 지출 삭제 — 할부 미래 회차 삭제 시 자산 복원 */
 export async function deleteExpense(userId: number, id: number): Promise<boolean> {
+  const existing = await queryOne<ExistingForAsset>(
+    `SELECT amount, is_installment, installment_num,
+            COALESCE(type, 'expense') as type,
+            COALESCE(exclude_from_budget, false) as exclude_from_budget
+     FROM expenses WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
   const result = await query('DELETE FROM expenses WHERE id = $1 AND user_id = $2', [id, userId]);
-  return (result.rowCount ?? 0) > 0;
+  const deleted = (result.rowCount ?? 0) > 0;
+  if (deleted && existing && isFutureInstallment(existing)) {
+    await applyAssetIncrease(userId, existing.amount);
+  }
+  return deleted;
 }
 
 // ─── 월간 요약 ────────────────────────────────────────
@@ -470,8 +530,10 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
 /** 자산 목록 */
 export async function queryAssets(userId: number): Promise<AssetRow[]> {
   const { rows } = await query<AssetRow>(
-    `SELECT id, name, balance, type, available_amount, is_emergency, memo, updated_at::text
-     FROM assets WHERE user_id = $1 ORDER BY is_emergency ASC, type, name`,
+    `SELECT id, name, balance, type, available_amount, is_emergency,
+            COALESCE(is_default, false) as is_default, memo, updated_at::text
+     FROM assets WHERE user_id = $1
+     ORDER BY is_emergency ASC, is_default DESC, type, name`,
     [userId],
   );
   return rows;
@@ -490,8 +552,46 @@ export async function updateAsset(
          memo = COALESCE($5, memo),
          updated_at = NOW()
      WHERE id = $1 AND user_id = $2
-     RETURNING id, name, balance, type, available_amount, is_emergency, memo, updated_at::text`,
+     RETURNING id, name, balance, type, available_amount, is_emergency,
+               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
     [id, userId, data.balance ?? null, data.available_amount ?? null, data.memo ?? null],
+  );
+}
+
+/**
+ * 기본 자산 지정 — user당 1개만 true.
+ * 비상금(is_emergency=true) 자산은 default로 지정 불가.
+ * 기존 default가 있으면 해제 후 신규 지정 (partial unique index 충돌 방지).
+ */
+export async function setDefaultAsset(userId: number, id: number): Promise<AssetRow | null> {
+  const target = await queryOne<{ is_emergency: boolean }>(
+    `SELECT is_emergency FROM assets WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
+  if (!target) return null;
+  if (target.is_emergency) {
+    throw new Error('EMERGENCY_ASSET_CANNOT_BE_DEFAULT');
+  }
+  await query(`UPDATE assets SET is_default = false WHERE user_id = $1 AND is_default = true`, [
+    userId,
+  ]);
+  return queryOne<AssetRow>(
+    `UPDATE assets SET is_default = true, updated_at = NOW()
+     WHERE id = $1 AND user_id = $2
+     RETURNING id, name, balance, type, available_amount, is_emergency,
+               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
+    [id, userId],
+  );
+}
+
+/** 기본 자산 해제 */
+export async function clearDefaultAsset(userId: number, id: number): Promise<AssetRow | null> {
+  return queryOne<AssetRow>(
+    `UPDATE assets SET is_default = false, updated_at = NOW()
+     WHERE id = $1 AND user_id = $2
+     RETURNING id, name, balance, type, available_amount, is_emergency,
+               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
+    [id, userId],
   );
 }
 
