@@ -42,7 +42,9 @@ function FixedCostItem({
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="text-sm font-medium text-gray-700">{cost.name}</span>
           {cost.category && (
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{cost.category}</span>
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+              {cost.category}
+            </span>
           )}
           {cost.is_variable && (
             <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-500">변동</span>
@@ -50,7 +52,11 @@ function FixedCostItem({
         </div>
         {!editing && (
           <button
-            onClick={() => { setAmount(String(cost.amount)); setDayOfMonth(String(cost.day_of_month ?? '')); setEditing(true); }}
+            onClick={() => {
+              setAmount(String(cost.amount));
+              setDayOfMonth(String(cost.day_of_month ?? ''));
+              setEditing(true);
+            }}
             className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
           >
             <PencilIcon size={14} />
@@ -62,26 +68,51 @@ function FixedCostItem({
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-2">
             <label className="w-16 text-xs text-gray-400">금액</label>
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
+            />
           </div>
           <div className="flex items-center gap-2">
             <label className="w-16 text-xs text-gray-400">결제일</label>
-            <input type="number" min="1" max="31" placeholder="미설정" value={dayOfMonth} onChange={(e) => setDayOfMonth(e.target.value)}
-              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
+            <input
+              type="number"
+              min="1"
+              max="31"
+              placeholder="미설정"
+              value={dayOfMonth}
+              onChange={(e) => setDayOfMonth(e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
+            />
             <span className="text-xs text-gray-400">일</span>
           </div>
           <div className="flex justify-between">
             <button
-              onClick={() => { if (confirm('이 고정지출을 삭제할까?')) void onDelete(cost.id); }}
+              onClick={() => {
+                if (confirm('이 고정지출을 삭제할까?')) void onDelete(cost.id);
+              }}
               disabled={saving}
               className="text-xs text-red-400 hover:text-red-600"
             >
               삭제
             </button>
             <div className="flex gap-1.5">
-              <button onClick={() => setEditing(false)} disabled={saving} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
-              <button onClick={() => void handleSave()} disabled={saving} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
+              <button
+                onClick={() => setEditing(false)}
+                disabled={saving}
+                className="rounded-md p-1 text-gray-400 hover:bg-gray-100"
+              >
+                <XMarkIcon size={16} />
+              </button>
+              <button
+                onClick={() => void handleSave()}
+                disabled={saving}
+                className="rounded-md p-1 text-blue-500 hover:bg-blue-50"
+              >
+                <CheckCircleIcon size={16} />
+              </button>
             </div>
           </div>
         </div>
@@ -101,7 +132,16 @@ function FixedCostItem({
 
 // ─── 고정비 추가 폼 ──────────────────────────────────
 
-function FixedCostAddForm({ onAdd }: { onAdd: (data: { name: string; amount: number; category?: string; day_of_month?: number | null }) => Promise<void> }) {
+function FixedCostAddForm({
+  onAdd,
+}: {
+  onAdd: (data: {
+    name: string;
+    amount: number;
+    category?: string;
+    day_of_month?: number | null;
+  }) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -116,8 +156,16 @@ function FixedCostAddForm({ onAdd }: { onAdd: (data: { name: string; amount: num
     if (day !== null && (isNaN(day) || day < 1 || day > 31)) return;
     setSaving(true);
     try {
-      await onAdd({ name: name.trim(), amount: a, category: category || undefined, day_of_month: day });
-      setName(''); setAmount(''); setCategory(''); setDayOfMonth('');
+      await onAdd({
+        name: name.trim(),
+        amount: a,
+        category: category || undefined,
+        day_of_month: day,
+      });
+      setName('');
+      setAmount('');
+      setCategory('');
+      setDayOfMonth('');
       setOpen(false);
     } finally {
       setSaving(false);
@@ -138,28 +186,60 @@ function FixedCostAddForm({ onAdd }: { onAdd: (data: { name: string; amount: num
   return (
     <div className="border-t border-gray-100 px-4 py-3 space-y-2">
       <div className="flex items-center gap-2">
-        <input type="text" placeholder="이름" value={name} onChange={(e) => setName(e.target.value)}
-          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none" autoFocus />
+        <input
+          type="text"
+          placeholder="이름"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+          autoFocus
+        />
       </div>
       <div className="flex items-center gap-2">
-        <input type="text" inputMode="numeric" placeholder="금액" value={amount} onChange={(e) => setAmount(e.target.value)}
-          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none" />
-        <input type="number" min="1" max="31" placeholder="결제일" value={dayOfMonth} onChange={(e) => setDayOfMonth(e.target.value)}
-          className="w-20 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none" />
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="금액"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+        />
+        <input
+          type="number"
+          min="1"
+          max="31"
+          placeholder="결제일"
+          value={dayOfMonth}
+          onChange={(e) => setDayOfMonth(e.target.value)}
+          className="w-20 rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+        />
       </div>
       <div className="flex items-center gap-2">
-        <select value={category} onChange={(e) => setCategory(e.target.value)}
-          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-700 focus:border-blue-400 focus:outline-none">
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-700 focus:border-blue-400 focus:outline-none"
+        >
           <option value="">카테고리 선택</option>
           {FIXED_COST_CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
+            <option key={c} value={c}>
+              {c}
+            </option>
           ))}
         </select>
       </div>
       <div className="flex justify-end gap-1.5">
-        <button onClick={() => setOpen(false)} className="rounded-md px-3 py-1 text-xs text-gray-400 hover:bg-gray-100">취소</button>
-        <button onClick={() => void handleSubmit()} disabled={saving || !name.trim() || !amount}
-          className="rounded-md bg-blue-600 px-3 py-1 text-xs text-white disabled:opacity-40 hover:bg-blue-700">
+        <button
+          onClick={() => setOpen(false)}
+          className="rounded-md px-3 py-1 text-xs text-gray-400 hover:bg-gray-100"
+        >
+          취소
+        </button>
+        <button
+          onClick={() => void handleSubmit()}
+          disabled={saving || !name.trim() || !amount}
+          className="rounded-md bg-blue-600 px-3 py-1 text-xs text-white disabled:opacity-40 hover:bg-blue-700"
+        >
           {saving ? '추가 중...' : '추가'}
         </button>
       </div>
@@ -172,12 +252,15 @@ function FixedCostAddForm({ onAdd }: { onAdd: (data: { name: string; amount: num
 function AssetItem({
   asset,
   onUpdate,
+  onToggleDefault,
 }: {
   asset: AssetRow;
   onUpdate: (id: number, balance: number, available_amount: number) => Promise<void>;
+  onToggleDefault: (id: number, next: boolean) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [togglingDefault, setTogglingDefault] = useState(false);
   const [balance, setBalance] = useState(String(asset.balance));
   const [available, setAvailable] = useState(String(asset.available_amount ?? asset.balance));
 
@@ -194,19 +277,38 @@ function AssetItem({
     }
   };
 
+  const handleToggleDefault = async () => {
+    if (asset.is_emergency || togglingDefault) return;
+    setTogglingDefault(true);
+    try {
+      await onToggleDefault(asset.id, !asset.is_default);
+    } finally {
+      setTogglingDefault(false);
+    }
+  };
+
   return (
     <div className="px-4 py-2.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-700">{asset.name}</span>
-          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{asset.type}</span>
+          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+            {asset.type}
+          </span>
           {asset.is_emergency && (
             <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-600">비상금</span>
+          )}
+          {asset.is_default && (
+            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">기본</span>
           )}
         </div>
         {!editing && (
           <button
-            onClick={() => { setBalance(String(asset.balance)); setAvailable(String(asset.available_amount ?? asset.balance)); setEditing(true); }}
+            onClick={() => {
+              setBalance(String(asset.balance));
+              setAvailable(String(asset.available_amount ?? asset.balance));
+              setEditing(true);
+            }}
             className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
           >
             <PencilIcon size={14} />
@@ -218,24 +320,61 @@ function AssetItem({
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-2">
             <label className="w-16 text-xs text-gray-400">잔액</label>
-            <input type="number" value={balance} onChange={(e) => setBalance(e.target.value)}
-              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
+            <input
+              type="number"
+              value={balance}
+              onChange={(e) => setBalance(e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
+            />
           </div>
           <div className="flex items-center gap-2">
             <label className="w-16 text-xs text-gray-400">사용가능</label>
-            <input type="number" value={available} onChange={(e) => setAvailable(e.target.value)}
-              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
+            <input
+              type="number"
+              value={available}
+              onChange={(e) => setAvailable(e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
+            />
           </div>
+          <label className="flex items-center gap-2 text-xs text-gray-500">
+            <input
+              type="checkbox"
+              checked={asset.is_default}
+              disabled={asset.is_emergency || togglingDefault}
+              onChange={() => void handleToggleDefault()}
+            />
+            기본 자산 (자동 차감 우선순위)
+          </label>
           <div className="flex justify-end gap-1.5">
-            <button onClick={() => setEditing(false)} disabled={saving} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><XMarkIcon size={16} /></button>
-            <button onClick={() => void handleSave()} disabled={saving} className="rounded-md p-1 text-blue-500 hover:bg-blue-50"><CheckCircleIcon size={16} /></button>
+            <button
+              onClick={() => setEditing(false)}
+              disabled={saving}
+              className="rounded-md p-1 text-gray-400 hover:bg-gray-100"
+            >
+              <XMarkIcon size={16} />
+            </button>
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="rounded-md p-1 text-blue-500 hover:bg-blue-50"
+            >
+              <CheckCircleIcon size={16} />
+            </button>
           </div>
         </div>
       ) : (
         <div className="mt-1 flex items-center gap-4 text-sm">
-          <span><span className="text-xs text-gray-400">잔액 </span><span className="font-semibold text-gray-800">{formatAmount(asset.balance)}</span></span>
+          <span>
+            <span className="text-xs text-gray-400">잔액 </span>
+            <span className="font-semibold text-gray-800">{formatAmount(asset.balance)}</span>
+          </span>
           {asset.available_amount !== null && asset.available_amount !== asset.balance && (
-            <span><span className="text-xs text-gray-400">사용가능 </span><span className="font-semibold text-gray-800">{formatAmount(asset.available_amount)}</span></span>
+            <span>
+              <span className="text-xs text-gray-400">사용가능 </span>
+              <span className="font-semibold text-gray-800">
+                {formatAmount(asset.available_amount)}
+              </span>
+            </span>
           )}
         </div>
       )}
@@ -278,7 +417,7 @@ function TargetDateCard({
     if (savedTarget && /^\d{4}-\d{2}$/.test(savedTarget)) {
       void fetchPreview(savedTarget);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedTarget]);
 
   const fetchPreview = async (target: string) => {
@@ -347,13 +486,13 @@ function TargetDateCard({
       </div>
 
       {savedTarget && (
-        <p className="mb-3 text-xs text-gray-400">현재 설정: <span className="font-medium text-gray-600">{savedTarget}</span></p>
+        <p className="mb-3 text-xs text-gray-400">
+          현재 설정: <span className="font-medium text-gray-600">{savedTarget}</span>
+        </p>
       )}
 
       {/* 프리뷰 */}
-      {loadingPreview && (
-        <div className="mt-2 h-20 animate-pulse rounded-lg bg-gray-100" />
-      )}
+      {loadingPreview && <div className="mt-2 h-20 animate-pulse rounded-lg bg-gray-100" />}
 
       {preview && !loadingPreview && (
         <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
@@ -361,11 +500,15 @@ function TargetDateCard({
           <div className="mb-2 flex items-center justify-between">
             <div>
               <span className="text-xs text-gray-500">월 자유 예산</span>
-              <span className="ml-2 text-base font-bold text-gray-800">{formatAmount(preview.free_per_month)}</span>
+              <span className="ml-2 text-base font-bold text-gray-800">
+                {formatAmount(preview.free_per_month)}
+              </span>
             </div>
             <div className="text-right">
               <span className="text-xs text-gray-500">하루</span>
-              <span className={`ml-1 text-base font-bold ${isDailyLow ? 'text-red-500' : 'text-gray-800'}`}>
+              <span
+                className={`ml-1 text-base font-bold ${isDailyLow ? 'text-red-500' : 'text-gray-800'}`}
+              >
                 {formatAmount(preview.daily_estimate)}
               </span>
             </div>
@@ -373,14 +516,18 @@ function TargetDateCard({
 
           {isDailyLow && (
             <div className="mb-2 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
-              하루 {formatAmount(preview.daily_estimate)}으로 설정됩니다. 기간을 줄이거나 자금을 늘리면 더 여유로워져요.
+              하루 {formatAmount(preview.daily_estimate)}으로 설정됩니다. 기간을 줄이거나 자금을
+              늘리면 더 여유로워져요.
             </div>
           )}
 
           {/* 월별 브레이크다운 */}
           <div className="divide-y divide-gray-100">
             {displayMonths?.map((m, i) => (
-              <div key={m.month} className={`flex items-center justify-between py-1.5 text-xs ${i === 0 ? 'pt-0' : ''}`}>
+              <div
+                key={m.month}
+                className={`flex items-center justify-between py-1.5 text-xs ${i === 0 ? 'pt-0' : ''}`}
+              >
                 <span className="text-gray-500">{m.month.slice(2)}</span>
                 <div className="flex items-center gap-3">
                   <span className="text-gray-400">잠긴 {formatAmount(m.locked)}</span>
@@ -444,9 +591,16 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
     }
   }, []);
 
-  useEffect(() => { void fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    void fetchAll();
+  }, [fetchAll]);
 
-  const handleAddFixedCost = async (data: { name: string; amount: number; category?: string; day_of_month?: number | null }) => {
+  const handleAddFixedCost = async (data: {
+    name: string;
+    amount: number;
+    category?: string;
+    day_of_month?: number | null;
+  }) => {
     const res = await fetch('/api/budget/fixed-costs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -489,6 +643,18 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
     onSettingsChange?.();
   };
 
+  const handleToggleDefault = async (id: number, next: boolean) => {
+    const res = await fetch(`/api/budget/assets/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_default: next }),
+    });
+    if (!res.ok) throw new Error('기본 자산 설정 실패');
+    // 다른 자산의 is_default가 변경되었을 수 있어 전체 재조회
+    await fetchAll();
+    onSettingsChange?.();
+  };
+
   const activeCosts = fixedCosts.filter((c) => c.active);
   const inactiveCosts = fixedCosts.filter((c) => !c.active);
   const totalFixed = activeCosts.reduce((s, c) => s + c.amount, 0);
@@ -507,7 +673,10 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
       {/* 목표 기간 설정 */}
       <TargetDateCard
         savedTarget={savedTarget}
-        onSaved={(target) => { setSavedTarget(target); onSettingsChange?.(); }}
+        onSaved={(target) => {
+          setSavedTarget(target);
+          onSettingsChange?.();
+        }}
       />
 
       {/* 고정 지출 */}
@@ -522,7 +691,12 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
         ) : (
           <div className="divide-y divide-gray-100">
             {activeCosts.map((cost) => (
-              <FixedCostItem key={cost.id} cost={cost} onUpdate={handleUpdateFixedCost} onDelete={handleDeleteFixedCost} />
+              <FixedCostItem
+                key={cost.id}
+                cost={cost}
+                onUpdate={handleUpdateFixedCost}
+                onDelete={handleDeleteFixedCost}
+              />
             ))}
 
             {inactiveCosts.length > 0 && (
@@ -531,7 +705,10 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
                   <span className="text-xs font-medium text-gray-400">비활성</span>
                 </div>
                 {inactiveCosts.map((cost) => (
-                  <div key={cost.id} className="flex items-center justify-between px-4 py-2.5 opacity-50">
+                  <div
+                    key={cost.id}
+                    className="flex items-center justify-between px-4 py-2.5 opacity-50"
+                  >
                     <span className="text-sm text-gray-500">{cost.name}</span>
                     <span className="text-sm text-gray-500">{formatAmount(cost.amount)}</span>
                   </div>
@@ -561,7 +738,12 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
         ) : (
           <div className="divide-y divide-gray-100">
             {assets.map((asset) => (
-              <AssetItem key={asset.id} asset={asset} onUpdate={handleUpdateAsset} />
+              <AssetItem
+                key={asset.id}
+                asset={asset}
+                onUpdate={handleUpdateAsset}
+                onToggleDefault={handleToggleDefault}
+              />
             ))}
           </div>
         )}

@@ -8,8 +8,8 @@ const BASE: MonthAllocatorInput = {
   installments: [],
   plannedExpenses: [],
   currentBillingMonth: '2026-04',
-  targetMonth: '2026-06',   // 3개월: Apr, May, Jun
-  today: '2026-04-11',      // Apr 주기: 03-14~04-13 (31일)
+  targetMonth: '2026-06', // 3개월: Apr, May, Jun
+  today: '2026-04-11', // Apr 주기: 03-14~04-13 (31일)
 };
 
 describe('F. 엣지 케이스', () => {
@@ -24,7 +24,7 @@ describe('F. 엣지 케이스', () => {
       expect(apr.installments).toBe(10000);
     });
 
-    it('isNew=true → 현재 월 installments=0, 미래 월은 포함', () => {
+    it('isNew=true → 현재 월/미래 월 모두 installments=0 (ADR 0015: 미래 월 INSERT 즉시 자산 차감)', () => {
       const result = allocateMonthlyBudgets({
         ...BASE,
         installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: true }],
@@ -32,12 +32,12 @@ describe('F. 엣지 케이스', () => {
       const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
       const may = result.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
       const jun = result.monthlyBudgets.find((m) => m.yearMonth === '2026-06')!;
-      expect(apr.installments).toBe(0);     // 현재 월 제외
-      expect(may.installments).toBe(10000); // 미래 월 포함
-      expect(jun.installments).toBe(10000); // 미래 월 포함
+      expect(apr.installments).toBe(0); // 현재 월 isNew=true 제외 (자유지출에 잡힘)
+      expect(may.installments).toBe(0); // 미래 월 — ADR 0015로 자산 차감 완료
+      expect(jun.installments).toBe(0); // 미래 월 — ADR 0015로 자산 차감 완료
     });
 
-    it('isNew=true vs isNew=false — 총 locked 차이는 현재 월 할부 전액', () => {
+    it('isNew=true vs isNew=false — totalLocked 차이는 현재 월 할부 전액 (미래 월은 양쪽 모두 0)', () => {
       const rOld = allocateMonthlyBudgets({
         ...BASE,
         installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: false }],
@@ -46,7 +46,7 @@ describe('F. 엣지 케이스', () => {
         ...BASE,
         installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: true }],
       });
-      // isNew=false는 현재 월에 round(10000*1)=10000 추가
+      // 현재 월: isNew=false→10000, isNew=true→0. 미래 월: 양쪽 모두 0.
       expect(rOld.totalLocked - rNew.totalLocked).toBe(10000);
     });
   });

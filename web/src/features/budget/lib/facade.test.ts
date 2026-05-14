@@ -5,7 +5,11 @@ vi.mock('./snapshot/monthly-snapshot-repo', () => ({
   readSnapshotByMonth: vi.fn(),
   saveSnapshotIfAbsent: vi.fn(),
 }));
-vi.mock('./repository/assets-repo', () => ({ readDistributableAssetBalance: vi.fn() }));
+vi.mock('./repository/assets-repo', () => ({
+  readDistributableAssetBalance: vi.fn(),
+  applyAssetDeduction: vi.fn(),
+  applyAssetIncrease: vi.fn(),
+}));
 vi.mock('./repository/fixed-costs-repo', () => ({ readFixedCostsMonthlyTotal: vi.fn() }));
 vi.mock('./repository/installments-repo', () => ({ readActiveInstallments: vi.fn() }));
 vi.mock('./repository/planned-repo', () => ({ readPlannedExpenses: vi.fn() }));
@@ -32,7 +36,11 @@ import {
   runSettlementIfDue,
 } from './facade';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
-import { readDistributableAssetBalance } from './repository/assets-repo';
+import {
+  readDistributableAssetBalance,
+  applyAssetDeduction,
+  applyAssetIncrease,
+} from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
@@ -62,6 +70,8 @@ function setupCommonMocks() {
   vi.mocked(readIncomeTotal).mockResolvedValue(0);
   vi.mocked(readCurrentMonthOnlyIncome).mockResolvedValue(0);
   vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
+  vi.mocked(applyAssetDeduction).mockResolvedValue([]);
+  vi.mocked(applyAssetIncrease).mockResolvedValue([]);
 }
 
 describe('getMonthlyAllocation', () => {
@@ -181,6 +191,40 @@ describe('runSettlementIfDue', () => {
     // availableAtEnd = 5_000_000 + 200_000 - 300_000 - 50_000 = 4_850_000
     expect(result.snapshot?.available_at_end).toBe(4_850_000);
     expect(result.snapshot?.available_at_start).toBe(5_000_000);
+  });
+
+  it('snapshot 신규 저장 시 자산 자동 차감/증액 호출 (flex + excluded, income 분리)', async () => {
+    const settlementNow = new Date('2026-04-14T12:00:00Z');
+
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
+    vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
+    vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    await runSettlementIfDue(1, settlementNow);
+
+    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 350_000); // flex + excluded
+    expect(applyAssetIncrease).toHaveBeenCalledWith(1, 200_000); // income
+  });
+
+  it('snapshot 재실행(saved=false) 시 자산 변동 호출 없음 — idempotency', async () => {
+    const settlementNow = new Date('2026-04-14T12:00:00Z');
+
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
+    vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
+    vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
+    // 이미 같은 yearMonth 저장됨 — UNIQUE 제약으로 saved=false
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
+
+    const result = await runSettlementIfDue(1, settlementNow);
+
+    expect(result.settled).toBe(false);
+    expect(applyAssetDeduction).not.toHaveBeenCalled();
+    expect(applyAssetIncrease).not.toHaveBeenCalled();
   });
 });
 

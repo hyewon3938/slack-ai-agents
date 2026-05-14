@@ -1,7 +1,11 @@
 import { addBillingMonths, getBillingRange, calcCycleDays } from '../billing/cycle';
 import type {
-  BillingCycle, InstallmentInput, MonthAllocatorInput, MonthAllocatorResult,
-  MonthlyBudget, PlannedInput,
+  BillingCycle,
+  InstallmentInput,
+  MonthAllocatorInput,
+  MonthAllocatorResult,
+  MonthlyBudget,
+  PlannedInput,
 } from '../types-v2';
 
 interface MonthEntryInput {
@@ -19,9 +23,14 @@ function buildMonthEntry(p: MonthEntryInput): { entry: MonthlyBudget; locked: nu
   const cycleDays = calcCycleDays(from, to);
   const allocatedDays = p.index === 0 ? p.currentAllocatedDays : cycleDays;
 
-  const installmentSum = p.installments
-    .filter((inst) => inst.remainingCount > p.index && (p.index > 0 || !inst.isNew))
-    .reduce((s, inst) => s + inst.monthlyAmount, 0);
+  // 미래 결제주기 할부(p.index >= 1)는 INSERT 즉시 자산에서 차감되므로 monthBudget 락에서 제외.
+  // 현재 월의 신규 할부(isNew=true)는 자유지출로 잡혀있어 락에서 제외 — 이중 카운트 방지.
+  const installmentSum =
+    p.index === 0
+      ? p.installments
+          .filter((inst) => inst.remainingCount > 0 && !inst.isNew)
+          .reduce((s, inst) => s + inst.monthlyAmount, 0)
+      : 0;
   const plannedSum = p.plannedExpenses
     .filter((e) => e.yearMonth === month)
     .reduce((s, e) => s + e.amount, 0);
@@ -33,8 +42,13 @@ function buildMonthEntry(p: MonthEntryInput): { entry: MonthlyBudget; locked: nu
 
   return {
     entry: {
-      yearMonth: month, allocatedDays, fixed, installments: instVal, planned,
-      free: 0, isCurrent: p.index === 0,
+      yearMonth: month,
+      allocatedDays,
+      fixed,
+      installments: instVal,
+      planned,
+      free: 0,
+      isCurrent: p.index === 0,
     },
     locked: fixed + instVal + planned,
   };
@@ -43,7 +57,10 @@ function buildMonthEntry(p: MonthEntryInput): { entry: MonthlyBudget; locked: nu
 /** 자산/런웨이/고정비/할부/예정 → 월별 자유 예산 배분 */
 export function allocateMonthlyBudgets(input: MonthAllocatorInput): MonthAllocatorResult {
   const empty: MonthAllocatorResult = {
-    monthlyBudgets: [], dailyFree: 0, freePerMonth: null, totalLocked: 0,
+    monthlyBudgets: [],
+    dailyFree: 0,
+    freePerMonth: null,
+    totalLocked: 0,
   };
   if (!input.targetMonth || !/^\d{4}-\d{2}$/.test(input.targetMonth)) return empty;
 
@@ -54,7 +71,10 @@ export function allocateMonthlyBudgets(input: MonthAllocatorInput): MonthAllocat
 
   const { from: cf, to: ct } = getBillingRange(input.currentBillingMonth);
   const currentCycle: BillingCycle = {
-    yearMonth: input.currentBillingMonth, from: cf, to: ct, totalDays: calcCycleDays(cf, ct),
+    yearMonth: input.currentBillingMonth,
+    from: cf,
+    to: ct,
+    totalDays: calcCycleDays(cf, ct),
   };
   const currentAllocatedDays = currentCycle.totalDays;
 
