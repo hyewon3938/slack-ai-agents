@@ -11,6 +11,7 @@ import { IncomeEditModal } from '@/features/budget/components/income-edit-modal'
 import { CategoryChart } from '@/features/budget/components/category-chart';
 import { DailyBudgetLogView } from '@/features/budget/components/daily-budget-log';
 import { PlannedExpenseList } from '@/features/budget/components/planned-expense-list';
+import { CategoryLimitTracker } from '@/features/budget/components/category-limit-tracker';
 import { MonthNavigator } from '@/features/budget/components/month-navigator';
 import { PillTabs } from '@/components/ui/tabs';
 import { CardSkeleton, ListSkeleton } from '@/components/ui/skeleton';
@@ -62,6 +63,11 @@ export default function ManagePage() {
           <MonthSummaryCard summary={summary} />
         </div>
       ) : null}
+
+      {/* 카테고리 한도 트래커 */}
+      <div className="mb-4">
+        <CategoryLimitTracker yearMonth={selectedMonth} refreshTrigger={expenseVersion} />
+      </div>
 
       {/* 예정 지출 */}
       <div className="mb-4">
