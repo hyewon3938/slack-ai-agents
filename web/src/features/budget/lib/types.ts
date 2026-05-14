@@ -56,6 +56,8 @@ export interface AssetRow {
   type: string;
   available_amount: number | null;
   is_emergency: boolean;
+  /** 자동 차감 우선순위 자산 (user당 최대 1개) */
+  is_default: boolean;
   memo: string | null;
   updated_at: string;
 }
