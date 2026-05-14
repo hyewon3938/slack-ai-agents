@@ -5,7 +5,11 @@ import { allocateTodayBudget } from './allocator/day-allocator';
 import { projectRunway, projectFromAllocator } from './allocator/runway-projection';
 import { detectSettlementTrigger, buildSettlementSnapshot } from './settlement/settle';
 
-import { readDistributableAssetBalance } from './repository/assets-repo';
+import {
+  readDistributableAssetBalance,
+  applyAssetDeduction,
+  applyAssetIncrease,
+} from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readActiveInstallments } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
@@ -276,5 +280,13 @@ export async function runSettlementIfDue(
     availableAtEnd,
   });
   const result = await saveSnapshotIfAbsent(userId, snapshot);
+
+  // snapshot 신규 저장 시에만 자산 변동 (UNIQUE(user, year_month)로 재실행 시 중복 차감 방지).
+  // 자유+제외 지출은 default 자산에서 차감, 수입은 default 자산에 증액.
+  if (result.saved) {
+    await applyAssetDeduction(userId, flex + excluded);
+    await applyAssetIncrease(userId, income);
+  }
+
   return { settled: result.saved, snapshot };
 }
