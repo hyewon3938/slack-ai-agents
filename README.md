@@ -127,7 +127,7 @@ graph LR
 - **Custom Skills**: `/init-project`, `/design`, `/build` — 계획서 파일로 세션 간 핸드오프
 - **MCP**: Slack(에이전트 응답 품질 점검)
 - **Scheduled Tasks (비동기 깊은 분석 전용)**: 개발 리포트(Opus 분석), 주간 사주 패턴 분석, 주간 일운 사전 분석, 밤 응원 메시지
-- **ADR (Architecture Decision Records)**: 되돌리기 어려운 설계 판단을 표준 포맷(Status·Context·Decision·Consequences = 상태·배경·결정·결과)으로 기록 → `/design`·`/build` 스킬에 ADR 판단 로직 내장
+- **설계 사고 4문서 아키텍처**: `plans/`(휘발 메모) · `design-notebook/`(마스터 단위 서사·분기점·회고) · `adr/`(되돌리기 어려운 결정, Michael Nygard 포맷) · `features.md`(현황 카탈로그)로 사고를 분산 → 인터뷰 분기점·포기·회고가 코드만 남고 휘발되는 문제 해결. `/design` 스킬이 단계별로 자동 갱신
 - **자체 업타임 모니터링**: GitHub Actions cron으로 봇·웹 5분 간격 폴링 + Slack DOWN/RECOVERY 알림
 
 AI를 **코딩 보조**가 아니라 협업 개발자로 취급하고, 작업 단위는 GitHub Issues·PR로 리뷰·검증한다.
@@ -334,11 +334,13 @@ yarn dev
 
 ## 관련 문서
 
-문서 운영 — 외부에 보여줄 마일스톤은 `project-history.md`, 되돌리기 어려운 설계 판단은 `adr/`, 일상 작업·성향 분석 등 비공개 정보는 `_personal/`(gitignored)로 분리.
+문서 운영 — 마일스톤은 `project-history.md`, 마스터 단위 설계 서사는 `design-notebook/`, 되돌리기 어려운 판단은 `adr/`, 현재 기능 카탈로그는 `features.md`, 일상 작업·성향 분석 등 비공개 정보는 `_personal/`(gitignored)로 분리.
 
 | 문서                                                           | 내용                                                                                                                         |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| [docs/design-notebook/](docs/design-notebook/)                 | 마스터 단위 설계 서사 — Phase 별 분기점·포기·회고 누적                                                                       |
 | [docs/adr/](docs/adr/)                                         | Architecture Decision Records — 되돌리기 어려운 설계 판단의 배경·대안·트레이드오프                                           |
+| [docs/features.md](docs/features.md)                           | 현재 기능 카탈로그 — 도메인별로 작동 중인 기능 한눈에                                                                        |
 | [docs/project-history.md](docs/project-history.md)             | 마일스톤 timeline — 기능 출시·아키텍처 전환·인프라 변화 (2026-04-07 이전: [archive-v1-v2.md](docs/history/archive-v1-v2.md)) |
 | [docs/domains/](docs/domains/)                                 | 도메인별 명세 — 일정·루틴·사주·예산 각 도메인의 DB 스키마·API·로직                                                           |
 | [docs/conventions.md](docs/conventions.md)                     | 코드 컨벤션 & 보안 체크리스트                                                                                                |
