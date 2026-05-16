@@ -16,7 +16,7 @@
 ## 전체 Phase 흐름
 
 - [x] **Phase 1**: 패턴 통합 · 임계치 외부화 · 주간 리포트 재구성 ([#389](https://github.com/hyewon3938/slack-ai-agents/issues/389), 2026-05-14 머지)
-- [ ] **Phase 2**: LLM 자율 슬롯 + 측정 ([#390](https://github.com/hyewon3938/slack-ai-agents/issues/390), 진행 중)
+- [x] **Phase 2**: LLM 자율 슬롯 + 측정 ([#390](https://github.com/hyewon3938/slack-ai-agents/issues/390), 2026-05-16 머지)
 - [ ] **Phase 3**: 사주 매핑 — 십성/오행을 임계치 가중치로 ([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391))
 - [ ] **Phase 4**: 사주 매핑 — 카테고리/패턴별 임계치 외부화 확장 ([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392))
 
@@ -68,13 +68,14 @@
 
 ---
 
-## Phase 2: LLM 자율 슬롯 + Outcome 검증 (2026-05-16 설계 완료)
+## Phase 2: LLM 자율 슬롯 + Outcome 검증 (2026-05-16 머지)
 
 - 이슈: [#390](https://github.com/hyewon3938/slack-ai-agents/issues/390)
 - 관련 ADR: [ADR-0016](../adr/0016-llm-autonomous-slot-outcome-verification.md)
+- 관련 PR: [#404](https://github.com/hyewon3938/slack-ai-agents/pull/404) (구현), [#405](https://github.com/hyewon3938/slack-ai-agents/pull/405) (채널/패턴 fix)
 - 관련 계획서: `.claude/plans/390-llm-autonomous-slot.md`
 - Supersedes: [#354](https://github.com/hyewon3938/slack-ai-agents/issues/354) (LLM 자율 트렌드 인사이트, 후순위 보류 → Phase 2 흡수)
-- 상태: 설계 완료, 구현 대기
+- 상태: 머지 완료
 
 ### 결정 요약
 
@@ -121,8 +122,16 @@ SQL 결정론(Phase 1, 11개 패턴) 위에 **LLM 자율 발견 슬롯**을 추�
 
 ### 회고
 
-> 설계 단계 회고 — 머지 후 별도 회고 추가
+> 설계 단계 회고 + 머지 직후 회고
 
 - **design-notebook이 사고 누락 방지로 처음 작동한 사례**: 인터뷰 중간 reaction 기반 피드백 옵션을 제안했는데, 사용자가 "outcome-based 검증하기로 하지 않았어?"로 짚어주면서 design-notebook 첫 줄("LLM은 발견 슬롯에서만 자율 — 주간 1회, 가설 제기 → DB 보존 → 사후 검증")을 다시 확인 → 검증 메커니즘 전체를 outcome 사이클로 재설계. design-notebook 첫 줄(개요/철학)을 인터뷰 진입 시점에 명시적으로 다시 읽는 절차가 필요. 다음 phase부터 5단계 코드베이스 탐색에 design-notebook 개요 재독 명시
 - **Phase 2가 v2의 "LLM 자율 슬롯"이지만 균형 설계가 핵심이었음**: 단순히 LLM에게 자유를 주는 게 아니라, 컨텍스트 도메인 제한(4개) + 검증 SQL 안전장치(4종) + 점진적 노출(임계 10건) 세 겹의 안전장치로 v2 원칙(텍스트 해석 의존도 최소화)을 지킨 설계
 - **#354 supersede가 자연스럽게 풀린 사례**: 분리 보류 상태로 두면 추후 같은 인터뷰를 또 해야 했을 텐데, Phase 2 진입 시점에 통합 결정으로 마스터 #393의 phase 흐름이 깔끔해짐. 마스터 단위 설계가 별도 후순위 이슈를 흡수하는 패턴은 다른 마스터에서도 적용 가능
+
+#### 머지 직후 회고 (PR #405)
+
+머지 직후 두 가지 실수가 사용자 피드백으로 즉시 노출됨 (PR #405):
+
+- **채널 도메인 인지 누락** — LLM 자율 발견 슬롯은 schedule/sleep/routine/expense를 분석하므로 `#life`가 맞는데, 모듈 이름이 `agents/insight/llm-insight-fast-path.ts` 라는 표면 단어에 끌려 `#insight` 채널에 fast path를 배치. 모듈 위치(`agents/<domain>/`)와 발송 채널은 도메인 의미 기준으로 함께 정렬되어야 함
+- **자유언어 추출 정규식 사용** — `/(발견.*검증|정확도|LLM.*(어땠|어때|어떻게))/i` 같은 부분 추출 패턴은 사용자가 무엇이 fast path를 trigger하는지 예측 불가 + 약속의 의미 상실. fortune fast path와 동일한 `^명령어[.?!]?$` 약속 패턴이 이 프로젝트 표준. 메모리 `feedback_no_freeform_regex_extraction.md`로 영구화
+- **머지 후 운영 단계가 사실상 디버그 cycle 역할을 했음** — 두 실수 모두 머지 1시간 내 사용자 첫 사용 → fix PR. 1인 환경에서는 PR 머지 = 실사용 시작이므로, "머지 직후 1시간 내 첫 사용 피드백 반영" 패턴을 다음 phase부터 의식적으로 사용
