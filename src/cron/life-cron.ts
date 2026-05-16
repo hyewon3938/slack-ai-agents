@@ -47,6 +47,9 @@ import {
 } from '../agents/life/blocks.js';
 import { pickMorningNudges, pickNightNudges } from '../shared/insights.js';
 import { weeklyReportTask } from './weekly-report.js';
+import { weeklyLlmInsightTask } from './weekly-llm-insight.js';
+import { monthlyLlmInsightTask } from './monthly-llm-insight.js';
+import { verifyLlmInsightsTask } from './verify-llm-insights.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView } from '../agents/life/home.js';
 
@@ -646,6 +649,11 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   weeklyReport: weeklyReportTask,
   insightMorning: insightMorningTask,
   insightNight: insightNightTask,
+  weeklyLlmInsight: weeklyLlmInsightTask,
+  monthlyLlmInsight: monthlyLlmInsightTask,
+  verifyLlmInsights: async () => {
+    await verifyLlmInsightsTask();
+  },
 };
 
 // ─── CronScheduler 클래스 ───────────────────────────────

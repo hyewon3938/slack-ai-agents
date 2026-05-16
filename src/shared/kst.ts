@@ -60,6 +60,9 @@ export const getKSTTimeString = (): string => {
 /** KST 기준 요일 번호 (0=일 ~ 6=토) */
 export const getKSTDayOfWeek = (): number => getKSTDate().getDay();
 
+/** KST 기준 일자 (1~31) */
+export const getKSTDayOfMonth = (): number => getKSTDate().getDate();
+
 /**
  * 생활 기준 "오늘" 날짜 (YYYY-MM-DD).
  * 새벽 5시 이전이면 아직 전날로 취급 — 올빼미형 사용자 대응.
@@ -84,8 +87,13 @@ export const getEffectiveTodayISO = (): string => {
  * YYYY-MM-DD 문자열 → KST 기준 날짜 컴포넌트.
  * 정오 KST(= 03:00 UTC)로 파싱해 UTC 메서드 사용 시 날짜 경계 문제 방지.
  */
-const parseKSTDateStr = (dateStr: string): {
-  year: number; month: number; day: number; dow: number;
+const parseKSTDateStr = (
+  dateStr: string,
+): {
+  year: number;
+  month: number;
+  day: number;
+  dow: number;
 } => {
   const parts = dateStr.split('-');
   const year = Number(parts[0]);
