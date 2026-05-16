@@ -31,18 +31,27 @@ const sayMock = (): { say: ReturnType<typeof vi.fn>; calls: unknown[] } => {
 };
 
 describe('tryLlmInsightFastPath', () => {
-  it('매칭되지 않는 문장은 false 반환', async () => {
+  it('약속 명령어 외 문장은 false 반환 (자유언어 매칭 없음)', async () => {
     const { say } = sayMock();
-    const result = await tryLlmInsightFastPath('오늘 일정 뭐 있어', say as never, 1);
-    expect(result).toBe(false);
+    const cases = [
+      '오늘 일정 뭐 있어',
+      '발견 검증 어떻게 됐어',
+      'LLM 정확도 알려줘',
+      '이번 LLM 어땠어',
+      '발견 정확도',
+    ];
+    for (const text of cases) {
+      const result = await tryLlmInsightFastPath(text, say as never, 1);
+      expect(result, text).toBe(false);
+    }
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it('"발견 검증" 매칭 → true + say 호출 (0건 시 안내)', async () => {
+  it('"LLM발견" 매칭 → true + 0건 안내', async () => {
     mockQuery.mockResolvedValue({ rows: [] });
 
     const { say, calls } = sayMock();
-    const result = await tryLlmInsightFastPath('발견 검증 어떻게 됐어', say as never, 1);
+    const result = await tryLlmInsightFastPath('LLM발견', say as never, 1);
     expect(result).toBe(true);
     expect(calls.length).toBeGreaterThanOrEqual(1);
     const blockArg = calls[0] as { blocks: unknown[] };
@@ -51,18 +60,13 @@ describe('tryLlmInsightFastPath', () => {
     expect(blocksStr).toContain('누적 검증: 0건');
   });
 
-  it('"정확도" 매칭 → true', async () => {
+  it('띄어쓰기 변형 모두 매칭 ("LLM 발견", "LLM  발견", "LLM발견.")', async () => {
     mockQuery.mockResolvedValue({ rows: [] });
     const { say } = sayMock();
-    const result = await tryLlmInsightFastPath('LLM 정확도 알려줘', say as never, 1);
-    expect(result).toBe(true);
-  });
-
-  it('"LLM 어땠어" 매칭 → true', async () => {
-    mockQuery.mockResolvedValue({ rows: [] });
-    const { say } = sayMock();
-    const result = await tryLlmInsightFastPath('이번 LLM 어땠어', say as never, 1);
-    expect(result).toBe(true);
+    for (const text of ['LLM 발견', 'LLM  발견', 'LLM발견.', 'llm발견']) {
+      const result = await tryLlmInsightFastPath(text, say as never, 1);
+      expect(result, text).toBe(true);
+    }
   });
 
   it('누적 hit/miss 있으면 hitRate 표시', async () => {
@@ -98,7 +102,7 @@ describe('tryLlmInsightFastPath', () => {
     const say = vi.fn(async (arg: unknown) => {
       calls.push(arg);
     });
-    const result = await tryLlmInsightFastPath('정확도 알려줘', say as never, 1);
+    const result = await tryLlmInsightFastPath('LLM 발견', say as never, 1);
     expect(result).toBe(true);
     const blocksStr = JSON.stringify(calls[0]);
     expect(blocksStr).toContain('누적 검증 10건');
