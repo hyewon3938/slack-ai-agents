@@ -3,11 +3,103 @@
 개인 라이프 데이터 AI 에이전트 시스템의 **포트폴리오 timeline**.
 의미 있는 마일스톤(기능 출시, 아키텍처 전환, 인프라 변화 등)만 기록한다.
 
-> **역할 분담**: 일상 작업 로그는 [docs/_personal/work-log.md](_personal/work-log.md), 설계 판단은 [docs/adr/](adr/), 본 문서는 외부 청중에게 보여줄 만한 마일스톤 timeline.
+> **역할 분담**: 설계 판단은 [docs/adr/](adr/), 마스터 단위 설계 서사(분기·포기·회고)는 [docs/design-notebook/](design-notebook/), 현재 기능 카탈로그는 [docs/features.md](features.md). 본 문서는 외부 청중에게 보여줄 만한 마일스톤 timeline.
 
-> **추가 기준**: 외부에 보여줄 만한 변화인가? — YES면 여기, NO면 work-log.
+> **추가 기준**: 외부에 보여줄 만한 변화인가? (기능 출시·아키텍처 전환·인프라 변화) — YES면 여기, 부분 개선·버그 fix는 제외.
 
 > 2026-04-07 이전 기록은 [history/archive-v1-v2.md](history/archive-v1-v2.md) 참조.
+
+---
+
+## 2026-05-15: 4문서 아키텍처 도입 (#401, PR #402)
+
+설계 사고가 코드만 남으면 휘발되는 문제를 해결하기 위해 문서 체계를 4계층으로 재편.
+
+| 문서 | 역할 | 수명 |
+|------|------|------|
+| `.claude/plans/<이슈>-*.md` | 구현 직전 메모 | 휘발 |
+| `docs/design-notebook/<master>.md` | 마스터 단위 서사 (분기점·포기·회고) | 영구, 누적 |
+| `docs/adr/NNNN-*.md` | 되돌리기 어려운 결정 | 영구, 불변 |
+| `docs/features.md` | 현재 기능 카탈로그 | 현황 |
+
+`docs/design-notebook/insight-engine-v2.md`를 첫 산출물로 작성 (Phase 1 회고 backfill + Phase 2 진입 준비). features.md는 도메인 4개 + 횡단 기능 + 인프라 한 페이지 요약.
+
+---
+
+## 2026-05-14: 프로액티브 인사이트 엔진 v2 Phase 1 (#389, PR #396)
+
+매일/주간 인사이트의 결정론적 SQL 패턴을 통합·확장하고 임계치를 외부화. 추후 사주 매핑 단계에서 한 곳에서 튜닝 가능한 구조 확보.
+
+- **SQL 패턴 6개 신설**: categorySkew / drift / recovery / lapseAlert / weeklyRegression / spottyPattern — 기존 5개와 합쳐 총 11개
+- **임계치 외부화**: `src/shared/insight-thresholds.ts` 단일 export. Phase 4 사주 매핑 튜닝 대비
+- **타입 확장**: `timing` (morning/night/weekly) + `domain` (routine/sleep/schedule)
+- **동적 노출 정책**: priority ≥5 + domain dedupe + 최대 3개, 0개면 메시지 발송 안 함
+- **주간 리포트 재구성**: 일요일 23:00 → 월요일 09:00 이동, Block Kit 인사이트→한눈에→총평 순서로 재구성
+
+판단 근거: [ADR 0014](adr/0014-insight-engine-unification.md). 마스터 #393의 Phase 1 완료.
+
+---
+
+## 2026-05-13: 일정 카테고리 FK 전환 (#394, PR #395)
+
+`schedules.category(TEXT) + subcategory(TEXT)` → `category_id(INTEGER FK)`로 통합하고 계층은 `categories.parent_id`로 표현. 카테고리 기반 분석의 선행 작업.
+
+- **3중 안전망**: pg_dump 전체 백업 + 백업 테이블 + 단일 트랜잭션 빅뱅 마이그레이션 (실패 시 ROLLBACK 한 번으로 원복)
+- **표준 JOIN 패턴**: `LEFT JOIN categories c + p` + `COALESCE(c.type, p.type)` 타입 상속
+- **웹**: `ScheduleRow.category_id` 단일 필드, `validateCategoryOwnership`으로 cross-user FK 차단
+- **필터 바**: 카테고리/하위 카테고리 필터를 number 기반 Set으로 전환
+
+판단 근거: [ADR 0013](adr/0013-schedule-category-fk-migration.md) — 단일 FK + parent_id 계층 채택.
+
+---
+
+## 2026-05-08: 운세 분석 개인화 — 라이프 테마 두 트랙 (#383, PR #385)
+
+운세 분석에 의사결정 가이드 + 라이프 테마 활성/잠재 두 트랙을 도입. 자연 prose 톤으로 통일.
+
+- **분석 8 관점**: 십성/합충형/십이운성/월운/개인 패턴/라이프 테마 + 의사결정 가이드(LLM 자유 선택 3\~5개) + 잠재 카테고리 surface(십성→영역 매핑)
+- **두 트랙**: 활성(active life_themes 직접 연결) + 잠재(운에서 활성화되는 영역 자동 surface)
+- **자연 prose**: 마크다운 헤더/이모지/라벨 제거, summary(*볼드*) + analysis + advice(_기울임_) 결합
+- **표시 경로 통일**: `src/shared/fortune-format.ts` 공유 헬퍼 — 아침 푸시 + fast path 동일 포맷
+
+판단 근거: [ADR 0012](adr/0012-fortune-personalization.md).
+
+---
+
+## 2026-05-08: 사주 패턴 cross-domain 분석 (#382, PR #384)
+
+`weekly-saju-review`의 분석 도메인이 일기·수면 외(지출/일정/루틴/중간기상)로 확장됨에 따라 패턴 저장 구조 결정.
+
+- `saju_patterns` 테이블 통합 유지 (도메인별 분리 X) + evidence JSONB 표준 형식 정의
+- 모든 도메인 28일 롤링 윈도우 통일
+- 예산 초과 판정은 [ADR 0009](adr/0009-daily-log-baseline-anchor.md) 기준 일 예산 사용
+
+판단 근거: [ADR 0011](adr/0011-saju-pattern-cross-domain.md).
+
+---
+
+## 2026-05-06: 일 예산 산정 모델 이중화 (#376, PR #377)
+
+일 예산을 두 값으로 분리해 자유 예산 마이너스 + 신규 수입 시점의 멘탈 모델 어긋남 해결.
+
+- `todayBudget` (기준 일 예산): 사이클 시작 시 약속, 사이클 동안 사실상 불변. UI 회색 보조 텍스트
+- `todayRecommended` (오늘 예산): 매일 갱신되는 동적 권장값. 잔여 음수 시 0 클램프 → 회복 모드 진입 신호. UI 메인 표시
+- 회복 모드 안내 메시지: `todayRecommended === 0 && monthRemaining < 0` 조건
+- `daily_budget_logs.budget`은 `todayRecommended`를 저장 (의미 정렬, 스키마 변경 없음)
+
+판단 근거: [ADR 0008](adr/0008-daily-budget-dual-model.md).
+
+---
+
+## 2026-04-29: README 포트폴리오용 전면 재설계 (PR #370)
+
+README를 포트폴리오 메인 진입 문서로 재구성.
+
+- 차별점 4개: 프로액티브 인사이트 / LLM 운영 하네스 / 다층 보안 / 1인+AI 협업
+- 주요 기능 6섹션 도메인 단위 구성 + 채널 매핑 (#life·#insight·웹 전용)
+- 동작 방식 블록: 처리 흐름·인프라 분리·비동기 파이프라인·배포·관측
+- architecture.svg 메커니즘 강조 표현으로 갱신
+- 섹션 순서: 동작 방식 → 프로젝트 구조 → 기술 스택 → 개발 히스토리
 
 ---
 
