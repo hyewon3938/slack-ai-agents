@@ -195,6 +195,64 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 
 상세 배경 및 대안 비교는 [ADR 0014](../adr/0014-insight-engine-unification.md) 참조.
 
+### 9. 프로액티브 인사이트 v2 — Phase 2 (LLM 자율 슬롯)
+
+Phase 1(결정론적 SQL 11종)에 더해 **주간/월간 한정 LLM 자율 발견 슬롯**을 운영. LLM이 사용자 데이터 요약 컨텍스트를 보고 "신호 → 가설 → 검증 SQL"을 스스로 작성하면, N일 뒤 cron이 SQL을 실행해 outcome(hit/miss/inconclusive)을 채점한다. 텍스트(일기/사주)는 컨텍스트에서 배제 — 정량 데이터만 사용.
+
+#### 슬롯 시각
+
+| slot | cron | 트리거 |
+|------|------|--------|
+| weeklyLlmInsight | 월요일 09:30 | 28일 윈도우 → 1\~2개 finding |
+| monthlyLlmInsight | 매월 1일 09:30 | 90일 윈도우 → 1\~2개 finding |
+| verifyLlmInsights | 매일 09:10 | `verify_at <= NOW()` 대기열 50건 채점 |
+
+#### 컨텍스트 도메인 (텍스트 제외)
+
+`buildLlmInsightContext(userId, slot)` 가 LLM에 전달하는 데이터:
+- **수면**: 평균 / 취침·기상 시각 / 중간기상 횟수 / 일수
+- **루틴**: 전체 달성률 / 슬롯별 달성률 / 산발 빠짐 일자
+- **일정**: 카테고리 분포 (제목 미포함)
+- **지출**: 카테고리 발생 빈도 (금액 미포함)
+
+#### 4중 안전장치
+
+LLM 응답을 `validateLlmInsightResponse(text)` 가 순서대로 검사 — 하나라도 실패하면 해당 finding 폐기:
+
+1. **JSON 파싱 폴백**: 본문 추출 실패 시 빈 배열
+2. **SELECT-only 정규식**: `insert|update|delete|drop|truncate|alter|create|grant|revoke` 포함 시 제외
+3. **result_type 화이트리스트**: `boolean | scalar_count | ratio` 만 허용
+4. **verify_after_days clamp**: 1\~28 범위로 강제
+
+검증 SQL 실행은 `executeVerificationSql`이 `SET statement_timeout = 5000ms` 트랜잭션 안에서 처리. 에러 시 `outcome='inconclusive'` + errorText 보관.
+
+#### outcome 분류 (`classifyOutcome`)
+
+| result_type | hit | miss | inconclusive |
+|-------------|-----|------|--------------|
+| boolean | first col truthy (true / 't' / 'true' / '1') | falsy | 빈 rows 또는 null |
+| scalar_count | 양수 | 0 | 빈 rows 또는 null |
+| ratio | 양수 | 0 | 빈 rows 또는 null |
+
+#### 점진적 노출 (progressive disclosure)
+
+신뢰 확보 전에는 LLM이 "그럴듯한 헛소리"를 할 수 있으므로 메시지를 보수적으로 노출:
+
+- **누적 검증 < 10건**: finding 본문만 발송 (히트율 미공개)
+- **누적 검증 ≥ 10건**: "지난 검증 N건 중 M건 적중 (X%)" 한 줄 추가 — 사용자가 신호를 채점하면서 보기
+
+`tryLlmInsightFastPath` (정규식: `발견.*검증 | 정확도 | LLM.*어땠`) 로 누적 hit/miss/inconclusive + 최근 5건 조회 가능.
+
+#### 데이터 모델
+
+`llm_insights` 테이블 (마이그레이션 048):
+- 발견: signal_text / hypothesis_text / domains[] / confidence(high·medium)
+- 검증 계약: verification_sql / verification_result_type / verify_at
+- 검증 결과: outcome / verified_at / verification_result_json / verification_error
+- 노출 추적: shown_in_slot_at
+
+설계 배경 및 대안 비교는 [ADR 0016](../adr/0016-llm-autonomous-slot-outcome-verification.md) 참조.
+
 ## 파일 구조
 
 ```
