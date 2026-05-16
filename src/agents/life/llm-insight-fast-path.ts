@@ -1,7 +1,7 @@
 /**
  * 프로액티브 인사이트 v2 Phase 2 — LLM 자율 발견 조회 fast path + Slack 메시지 빌더.
  *
- * 사용자 자연어 ("발견 검증", "정확도", "LLM 어땠어") → 누적 통계 + 최근 발견 N개.
+ * 약속된 단일 명령어 "LLM발견" → 누적 정확도 + 최근 5건 응답.
  * Cron이 신규 발견을 발송할 때도 동일 모듈의 빌더 사용 (점진적 노출 로직 포함).
  */
 
@@ -12,7 +12,12 @@ import { sendMessage } from '../../shared/slack.js';
 import type { InsightSlot } from '../../shared/llm-insights.js';
 import type { LlmInsightDraft } from '../../shared/llm-insight-prompts.js';
 
-const LLM_INSIGHT_FAST_PATH_RE = /(발견.*검증|정확도|LLM.*(어땠|어때|어떻게))/i;
+/**
+ * 약속된 명령어만 매칭 — 시작/끝 앵커 + 띄어쓰기 0+개.
+ * 매칭 예: "LLM발견", "LLM 발견", "LLM발견."
+ * fortune fast path와 동일한 패턴 (자유언어 추출 없음).
+ */
+const LLM_INSIGHT_FAST_PATH_RE = /^LLM\s*발견[.?!]?$/i;
 const VERIFIED_THRESHOLD_FOR_DISCLOSURE = 10;
 const RECENT_INSIGHTS_LIMIT = 5;
 

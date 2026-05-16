@@ -5,7 +5,6 @@ import { queryOne } from '../../shared/db.js';
 import { getTodayISO, getEffectiveTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import { saveDiaryEntry, pickDiaryConfirmation, naturalDelay } from './diary-fast-path.js';
-import { tryLlmInsightFastPath } from './llm-insight-fast-path.js';
 import { formatFortuneText } from '../../shared/fortune-format.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
@@ -140,9 +139,6 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
 
     // ── fast path: 운세 조회 ──
     if (await tryFortuneFastPath(trimmed, say, userId)) return;
-
-    // ── fast path: LLM 자율 발견 조회 ──
-    if (await tryLlmInsightFastPath(trimmed, say, userId)) return;
 
     // ── fast path: 오늘 일기 조회 ──
     if (TODAY_DIARY_RE.test(trimmed)) {

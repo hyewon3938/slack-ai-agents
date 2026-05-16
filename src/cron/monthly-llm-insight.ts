@@ -6,7 +6,7 @@
 import type { App } from '@slack/bolt';
 import type { LifeCronConfig } from './life-cron.js';
 import { runAutonomousAnalysis, persistLlmInsights } from '../shared/llm-insights.js';
-import { buildLlmInsightSlackMessage } from '../agents/insight/llm-insight-fast-path.js';
+import { buildLlmInsightSlackMessage } from '../agents/life/llm-insight-fast-path.js';
 import { postBlockMessage } from '../shared/slack.js';
 import { getKSTDayOfMonth } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
@@ -19,9 +19,9 @@ export const monthlyLlmInsightTask = async (app: App, config: LifeCronConfig): P
     mappings.length > 0
       ? mappings.map((m) => ({
           userId: m.userId,
-          channelId: m.insightChannelId ?? m.slackUserId,
+          channelId: m.lifeChannelId ?? m.slackUserId,
         }))
-      : [{ userId: DEFAULT_USER_ID, channelId: process.env['INSIGHT_CHANNEL_ID'] ?? '' }];
+      : [{ userId: DEFAULT_USER_ID, channelId: process.env['LIFE_CHANNEL_ID'] ?? '' }];
 
   for (const target of targets) {
     if (!target.channelId) continue;
