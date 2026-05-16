@@ -127,18 +127,42 @@
 - 커밋: Conventional Commits (feat:, fix:, refactor:, test:, chore:)
 - 상세 컨벤션 → docs/conventions.md 참조
 
-## 개발 진행 관리
+## 개발 진행 관리 (4문서 아키텍처)
 
 - GitHub Issues에 단계별 개발 계획 정리
 - 브랜치: feature/xxx, fix/xxx → main PR
 - PR 단위: Issue 1개 = PR 1개
-- 프로젝트 히스토리(포트폴리오 timeline — 마일스톤급 변화만): docs/project-history.md
-- 일상 작업 로그(매일 작업 사실): docs/_personal/work-log.md (gitignored)
-- 설계 판단(되돌리기 어려운 결정): docs/adr/
+
+| 문서 | 역할 | 갱신 주체 |
+|------|------|----------|
+| `.claude/plans/<이슈>-*.md` | 구현 직전 메모 (휘발) | /design |
+| `docs/design-notebook/<master>.md` | 마스터 단위 서사 (Phase 별 누적) | /design + /build |
+| `docs/adr/NNNN-*.md` | 되돌리기 어려운 결정 (불변) | /design |
+| `docs/features.md` | 현재 기능 카탈로그 | /build |
+| `docs/project-history.md` | 포트폴리오 timeline (마일스톤급만) | /build |
+
 - 2026-04-07 이전 초기 마일스톤 archive: docs/history/archive-v1-v2.md
+
+## 운영 가이드 (사고 대응)
+
+평소엔 안 보지만 사고 발생 시 즉시 참조:
+
+- `docs/ops/db-backup.md` — DB 백업·복원 (Cloudflare R2)
+- `docs/ops/health-monitoring.md` — 업타임 모니터링 (GitHub Actions 5분 폴링)
+
+DB·백업·모니터링 관련 변경/사고 작업 시 해당 문서 먼저 읽고 시작. 실제 운영 상태와 어긋난 게 발견되면 PR 범위에 문서 갱신 포함.
+
+## 비공개 문서 (gitignored)
+
+`docs/_personal/` — Public 영역에 들어가면 안 되는 정보의 단일 저장소:
+
+- `budget-internal.md` — 실제 금액·월 고정비 (Claude가 대화에서 자동 갱신)
+- `credentials-internal.md` — 토큰·키 만료일·갱신 절차 (Claude가 자동 갱신)
+- `portfolio-candidates.md` — 이력서·면접·README 어필 포인트 (/design phase 마무리에서 후보 제안)
+- `design-drafts/` — 비공개 회고 (실수·감정·솔직 분석)
 
 ## Claude 작업 규칙
 
 - 커밋이 3\~5개 쌓이거나, 주제가 바뀌는 시점에 "여기서 커밋 끊자", "새 브랜치 파자", "PR 만들자" 등을 먼저 제안할 것
 - 하나의 브랜치에서 서로 다른 기능이 섞이기 시작하면 PR 머지 → 새 브랜치 전환을 권유할 것
-- `docs/_personal/developer-profile.md` (gitignore 대상)에 개발자 작업 스타일, 의사결정 패턴, 성향 분석을 기록 중. 협업 중 눈에 띄는 포인트(강점, 개선점, 새로운 패턴)가 발견되면 해당 문서의 "관찰 메모" 섹션에 날짜와 함께 추가할 것
+- 협업 중 눈에 띄는 어필 가능 포인트(기술 결정·작업 방식의 비자명한 패턴) 발견 시, /design phase 마무리에서 portfolio-candidates 후보로 제안
