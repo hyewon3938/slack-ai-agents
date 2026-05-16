@@ -48,11 +48,23 @@
 - 설계 흐름: [docs/design-notebook/insight-engine-v2.md](./design-notebook/insight-engine-v2.md)
 - 결정 기록: [ADR-0014](./adr/0014-insight-engine-unification.md)
 
+### LLM 자율 발견 슬롯 (Phase 2)
+
+- 주간(월요일 09:30) / 월간(매월 1일 09:30) — 정량 데이터 컨텍스트만으로 "신호 → 가설 → 검증 SQL" 자동 작성
+- N일 뒤 검증 cron(매일 09:10)이 SELECT-only SQL 실행 → outcome(hit/miss/inconclusive) 자동 채점
+- 4중 안전장치: JSON 파싱 폴백 / SELECT-only 정규식 / result_type 화이트리스트 / verify_after_days clamp 1\~28
+- 점진적 노출: 누적 검증 ≥ 10건부터 히트율 공개
+- 슬랙 조회: "발견 검증 어떻게 됐어" / "정확도 알려줘" / "LLM 어땠어"
+- 결정 기록: [ADR-0016](./adr/0016-llm-autonomous-slot-outcome-verification.md)
+
 ### 크론 시스템
 
 | 시간 | 내용 |
 |------|------|
 | 09:05 | 오늘 일정 + 낮 루틴 체크리스트 + 어제 리뷰 + morning 인사이트 |
+| 09:10 | LLM 자율 발견 outcome 검증 (대기열 50건) |
+| 월요일 09:30 | 주간 LLM 자율 발견 슬롯 (Block Kit) |
+| 매월 1일 09:30 | 월간 LLM 자율 발견 슬롯 (Block Kit) |
 | 23:55 | 하루 종합 리뷰 + 밤 루틴 + 마무리 잔소리 + night 인사이트 |
 | 월요일 09:00 | 주간 인사이트 리포트 (Block Kit) |
 | 매일 22:00 | 개발 리포트 분석 (Opus) |
