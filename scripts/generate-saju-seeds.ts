@@ -143,7 +143,7 @@ const seeds: Seed[] = [
   {
     name: 'S2_사화_편관_사술원진',
     sipsin: '편관',
-    description: '일운 지지 사 + 본명 술 원진 → 짜증/건강 트러블 + 책임 처리 다층 가설',
+    description: '일운 지지 사 + 본명 술 원진+귀문 → 짜증/건강 + 책임처리 + 분석/영화/책 다층 가설',
     triggerTargetType: 'relation',
     triggerAux: {
       day_branch: '사',
@@ -155,6 +155,9 @@ const seeds: Seed[] = [
       mk(M.diaryFlag('health_complaint'), 'flag_present', 1),
       mk(M.scheduleCompletionRate, 'above_avg'),
       mk(M.auditReschedulePostGrace, 'above_abs', 1),
+      mk(M.diaryFlag('analytical_mode'), 'flag_present', 1),
+      mk(M.diaryFlag('deep_thought'), 'flag_present', 1),
+      mk(M.scheduleCategory('영화'), 'above_abs', 1),
     ],
   },
   {
