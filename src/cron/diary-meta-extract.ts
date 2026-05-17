@@ -11,7 +11,7 @@
 import type { App } from '@slack/bolt';
 import type { LLMClient, LLMMessage } from '../shared/llm.js';
 import { query } from '../shared/db.js';
-import { getEffectiveTodayISO } from '../shared/kst.js';
+import { getYesterdayISO } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 import type { LifeCronConfig } from './life-cron.js';
 
@@ -152,21 +152,23 @@ export const extractAndPersistForUser = async (
 /**
  * 일기 메타 추출 cron 본체. notification_settings의 diaryMetaExtract 슬롯에서 호출.
  * Slack 전송 X — 백그라운드 데이터 적재만.
+ *
+ * 익일 05:30에 실행되어 어제 일기를 추출 (자정 넘긴 일기·누락 방지 — migration 054).
  */
 export const diaryMetaExtractTask = async (_app: App, config: LifeCronConfig): Promise<void> => {
-  const today = getEffectiveTodayISO();
+  const targetDate = getYesterdayISO();
   const mappings = await queryAllUserMappings();
   const userIds = mappings.length > 0 ? mappings.map((m) => m.userId) : [DEFAULT_USER_ID];
 
   for (const userId of userIds) {
     try {
-      const result = await extractAndPersistForUser(config.llmClient, userId, today);
+      const result = await extractAndPersistForUser(config.llmClient, userId, targetDate);
       if (!result) {
-        console.warn(`[Diary Meta] 일기 없음 user=${userId} date=${today}`);
+        console.warn(`[Diary Meta] 일기 없음 user=${userId} date=${targetDate}`);
         continue;
       }
       console.warn(
-        `[Diary Meta] user=${userId} date=${today} tags=${result.tags.join(',') || '(none)'} inserted=${result.inserted}`,
+        `[Diary Meta] user=${userId} date=${targetDate} tags=${result.tags.join(',') || '(none)'} inserted=${result.inserted}`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
