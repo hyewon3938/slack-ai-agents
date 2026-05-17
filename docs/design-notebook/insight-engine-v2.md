@@ -17,8 +17,8 @@
 
 - [x] **Phase 1**: 패턴 통합 · 임계치 외부화 · 주간 리포트 재구성 ([#389](https://github.com/hyewon3938/slack-ai-agents/issues/389), 2026-05-14 머지)
 - [x] **Phase 2**: LLM 자율 슬롯 + 측정 ([#390](https://github.com/hyewon3938/slack-ai-agents/issues/390), 2026-05-16 머지)
-- [ ] **Phase 3**: 사주 매핑 — 십성/오행을 임계치 가중치로 ([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391))
-- [ ] **Phase 4**: 사주 매핑 — 카테고리/패턴별 임계치 외부화 확장 ([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392))
+- [ ] **Phase 3**: 사주 60갑자 마스터 정규화 + 일일 매칭 catalog ([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391), 설계 완료 2026-05-17)
+- [ ] **Phase 4**: 사주 × 라이프 Hybrid Pipeline 정량 검증 ([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392))
 
 ---
 
@@ -135,3 +135,67 @@ SQL 결정론(Phase 1, 11개 패턴) 위에 **LLM 자율 발견 슬롯**을 추�
 - **채널 도메인 인지 누락** — LLM 자율 발견 슬롯은 schedule/sleep/routine/expense를 분석하므로 `#life`가 맞는데, 모듈 이름이 `agents/insight/llm-insight-fast-path.ts` 라는 표면 단어에 끌려 `#insight` 채널에 fast path를 배치. 모듈 위치(`agents/<domain>/`)와 발송 채널은 도메인 의미 기준으로 함께 정렬되어야 함
 - **자유언어 추출 정규식 사용** — `/(발견.*검증|정확도|LLM.*(어땠|어때|어떻게))/i` 같은 부분 추출 패턴은 사용자가 무엇이 fast path를 trigger하는지 예측 불가 + 약속의 의미 상실. fortune fast path와 동일한 `^명령어[.?!]?$` 약속 패턴이 이 프로젝트 표준. 메모리 `feedback_no_freeform_regex_extraction.md`로 영구화
 - **머지 후 운영 단계가 사실상 디버그 cycle 역할을 했음** — 두 실수 모두 머지 1시간 내 사용자 첫 사용 → fix PR. 1인 환경에서는 PR 머지 = 실사용 시작이므로, "머지 직후 1시간 내 첫 사용 피드백 반영" 패턴을 다음 phase부터 의식적으로 사용
+
+---
+
+## Phase 3: 사주 60갑자 마스터 정규화 + 일일 매칭 catalog (2026-05-17 설계)
+
+- 이슈: [#391](https://github.com/hyewon3938/slack-ai-agents/issues/391)
+- 관련 ADR: [ADR-0017](../adr/0017-saju-ganji-master-normalization.md)
+- 관련 계획서: `.claude/plans/391-saju-daily-matching.md`
+- Phase 4 정렬: 시드 작성 책임이 Phase 4 → Phase 3로 이동, Phase 4는 사주×라이프 Hybrid Pipeline 정량 검증으로 재정의
+- 상태: 설계 완료 / 구현 예정
+
+### 결정 요약
+
+초기 Phase 3 정의("십성/오행을 임계치 가중치로")가 사용자 임상 가설의 폴리모픽 구조(천간/지지/관계/오행 밀도/12운성)를 흡수하지 못함을 인터뷰에서 확인. 사용자가 임상적으로 관찰한 16개 사주 발현 가설(관성 발현 3개 포함)을 정량 데이터로 검증하기 위해 **60갑자 마스터 정규화 + 시드 catalog + 일일 매칭 + outcome 검증** 구조로 재설계. Phase 2의 outcome 패턴(가설 → 검증 → hit/miss 누적)을 사주 영역에 재활용. 마스터 데이터 ~466행(천간 10·지지 12·60갑자 60·sipsin lookup 220·sibiunsung 120·관계 ~46) + 시드 16개로 시작. 일일 매칭은 #life 한 줄, 주간 outcome 리포트는 #insight 채널. 약한 시드(누적 30일 후 hit rate < 임계치)는 주간 리포트 알림 + 사용자가 명령어로 active 토글.
+
+### 의사결정 분기점
+
+- **시드 구조: 임계치 가중치 vs 시드 catalog vs LLM 자율**:
+  - A. 임계치 가중치만(원래 안) — 폴리모픽 가설 흡수 불가, 기각
+  - B. catalog만, 마스터 정규화 없음 — 시드 spec JSONB에 사주 표 중복 인코딩, 시드 늘면 비용 폭증
+  - C. **60갑자 마스터 + catalog (선택)** — 정규화 원칙, 그룹 통계 view 자연스러움, Phase 4 토대
+  - D. LLM 자율로만 — 사용자 임상 가설은 이미 명확 → 결정론 catalog 영역, LLM은 catalog 외 발견 영역으로 역할 분리가 헌장 부합
+- **십성 같이 등록 여부**: spec JSONB에 character만 vs **character + sipsin 같이 (선택)**. 무비용 변경인데 "편재 시드 전체 hit rate", "인성 시드 종합 발현" 같은 십성 차원 그룹 분석이 자연스럽게 가능
+- **천간/지지 분리 vs 통합**: 한 시드에 천간·지지 같이 vs **분리 (선택)**. 천간 정인(기) vs 지지 정인(축·미) 발현이 같은지 다른지 자체가 분석 가치. 토다매금(천간+지지 동시 토)은 별도 element_density 시드
+- **Outcome 통계 부착 위치**: 글자/일주 마스터에 컬럼 vs **시드 단위만 + view 도출 (선택)** vs 일주만. 정규화 원칙 + 중복 트래킹 부담 회피 + 시드 단위가 본질적 분석 단위
+- **마스터 데이터 작성 주체**: 사용자 직접 vs **Claude 초안 + 사용자 검증 (선택)** vs Claude + sub-agent 교차 검증. 사주 전통 표는 표준화되어 있으나 1글자 오류가 전체 분석에 전파 → 사용자 spot check 필수
+- **약한 시드 처리**: 자동 은퇴 vs **주간 리포트 알림 + 사용자 토글 (선택)** vs LLM 평가. 1인 환경에서 "데이터 부족 vs 진짜 약함" 판정 권한을 사용자에게 두는 게 헌장 부합
+- **채널 정책**: 전부 #insight 통일 vs **#life 일일 한 줄 + #insight 주간 outcome (선택)** vs 일일 생략. 매일 보는 #life에 한 줄 들어가야 사용자 인지 가능 + 사주 본령 분석은 #insight (Phase 2 회고 "도메인 의미 기준 정렬" 교훈 적용)
+- **관성(정관/편관) 발현 추가**: 인터뷰 종료 직전 사용자 추가 제안 — "관성 들어올 때 이직·세금 같은 무거운 책임 처리". 일간 경금 기준 정관=정/오화, 편관=병/사화. 사화는 S2(사술원진)와 항상 동시 trigger → 별도 N9 vs **S2 메트릭 1:N 확장 (선택)** vs N7 통합. S2 확장이 trigger 중복 없이 다층 가설 동시 검증 (짜증·건강과 책임 처리 중 어느 측면 강한지 outcome 자연 분리). 최종 N6(정화_정관_천간)·N7(오화_정관_지지)·N8(병화_편관_천간) 3개 추가 + S2 메트릭 확장 → 16 seeds
+- **이직·세금 카테고리 식별 방식**: schedules.category 활용 vs 키워드 LIKE vs 인프라 신규. 사용자 데이터 상태에 따라 **혼합 (선택)** — 이직은 카테고리 존재 → category='이직' 필터, 세금은 카테고리 미존재 → title ILIKE '%세금%' OR '%공과금%' 등 키워드. 카테고리 backfill 부담 회피 + 운영 시작 후 키워드 부족하면 카테고리 추가 검토
+- **"미뤄둔 일정 처리" 정의**: 생성일~완료일 차이 vs reschedule 횟수 vs manual 태그. **`schedule_changes.date_changed` count ≥ 2 + 생성 후 30분 그레이스 (선택)**. "여러 번 미룬 일정을 done으로 처리한 이벤트"가 사용자 임상 직관에 부합 (단순 시간 차이는 reschedule 없이 길게 유지된 케이스도 포함되어 부정확). 생성 직후 30분 이내 date 수정은 실수 정정으로 보고 미루기에서 제외 (사용자 명시: "그 이후 수정부터 미룬걸로 쳐줘"). audit log가 schedule_changes로 이미 신규 도입 예정이라 추가 인프라 0
+
+### 포기한 안 / 미룬 항목
+
+- **이직 일정 적음을 상관 발현으로 잡기**: 보류. base rate가 너무 낮아 통계 의미 확보 어려움. 다음 phase에서 별도 카테고리 메타 필요
+- **'영화' 외 분류 일정 카테고리별 시드**: 보류. #8 무토_편인에서 영화 카테고리만 포함, 나머지는 outcome 데이터 본 후 추가
+- **자유언어 LLM 추출 일기 메타 플래그 확장**: Phase 3 1차는 고정 태그 7개(`irritation`, `health_complaint`, `low_energy`, `mood_down`, `confidence_high`, `analytical_mode`, `deep_thought`, `rest`, `peaceful`, `mood_high`, `cooking`, `creating`, `talkative`, `nostalgia`, `anxiety`, `past_memory`) — LLM은 정해진 enum에서만 선택. 자유 텍스트 태그 생성은 차후
+- **glob 시드 vs 단일자 시드 통합 검토**: 정인 지지(축·미)는 한 시드로 묶음, 편인 지지(진·술)는 진은 진술충 N3로 분리·술은 N5로 분리. 분리 vs 통합 판단은 임상 가설의 의미 단위 기준 — 일관 규칙 X
+- **outcome 임계치 자동 튜닝**: 1.5x / 0.7 / 1.2x 등 임계치는 첫 6주 운영 후 hit/miss 분포 보고 수동 조정. 자동 튜닝은 Phase 4 또는 그 이후
+- **할부 병원 지출 분리 컬럼**: `expenses` schema 확장은 보류. 1차는 memo LIKE '%할부%' 패턴으로 우회, 패턴 부족하면 다음 phase
+
+### 미해결·가설
+
+- **마스터 데이터 정확성**: Claude 초안 작성 → 사용자 spot check가 모든 오류를 잡을 수 있는가. 십성·12운성·관계 표는 표준이지만 음양 분류·관계 양방향성 등에서 오류 가능. 첫 운영 4주는 매칭 결과를 매일 spot check 권장
+- **시드 16개 동시 운영의 노이즈**: 일일 매칭이 매일 16개 시드 평가 → 평균 3~4개 trigger 활성화 예상. #life 한 줄에 어떻게 압축 표현할지 운영 중 조정 (3개 cap + priority sort 1차안). 관성 추가로 활성화 빈도 ↑ 영향도 관찰
+- **S2 다층 가설 검증의 해석 모호성**: S2가 짜증/건강(기존)과 책임 처리(신규) 두 가설 동시 검증 → outcome이 한쪽만 hit이면 가설 일부만 유효라는 해석. metric_values JSONB에 모든 메트릭 값 보존하여 사후 분리 분석 가능하게 설계. 운영 6주 후 메트릭별 hit/miss 분포로 가설 분기 판단
+- **천간/지지 발현 차이의 통계 유의성**: 천간 정인 vs 지지 정인 hit rate가 의미 있게 다른가. 6개월 데이터 누적 후 phase 4에서 정량 검증
+- **일기 메타 플래그 LLM 정확성**: 일기 텍스트 → 고정 태그 enum 매핑이 LLM에게 안정적인 작업인가. 첫 2주 일기-태그 결과 사용자가 spot check 필요
+- **outcome 검증 시점**: 시드 metric은 같은 날 비교(trigger 활성 날의 metric vs baseline) → 검증 즉시 가능. Phase 2처럼 N일 후 검증 윈도우 필요 X (그러나 노이즈 데이터 누적 시 30/60일 rolling 검증으로 확장 검토)
+- **본명 일지 술과 일운 술의 비화 효과**: 시드 N5(술_편인)에서 본명 일지가 술이라 일운 술이 들어오면 단순 편인이 아닌 비화 + 편인 복합 효과. outcome 데이터에서 다른 편인 시드와 hit rate 차이 보이면 별도 시드로 분리 검토
+
+### 회고
+
+> 설계 단계 회고 (구현 후 머지 직후 회고 별도 추가 예정)
+
+- **인터뷰 도중 phase 정의가 바뀐 사례**: 초기 design-notebook의 Phase 3 정의("십성/오행을 임계치 가중치로")가 사용자 임상 가설 8개를 듣고 나니 구조적으로 흡수 불가능함을 발견. 사용자가 "이슈나 design-notebook이 확실히 정해지지 않은채로 온거라서.. 나랑 여기서 인터뷰하면서 고도화해나가보자"고 명시. design-notebook도 인터뷰 도구로 활용 가능 — 다만 마스터 핵심 원칙(헌장)은 phase별 변화 시 ADR로 기록한다는 원칙은 지킴 (이 사례는 phase 정의 변화 → ADR-0017로 명시화). 마스터 헌장은 그대로
+- **시드 구조 결정의 순서**: 사용자 임상 가설을 듣고 → 가설을 분류(천간/지지/관계/오행/12운성) → 분류가 폴리모픽임을 확인 → catalog 구조 도출 → 마스터 정규화 필요성 확인 → ADR-0017 결정. 사용자가 catalog만 만들지 vs 마스터 정규화까지 갈지 직접 제안("60갑자 전체를 글자로 다 등록해두고 거기에 하나하나 데이터 달아가는 게 어때?") → 즉시 v2 헌장 cross-check 후 채택. 사용자 도메인 지식이 데이터 모델 정규화 깊이를 이끈 사례
+- **Phase 2 회고 교훈 적용**: "모듈 이름 표면 단어에 끌리지 말 것 → 도메인 의미 기준 정렬" 교훈을 채널 정책 결정에 적용. 일일 매칭은 일상 데이터와의 연결이 본질이므로 #life, 사주 본령 분석(outcome 리포트)은 #insight로 분리. Phase 2 회고가 다음 phase 결정에 실제로 영향 준 첫 사례
+- **scope creep 방지 vs 마스터 정규화의 가치**: 60갑자 마스터 + 13개 시드 + 신규 인프라 3종(diary_meta_tags, schedule_changes, routine_templates.category) + LLM 일기 분석 cron — 일견 한 phase에 과한 양. 그러나 "마스터 정규화는 Phase 4 토대"이고 신규 인프라는 시드 metric의 전제 → Phase 3을 작게 자르려면 사용자 임상 가설 검증을 또 다음으로 미뤄야 함. 사용자 동기(임상 가설 정량 검증)가 phase 가치 결정. 사용자가 13개 시드 다 등록 + outcome 약화 시드 처리 결정한 것은 "운영하며 자연 정리"의 합리적 선택
+
+### 기술적 의의
+
+- **사주 도메인의 정량 가설-검증 시스템 first**: 한국 전통 명리학의 임상 가설을 개인 라이프 데이터로 정량 검증하는 시도. 사주 자료를 마스터로 정규화하고 시드 catalog가 참조하는 데이터 모델 + outcome 누적 사이클 자체가 새로운 패턴
+- **결정론적 catalog ↔ LLM 자율 발견의 듀얼트랙 패턴 재활용**: Phase 2에서 cross-domain 일상 데이터에 적용한 outcome 검증 패턴이 사주 영역에도 동일 구조로 작동. 헌장이 phase 도메인을 넘어 일관 적용된 사례
