@@ -40,6 +40,7 @@ import {
   aggregateWeeklyRoutine,
   aggregateWeeklySchedule,
   aggregateSleepRoutineCorrelation,
+  aggregateSajuOutcome,
 } from '../weekly-report.js';
 
 beforeEach(async () => {
@@ -55,29 +56,43 @@ type MockRow = Record<string, unknown>;
 const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
   const defaultResponses: Record<string, MockRow[]> = {
     // sleep: 주간 수면 집계 (avg_duration AS로 유니크하게 매칭)
-    'avg_duration.*record_count': [{
-      avg_duration: null, record_count: 0,
-      best_date: null, best_duration: null,
-      worst_date: null, worst_duration: null,
-    }],
+    'avg_duration.*record_count': [
+      {
+        avg_duration: null,
+        record_count: 0,
+        best_date: null,
+        best_duration: null,
+        worst_date: null,
+        worst_duration: null,
+      },
+    ],
     // routine rate: 이번주 vs 지난주
-    'this_week_total.*last_week_rate': [{
-      this_week_total: 0, this_week_done: 0, this_week_rate: null, last_week_rate: null,
-    }],
+    'this_week_total.*last_week_rate': [
+      {
+        this_week_total: 0,
+        this_week_done: 0,
+        this_week_rate: null,
+        last_week_rate: null,
+      },
+    ],
     // routine slot breakdown
     'GROUP BY t\\.time_slot': [],
     // routine best/worst
     'GROUP BY t\\.id, t\\.name': [],
     // schedule summary
-    'cancelled.*schedules': [{
-      completed_count: 0, incomplete_count: 0, cancelled_count: 0,
-    }],
+    'cancelled.*schedules': [
+      {
+        completed_count: 0,
+        incomplete_count: 0,
+        cancelled_count: 0,
+      },
+    ],
     // schedule categories
     'COALESCE.*category': [],
     // schedule overdue
     'overdue_count.*schedules': [{ overdue_count: 0 }],
     // correlation
-    'good_sleep_rate': [{ good_sleep_rate: null, bad_sleep_rate: null }],
+    good_sleep_rate: [{ good_sleep_rate: null, bad_sleep_rate: null }],
   };
 
   const responses = { ...defaultResponses, ...overrides };
@@ -97,14 +112,16 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
 describe('aggregateWeeklySleep', () => {
   it('정상 데이터 집계', async () => {
     setupQueryMock({
-      'avg_duration.*record_count': [{
-        avg_duration: 402,
-        record_count: 5,
-        best_date: '2026-03-12',
-        best_duration: 480,
-        worst_date: '2026-03-14',
-        worst_duration: 270,
-      }],
+      'avg_duration.*record_count': [
+        {
+          avg_duration: 402,
+          record_count: 5,
+          best_date: '2026-03-12',
+          best_duration: 480,
+          worst_date: '2026-03-14',
+          worst_duration: 270,
+        },
+      ],
     });
 
     const result = await aggregateWeeklySleep('2026-03-09', '2026-03-15');
@@ -126,14 +143,16 @@ describe('aggregateWeeklySleep', () => {
 
   it('best = worst (1건만) 일 때도 정상', async () => {
     setupQueryMock({
-      'avg_duration.*record_count': [{
-        avg_duration: 420,
-        record_count: 1,
-        best_date: '2026-03-12',
-        best_duration: 420,
-        worst_date: '2026-03-12',
-        worst_duration: 420,
-      }],
+      'avg_duration.*record_count': [
+        {
+          avg_duration: 420,
+          record_count: 1,
+          best_date: '2026-03-12',
+          best_duration: 420,
+          worst_date: '2026-03-12',
+          worst_duration: 420,
+        },
+      ],
     });
 
     const result = await aggregateWeeklySleep('2026-03-09', '2026-03-15');
@@ -148,12 +167,14 @@ describe('aggregateWeeklySleep', () => {
 describe('aggregateWeeklyRoutine', () => {
   it('정상 데이터 집계 (이번주 + 지난주)', async () => {
     setupQueryMock({
-      'this_week_total.*last_week_rate': [{
-        this_week_total: 72,
-        this_week_done: 52,
-        this_week_rate: 72,
-        last_week_rate: 65,
-      }],
+      'this_week_total.*last_week_rate': [
+        {
+          this_week_total: 72,
+          this_week_done: 52,
+          this_week_rate: 72,
+          last_week_rate: 65,
+        },
+      ],
       'GROUP BY t\\.time_slot': [
         { slot: '아침', rate: 85 },
         { slot: '점심', rate: 70 },
@@ -181,12 +202,14 @@ describe('aggregateWeeklyRoutine', () => {
 
   it('지난주 데이터 없으면 lastWeekRate = null', async () => {
     setupQueryMock({
-      'this_week_total.*last_week_rate': [{
-        this_week_total: 30,
-        this_week_done: 20,
-        this_week_rate: 67,
-        last_week_rate: null,
-      }],
+      'this_week_total.*last_week_rate': [
+        {
+          this_week_total: 30,
+          this_week_done: 20,
+          this_week_rate: 67,
+          last_week_rate: null,
+        },
+      ],
     });
 
     const result = await aggregateWeeklyRoutine('2026-03-09', '2026-03-15');
@@ -211,11 +234,13 @@ describe('aggregateWeeklyRoutine', () => {
 describe('aggregateWeeklySchedule', () => {
   it('정상 데이터 집계', async () => {
     setupQueryMock({
-      'cancelled.*schedules': [{
-        completed_count: 8,
-        incomplete_count: 3,
-        cancelled_count: 1,
-      }],
+      'cancelled.*schedules': [
+        {
+          completed_count: 8,
+          incomplete_count: 3,
+          cancelled_count: 1,
+        },
+      ],
       'COALESCE.*category': [
         { category: '개인', count: 5 },
         { category: '사업', count: 4 },
@@ -253,7 +278,7 @@ describe('aggregateWeeklySchedule', () => {
 describe('aggregateSleepRoutineCorrelation', () => {
   it('정상 데이터 — 수면 vs 루틴 상관관계', async () => {
     setupQueryMock({
-      'good_sleep_rate': [{ good_sleep_rate: 85, bad_sleep_rate: 52 }],
+      good_sleep_rate: [{ good_sleep_rate: 85, bad_sleep_rate: 52 }],
     });
 
     const result = await aggregateSleepRoutineCorrelation('2026-03-09', '2026-03-15');
@@ -271,12 +296,85 @@ describe('aggregateSleepRoutineCorrelation', () => {
 
   it('한쪽만 데이터 있을 때', async () => {
     setupQueryMock({
-      'good_sleep_rate': [{ good_sleep_rate: 78, bad_sleep_rate: null }],
+      good_sleep_rate: [{ good_sleep_rate: 78, bad_sleep_rate: null }],
     });
 
     const result = await aggregateSleepRoutineCorrelation('2026-03-09', '2026-03-15');
     expect(result.goodSleepRate).toBe(78);
     expect(result.badSleepRate).toBeNull();
+  });
+});
+
+// ─── aggregateSajuOutcome ────────────────────────────────
+
+describe('aggregateSajuOutcome', () => {
+  it('active 시드 없으면 빈 seeds + 빈 weakCandidates', async () => {
+    mockQuery.mockImplementation((sql: string) => {
+      if (/saju_signal_catalog/.test(sql)) return Promise.resolve({ rows: [] });
+      return Promise.resolve({ rows: [] });
+    });
+
+    const result = await aggregateSajuOutcome(1);
+    expect(result.seeds).toEqual([]);
+    expect(result.weakCandidates).toEqual([]);
+  });
+
+  it('hit/miss 값으로 hitRate 계산', async () => {
+    mockQuery.mockImplementation((sql: string) => {
+      if (/saju_signal_catalog/.test(sql)) {
+        return Promise.resolve({
+          rows: [
+            { name: 'S1', sipsin: '편재', hit_count: 7, miss_count: 3, inconclusive_count: 1 },
+            { name: 'S2', sipsin: null, hit_count: 0, miss_count: 0, inconclusive_count: 5 },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const result = await aggregateSajuOutcome(1);
+    expect(result.seeds).toHaveLength(2);
+    expect(result.seeds[0]).toEqual({
+      name: 'S1',
+      sipsin: '편재',
+      hit: 7,
+      miss: 3,
+      inconclusive: 1,
+      hitRate: 0.7,
+    });
+    // total=0이면 hitRate null
+    expect(result.seeds[1]?.hitRate).toBeNull();
+  });
+
+  it('약화 후보: total ≥ 10 + hitRate < 0.3 인 시드만 포함', async () => {
+    mockQuery.mockImplementation((sql: string) => {
+      if (/saju_signal_catalog/.test(sql)) {
+        return Promise.resolve({
+          rows: [
+            // 약화: total=12, hitRate=2/12≈0.17 < 0.3
+            { name: 'WEAK1', sipsin: null, hit_count: 2, miss_count: 10, inconclusive_count: 0 },
+            // 약화 X (total<10): total=8
+            { name: 'SMALL', sipsin: null, hit_count: 0, miss_count: 8, inconclusive_count: 0 },
+            // 약화 X (hitRate 충분): total=10, hitRate=0.5
+            { name: 'OKAY', sipsin: null, hit_count: 5, miss_count: 5, inconclusive_count: 0 },
+            // 약화 경계: total=10, hitRate=0.2 < 0.3
+            { name: 'WEAK2', sipsin: null, hit_count: 2, miss_count: 8, inconclusive_count: 0 },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const result = await aggregateSajuOutcome(1);
+    expect(result.weakCandidates.map((s) => s.name)).toEqual(['WEAK1', 'WEAK2']);
+  });
+
+  it('DB 오류 시 빈 기본값 반환 (try/catch 폴백)', async () => {
+    mockQuery.mockRejectedValue(new Error('DB connection lost'));
+
+    const result = await aggregateSajuOutcome(1);
+    expect(result.seeds).toEqual([]);
+    expect(result.weakCandidates).toEqual([]);
   });
 });
 
