@@ -127,7 +127,7 @@
 - 커밋: Conventional Commits (feat:, fix:, refactor:, test:, chore:)
 - 상세 컨벤션 → docs/conventions.md 참조
 
-## 개발 진행 관리 (4문서 아키텍처)
+## 개발 진행 관리 (5문서 아키텍처)
 
 - GitHub Issues에 단계별 개발 계획 정리
 - 브랜치: feature/xxx, fix/xxx → main PR
@@ -139,9 +139,11 @@
 | `docs/design-notebook/<master>.md` | 마스터 단위 서사 (Phase 별 누적) | /design + /build |
 | `docs/adr/NNNN-*.md` | 되돌리기 어려운 결정 (불변) | /design |
 | `docs/features.md` | 현재 기능 카탈로그 | /build |
+| `docs/domains/<domain>.md` | 도메인 상세 (스키마·API·로직) | /design (phase 섹션 골격) + /build (본문 채우기) |
 | `docs/project-history.md` | 포트폴리오 timeline (마일스톤급만) | /build |
 
 - 2026-04-07 이전 초기 마일스톤 archive: docs/history/archive-v1-v2.md
+- 도메인 문서 owner 명시 (2026-05-17~): phase 작업이 도메인 기능에 영향을 주면 `/design`이 도메인 문서 phase 섹션 골격(TODO 마커)을 미리 작성, `/build`가 구현 후 본문 채우기. 누락 방지 의무.
 
 ## 운영 가이드 (사고 대응)
 

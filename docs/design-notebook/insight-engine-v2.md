@@ -194,6 +194,7 @@ SQL 결정론(Phase 1, 11개 패턴) 위에 **LLM 자율 발견 슬롯**을 추�
 - **시드 구조 결정의 순서**: 사용자 임상 가설을 듣고 → 가설을 분류(천간/지지/관계/오행/12운성) → 분류가 폴리모픽임을 확인 → catalog 구조 도출 → 마스터 정규화 필요성 확인 → ADR-0017 결정. 사용자가 catalog만 만들지 vs 마스터 정규화까지 갈지 직접 제안("60갑자 전체를 글자로 다 등록해두고 거기에 하나하나 데이터 달아가는 게 어때?") → 즉시 v2 헌장 cross-check 후 채택. 사용자 도메인 지식이 데이터 모델 정규화 깊이를 이끈 사례
 - **Phase 2 회고 교훈 적용**: "모듈 이름 표면 단어에 끌리지 말 것 → 도메인 의미 기준 정렬" 교훈을 채널 정책 결정에 적용. 일일 매칭은 일상 데이터와의 연결이 본질이므로 #life, 사주 본령 분석(outcome 리포트)은 #insight로 분리. Phase 2 회고가 다음 phase 결정에 실제로 영향 준 첫 사례
 - **scope creep 방지 vs 마스터 정규화의 가치**: 60갑자 마스터 + 13개 시드 + 신규 인프라 3종(diary_meta_tags, schedule_changes, routine_templates.category) + LLM 일기 분석 cron — 일견 한 phase에 과한 양. 그러나 "마스터 정규화는 Phase 4 토대"이고 신규 인프라는 시드 metric의 전제 → Phase 3을 작게 자르려면 사용자 임상 가설 검증을 또 다음으로 미뤄야 함. 사용자 동기(임상 가설 정량 검증)가 phase 가치 결정. 사용자가 13개 시드 다 등록 + outcome 약화 시드 처리 결정한 것은 "운영하며 자연 정리"의 합리적 선택
+- **4문서 아키텍처 운용 누락 — 도메인 문서 owner 미명시**: Phase 3 코드 구현 도중 사용자가 "이 핵심 기능에 대한 문서 정리가 잘되어있어야 할 것 같아"라고 점검 요청. 점검해 보니 design-notebook(Phase 3 섹션 작성됨) + ADR-0017(작성됨)은 `/design` 단계에서 갱신됐으나 `docs/domains/insight.md` Section 10이 없음. 4문서 아키텍처(plans/design-notebook/ADR/features)에서 design-notebook + features의 owner는 명시되어 있는데 `docs/domains/*.md` (도메인 상세 문서)의 owner가 명시 안 되어 있어 Phase 1·2 때도 즉흥적으로 추가됨. **학습: 도메인 문서는 `/design` 단계에서 phase 섹션 골격(빈 헤더라도)을 미리 작성하고, `/build` 단계에서 구현 결과로 본문 채우기 — 4문서 아키텍처에 도메인 문서 owner를 명시적으로 추가하는 별도 작업 필요**
 
 ### 기술적 의의
 

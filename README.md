@@ -127,7 +127,7 @@ graph LR
 - **Custom Skills**: `/init-project`, `/design`, `/build` — 계획서 파일로 세션 간 핸드오프
 - **MCP**: Slack(에이전트 응답 품질 점검)
 - **Scheduled Tasks (비동기 깊은 분석 전용)**: 개발 리포트(Opus 분석), 주간 사주 패턴 분석, 주간 일운 사전 분석, 밤 응원 메시지
-- **설계 사고 4문서 아키텍처**: `plans/`(휘발 메모) · `design-notebook/`(마스터 단위 서사·분기점·회고) · `adr/`(되돌리기 어려운 결정, Michael Nygard 포맷) · `features.md`(현황 카탈로그)로 사고를 분산 → 인터뷰 분기점·포기·회고가 코드만 남고 휘발되는 문제 해결. `/design` 스킬이 단계별로 자동 갱신
+- **설계 사고 5문서 아키텍처**: `plans/`(휘발 메모) · `design-notebook/`(마스터 단위 서사·분기점·회고) · `adr/`(되돌리기 어려운 결정, Michael Nygard 포맷) · `features.md`(현황 카탈로그) · `domains/`(도메인별 스키마·로직 상세)로 사고를 분산 → 인터뷰 분기점·포기·회고가 코드만 남고 휘발되는 문제 해결. 각 문서마다 owner(`/design` / `/build`)가 명시되어 단계별로 자동 갱신
 - **자체 업타임 모니터링**: GitHub Actions cron으로 봇·웹 5분 간격 폴링 + Slack DOWN/RECOVERY 알림
 
 AI를 **코딩 보조**가 아니라 협업 개발자로 취급하고, 작업 단위는 GitHub Issues·PR로 리뷰·검증한다.

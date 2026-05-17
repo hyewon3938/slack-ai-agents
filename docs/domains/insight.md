@@ -253,12 +253,135 @@ LLM 응답을 `validateLlmInsightResponse(text)` 가 순서대로 검사 — 하
 
 설계 배경 및 대안 비교는 [ADR 0016](../adr/0016-llm-autonomous-slot-outcome-verification.md) 참조.
 
+### 10. 프로액티브 인사이트 v2 — Phase 3 (사주 일일 매칭)
+
+사용자 임상에서 관찰된 사주 발현 가설을 정량 데이터로 검증하는 결정론적 매칭 엔진. 60갑자 마스터 정규화 위에 시드 카탈로그를 얹어 매일 09:00 평가, hit/miss 누적으로 가설을 검증한다. LLM 호출은 일기 → enum 태그 추출 단 1회(`#life` 매칭 메시지 생성에는 LLM 미사용).
+
+#### 데이터 모델
+
+**마스터 테이블** (마이그레이션 049~050, ~466 rows):
+- `stems_master` — 천간 10개 (오행·음양·한자)
+- `branches_master` — 지지 12개 (오행·음양·계절·동물)
+- `ganji_master` — 60갑자 (FK to stems/branches)
+- `sipsin_lookup` — 십성 매핑 220 (10 천간 일간 × 22 대상 글자)
+- `sibiunsung_lookup` — 십이운성 120 (10 천간 일간 × 12 지지)
+- `branch_relations` — 지지 관계 ~46 (육합/삼합/방합/충/형/파/해/원진)
+- `stem_relations` — 천간 관계
+
+**운영 테이블** (마이그레이션 051~053):
+- `saju_signal_catalog` — 시드 정의 (name / sipsin / trigger_type / trigger_target / active / hit_count / miss_count / inconclusive_count / source='seed'|'llm_promoted')
+- `saju_signal_metrics` — 시드 1:N 메트릭 (metric_key / direction / threshold / sql_template)
+- `saju_daily_matches` — 일일 매칭 결과 (signal_id / date / trigger_activated / matched / metric_values JSONB / verify_status='pending'|'hit'|'miss'|'inconclusive')
+- `diary_meta_tags` — 일기 LLM enum 태그 (date / tag / source='llm')
+
+#### Polymorphic Trigger 6종
+
+시드의 발현 조건은 다음 6가지 중 하나로 정의 (`saju_signal_catalog.trigger_type`):
+
+| trigger_type | 의미 | 예시 |
+|--------------|------|------|
+| stem | 일운 천간이 특정 글자 | `갑` 들어오면 발현 |
+| branch | 일운 지지가 특정 글자 | `오` 들어오면 발현 |
+| ganji | 일운 60갑자가 특정 조합 | `갑오` 들어오면 발현 |
+| element_density | 사주 8글자 + 일운 2글자 중 특정 오행 ≥ N개 | 토 5개 이상이면 발현 |
+| sibiunsung | 일간 기준 일운 지지의 12운성 | `사지` 들어오면 발현 |
+| relation | 본명 지지와 일운 지지의 관계 | `진술충` 발현 |
+
+#### 메트릭 5방향
+
+시드 trigger 활성 일에 metric을 평가, baseline과 비교 (`saju_signal_metrics.direction`):
+
+| direction | 의미 | hit 조건 |
+|-----------|------|----------|
+| above_avg | 28일 평균 대비 상승 | value > avg × threshold (예: 1.5x) |
+| below_avg | 28일 평균 대비 하락 | value < avg × threshold (예: 0.7x) |
+| above_abs | 절대 임계치 초과 | value > threshold |
+| below_abs | 절대 임계치 미만 | value < threshold |
+| flag_present | 특정 플래그/태그 존재 | tag IN diary_meta_tags |
+
+Baseline 윈도우는 `BASELINE_WINDOW_DAYS = 28`. SQL 템플릿은 `$user_id`, `$date`, `$baseline_start` 토큰 치환.
+
+#### Hit / Miss / Inconclusive 사이클
+
+매일 09:00 매칭 cron 실행 시:
+
+1. **어제 pending 매칭 검증** — 시드 메트릭 SQL 실행 → outcome 결정
+   - 메트릭 조건 충족 → `hit`, `signal_catalog.hit_count++`
+   - 메트릭 조건 미충족 → `miss`, `signal_catalog.miss_count++`
+   - 메트릭 SQL 데이터 부족 (null/0건) → `inconclusive`, `signal_catalog.inconclusive_count++`
+2. **오늘 활성 시드 평가** — 6가지 trigger 평가 → `saju_daily_matches` UPSERT (`verify_status='pending'`)
+3. **`matched=true` 시드 압축** — `#life` 채널에 잔소리 끝 한 줄 추가 (priority sort, cap 3개)
+
+#### 약한 시드 처리
+
+`INSIGHT_THRESHOLDS.WEAK_MIN_TOTAL = 10`, `WEAK_HIT_RATE = 0.3` 임계치. 누적 검증 ≥10건 + hit rate < 30%이면 주간 리포트(`#insight`)에서 "약한 시드 N건" 알림. 자동 비활성화는 하지 않음 — 사용자가 명령어로 토글.
+
+#### Fast Path 명령어 (`#life` 채널)
+
+> 자유언어 추출 없음. 약속된 단일 명령어만 매칭 (`^명령어[.?!]?$`).
+
+| 명령어 | 동작 |
+|--------|------|
+| `사주 시드 보기` | 활성 시드 + hit rate 목록 |
+| `사주 시드 모두 보기` | 비활성 포함 전체 |
+| `사주 시드 끄기 #N` | signal_id=N active=false |
+| `사주 시드 켜기 #N` | signal_id=N active=true |
+
+#### 일기 메타 LLM 추출
+
+`#life` 또는 `#insight` 에 저장된 일기 본문 → LLM이 정해진 enum 16개 중 해당 태그만 JSON 배열로 반환:
+
+`irritation / health_complaint / low_energy / mood_down / confidence_high / analytical_mode / deep_thought / rest / peaceful / mood_high / cooking / creating / talkative / nostalgia / anxiety / past_memory`
+
+화이트리스트 필터 후 `diary_meta_tags`에 UPSERT. 원문 저장은 `diary_entries`만, 매칭 메트릭은 enum 플래그로 참조. 안정성 강화를 위해 enum 외 출력 시 폐기.
+
+#### 크론 시각
+
+| 시각 | 작업 |
+|------|------|
+| 09:00 | 일일 사주 매칭 (어제 검증 + 오늘 평가 + #life 한 줄) |
+| 23:55 (Phase 3 hotfix 진행 중) | 일기 메타 enum 추출 — 익일 05:30 변경 예정 (자정 이후 입력 일기 커버) |
+
+#### 시드 카탈로그 → 매칭 → 검증 흐름
+
+```
+[일간 경금 사주]
+  ↓
+[09:00 cron] ──→ [evaluateTrigger 6종] ──→ saju_daily_matches (verify_status=pending)
+                                              ↓
+                                       [매칭된 시드 → #life 한 줄]
+                                              ↓ (다음날)
+                                       [메트릭 SQL 실행] ──→ hit/miss/inconclusive
+                                              ↓
+                                       [signal_catalog 카운터 증가]
+                                              ↓ (주간)
+                                       [약한 시드 알림 → #insight]
+```
+
+#### Phase 5 확장 가능성
+
+동일 polymorphic trigger 구조로 월운/세운/대운 확장 가능. `period` 컬럼 + `period_scope` 시드 컬럼 추가만으로 구조적 확장. 단 검증 사이클이 길어 통계 누적 속도 차이 큼 (월운 \~2년, 세운 \~28년). 상세: [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408).
+
+설계 배경 및 대안 비교는 [ADR-0017](../adr/0017-saju-ganji-master-normalization.md) 참조.
+
 ## 파일 구조
 
 ```
 src/agents/insight/
-├── index.ts    # 에이전트 생성, fast path 패턴 매칭, LLM 에이전트 루프
-├── prompt.ts   # 시스템 프롬프트 빌더 (DB 데이터 실시간 로드)
-├── actions.ts  # 인터랙티브 버튼 핸들러
-└── blocks.ts   # Slack Block Kit 메시지 빌더
+├── index.ts                  # 에이전트 생성, fast path 매칭, LLM 에이전트 루프
+├── prompt.ts                 # 시스템 프롬프트 빌더 (DB 데이터 실시간 로드)
+├── actions.ts                # 인터랙티브 버튼 핸들러
+├── blocks.ts                 # Slack Block Kit 메시지 빌더
+├── diary-fast-path.ts        # 일기 저장 + 자연스러운 응답
+└── saju-seed-fast-path.ts    # 사주 시드 보기/끄기/켜기 (Phase 3)
+
+src/shared/
+├── saju-match.ts             # Phase 3 매칭 엔진 (evaluateTrigger 6종 + evaluateMetric)
+├── saju-mappings.ts          # 십성 알고리즘 계산 (LLM 프롬프트용)
+├── insight-thresholds.ts     # 인사이트·시드 임계치 단일 관리
+└── insights.ts               # Phase 1 SQL 결정론 11종
+
+src/cron/
+├── daily-saju-matching.ts    # 09:00 사주 일일 매칭 (Phase 3)
+└── diary-meta-extract.ts     # 일기 → enum 태그 추출 cron (Phase 3)
 ```
