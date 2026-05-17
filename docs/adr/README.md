@@ -122,6 +122,8 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0013](0013-schedule-category-fk-migration.md) | 일정 카테고리 — TEXT 참조 → 단일 FK + parent_id 계층화 | Accepted | 2026-05-13 | data, schema, refactor |
 | [0014](0014-insight-engine-unification.md) | 프로액티브 인사이트 엔진 통합 — 매일·주간 단일 엔진 + 임계치 외부화 | Accepted | 2026-05-13 | data, insight, process |
 | [0015](0015-asset-auto-deduction-policy.md) | 자산 자동 차감 정책 — 결제주기 종료 cron + 할부 미래 회차 즉시 반영 | Accepted | 2026-05-14 | data, budget |
+| [0016](0016-llm-autonomous-slot-outcome-verification.md) | LLM 자율 발견 슬롯 + Outcome-based 검증 | Accepted | 2026-05-16 | data, insight, llm |
+| [0017](0017-saju-ganji-master-normalization.md) | 사주 60갑자 마스터 정규화 + 카탈로그 기반 일일 매칭 | Accepted | 2026-05-17 | data, architecture |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
