@@ -47,11 +47,26 @@ export interface SleepRoutineCorrelation {
   badSleepRate: number | null;
 }
 
+export interface SajuSeedOutcome {
+  name: string;
+  sipsin: string | null;
+  hit: number;
+  miss: number;
+  inconclusive: number;
+  hitRate: number | null;
+}
+
+export interface SajuOutcomeData {
+  seeds: SajuSeedOutcome[];
+  weakCandidates: SajuSeedOutcome[];
+}
+
 export interface WeeklyReportData {
   sleep: WeeklySleepData;
   routine: WeeklyRoutineData;
   schedule: WeeklyScheduleData;
   correlation: SleepRoutineCorrelation;
+  saju: SajuOutcomeData;
   weekStart: string;
   weekEnd: string;
 }
@@ -355,6 +370,52 @@ export const aggregateSleepRoutineCorrelation = async (
   }
 };
 
+// ─── 집계: 사주 시드 outcome ────────────────────────────
+
+/** 누적 ≥ 10일 + hit_rate < 0.3 시드를 "약화 후보"로 표시 */
+const WEAK_MIN_TOTAL = 10;
+const WEAK_HIT_RATE = 0.3;
+
+interface SajuSeedRow {
+  name: string;
+  sipsin: string | null;
+  hit_count: number;
+  miss_count: number;
+  inconclusive_count: number;
+}
+
+export const aggregateSajuOutcome = async (
+  userId: number = DEFAULT_USER_ID,
+): Promise<SajuOutcomeData> => {
+  try {
+    const result = await query<SajuSeedRow>(
+      `SELECT name, sipsin, hit_count, miss_count, inconclusive_count
+       FROM saju_signal_catalog
+       WHERE user_id = $1 AND active = true
+       ORDER BY (hit_count + miss_count) DESC, name`,
+      [userId],
+    );
+    const seeds: SajuSeedOutcome[] = result.rows.map((row) => {
+      const total = row.hit_count + row.miss_count;
+      const hitRate = total > 0 ? row.hit_count / total : null;
+      return {
+        name: row.name,
+        sipsin: row.sipsin,
+        hit: row.hit_count,
+        miss: row.miss_count,
+        inconclusive: row.inconclusive_count,
+        hitRate,
+      };
+    });
+    const weakCandidates = seeds.filter(
+      (s) => s.hit + s.miss >= WEAK_MIN_TOTAL && s.hitRate !== null && s.hitRate < WEAK_HIT_RATE,
+    );
+    return { seeds, weakCandidates };
+  } catch {
+    return { seeds: [], weakCandidates: [] };
+  }
+};
+
 // ─── 통합 집계 ──────────────────────────────────────────
 
 export const aggregateWeeklyReport = async (
@@ -362,14 +423,15 @@ export const aggregateWeeklyReport = async (
   weekEnd: string,
   userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklyReportData> => {
-  const [sleep, routine, schedule, correlation] = await Promise.all([
+  const [sleep, routine, schedule, correlation, saju] = await Promise.all([
     aggregateWeeklySleep(weekStart, weekEnd, userId),
     aggregateWeeklyRoutine(weekStart, weekEnd, userId),
     aggregateWeeklySchedule(weekStart, weekEnd, userId),
     aggregateSleepRoutineCorrelation(weekStart, weekEnd, userId),
+    aggregateSajuOutcome(userId),
   ]);
 
-  return { sleep, routine, schedule, correlation, weekStart, weekEnd };
+  return { sleep, routine, schedule, correlation, saju, weekStart, weekEnd };
 };
 
 // ─── Block Kit 빌드 ─────────────────────────────────────
@@ -428,11 +490,40 @@ const buildWeeklyReportBlocks = (
   }
   blocks.push({ type: 'section', text: { type: 'mrkdwn', text: glance.join('\n') } });
 
+  // ── 사주 시드 outcome ──
+  const sajuLines = buildSajuOutcomeLines(data.saju);
+  if (sajuLines) {
+    blocks.push({ type: 'divider' });
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: sajuLines } });
+  }
+
   // ── 총평 ──
   blocks.push({ type: 'divider' });
   blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*총평*\n${summary}` } });
 
   return blocks;
+};
+
+/** 사주 시드 outcome 블록 텍스트 — 누적 hit/miss + 약화 후보. */
+const buildSajuOutcomeLines = (saju: SajuOutcomeData): string | null => {
+  const active = saju.seeds.filter((s) => s.hit + s.miss > 0);
+  if (active.length === 0) return null;
+
+  const lines = ['*사주 시드 outcome*'];
+  // 누적 많은 순으로 상위 5개만 표시 (이미 정렬됨)
+  for (const s of active.slice(0, 5)) {
+    const total = s.hit + s.miss;
+    const rate = s.hitRate !== null ? `${Math.round(s.hitRate * 100)}%` : '-';
+    const label = s.sipsin ? `${s.name} (${s.sipsin})` : s.name;
+    lines.push(`• ${label}: hit ${s.hit}/${total} (${rate})`);
+  }
+
+  if (saju.weakCandidates.length > 0) {
+    const names = saju.weakCandidates.map((s) => s.name).join(', ');
+    lines.push(`\n약화 후보: ${names} — \`사주 시드 끄기\` 명령어로 비활성화 가능`);
+  }
+
+  return lines.join('\n');
 };
 
 // ─── LLM 한줄 총평 ─────────────────────────────────────

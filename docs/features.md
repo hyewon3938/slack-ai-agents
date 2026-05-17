@@ -27,7 +27,9 @@
 - 일운/월운/세운/대운 운세 분석 (`fortune_analyses`)
 - 일기 자동 저장 (`diary_entries`)
 - 삶의 테마 관리 (`life_themes`, 자동 진화)
-- 사주 패턴 cross-domain 분석 (`saju_patterns`, 28일 롤링 윈도우)
+- 사주 패턴 cross-domain 분석 (`saju_patterns`, 28일 롤링 윈도우 — LLM 분석)
+- 사주 일일 매칭 시드 카탈로그 (`saju_signal_catalog`, Phase 3 — 결정론 매칭)
+- 일기 LLM enum 16종 추출 (`diary_meta_tags`, Phase 3)
 - 상세: [docs/domains/insight.md](./domains/insight.md)
 
 ### 지출 / 예산 (`#money` 채널 / 웹 대시보드)
@@ -57,6 +59,16 @@
 - 슬랙 조회: `LLM발견` (약속 명령어 — 자유언어 추출 없음)
 - 결정 기록: [ADR-0016](./adr/0016-llm-autonomous-slot-outcome-verification.md)
 
+### 사주 일일 매칭 (Phase 3)
+
+- 60갑자 마스터 정규화(\~466 rows) 위에 시드 catalog를 얹어 사용자 임상 가설을 정량 검증
+- polymorphic trigger 6종(stem / branch / ganji / element_density / sibiunsung / relation) + 메트릭 5방향(above_avg / below_avg / above_abs / below_abs / flag_present)
+- 매일 09:00 일일 매칭 cron — 어제 pending 매칭 검증(hit/miss/inconclusive) + 오늘 활성 시드 평가 + `#life` 한 줄 발송
+- 일기 LLM enum 16종 자동 추출(허용 enum 외 출력 폐기) → `diary_meta_tags` 적재
+- 약한 시드(누적 \~10건 + hit rate < 30%) 주간 알림 → 사용자 명령어로 active 토글
+- 슬랙 조회/토글: `사주 시드 보기` / `사주 시드 모두 보기` / `사주 시드 끄기 #N` / `사주 시드 켜기 #N`
+- 결정 기록: [ADR-0017](./adr/0017-saju-ganji-master-normalization.md)
+
 ### Slack fast path 명령어
 
 > **정규식 매칭 → SQL 직접 조회 → Block Kit 응답 (LLM 호출 0회).** 약속된 명령어만 매칭 — 자유언어 추출 없음.
@@ -73,6 +85,10 @@
 | `#insight` | `세운` | 올해 세운 조회 |
 | `#insight` | `대운` | 최근 대운 조회 |
 | `#insight` | `오늘 일기` | 오늘 일기 조회 |
+| `#insight` | `사주 시드 보기` | 활성 시드 + hit rate 목록 (Phase 3) |
+| `#insight` | `사주 시드 모두 보기` | 비활성 포함 전체 시드 (Phase 3) |
+| `#insight` | `사주 시드 끄기 #N` | signal_id=N active=false (Phase 3) |
+| `#insight` | `사주 시드 켜기 #N` | signal_id=N active=true (Phase 3) |
 
 띄어쓰기·존댓말 어미는 유연하게 매칭(`일정 보여줘`, `LLM 발견`, `오늘 일운` 등). 자세한 정규식은 각 에이전트 파일 상단 주석 참조.
 
@@ -80,14 +96,14 @@
 
 | 시간 | 내용 |
 |------|------|
+| 09:00 | 사주 일일 매칭 — 어제 검증(hit/miss/inconclusive) + 오늘 평가 + `#life` 한 줄 (Phase 3) |
 | 09:05 | 오늘 일정 + 낮 루틴 체크리스트 + 어제 리뷰 + morning 인사이트 |
 | 09:10 | LLM 자율 발견 outcome 검증 (대기열 50건) |
+| 월요일 09:00 | 주간 인사이트 리포트 (Block Kit) |
 | 월요일 09:30 | 주간 LLM 자율 발견 슬롯 (Block Kit) |
 | 매월 1일 09:30 | 월간 LLM 자율 발견 슬롯 (Block Kit) |
 | 23:55 | 하루 종합 리뷰 + 밤 루틴 + 마무리 잔소리 + night 인사이트 |
-| 월요일 09:00 | 주간 인사이트 리포트 (Block Kit) |
-| 매일 22:00 | 개발 리포트 분석 (Opus) |
-| 다음날 09:25/09:30 | 개발 리포트 전송 (`chat.scheduleMessage`) |
+| 23:55 → 익일 05:30 (hotfix 진행 중) | 일기 메타 enum 추출 (Phase 3) |
 
 타임존: `Asia/Seoul` 고정.
 
@@ -103,11 +119,6 @@
 - `DB_PROXY_URL` + `DB_PROXY_API_KEY` 인증
 - 동적 user_id 보안 검증 적용
 
-### 개발 리포트 자동화
-
-- 매일 22:00 Opus가 git diff/log 분석 → `developer-profile.md` 갱신
-- 다음날 09:25/09:30 Slack에 작업 요약 + 개발 성향 분석 전송
-
 ## 인프라
 
 | 항목 | 위치 / 방식 |
@@ -120,7 +131,7 @@
 
 ## 마스터 단위 진행 중 작업
 
-- **프로액티브 인사이트 v2** ([#393](https://github.com/hyewon3938/slack-ai-agents/issues/393)) — Phase 1 완료, Phase 2 진행 중. 흐름: [design-notebook](./design-notebook/insight-engine-v2.md)
+- **프로액티브 인사이트 v2** ([#393](https://github.com/hyewon3938/slack-ai-agents/issues/393)) — Phase 1·2 머지 완료, Phase 3([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391)) 구현·검증 단계. Phase 4([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392)) 사주×라이프 정량 검증 / Phase 5([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408)) 월운·세운·대운 확장 대기. 흐름: [design-notebook](./design-notebook/insight-engine-v2.md)
 
 ## 문서 지도
 
