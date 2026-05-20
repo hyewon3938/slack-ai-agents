@@ -4,25 +4,25 @@ import type { MonthlyBudget, SettlementInput } from '../../types-v2';
 
 describe('E. 월 경계 정산', () => {
   describe('E-1. detectSettlementTrigger', () => {
-    it('KST 00:30 on 14일 → 어제(13일) = 주기 끝 → shouldSettle:true', () => {
-      // 2026-04-14 00:30 KST = 2026-04-13 15:30 UTC
-      const today = new Date('2026-04-13T15:30:00Z');
+    it('KST 00:30 on 15일 → 어제(14일) = 주기 끝 → shouldSettle:true', () => {
+      // 2026-04-15 00:30 KST = 2026-04-14 15:30 UTC
+      const today = new Date('2026-04-14T15:30:00Z');
       const result = detectSettlementTrigger(today);
       expect(result.shouldSettle).toBe(true);
       expect(result.targetMonth).toBe('2026-04');
     });
 
-    it('KST 00:30 on 15일 → 어제(14일) = 주기 시작일 → shouldSettle:false', () => {
-      // 2026-04-15 00:30 KST = 2026-04-14 15:30 UTC
-      const today = new Date('2026-04-14T15:30:00Z');
+    it('KST 00:30 on 16일 → 어제(15일) = 주기 시작일 → shouldSettle:false', () => {
+      // 2026-04-16 00:30 KST = 2026-04-15 15:30 UTC
+      const today = new Date('2026-04-15T15:30:00Z');
       const result = detectSettlementTrigger(today);
       expect(result.shouldSettle).toBe(false);
       expect(result.targetMonth).toBeNull();
     });
 
-    it('1월 14일 KST → 어제(1월 13일) = 주기 끝 → targetMonth=\'2026-01\'', () => {
-      // 2026-01-14 00:30 KST = 2026-01-13 15:30 UTC
-      const today = new Date('2026-01-13T15:30:00Z');
+    it("1월 15일 KST → 어제(1월 14일) = 주기 끝 → targetMonth='2026-01'", () => {
+      // 2026-01-15 00:30 KST = 2026-01-14 15:30 UTC
+      const today = new Date('2026-01-14T15:30:00Z');
       const result = detectSettlementTrigger(today);
       expect(result.shouldSettle).toBe(true);
       expect(result.targetMonth).toBe('2026-01');

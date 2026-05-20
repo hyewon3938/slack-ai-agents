@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { allocateMonthlyBudgets } from '../month-allocator';
 import type { MonthAllocatorInput } from '../../types-v2';
 
-// today: 2026-04-11 → 현재 주기 03-14~04-13 (31일)
+// today: 2026-04-11 → 현재 주기 03-15~04-14 (31일)
 const BASE: MonthAllocatorInput = {
   totalAvailable: 36000,
   fixedMonthly: 0,

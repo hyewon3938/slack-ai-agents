@@ -1,16 +1,13 @@
 /**
  * 결제주기 기반 고정비 기록 날짜 결정 (순수 함수).
- * 결제주기는 전월 14일 ~ 당월 13일이므로, day_of_month >= 14 이면 전월에 기록된다.
+ * 결제주기는 전월 15일 ~ 당월 14일이므로, day_of_month >= 15 이면 전월에 기록된다.
  * 해당 월에 day_of_month 가 없는 경우(예: 2월 31일)는 그 달의 말일로 보정한다.
  *
  * @param yearMonth 'YYYY-MM' — 결제주기 기준 월
  * @param dayOfMonth 1~31 — 고정비 결제일
  * @returns 'YYYY-MM-DD'
  */
-export function resolveFixedCostExpenseDate(
-  yearMonth: string,
-  dayOfMonth: number,
-): string {
+export function resolveFixedCostExpenseDate(yearMonth: string, dayOfMonth: number): string {
   if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
     throw new Error(`invalid yearMonth: ${yearMonth}`);
   }
@@ -22,8 +19,8 @@ export function resolveFixedCostExpenseDate(
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevYear = month === 1 ? year - 1 : year;
 
-  const expenseYear = dayOfMonth >= 14 ? prevYear : year;
-  const expenseMonth = dayOfMonth >= 14 ? prevMonth : month;
+  const expenseYear = dayOfMonth >= 15 ? prevYear : year;
+  const expenseMonth = dayOfMonth >= 15 ? prevMonth : month;
 
   const lastDay = new Date(expenseYear, expenseMonth, 0).getDate();
   const actualDay = Math.min(dayOfMonth, lastDay);

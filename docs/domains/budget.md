@@ -12,8 +12,8 @@
 ## 핵심 개념
 
 ### 결제주기 (Billing Cycle)
-- 1개 결제월 = **전월 14일 \~ 당월 13일**
-- 예: `2026-04` → `2026-03-14 \~ 2026-04-13`
+- 1개 결제월 = **전월 15일 \~ 당월 14일**
+- 예: `2026-04` → `2026-03-15 \~ 2026-04-14`
 - 모든 예산/정산/고정비 계산의 기준 단위
 - 구현: [billing/cycle.ts](../../web/src/features/budget/lib/billing/cycle.ts)
 
@@ -208,8 +208,8 @@ features/budget/
 | 9 | 일 예산 배분 | month-summary 오늘 예산 | `/api/budget/today` | day-allocator.ts | 초과 클램프 |
 | 10 | 장기 예산 시뮬레이션 | runway-card | `/api/budget/runway` | runway-projection.ts | 월별 burn 시뮬 |
 | 11 | 일별 예산 로그 | daily-budget-log | `/api/budget/daily-logs` + cron | `saveDailyBudgetLog` | UNIQUE(user, date) |
-| 12 | 월별 예산 스냅샷 | — (내부) | 정산 cron 진입점 | `buildSettlementSnapshot` | 13일 종료 → 14일 새벽 cron, idempotent |
-| 13 | 결제주기 유틸 | — | — | billing/cycle.ts | 전월 14일\~당월 13일 |
+| 12 | 월별 예산 스냅샷 | — (내부) | 정산 cron 진입점 | `buildSettlementSnapshot` | 14일 종료 → 15일 새벽 cron, idempotent |
+| 13 | 결제주기 유틸 | — | — | billing/cycle.ts | 전월 15일\~당월 14일 |
 
 ### 🟡 부분 구현 (4)
 
@@ -225,7 +225,7 @@ features/budget/
 | # | 항목 | 설명 |
 |---|------|------|
 | A | 수입 "이번 달" 옵션 | `distribute_to_budget=false` 시 예산 계산에 미반영. UI 레이블과 동작 불일치 — 의도 확인 + 구현 필요 |
-| B | 할부 `isNew` 경계 판정 | 빌링 시작일(당월 14일) 전후로 선택된 할부의 신규 여부 판정이 의도대로 동작하는지 경계 테스트 필요 |
+| B | 할부 `isNew` 경계 판정 | 빌링 시작일(당월 15일) 전후로 선택된 할부의 신규 여부 판정이 의도대로 동작하는지 경계 테스트 필요 |
 | C | 고정비 자동 기록 강제 `exclude_from_budget=true` | [queries.ts `ensureFixedCostExpenses`](../../web/src/features/budget/lib/queries.ts)에서 강제. 사용자 정책 재검토 필요 |
 
 ## 데이터 흐름
@@ -253,9 +253,9 @@ expense-form (type=expense)
   → allocateTodayBudget() 의 todayRemaining 감소
 ```
 
-### 월 경계 정산 (13일 종료 → 14일 새벽 cron)
+### 월 경계 정산 (14일 종료 → 15일 새벽 cron)
 ```
-detectSettlementTrigger() → 어제가 13일(주기 마지막)인지 판정
+detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
   → getMonthlyAllocation() 재실행
   → readFlexibleSpent/Excluded/Income (범위: 정산 대상 월)
   → buildSettlementSnapshot() 로 monthly_budget_snapshots 저장 (idempotent)
