@@ -18,15 +18,16 @@ function subtractOneDay(dateStr: string): string {
   return `${y}-${m}-${day}`;
 }
 
-/** 어제 날짜가 주기 마지막 날(13일)인지 확인 */
-export function detectSettlementTrigger(
-  today: Date,
-): { shouldSettle: boolean; targetMonth: string | null } {
+/** 어제 날짜가 주기 마지막 날(14일)인지 확인 */
+export function detectSettlementTrigger(today: Date): {
+  shouldSettle: boolean;
+  targetMonth: string | null;
+} {
   const todayKST = toKSTDateStr(today);
   const yesterday = subtractOneDay(todayKST);
   const day = parseInt(yesterday.slice(8, 10), 10);
 
-  if (day !== 13) return { shouldSettle: false, targetMonth: null };
+  if (day !== 14) return { shouldSettle: false, targetMonth: null };
 
   const targetMonth = yesterday.slice(0, 7); // YYYY-MM
   return { shouldSettle: true, targetMonth };
@@ -34,8 +35,15 @@ export function detectSettlementTrigger(
 
 /** 월 경계 시점에 스냅샷 구조 생성 (DB 저장은 호출자가 담당) */
 export function buildSettlementSnapshot(input: SettlementInput): SettlementSnapshot {
-  const { yearMonth, monthlyBudget, actualFlexibleSpent, actualExcludedSpent,
-    actualIncome, availableAtStart, availableAtEnd } = input;
+  const {
+    yearMonth,
+    monthlyBudget,
+    actualFlexibleSpent,
+    actualExcludedSpent,
+    actualIncome,
+    availableAtStart,
+    availableAtEnd,
+  } = input;
 
   return {
     year_month: yearMonth,

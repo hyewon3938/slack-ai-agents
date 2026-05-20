@@ -1,18 +1,18 @@
 /** 카드별 대금기간 상수 (startDay: 해당 일 이상이면 다음 달 대금) */
 export const CARD_BILLING_CYCLES: Record<string, { startDay: number }> = {
-  '현대카드': { startDay: 14 },
-  '국민카드': { startDay: 13 },
+  현대카드: { startDay: 15 },
+  국민카드: { startDay: 13 },
 };
 
 /** 시스템 기본 대금기간 시작일 (현대카드 기준) */
-const DEFAULT_START_DAY = 14;
+const DEFAULT_START_DAY = 15;
 
 /**
  * 결제수단 + 결제일 → 귀속 billing month 반환
  *
- * - 현대카드: 14일 이상 → 다음 달 대금
+ * - 현대카드: 15일 이상 → 다음 달 대금
  * - 국민카드: 13일 이상 → 다음 달 대금
- * - 현금 / 미등록 결제수단: 시스템 기본(14일 기준) 적용
+ * - 현금 / 미등록 결제수단: 시스템 기본(15일 기준) 적용
  *
  * @param date 'YYYY-MM-DD'
  * @param paymentMethod 결제수단 문자열
