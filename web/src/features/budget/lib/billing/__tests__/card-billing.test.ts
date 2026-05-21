@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getBillingMonthForExpense } from '../card-billing';
+import { getBillingMonthForExpense, computeLastInstallmentBillingMonth } from '../card-billing';
 
 describe('getBillingMonthForExpense — 카드별 귀속 월 판별', () => {
   describe('현대카드 (startDay=15)', () => {
@@ -62,5 +62,31 @@ describe('getBillingMonthForExpense — 카드별 귀속 월 판별', () => {
     it('현대카드 12월 14일 → 2026-12 (현재 달)', () => {
       expect(getBillingMonthForExpense('2026-12-14', '현대카드')).toBe('2026-12');
     });
+  });
+});
+
+describe('computeLastInstallmentBillingMonth — 할부 마지막 회차 billing_month (ADR 0018)', () => {
+  it('현대카드 1회차 5월 14일 + 12개월 → 2027-04 (마지막 회차 4월 14일)', () => {
+    expect(computeLastInstallmentBillingMonth('2026-05-14', 12, '현대카드')).toBe('2027-04');
+  });
+
+  it('현대카드 1회차 5월 15일 + 12개월 → 2027-05 (5월 15일 시작 → 다음달 귀속, 마지막은 2027-04-15 → 2027-05)', () => {
+    expect(computeLastInstallmentBillingMonth('2026-05-15', 12, '현대카드')).toBe('2027-05');
+  });
+
+  it('국민카드 1회차 5월 13일 + 6개월 → 2026-11 (마지막 회차 10월 13일 → 11월 귀속)', () => {
+    expect(computeLastInstallmentBillingMonth('2026-05-13', 6, '국민카드')).toBe('2026-11');
+  });
+
+  it('months=2 → 첫 회차 +1개월', () => {
+    expect(computeLastInstallmentBillingMonth('2026-05-10', 2, '현대카드')).toBe('2026-06');
+  });
+
+  it('months=1 (할부 아님, 토글 안 노출되는 케이스라 의미 X) → 첫 회차 billing_month 그대로', () => {
+    expect(computeLastInstallmentBillingMonth('2026-05-10', 1, '현대카드')).toBe('2026-05');
+  });
+
+  it('연도 넘김 — 1회차 11월 1일 + 6개월 → 2027-04', () => {
+    expect(computeLastInstallmentBillingMonth('2026-11-01', 6, '현대카드')).toBe('2027-04');
   });
 });
