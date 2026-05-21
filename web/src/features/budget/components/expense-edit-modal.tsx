@@ -246,6 +246,11 @@ export function ExpenseEditModal({
                 제외
               </button>
             </div>
+            {expense.is_installment && (
+              <p className="mt-1 text-[10px] text-gray-500">
+                할부 그룹 전체에 적용 (모든 회차 동시 변경 + 자산 보정)
+              </p>
+            )}
           </div>
 
           {/* 할부 자산 차감 범위 토글 (ADR 0018) — 마지막 회차가 target_date 이후일 때만 노출 */}

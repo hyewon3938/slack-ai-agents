@@ -10,6 +10,8 @@ import {
   readTargetMonth,
   computeInstallmentToggleAdjustment,
   applyInstallmentToggleAdjustment,
+  computeExcludeToggleAdjustment,
+  applyExcludeToggleAdjustment,
 } from './repository/settings-repo';
 import type {
   ExpenseRow,
@@ -319,11 +321,12 @@ export async function updateExpense(
     }
   }
 
-  // 할부 미래 회차 amount/distribute_to_runway 변경 시 자산 보정용 사전 조회
+  // 할부 미래 회차 amount/distribute_to_runway/exclude_from_budget 변경 시 자산 보정용 사전 조회
   const amountChanging = keys.includes('amount');
   const toggleChanging = keys.includes('distribute_to_runway');
+  const excludeChanging = keys.includes('exclude_from_budget');
   const existingForAsset =
-    amountChanging || toggleChanging
+    amountChanging || toggleChanging || excludeChanging
       ? await queryOne<ExistingForAsset>(
           `${EXISTING_FOR_ASSET_SELECT}
            FROM expenses WHERE id = $1 AND user_id = $2`,
@@ -351,8 +354,32 @@ export async function updateExpense(
     );
   }
 
-  // distribute_to_runway는 그룹 UPDATE에서 이미 처리 → 단일행 SET clause에서 제외
-  const setKeys = toggleChanging ? keys.filter((k) => k !== 'distribute_to_runway') : keys;
+  // exclude_from_budget 변경: 할부 그룹은 그룹 전체 동기화 + 자산 보정.
+  // 비할부/그룹 없는 행은 아래 단일 행 UPDATE에 맡김 (cron이 처리).
+  if (excludeChanging && existingForAsset?.installment_group) {
+    const newValue = Boolean(updates['exclude_from_budget']);
+    const adjustment = await computeExcludeToggleAdjustment(
+      userId,
+      existingForAsset.installment_group,
+      newValue,
+    );
+    if (adjustment) {
+      await applyExcludeToggleAdjustment(userId, adjustment);
+    }
+    await query(
+      `UPDATE expenses SET exclude_from_budget = $1
+       WHERE user_id = $2 AND installment_group = $3`,
+      [newValue, userId, existingForAsset.installment_group],
+    );
+  }
+
+  // distribute_to_runway / exclude_from_budget(할부 그룹)는 그룹 UPDATE에서 이미 처리 → 단일행 SET clause에서 제외
+  const setKeys = keys.filter((k) => {
+    if (toggleChanging && k === 'distribute_to_runway') return false;
+    if (excludeChanging && existingForAsset?.installment_group && k === 'exclude_from_budget')
+      return false;
+    return true;
+  });
   if (setKeys.length === 0) {
     return queryExpense(userId, id);
   }
