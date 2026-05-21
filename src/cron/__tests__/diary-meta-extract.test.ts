@@ -45,9 +45,10 @@ describe('parseTagResponse', () => {
     expect(parseTagResponse('["irritation",42,{"x":1},"rest"]')).toEqual(['irritation', 'rest']);
   });
 
-  it('허용 태그 16개 전부 정상 통과', () => {
+  it('허용 태그 전부 정상 통과 (22개)', () => {
     const all = JSON.stringify(DIARY_META_TAGS);
     expect(parseTagResponse(all).length).toBe(DIARY_META_TAGS.length);
+    expect(DIARY_META_TAGS.length).toBe(22);
   });
 });
 
@@ -89,7 +90,7 @@ describe('extractDiaryTags', () => {
     expect(messages).toHaveLength(2);
     expect(messages[0]?.role).toBe('system');
     expect(messages[1]?.role).toBe('user');
-    // 시스템 프롬프트에 enum 16개 모두 포함되어야 함 (LLM이 enum 외 출력하지 않도록)
+    // 시스템 프롬프트에 enum 22개 모두 포함되어야 함 (LLM이 enum 외 출력하지 않도록)
     const systemContent = messages[0]?.content as string;
     for (const tag of DIARY_META_TAGS) {
       expect(systemContent).toContain(tag);
