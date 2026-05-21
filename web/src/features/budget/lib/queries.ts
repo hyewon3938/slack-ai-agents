@@ -6,6 +6,11 @@ import { resolveFixedCostExpenseDate } from './billing/fixed-cost-date';
 import { getBillingMonthForExpense } from './billing/card-billing';
 import { readFlexibleSpent, readTodayFlexSpent } from './repository/expenses-repo';
 import { applyAssetDeduction, applyAssetIncrease } from './repository/assets-repo';
+import {
+  readTargetMonth,
+  computeInstallmentToggleAdjustment,
+  applyInstallmentToggleAdjustment,
+} from './repository/settings-repo';
 import type {
   ExpenseRow,
   FixedCostRow,
@@ -150,6 +155,8 @@ export async function createInstallmentExpenses(
     memo?: string | null;
     type?: 'expense' | 'income';
     exclude_from_budget?: boolean;
+    /** 할부 자산 차감 범위 토글 (ADR 0018). default true = 즉시 전체 차감 (ADR 0015 그대로) */
+    distribute_to_runway?: boolean;
   },
 ): Promise<ExpenseRow> {
   const monthlyAmount = Math.round(data.totalAmount / data.months);
@@ -157,6 +164,10 @@ export async function createInstallmentExpenses(
   const lastMonthAmount = data.totalAmount - monthlyAmount * (data.months - 1);
   const groupId = crypto.randomUUID();
   const excludeFromBudget = data.exclude_from_budget ?? false;
+  const distributeToRunway = data.distribute_to_runway ?? true;
+
+  // OFF 모드일 때만 target_date 조회. ON 모드(default)는 ADR 0015 그대로 동작.
+  const targetDate = !distributeToRunway ? await readTargetMonth(userId) : null;
 
   let firstRow: ExpenseRow | null = null;
   let futureSum = 0;
@@ -173,12 +184,14 @@ export async function createInstallmentExpenses(
     const row = await queryOne<ExpenseRow>(
       `INSERT INTO expenses (user_id, date, amount, category, description, payment_method,
                              is_installment, installment_num, installment_total, installment_group,
-                             memo, source, type, exclude_from_budget, billing_month)
-       VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, 'manual', $11, $12, $13)
+                             memo, source, type, exclude_from_budget, distribute_to_runway, billing_month)
+       VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, 'manual', $11, $12, $13, $14)
        RETURNING id, date::text, amount, category, description, payment_method,
                  is_installment, installment_num, installment_total, installment_group,
                  source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
-                 COALESCE(exclude_from_budget, false) as exclude_from_budget`,
+                 COALESCE(exclude_from_budget, false) as exclude_from_budget,
+                 COALESCE(distribute_to_budget, false) as distribute_to_budget,
+                 COALESCE(distribute_to_runway, true) as distribute_to_runway`,
       [
         userId,
         expDate,
@@ -192,11 +205,23 @@ export async function createInstallmentExpenses(
         data.memo ?? null,
         data.type ?? 'expense',
         excludeFromBudget,
+        distributeToRunway,
         billingMonth,
       ],
     );
-    if (i === 0) firstRow = row ?? null;
-    else futureSum += amount;
+    if (i === 0) {
+      firstRow = row ?? null;
+    } else {
+      // 2+회차 자산 차감 범위:
+      // - distribute_to_runway=true: 전부 차감 (ADR 0015 그대로)
+      // - distribute_to_runway=false + target_date 안: 차감
+      // - distribute_to_runway=false + target_date 밖: 무영향 (결제주기 cron이 자유지출로 처리)
+      const beyondTarget = !distributeToRunway && targetDate !== null && billingMonth > targetDate;
+      const beyondWithNoTarget = !distributeToRunway && targetDate === null;
+      if (!beyondTarget && !beyondWithNoTarget) {
+        futureSum += amount;
+      }
+    }
   }
 
   if (!firstRow) throw new Error('createInstallmentExpenses: INSERT returned no rows');
@@ -224,6 +249,7 @@ const EXPENSE_COLUMNS = new Set([
   'planned_expense_id',
   'exclude_from_budget',
   'distribute_to_budget',
+  'distribute_to_runway',
 ]);
 
 /** source='fixed' 행의 exclude_from_budget 변경 시도 시 throw되는 sentinel error */
@@ -235,6 +261,9 @@ interface ExistingForAsset {
   installment_num: number | null;
   type: string;
   exclude_from_budget: boolean;
+  distribute_to_runway: boolean;
+  billing_month: string | null;
+  installment_group: string | null;
 }
 
 function isFutureInstallment(row: ExistingForAsset): boolean {
@@ -245,6 +274,30 @@ function isFutureInstallment(row: ExistingForAsset): boolean {
     !row.exclude_from_budget
   );
 }
+
+/**
+ * INSERT 시점에 자산에서 차감된 회차인지 — OFF + target 밖 회차는 자산 차감되지 않았으므로 false.
+ * amount 변경 / 삭제 시 자산 보정 여부 판단에 사용.
+ */
+async function wasDeductedFromAssetAtInsert(
+  userId: number,
+  row: ExistingForAsset,
+): Promise<boolean> {
+  if (!isFutureInstallment(row)) return false;
+  if (row.distribute_to_runway) return true; // ON이면 모든 2+회차가 차감됐었음
+  // OFF: billing_month <= target_date 인 회차만 차감됐었음
+  if (row.billing_month === null) return false;
+  const targetDate = await readTargetMonth(userId);
+  if (targetDate === null) return false; // target 없으면 OFF는 모든 회차가 무영향
+  return row.billing_month <= targetDate;
+}
+
+const EXISTING_FOR_ASSET_SELECT = `SELECT amount, is_installment, installment_num,
+            COALESCE(type, 'expense') as type,
+            COALESCE(exclude_from_budget, false) as exclude_from_budget,
+            COALESCE(distribute_to_runway, true) as distribute_to_runway,
+            billing_month,
+            installment_group`;
 
 export async function updateExpense(
   userId: number,
@@ -266,35 +319,67 @@ export async function updateExpense(
     }
   }
 
-  // 할부 미래 회차 amount 변경 시 자산 보정용 사전 조회
+  // 할부 미래 회차 amount/distribute_to_runway 변경 시 자산 보정용 사전 조회
   const amountChanging = keys.includes('amount');
-  const existingForAsset = amountChanging
-    ? await queryOne<ExistingForAsset>(
-        `SELECT amount, is_installment, installment_num,
-                COALESCE(type, 'expense') as type,
-                COALESCE(exclude_from_budget, false) as exclude_from_budget
-         FROM expenses WHERE id = $1 AND user_id = $2`,
-        [id, userId],
-      )
-    : null;
+  const toggleChanging = keys.includes('distribute_to_runway');
+  const existingForAsset =
+    amountChanging || toggleChanging
+      ? await queryOne<ExistingForAsset>(
+          `${EXISTING_FOR_ASSET_SELECT}
+           FROM expenses WHERE id = $1 AND user_id = $2`,
+          [id, userId],
+        )
+      : null;
 
-  const setClauses = keys.map((k, i) => `${k} = $${i + 3}`);
-  const values = keys.map((k) => updates[k]);
+  // distribute_to_runway 변경: 그룹 전체 동기화 + 자산 보정 (ADR 0018).
+  // 같은 할부의 다른 회차도 함께 변경되어야 정책 일관성 유지.
+  if (toggleChanging && existingForAsset?.installment_group) {
+    const newValue = Boolean(updates['distribute_to_runway']);
+    const adjustment = await computeInstallmentToggleAdjustment(
+      userId,
+      existingForAsset.installment_group,
+      newValue,
+    );
+    if (adjustment) {
+      await applyInstallmentToggleAdjustment(userId, adjustment);
+    }
+    // 그룹 전체 UPDATE — 단일 행 UPDATE 대신 group 동기화
+    await query(
+      `UPDATE expenses SET distribute_to_runway = $1
+       WHERE user_id = $2 AND installment_group = $3`,
+      [newValue, userId, existingForAsset.installment_group],
+    );
+  }
+
+  // distribute_to_runway는 그룹 UPDATE에서 이미 처리 → 단일행 SET clause에서 제외
+  const setKeys = toggleChanging ? keys.filter((k) => k !== 'distribute_to_runway') : keys;
+  if (setKeys.length === 0) {
+    return queryExpense(userId, id);
+  }
+
+  const setClauses = setKeys.map((k, i) => `${k} = $${i + 3}`);
+  const values = setKeys.map((k) => updates[k]);
   const row = await queryOne<ExpenseRow>(
     `UPDATE expenses SET ${setClauses.join(', ')}
      WHERE id = $1 AND user_id = $2
      RETURNING id, date::text, amount, category, description, payment_method,
                is_installment, installment_num, installment_total, installment_group,
                source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
-            COALESCE(exclude_from_budget, false) as exclude_from_budget,
-            COALESCE(distribute_to_budget, false) as distribute_to_budget`,
+               COALESCE(exclude_from_budget, false) as exclude_from_budget,
+               COALESCE(distribute_to_budget, false) as distribute_to_budget,
+               COALESCE(distribute_to_runway, true) as distribute_to_runway`,
     [id, userId, ...values],
   );
 
-  if (row && existingForAsset && isFutureInstallment(existingForAsset)) {
-    const diff = Number(updates['amount']) - existingForAsset.amount;
-    if (diff > 0) await applyAssetDeduction(userId, diff);
-    else if (diff < 0) await applyAssetIncrease(userId, -diff);
+  // amount 변경 시 자산 보정 — 단, INSERT 시점에 자산에서 차감됐던 회차에 대해서만.
+  // OFF + target 밖 회차는 자산에 영향 없었으므로 amount 변경도 자산 무영향.
+  if (row && amountChanging && existingForAsset) {
+    const deducted = await wasDeductedFromAssetAtInsert(userId, existingForAsset);
+    if (deducted) {
+      const diff = Number(updates['amount']) - existingForAsset.amount;
+      if (diff > 0) await applyAssetDeduction(userId, diff);
+      else if (diff < 0) await applyAssetIncrease(userId, -diff);
+    }
   }
 
   return row;
@@ -303,16 +388,18 @@ export async function updateExpense(
 /** 지출 삭제 — 할부 미래 회차 삭제 시 자산 복원 */
 export async function deleteExpense(userId: number, id: number): Promise<boolean> {
   const existing = await queryOne<ExistingForAsset>(
-    `SELECT amount, is_installment, installment_num,
-            COALESCE(type, 'expense') as type,
-            COALESCE(exclude_from_budget, false) as exclude_from_budget
+    `${EXISTING_FOR_ASSET_SELECT}
      FROM expenses WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
   const result = await query('DELETE FROM expenses WHERE id = $1 AND user_id = $2', [id, userId]);
   const deleted = (result.rowCount ?? 0) > 0;
-  if (deleted && existing && isFutureInstallment(existing)) {
-    await applyAssetIncrease(userId, existing.amount);
+  if (deleted && existing) {
+    // INSERT 시점에 자산에서 차감됐던 회차만 환원. OFF + target 밖 회차는 자산 무영향이었으므로 환원 X.
+    const wasDeducted = await wasDeductedFromAssetAtInsert(userId, existing);
+    if (wasDeducted) {
+      await applyAssetIncrease(userId, existing.amount);
+    }
   }
   return deleted;
 }
