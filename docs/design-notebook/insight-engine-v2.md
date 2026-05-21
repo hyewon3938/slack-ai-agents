@@ -17,8 +17,9 @@
 
 - [x] **Phase 1**: 패턴 통합 · 임계치 외부화 · 주간 리포트 재구성 ([#389](https://github.com/hyewon3938/slack-ai-agents/issues/389), 2026-05-14 머지)
 - [x] **Phase 2**: LLM 자율 슬롯 + 측정 ([#390](https://github.com/hyewon3938/slack-ai-agents/issues/390), 2026-05-16 머지)
-- [ ] **Phase 3**: 사주 60갑자 마스터 정규화 + 일일 매칭 catalog ([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391), 설계 완료 2026-05-17)
-- [ ] **Phase 4**: 사주 × 라이프 Hybrid Pipeline 정량 검증 ([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392))
+- [x] **Phase 3**: 사주 60갑자 마스터 정규화 + 일일 매칭 catalog ([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391), 2026-05-17 머지)
+- [ ] **Phase 4**: 가설-검증 정량 파이프라인 + 자동 패턴 발견 ([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392), 설계 완료 2026-05-21)
+- [ ] **Phase 5**: 월운·세운·대운 시기 단위 확장 ([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408), Phase 4 이후)
 
 ---
 
@@ -201,3 +202,70 @@ SQL 결정론(Phase 1, 11개 패턴) 위에 **LLM 자율 발견 슬롯**을 추�
 
 - **사주 도메인의 정량 가설-검증 시스템 first**: 한국 전통 명리학의 임상 가설을 개인 라이프 데이터로 정량 검증하는 시도. 사주 자료를 마스터로 정규화하고 시드 catalog가 참조하는 데이터 모델 + outcome 누적 사이클 자체가 새로운 패턴
 - **결정론적 catalog ↔ LLM 자율 발견의 듀얼트랙 패턴 재활용**: Phase 2에서 cross-domain 일상 데이터에 적용한 outcome 검증 패턴이 사주 영역에도 동일 구조로 작동. 헌장이 phase 도메인을 넘어 일관 적용된 사례
+
+---
+
+## Phase 4: 가설-검증 정량 파이프라인 + 자동 패턴 발견 (2026-05-21 설계)
+
+- 이슈: [#392](https://github.com/hyewon3938/slack-ai-agents/issues/392)
+- 관련 ADR: [ADR-0019](../adr/0019-saju-hypothesis-verification-pipeline.md) (#392 머지 직전 budget PR이 0018 선점)
+- 관련 계획서: `.claude/plans/392-phase4-hypothesis-pipeline.md`
+- 연관 이슈: [#409](https://github.com/hyewon3938/slack-ai-agents/issues/409) (diary-meta-extract Opus 이관, Phase 4 작업 1), [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408) (Phase 5 분리)
+- Phase 4 scope 재정의: 원래 "사주 × 라이프 Hybrid Pipeline 정량 검증"이었으나 Phase 3에서 시드 작성 책임이 이동하면서 **시드 outcome 통계 검정 + 자동 패턴 발견 + 가설 운영 사이클**로 재정의
+- 상태: 설계 완료 / 구현 예정
+
+### 결정 요약
+
+Phase 3에서 누적되는 시드 outcome 데이터(hit/miss/inconclusive)와 일기 enum 태그(`diary_meta_tags`)를 결합해 **가설-검증 정량 파이프라인**을 도입한다. 결정론 통계(Fisher's exact + BH-FDR)로 자동 패턴을 발견하고, 사용자가 Block Kit 카드에서 선택해 가설로 등록(`saju_hypotheses`)하면 주간 cron이 통계 누적(`saju_stats`) → confirmed/rejected 자동 전이까지 처리. confirmed 가설은 Phase 1 결정론 11패턴에 **확장 슬롯**으로 자동 합류해 매일 잔소리에 반영. 신규 `weeklyHypothesisReview` cron을 월요일 08:00 KST에 추가 (Phase 1 `weeklyReport` 09:00 분리 유지 — 목적·시각·채널 모두 별도). enum은 16개 → 22개로 확장 (wealth_awareness / self_observation / social_activity / physical_activity / task_completion / clumsy_overflow 추가). LLM은 enum 추출 1회만 사용([#409](https://github.com/hyewon3938/slack-ai-agents/issues/409) Opus 이관 동반), 통계 검정 자체는 결정론 — v2 헌장(LLM 텍스트 의존 최소화) 준수.
+
+### 의사결정 분기점
+
+- **시기 단위 확장(월운·세운·대운) 포함 여부**: Phase 4 통합 / **Phase 5 분리 (선택)** / 영구 미루기. → 분리. 이유: 통계 사이클 길이 차이로 검증 메커니즘 자체가 다름(월운 \~2년, 세운 \~28년). 가설 검증 인프라와 작업 성격이 분리되어 같은 phase로 묶기엔 응집도 약함. #392 본문이 시기 단위 확장도 포함했으나 인터뷰에서 #408로 이관 결정
+- **일일 분석 출력 재설계 범위**: 주간 리포트만 재설계 / **일일 메시지도 가설 인프라 흡수 (선택)**. → 흡수. 이유: 어렵게 검증한 가설을 일상에 못 쓰면 의미 없음. 확장 슬롯 패턴으로 11패턴 코드 무수정 가능
+- **통계 검정 방식**: t-test / Cohen's d 단독 / **Fisher's exact + rate ratio (선택)** / chi-square / Mann-Whitney U. → Fisher's exact. 이유: diary_meta_tags가 이진(있음/없음)이라 t-test 부적합. 소표본에 가장 robust. rate ratio로 효과 크기 별도 표시
+- **최소 샘플 (n_trigger_days)**: 3일 / **5일 (선택)** / 10일. → 5일. 이유: n=3는 Fisher's exact 검출력 거의 0 — false positive 폭증. 10일은 60일 데이터로는 희귀 시드 영원히 못 잡음. 5일이 균형
+- **유의 임계치 (p / q)**: p<0.05만 / p<0.01 / **p<0.1 AND FDR q<0.2 (선택)** / FDR q<0.05만. → 후자. 이유: 1차 탐색이라 false negative가 false positive보다 비용 큼. 그러나 다중 비교 무시하면 시드×enum 수천 조합에서 노이즈 폭증 → BH-FDR로 통제. q<0.2는 "후보 중 20% false positive 예상" 수준으로 사용자 직접 카드 보고 판단 단계 유지
+- **confirmed 전이 임계**: n≥20 + q<0.1 / **n≥30 + q<0.05 (선택)** / n≥50 + q<0.01. → 중간. 이유: 느슨하면 confirmed로 잘못 전이된 가설이 잔소리에 들어옴(신뢰 무너짐). 빡세면 1\~5년 걸려 사용자 동기 약화. n=30이면 자주 발현 시드는 1년, 희귀 시드는 3\~5년 — 받아들일 만함
+- **자동 발견 vs 백테스팅 관계**: 별도 도구 / **같은 인프라, 트리거만 다름 (선택)**. → 통합. 이유: 1차 셋업 백테스팅(60일 데이터로 1회 스캔) = 운영 자동 발견(주간 cron). Fisher's exact + FDR 계산 코드를 단일 소스로 유지 가능. 사용자 인터뷰에서 직접 확인: "자동 패턴 발견은 기능이고 지금 개발하면서 하는 것도 자동 패턴 발견인데"
+- **가설 등록 UI**: 슬래시 명령어 / **Block Kit 카드 버튼 (선택)** / 웹 페이지. → Block Kit. 이유: 자동 발견 후보 자체가 Slack 카드로 오는데 등록 버튼이 같은 카드에 있는 게 동선 자연스러움. 웹 페이지는 Phase 4 제외 결정과 충돌
+- **confirmed 가설 → 일일 잔소리 통합 메커니즘**: 별도 영역 유지 / **결정론 11패턴 확장 슬롯 (선택)**. → 확장 슬롯. 이유: 11패턴 코드 무수정으로 통합 가능 — 분리 유지의 이점 사라짐. 매일 cron이 11패턴 + active confirmed 가설 모두 평가하면 됨
+- **enum 확장 개수**: 신규 0개 (16개로 충분) / **6개 (선택, 16 → 22)** / 10개 이상. → 6개. 이유: 사용자 60일 일기 분석 결과 6개 패턴이 16개로 못 잡힘 (wealth_awareness 핵심). 22개는 Opus 분류기에게 부담 아니고 self_observation 정의 명확화(예: "본인 사주·신살·일진 직접 언급")로 overlap 최소화
+- **주간 리포트 발송 시각**: 일요일 23시 / 일요일 23:55 (현 weekly-saju-review) / **월요일 08:00 (선택)** / 월요일 09:00 (09:05 일/루틴 알림과 충돌). → 월요일 08:00. 이유: 사용자 명시 "월요일 아침에 전주 데이터 보는 식으로". 09:05 일/루틴 알림과 충분히 분리. 일요일 23시는 아직 주가 안 끝남 + Phase 1에서 같은 이유로 주간 리포트를 월요일로 이동했던 결정 일관
+- **diary-meta-extract Opus 이관 위치**: Phase 4 작업 1 / 별도 phase / **Phase 4 첫 작업 (선택)**. → Phase 4 첫 작업. 이유: enum 분류 정확도가 후속 통계 검정의 입력 품질을 결정 → 추출 정확도가 시스템 전체 정확도의 상한선. 가설 인프라 구축 전에 입력 품질부터 안정화
+
+### 포기한 안 / 미룬 항목
+
+- **시기 단위 확장 (월운·세운·대운)**: Phase 5([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408))로 분리. 트리거: Phase 4 운영 1\~3개월 후 검증 메커니즘 안정화 + 사용자 시기 단위 분석 수요 확인
+- **웹 대시보드에서 가설 그래프 제공**: 보류. Slack Block Kit으로 충분히 운영 가능. 트리거: 가설 5+ confirmed 누적되어 시계열 시각화 필요해지면 별도 phase
+- **t-test / Cohen's d 통계 도입**: 영구 기각. diary_meta_tags가 이진이라 부적합
+- **자동 신뢰도 % 표시 (예: "이 가설 87% 신뢰")**: 보류. rate ratio + p + q 3종 표시가 더 정직(단일 % 환산은 오해 소지). 운영 후 사용자 인지 어렵다 피드백 오면 단순화 검토
+- **가설 폐기 후 재등록 시 이전 통계 승계 여부**: 1차안은 새 ID로 시작(통계 0부터). 같은 trigger_spec+enum_target 폐기 가설이 있으면 등록 시 경고만 표시. 트리거: 사용자가 같은 가설 반복 등록 시 운영 부담 보이면 머지 옵션 도입
+- **자유언어 가설 등록 (사용자가 직접 SQL 또는 텍스트로 작성)**: 영구 기각. Block Kit 카드(자동 발견 후보) 기반 선택만 — 자유 입력은 trigger_spec JSONB 검증 부담 + v2 헌장(결정론) 위배 가능
+- **가설 등록 후 즉시 검증 (등록 즉시 1회 통계 INSERT)**: 보류. 1차안은 다음 월요일 cron에서 첫 통계 — 사용자가 등록 직후 결과 보고 싶다 피드백 오면 즉시 모드 추가
+
+### 미해결·가설
+
+- **n<5 skip이 사용자에게 답답한가**: 검증 시점 = 운영 4\~8주 후. 자동 발견 후보가 자주 "샘플 부족" 표시되면 3일까지 낮추는 옵션 검토 (이때는 카드에 "잠정" 라벨 명시 필요)
+- **q<0.2 노이즈 정도**: 시드 16개 × enum 22개 = 352 기본 조합 + element_density 조합 → 운영 시 BH-FDR 효과 어느 정도인지 불확실. 초기 후보 카드가 매주 10+장 쏟아지면 q<0.1로 조이기
+- **confirmed 임계 n≥30이 1인 환경에서 도달 가능한가**: 자주 발현 시드(예: 매일 evaluating)는 1년 이내, 희귀 시드는 3\~5년. 1년 운영 후 confirmed 0건이면 임계 완화 검토
+- **rate ratio = 1 수렴 판정**: rejected 전이 조건 "rate_ratio → 1"의 구체 임계 미정 (예: 0.95 \~ 1.05 범위 4주 유지?). 운영 데이터 보고 결정
+- **Opus 이관 후 enum 추출 정확도 향상 정도**: 사용자가 Opus가 더 정확할 거라 가정하지만 spot check 전엔 미검증. Phase 4 작업 1 완료 후 1주 spot check 필수
+- **enum 6개 추가 후 분류 충돌 빈도**: self_observation ↔ analytical_mode / deep_thought 정의 좁혔지만 LLM이 헷갈릴 가능성. 첫 2주 일기-태그 결과 사용자 spot check 필요
+- **자동 발견 카드의 "정확도"**: rate ratio·p·q 셋 다 표시한다는 결정인데, 사용자가 직접 판단할 때 어떤 지표를 가장 무겁게 보는지 운영 후 관찰. 패턴 발견하면 카드 정렬·강조 재설계
+- **weekly-hypothesis-review 메시지 길이**: 가설 10개 active + 신규 후보 5장 = Slack 한 메시지 한계(Block Kit 50 blocks) 근접 가능. 1차안은 active 가설만 묶음 카드 + 후보는 별도 메시지로 분리 고려
+
+### 회고
+
+> 설계 단계 회고 (구현 후 머지 직후 회고 별도 추가 예정)
+
+- **인터뷰 중 phase scope 재정의가 자연스럽게 풀린 사례**: 초기 #392는 "사주 × 라이프 Hybrid Pipeline 정량 검증"이었으나 Phase 3에서 시드 작성 책임이 이동하면서 Phase 4 정체성이 모호해졌다. 사용자가 "phase3은 시드 확인 장치, phase4는 그 데이터 보고 리포트?"로 물어 즉시 재정의 — "Phase 3 = 시드 운영, Phase 4 = 가설 운영" 구분으로 정리. design-notebook이 phase 사이 책임 이동을 흡수하는 도구로 작동
+- **사용자가 직접 다른 이슈와의 관계를 짚어준 사례**: 사용자가 "#408 ... 이거 읽어보고 Phase 4랑 비슷한 내용이면 합치고 아니면 분리해서 진행하자"로 제안 → Phase 5 분리 결정. 메타 이슈(#393) 마스터가 phase 흐름을 추적하는 동안 사용자가 별도 후속 이슈를 cross-check하는 패턴이 다음 마스터에서도 유효할 듯
+- **백테스팅 ↔ 자동 패턴 발견 통합이 사용자 인터뷰로 풀린 사례**: 처음에 두 개념을 분리해서 작업 항목 2개로 두었는데 사용자가 "이게 아니야? 다시 자세히 설명 부탁"으로 짚어 통합 발견. 같은 Fisher's exact + FDR 코드를 트리거만 다르게 재사용하면 됨 → 코드 재사용 + 작업 항목 절감. 사용자의 "이것 같은데?" 질문이 설계 시야를 좁혀준 패턴
+- **통계 학습 모먼트 흡수**: 사용자가 p-value / q-value 의미 학습 중. 인터뷰에서 직관적 설명(p="우연 확률", q="후보 중 false positive 예상 비율") + 표 + 함정(p 작다 ≠ 효과 크다) 형식으로 풀어냄. 다음 phase부터 통계·인프라 용어 등장 시 한 줄 정의 + 본인 시스템 예시 패턴 정착
+- **Phase 3 회고 교훈 적용 — 도메인 문서 phase 섹션 미리 작성**: Phase 3에서 도메인 문서가 `/design` 단계에 누락된 사례 → Phase 4에서는 `/design`이 docs/domains/insight.md Section 11 골격(TODO 마커)을 미리 작성하고 `/build`가 본문 채우는 패턴 적용. 4문서 → 5문서 아키텍처 owner 명시 결정의 첫 실전 적용
+
+### 기술적 의의
+
+- **개인 라이프 데이터의 통계적 가설 검증 사이클**: Fisher's exact + BH-FDR 다중 비교 보정 + Block Kit UI를 결합해 1인 환경에서도 가설 운영 사이클을 학술 수준 통계 기준으로 굴리는 시도
+- **결정론 통계 ↔ LLM 자율 발견의 균형**: 자동 패턴 발견에 LLM 텍스트 추론을 쓰지 않고 결정론적 통계로 후보를 발굴 — v2 헌장(LLM 텍스트 의존 최소화) 가설 검증 영역까지 일관 적용
+- **백테스팅 ↔ 자동 발견 단일 인프라 패턴**: 동일 알고리즘을 트리거만 다르게 두 가지 모드로 운용. 셋업 도구가 운영 도구가 되는 코드 재사용 패턴

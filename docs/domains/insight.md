@@ -364,6 +364,22 @@ Baseline 윈도우는 `BASELINE_WINDOW_DAYS = 28`. SQL 템플릿은 `$user_id`, 
 
 설계 배경 및 대안 비교는 [ADR-0017](../adr/0017-saju-ganji-master-normalization.md) 참조.
 
+### 11. 프로액티브 인사이트 v2 — Phase 4 (가설-검증 정량 파이프라인)
+
+> TODO(`/build`): 구현 후 본문 채우기. Phase 4 산출물 요약:
+> - **데이터 모델**: `saju_hypotheses` (가설 정의) + `saju_stats` (주간 통계 시계열) 테이블 + migration 058/059
+> - **enum 확장**: `diary_meta_tags` 16 → 22 (wealth_awareness / self_observation / social_activity / physical_activity / task_completion / clumsy_overflow 추가, self_observation 정의 명확화)
+> - **통계 알고리즘**: Fisher's exact test + rate ratio + BH-FDR (`src/shared/saju-hypothesis.ts`)
+> - **자동 패턴 발견**: 1차 셋업(수동 1회) + 운영(주간 cron) 단일 인프라
+> - **가설 lifecycle**: active → confirmed (n≥30 + q<0.05) / rejected (n≥30 + rate→1) / archived (수동)
+> - **Block Kit 카드**: 후보 카드 (등록/폐기 버튼) + 액션 핸들러
+> - **주간 cron**: `weekly-hypothesis-review` 월요일 08:00 KST (신규 슬롯, 기존 weeklyReport와 분리)
+> - **일일 통합**: confirmed 가설 → Phase 1 결정론 11패턴 확장 슬롯으로 자동 합류 (11패턴 코드 무수정)
+> - **LLM 사용**: enum 추출 1회만 (Sonnet → Opus 이관, [#409](https://github.com/hyewon3938/slack-ai-agents/issues/409))
+> - **회고 / 운영 메트릭 / 임계치 튜닝 노트**
+
+설계 배경 및 대안 비교는 [ADR-0019](../adr/0019-saju-hypothesis-verification-pipeline.md) 참조.
+
 ## 파일 구조
 
 ```
