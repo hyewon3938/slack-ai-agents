@@ -203,6 +203,8 @@ export function useBudget() {
       planned_expense_id?: number | null;
       installment_months?: number;
       exclude_from_budget?: boolean;
+      /** 할부 자산 차감 범위 토글 (ADR 0018). 기본 true=전체 회차 즉시 차감 / false=target_date 이내만 */
+      distribute_to_runway?: boolean;
     }): Promise<ExpenseRow> => {
       const res = await fetch('/api/expenses', {
         method: 'POST',
@@ -253,6 +255,8 @@ export function useBudget() {
         description: string | null;
         exclude_from_budget?: boolean;
         planned_expense_id?: number | null;
+        /** 할부 자산 차감 범위 토글 (ADR 0018). 변경 시 그룹 전체에 적용 */
+        distribute_to_runway?: boolean;
       },
     ): Promise<void> => {
       const res = await fetch(`/api/expenses/${id}`, {
@@ -265,11 +269,16 @@ export function useBudget() {
         throw new Error(err.error ?? '지출 수정 실패');
       }
       const { data } = (await res.json()) as { data: ExpenseRow };
-      setExpenses((prev) => prev.map((e) => (e.id === id ? data : e)));
+      // distribute_to_runway 변경은 그룹 전체에 적용되므로 목록 전체 재조회
+      if ('distribute_to_runway' in updates) {
+        void fetchAll(selectedMonth);
+      } else {
+        setExpenses((prev) => prev.map((e) => (e.id === id ? data : e)));
+      }
       setExpenseVersion((v) => v + 1);
       void refreshBudget(selectedMonth).catch(() => {});
     },
-    [selectedMonth, refreshBudget],
+    [selectedMonth, refreshBudget, fetchAll],
   );
 
   const updateAssetBalance = useCallback(
