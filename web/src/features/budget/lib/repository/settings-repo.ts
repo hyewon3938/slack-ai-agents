@@ -20,6 +20,125 @@ export async function upsertTargetDate(userId: number, targetDate: string | null
   );
 }
 
+// ─── target_date 변경 시 OFF 할부 자산 보정 (ADR 0018) ──────────
+
+/** target_date 변경으로 영향 받는 OFF 할부 그룹 단위 변화 */
+export interface TargetDateChangeGroup {
+  groupId: string;
+  description: string | null;
+  /** 자산 변화량. 양수=추가 차감, 음수=환원 */
+  deltaAmount: number;
+}
+
+export interface TargetDateChangePreview {
+  oldTargetDate: string | null;
+  newTargetDate: string | null;
+  affectedGroups: TargetDateChangeGroup[];
+  /** 모든 그룹 deltaAmount 합. 양수=총 추가 차감, 음수=총 환원 */
+  totalDelta: number;
+}
+
+interface InstallmentRow {
+  installment_group: string;
+  description: string | null;
+  amount: number;
+  billing_month: string;
+}
+
+/**
+ * target_date 변경이 OFF 할부 자산 차감에 미치는 영향 분석 (DB 미변경).
+ *
+ * 대상: distribute_to_runway=false 인 할부의 "아직 결제주기 시작 안 된" 미래 회차
+ *   (installment_num >= 2 AND billing_month > 현재_billing_month).
+ *
+ * 각 회차의 billing_month가 old / new target 경계를 넘나드는지 판정해 delta 계산:
+ * - old: target 이내(차감됨), new: target 밖(무영향) → -amount (환원)
+ * - old: target 밖(무영향), new: target 이내(차감됨) → +amount (추가 차감)
+ *
+ * newTargetDate=null 이면 모든 미래 회차가 "target 밖"으로 → 전부 환원 분석.
+ */
+export async function analyzeTargetDateChange(
+  userId: number,
+  newTargetDate: string | null,
+): Promise<TargetDateChangePreview> {
+  const oldTargetDate = await readTargetMonth(userId);
+  if (oldTargetDate === newTargetDate) {
+    return { oldTargetDate, newTargetDate, affectedGroups: [], totalDelta: 0 };
+  }
+
+  const currentBillingMonth = getCurrentBillingMonth(new Date());
+
+  // OFF 할부의 아직 정산 안 된 미래 회차
+  const { rows } = await query<InstallmentRow>(
+    `SELECT installment_group, description, amount, billing_month
+     FROM expenses
+     WHERE user_id = $1
+       AND is_installment = true
+       AND installment_num >= 2
+       AND billing_month > $2
+       AND COALESCE(type, 'expense') = 'expense'
+       AND COALESCE(exclude_from_budget, false) = false
+       AND COALESCE(distribute_to_runway, true) = false
+       AND installment_group IS NOT NULL`,
+    [userId, currentBillingMonth],
+  );
+
+  const groupDeltas = new Map<string, { description: string | null; delta: number }>();
+
+  for (const row of rows) {
+    const wasInTarget = oldTargetDate !== null && row.billing_month <= oldTargetDate;
+    const willBeInTarget = newTargetDate !== null && row.billing_month <= newTargetDate;
+    if (wasInTarget === willBeInTarget) continue;
+
+    // wasInTarget true → willBeInTarget false: 이전엔 차감됐는데 이제 무영향 → 환원
+    // wasInTarget false → willBeInTarget true: 이전엔 무영향이었는데 이제 차감 → 추가 차감
+    const delta = willBeInTarget ? row.amount : -row.amount;
+    const existing = groupDeltas.get(row.installment_group);
+    if (existing) {
+      existing.delta += delta;
+    } else {
+      groupDeltas.set(row.installment_group, {
+        description: row.description,
+        delta,
+      });
+    }
+  }
+
+  const affectedGroups: TargetDateChangeGroup[] = Array.from(groupDeltas.entries())
+    .filter(([, info]) => info.delta !== 0)
+    .map(([groupId, info]) => ({
+      groupId,
+      description: info.description,
+      deltaAmount: info.delta,
+    }));
+  const totalDelta = affectedGroups.reduce((s, g) => s + g.deltaAmount, 0);
+
+  return { oldTargetDate, newTargetDate, affectedGroups, totalDelta };
+}
+
+/**
+ * target_date 변경 확정 — 영향 분석 + 자산 보정 + budget_settings 갱신.
+ *
+ * 자산 보정은 분석 단계의 totalDelta를 기준으로 양수면 applyAssetDeduction,
+ * 음수면 applyAssetIncrease 한 번씩만 호출 (그룹 개별 처리 X — 자산 풀은 공용).
+ */
+export async function applyTargetDateChange(
+  userId: number,
+  newTargetDate: string | null,
+): Promise<TargetDateChangePreview> {
+  const preview = await analyzeTargetDateChange(userId, newTargetDate);
+
+  if (preview.totalDelta > 0) {
+    await applyAssetDeduction(userId, preview.totalDelta);
+  } else if (preview.totalDelta < 0) {
+    await applyAssetIncrease(userId, -preview.totalDelta);
+  }
+
+  await upsertTargetDate(userId, newTargetDate);
+
+  return preview;
+}
+
 // ─── 할부 토글 사후 변경 보정 (ADR 0018) ──────────────────
 
 export interface InstallmentToggleAdjustment {

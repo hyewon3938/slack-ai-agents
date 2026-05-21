@@ -83,6 +83,8 @@ export async function POST(request: Request) {
       installment_months?: number;
       exclude_from_budget?: boolean;
       distribute_to_budget?: boolean;
+      /** 할부 자산 차감 범위 토글 (ADR 0018). 기본 true=전체 회차 즉시 차감 / false=target_date 이내만 */
+      distribute_to_runway?: boolean;
     };
 
     if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
@@ -131,6 +133,7 @@ export async function POST(request: Request) {
         memo: body.memo,
         type: entryType,
         exclude_from_budget: excludeFromBudget,
+        distribute_to_runway: body.distribute_to_runway,
       });
       return NextResponse.json({ data }, { status: 201 });
     }

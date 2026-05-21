@@ -41,6 +41,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         { status: 400 },
       );
     }
+    if ('distribute_to_runway' in body && typeof body.distribute_to_runway !== 'boolean') {
+      return NextResponse.json(
+        { error: 'distribute_to_runway는 boolean이어야 합니다' },
+        { status: 400 },
+      );
+    }
 
     const lengthError = validateFields([
       [body.description, 'description'],
