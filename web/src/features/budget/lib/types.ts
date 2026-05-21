@@ -146,6 +146,7 @@ export const BUDGET_EXCLUDED_CATEGORIES = new Set([
   '공과금',
   '리커밋 사업',
   '리커밋 택배',
+  '세금',
 ]);
 
 /** 하루 최소 자유 예산 경고 기준 (원) */
@@ -171,6 +172,7 @@ export const EXPENSE_CATEGORIES = [
   '고양이',
   '리커밋 사업',
   '리커밋 택배',
+  '세금',
   '기타',
 ] as const;
 
