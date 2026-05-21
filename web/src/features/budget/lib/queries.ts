@@ -41,7 +41,8 @@ export async function queryExpenses(
             is_installment, installment_num, installment_total, installment_group,
             source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
             COALESCE(exclude_from_budget, false) as exclude_from_budget,
-            COALESCE(distribute_to_budget, false) as distribute_to_budget
+            COALESCE(distribute_to_budget, false) as distribute_to_budget,
+            COALESCE(distribute_to_runway, true) as distribute_to_runway
      FROM expenses
      WHERE ${conditions.join(' AND ')}
      ORDER BY date DESC, created_at DESC`,
@@ -67,7 +68,8 @@ export async function queryExpensesByBillingMonth(
             is_installment, installment_num, installment_total, installment_group,
             source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
             COALESCE(exclude_from_budget, false) as exclude_from_budget,
-            COALESCE(distribute_to_budget, false) as distribute_to_budget
+            COALESCE(distribute_to_budget, false) as distribute_to_budget,
+            COALESCE(distribute_to_runway, true) as distribute_to_runway
      FROM expenses
      WHERE ${conditions.join(' AND ')}
      ORDER BY date DESC, created_at DESC`,
@@ -83,7 +85,8 @@ export async function queryExpense(userId: number, id: number): Promise<ExpenseR
             is_installment, installment_num, installment_total, installment_group,
             source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
             COALESCE(exclude_from_budget, false) as exclude_from_budget,
-            COALESCE(distribute_to_budget, false) as distribute_to_budget
+            COALESCE(distribute_to_budget, false) as distribute_to_budget,
+            COALESCE(distribute_to_runway, true) as distribute_to_runway
      FROM expenses WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
@@ -113,7 +116,8 @@ export async function createExpense(
                is_installment, installment_num, installment_total, installment_group,
                source, memo, COALESCE(type, 'expense') as type, planned_expense_id, created_at::text,
                COALESCE(exclude_from_budget, false) as exclude_from_budget,
-               COALESCE(distribute_to_budget, false) as distribute_to_budget`,
+               COALESCE(distribute_to_budget, false) as distribute_to_budget,
+               COALESCE(distribute_to_runway, true) as distribute_to_runway`,
     [
       userId,
       data.date,
