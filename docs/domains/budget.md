@@ -20,9 +20,9 @@
 ### 가용자금 (Total Available)
 - `assets.available_amount` 합계 (`is_emergency=false`)
 - 결제주기 종료 cron이 이전 사이클의 자유+제외 지출을 default 자산에서 자동 차감하고 수입을 default 자산에 증액 — 자산 테이블이 곧 가용자금이 되도록 유지
-- 할부 2+회차는 INSERT 즉시 자산에서 차감 (allocator의 monthBudget 락에서는 제외해 수학적 동등)
+- 할부 2+회차는 INSERT 즉시 자산에서 차감 (allocator의 monthBudget 락에서는 제외해 수학적 동등). 단, `distribute_to_runway=false`면 target_date 이후 회차는 자산 무영향 — 결제주기 cron에서 자유지출로 정산
 - 구현: [facade.ts `runSettlementIfDue`](../../web/src/features/budget/lib/facade.ts), [assets-repo.ts](../../web/src/features/budget/lib/repository/assets-repo.ts)
-- 판단 근거: [ADR 0015](../adr/0015-asset-auto-deduction-policy.md)
+- 판단 근거: [ADR 0015](../adr/0015-asset-auto-deduction-policy.md) — 즉시 차감 default 정책 / [ADR 0018](../adr/0018-installment-runway-scope-toggle.md) — 사용자 명시 OFF 분기
 
 ### 자유 예산 (Free Budget)
 - 월 자유 예산 = 월 가용자금 − (월 고정비 + 할부 월분 + 예정 지출)
@@ -54,6 +54,7 @@ ADR 0008 도입 후 일 예산은 두 값으로 분리된다:
 |------|--------|------|
 | `exclude_from_budget` | expenses | 지출을 자유 예산 계산에서 제외 |
 | `distribute_to_budget` | expenses | 수입을 목표 기간 전체에 분배 |
+| `distribute_to_runway` | expenses | 할부 미래 회차를 INSERT 즉시 자산 차감(true, default) vs target_date 이내만 차감(false). ADR 0018 |
 | `is_emergency` | assets | 비상금을 가용자금에서 제외 |
 | `is_variable` | fixed_costs | 변동 고정비 표시 |
 
@@ -79,6 +80,8 @@ expenses:
   planned_expense_id INTEGER FK,
   exclude_from_budget BOOLEAN,
   distribute_to_budget BOOLEAN,
+  distribute_to_runway BOOLEAN DEFAULT true,  -- ADR 0018: false면 target_date 이후 할부 회차는 자산 무영향
+  billing_month VARCHAR(7),            -- 카드별 결제주기 귀속 (전월 15일~당월 14일)
   created_at TIMESTAMPTZ
 
 -- 고정비 템플릿
@@ -193,23 +196,24 @@ features/budget/
 
 ## 기능 구현 상태
 
-### ✅ 완전 구현 (13)
+### ✅ 완전 구현 (14)
 
 | # | 기능 | UI | API | 계산/쿼리 | 비고 |
 |---|------|----|----|---------|------|
-| 1 | 지출 CRUD | [expense-form.tsx](../../web/src/features/budget/components/expense-form.tsx), expense-edit-modal | `/api/expenses` + `/[id]` | queries.ts | 카테고리/결제수단/메모 |
+| 1 | 지출 CRUD | [expense-form.tsx](../../web/src/features/budget/components/expense-form.tsx), expense-edit-modal | `/api/expenses` + `/[id]` | queries.ts | 카테고리/결제수단/메모. 세금 카테고리 포함(예산 제외 default) |
 | 2 | 수입 기록 (전체 분배) | [expense-form.tsx:275](../../web/src/features/budget/components/expense-form.tsx#L275) | `/api/expenses` POST | incomes-repo.ts | `type='income'` + `distribute_to_budget=true` |
 | 3 | 할부 처리 (2\~12개월) | expense-form 할부 옵션 | POST `installment_months` | createInstallmentExpenses | 그룹 UUID, 끝전 보정 |
 | 4 | 예정 지출 | planned-expense-list | `/api/budget/planned-expenses` | planned-repo.ts | 지출 시 `planned_expense_id` 연결 |
 | 5 | 고정비 템플릿 | 고정비 UI + 자동 기록 | `/api/budget/fixed-costs` | `ensureFixedCostExpenses` | 결제일 기준 자동 생성 |
 | 6 | 자산 관리 | 자산 목록/수정 | `/api/budget/assets` + `/[id]` | assets-repo.ts | 비상금 분리 |
-| 7 | 예산 설정 (목표 기간) | budget-settings-page | `/api/budget/settings` | settings-repo.ts | `target_date` 변경 프리뷰 지원 |
+| 7 | 예산 설정 (목표 기간) | budget-settings-page | `/api/budget/settings` | settings-repo.ts | `target_date` 변경 시 OFF 할부 영향 분석 모달 (ADR 0018) |
 | 8 | 월 예산 배분 | month-summary | `/api/budget/monthly` | month-allocator.ts | 일수 비례 균등 분배 |
 | 9 | 일 예산 배분 | month-summary 오늘 예산 | `/api/budget/today` | day-allocator.ts | 초과 클램프 |
 | 10 | 장기 예산 시뮬레이션 | runway-card | `/api/budget/runway` | runway-projection.ts | 월별 burn 시뮬 |
 | 11 | 일별 예산 로그 | daily-budget-log | `/api/budget/daily-logs` + cron | `saveDailyBudgetLog` | UNIQUE(user, date) |
 | 12 | 월별 예산 스냅샷 | — (내부) | 정산 cron 진입점 | `buildSettlementSnapshot` | 14일 종료 → 15일 새벽 cron, idempotent |
-| 13 | 결제주기 유틸 | — | — | billing/cycle.ts | 전월 15일\~당월 14일 |
+| 13 | 결제주기 유틸 | — | — | billing/cycle.ts, billing/card-billing.ts | 전월 15일\~당월 14일, 카드별 startDay |
+| 14 | 할부 자산 차감 범위 토글 | expense-form / expense-edit-modal 조건부 라디오 | `/api/expenses` POST/PATCH + `/api/budget/settings` `?preview=true` | createInstallmentExpenses, updateExpense, settings-repo (analyzeTargetDateChange / applyTargetDateChange / computeInstallmentToggleAdjustment) | ADR 0018. 마지막 회차 > target_date 일 때만 노출. 그룹 단위 적용 |
 
 ### 🟡 부분 구현 (4)
 
@@ -269,6 +273,32 @@ detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
   → getTodayAllocation() (정산된 시각 기준)
   → saveDailyBudgetLog() (UNIQUE(user, date))
   → daily-budget-log 컴포넌트가 차트로 렌더
+```
+
+### 할부 자산 차감 범위 토글 (ADR 0018)
+```
+[INSERT] expense-form 할부 옵션 + (마지막 회차 billing_month > target_date 일 때만) 라디오
+  → POST /api/expenses { installment_months, distribute_to_runway }
+  → createInstallmentExpenses
+     ├─ distribute_to_runway=true (default): 2~N회차 amount 합 = futureSum
+     └─ distribute_to_runway=false: 2~N회차 중 billing_month ≤ target_date 만 futureSum
+  → applyAssetDeduction(futureSum) — wasDeductedFromAssetAtInsert 기준 idempotent
+
+[사후 토글] expense-edit-modal 라디오 변경
+  → PATCH /api/expenses/[id] { distribute_to_runway }
+  → updateExpense 토글 분기
+     ├─ computeInstallmentToggleAdjustment(group, newValue): 그룹 미래 회차 중 billing_month > target_date 인 amount 합 = boundarySum
+     │  ├─ true (OFF→ON): +boundarySum → applyAssetDeduction
+     │  └─ false (ON→OFF): -boundarySum → applyAssetIncrease
+     └─ UPDATE expenses SET distribute_to_runway WHERE installment_group = ? (그룹 전체 동기화)
+
+[target_date 변경] budget-settings-page 목표 기간 변경 → 영향 분석 모달
+  → PUT /api/budget/settings?preview=true { target_date }
+  → analyzeTargetDateChange: OFF 할부의 미래 회차를 old/new boundary 로 비교, 그룹별 deltaAmount 산출
+  → 모달에서 사용자가 확인 → PUT (preview 없이) → applyTargetDateChange
+     ├─ totalDelta > 0: applyAssetDeduction
+     ├─ totalDelta < 0: applyAssetIncrease
+     └─ upsertTargetDate
 ```
 
 ## 주요 계산 규칙
@@ -335,4 +365,4 @@ detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
 
 ## 주요 PR
 
-- #292 (v2 전환), #293 (정합성 수정), #295 (projectFromAllocator 도입)
+- #292 (v2 전환), #293 (정합성 수정), #295 (projectFromAllocator 도입), #411 (할부 자산 차감 범위 토글 + 세금 카테고리)

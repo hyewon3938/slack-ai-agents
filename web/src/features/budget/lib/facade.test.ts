@@ -156,10 +156,10 @@ describe('runSettlementIfDue', () => {
   });
 
   it('정산일(14일)이고 스냅샷 신규 → settled=true + 스냅샷 반환', async () => {
-    // April 14 12:00 UTC = April 14 21:00 KST → yesterday=April 13 → shouldSettle=true, targetMonth='2026-04'
-    // targetMonth = '2026-04-13'.slice(0,7) = '2026-04', range.to = '2026-04-13'
-    // targetEnd = new Date('2026-04-13T12:00:00Z') = Apr 13 21:00 KST → billing cycle '2026-04' ✓
-    const settlementNow = new Date('2026-04-14T12:00:00Z');
+    // April 15 12:00 UTC = April 15 21:00 KST → yesterday=April 14 → shouldSettle=true, targetMonth='2026-04'
+    // range.to = '2026-04-14' (cycle 15→14 boundary)
+    // targetEnd = new Date('2026-04-14T12:00:00Z') = Apr 14 21:00 KST → billing cycle '2026-04' ✓
+    const settlementNow = new Date('2026-04-15T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
@@ -176,7 +176,7 @@ describe('runSettlementIfDue', () => {
   });
 
   it('available_at_end = availableAtStart + income - flex - excluded (자산 미참조)', async () => {
-    const settlementNow = new Date('2026-04-14T12:00:00Z');
+    const settlementNow = new Date('2026-04-15T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
@@ -194,7 +194,7 @@ describe('runSettlementIfDue', () => {
   });
 
   it('snapshot 신규 저장 시 자산 자동 차감/증액 호출 (flex + excluded, income 분리)', async () => {
-    const settlementNow = new Date('2026-04-14T12:00:00Z');
+    const settlementNow = new Date('2026-04-15T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
@@ -210,7 +210,7 @@ describe('runSettlementIfDue', () => {
   });
 
   it('snapshot 재실행(saved=false) 시 자산 변동 호출 없음 — idempotency', async () => {
-    const settlementNow = new Date('2026-04-14T12:00:00Z');
+    const settlementNow = new Date('2026-04-15T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);

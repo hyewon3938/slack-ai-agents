@@ -29,3 +29,24 @@ export function getBillingMonthForExpense(date: string, paymentMethod: string): 
   }
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+/**
+ * 할부 마지막 회차의 billing_month 계산 (할부 토글 조건부 노출 판단용).
+ *
+ * createInstallmentExpenses와 동일한 분할 로직: 첫 회차 date 기준 (months - 1)개월 후의 billing_month.
+ *
+ * @param firstDate 첫 회차 date 'YYYY-MM-DD'
+ * @param months 총 할부 개월 수 (>= 1)
+ * @param paymentMethod 결제수단 문자열
+ * @returns 'YYYY-MM' 마지막 회차 billing_month
+ */
+export function computeLastInstallmentBillingMonth(
+  firstDate: string,
+  months: number,
+  paymentMethod: string,
+): string {
+  const baseDate = new Date(`${firstDate}T00:00:00`);
+  baseDate.setMonth(baseDate.getMonth() + (months - 1));
+  const expDate = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
+  return getBillingMonthForExpense(expDate, paymentMethod);
+}
