@@ -214,6 +214,7 @@ features/budget/
 | 12 | 월별 예산 스냅샷 | — (내부) | 정산 cron 진입점 | `buildSettlementSnapshot` | 14일 종료 → 15일 새벽 cron, idempotent |
 | 13 | 결제주기 유틸 | — | — | billing/cycle.ts, billing/card-billing.ts | 전월 15일\~당월 14일, 카드별 startDay |
 | 14 | 할부 자산 차감 범위 토글 | expense-form / expense-edit-modal 조건부 라디오 | `/api/expenses` POST/PATCH + `/api/budget/settings` `?preview=true` | createInstallmentExpenses, updateExpense, settings-repo (analyzeTargetDateChange / applyTargetDateChange / computeInstallmentToggleAdjustment) | ADR 0018. 마지막 회차 > target_date 일 때만 노출. 그룹 단위 적용 |
+| 15 | 할부 exclude_from_budget 그룹 동기화 | expense-edit-modal 예산 토글 + 할부 그룹 안내 | `/api/expenses/[id]` PATCH | updateExpense, settings-repo `computeExcludeToggleAdjustment` / `applyExcludeToggleAdjustment` | 할부 행 토글 시 같은 installment_group 전체 UPDATE + 자산 보정 (delta 계산) |
 
 ### 🟡 부분 구현 (4)
 
@@ -299,6 +300,22 @@ detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
      ├─ totalDelta > 0: applyAssetDeduction
      ├─ totalDelta < 0: applyAssetIncrease
      └─ upsertTargetDate
+```
+
+### 할부 exclude_from_budget 토글 (ADR 0015 보강)
+```
+[모달에서 사용자가 "예산 미포함" 토글]
+  → PATCH /api/expenses/[id] { exclude_from_budget }
+    → updateExpense
+       ├─ computeExcludeToggleAdjustment(그룹 미래 회차 자산 차감 delta)
+       │   ├─ 현재 차감 합 = exclude=false AND (distribute_to_runway OR billing_month ≤ target_date)
+       │   ├─ 변경 후 차감 합 = newValue=true ? 0 : (차감 대상 회차 전부)
+       │   └─ delta = newDeducted - currentDeducted
+       ├─ delta > 0: applyAssetDeduction
+       ├─ delta < 0: applyAssetIncrease
+       └─ UPDATE expenses SET exclude_from_budget WHERE installment_group = ? (그룹 전체 동기화)
+
+비할부/그룹 없는 행은 단일 행 UPDATE만 — 결제주기 cron이 자유지출/제외지출로 처리.
 ```
 
 ## 주요 계산 규칙

@@ -221,3 +221,92 @@ export async function applyInstallmentToggleAdjustment(
     await applyAssetIncrease(userId, -adjustment.deltaAmount);
   }
 }
+
+// ─── 할부 exclude_from_budget 토글 사후 변경 보정 ──────────
+
+export interface ExcludeToggleAdjustment {
+  groupId: string;
+  /** 자산 변화량. 양수=추가 차감, 음수=환원 */
+  deltaAmount: number;
+}
+
+/**
+ * `exclude_from_budget` 토글 변경 시 그룹 전체 자산 보정 계산.
+ *
+ * 대상: 같은 installment_group의 미래 회차 (installment_num >= 2 AND billing_month > 현재).
+ * 그 중 INSERT 시점에 자산 차감된 회차 = exclude=false AND
+ *   (distribute_to_runway=true OR billing_month <= target_date).
+ *
+ * - newValue=true (모두 미포함): 현재 차감되어 있던 합만큼 환원 → 음수 delta
+ * - newValue=false (모두 포함): 모든 차감 대상 회차 합만큼 차감 → 양수 delta
+ *
+ * type='income' 그룹은 INSERT 시 자산 변동이 없었으므로 보정 대상 X.
+ */
+export async function computeExcludeToggleAdjustment(
+  userId: number,
+  installmentGroup: string,
+  newValue: boolean,
+): Promise<ExcludeToggleAdjustment | null> {
+  const currentBillingMonth = getCurrentBillingMonth(new Date());
+  const targetDate = await readTargetMonth(userId);
+
+  const meta = await queryOne<{ type: string }>(
+    `SELECT COALESCE(type, 'expense') AS type
+     FROM expenses
+     WHERE user_id = $1 AND installment_group = $2
+     LIMIT 1`,
+    [userId, installmentGroup],
+  );
+  if (!meta) return null;
+  if (meta.type !== 'expense') {
+    return { groupId: installmentGroup, deltaAmount: 0 };
+  }
+
+  const { rows } = await query<{
+    amount: number;
+    billing_month: string;
+    distribute_to_runway: boolean;
+    exclude_from_budget: boolean;
+  }>(
+    `SELECT amount, billing_month,
+            COALESCE(distribute_to_runway, true) AS distribute_to_runway,
+            COALESCE(exclude_from_budget, false) AS exclude_from_budget
+     FROM expenses
+     WHERE user_id = $1
+       AND installment_group = $2
+       AND is_installment = true
+       AND installment_num >= 2
+       AND billing_month > $3`,
+    [userId, installmentGroup, currentBillingMonth],
+  );
+
+  const isAssetDeductionTarget = (r: {
+    billing_month: string;
+    distribute_to_runway: boolean;
+  }): boolean => r.distribute_to_runway || (targetDate !== null && r.billing_month <= targetDate);
+
+  // 현재 자산에 차감되어 있는 회차 합 (exclude=false AND 차감 대상 조건)
+  const currentDeducted = rows.reduce((sum, r) => {
+    if (r.exclude_from_budget) return sum;
+    return isAssetDeductionTarget(r) ? sum + r.amount : sum;
+  }, 0);
+
+  // 변경 후 차감되어 있어야 할 합
+  const newDeducted = newValue
+    ? 0
+    : rows.reduce((sum, r) => (isAssetDeductionTarget(r) ? sum + r.amount : sum), 0);
+
+  return { groupId: installmentGroup, deltaAmount: newDeducted - currentDeducted };
+}
+
+/** computeExcludeToggleAdjustment 결과를 받아 실제 자산 변동을 수행 */
+export async function applyExcludeToggleAdjustment(
+  userId: number,
+  adjustment: ExcludeToggleAdjustment,
+): Promise<void> {
+  if (adjustment.deltaAmount > 0) {
+    await applyAssetDeduction(userId, adjustment.deltaAmount);
+  } else if (adjustment.deltaAmount < 0) {
+    await applyAssetIncrease(userId, -adjustment.deltaAmount);
+  }
+}
