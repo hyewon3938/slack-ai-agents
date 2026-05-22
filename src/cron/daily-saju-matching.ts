@@ -19,6 +19,7 @@ import {
 import { postToChannel } from '../shared/slack.js';
 import { getEffectiveTodayISO } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
+import { pickConfirmedHypothesisLines } from '../shared/insights.js';
 import type { LifeCronConfig } from './life-cron.js';
 
 export interface DailySajuMatchingResult {
@@ -26,6 +27,7 @@ export interface DailySajuMatchingResult {
   triggeredCount: number;
   matchedCount: number;
   line: string | null;
+  hypothesisLines: string[];
 }
 
 /**
@@ -37,7 +39,7 @@ export const runDailySajuMatchingDryRun = async (
 ): Promise<DailySajuMatchingResult> => {
   const ctx = await getDailyContext(userId, date);
   if (!ctx) {
-    return { date, triggeredCount: 0, matchedCount: 0, line: null };
+    return { date, triggeredCount: 0, matchedCount: 0, line: null, hypothesisLines: [] };
   }
 
   const results = await matchAllSeedsForDay(userId, date);
@@ -46,8 +48,9 @@ export const runDailySajuMatchingDryRun = async (
   const triggeredCount = results.filter((r) => r.triggerActivated).length;
   const matchedCount = results.filter((r) => r.matched).length;
   const line = compactMatchedLine(ctx, results);
+  const hypothesisLines = await pickConfirmedHypothesisLines(userId, date);
 
-  return { date, triggeredCount, matchedCount, line };
+  return { date, triggeredCount, matchedCount, line, hypothesisLines };
 };
 
 /**
@@ -85,6 +88,15 @@ export const dailySajuMatchingForUser = async (
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Saju Match] Slack 전송 실패 user=${userId}: ${msg}`);
+    }
+  }
+
+  if (result.hypothesisLines.length > 0) {
+    try {
+      await postToChannel(app.client, channelId, result.hypothesisLines.join('\n'));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Saju Match] 가설 라인 전송 실패 user=${userId}: ${msg}`);
     }
   }
 };

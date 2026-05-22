@@ -364,24 +364,141 @@ Baseline 윈도우는 `BASELINE_WINDOW_DAYS = 28`. SQL 템플릿은 `$user_id`, 
 
 설계 배경 및 대안 비교는 [ADR-0017](../adr/0017-saju-ganji-master-normalization.md) 참조.
 
+### 11. 프로액티브 인사이트 v2 — Phase 4 (가설-검증 정량 파이프라인)
+
+Phase 3까지는 11종 결정론 패턴 + 60갑자 일일 매칭으로 "기록"만 했다. Phase 4는 그 위에 통계적으로 검증된 가설만 잔소리로 노출하는 자동 파이프라인을 얹는다. 사람 직관(혹은 LLM 추측)이 아니라 누적 데이터의 효과량 + p-value로 active/confirmed/rejected를 판정.
+
+#### 데이터 모델 (migration 058)
+
+| 테이블 | 역할 | 키 컬럼 |
+|--------|------|---------|
+| `saju_hypotheses` | 가설 정의 + 현재 상태 | `trigger_spec` JSONB, `enum_target`, `status`, `source` |
+| `saju_stats` | 주간 통계 시계열 (`UNIQUE(hypothesis_id, week_start)`) | `n_trigger_days`, `n_total_days`, `rate_trigger`, `rate_baseline`, `rate_ratio`, `raw_p`, `fdr_q` |
+
+`trigger_spec`은 polymorphic 구조 — 현재는 `{type:'seed', signalId}` (Phase 3 시드 ID 재사용). 향후 합성 트리거(`{type:'and', specs:[...]}` 등) 확장 여지.
+
+`status`: `active` → `confirmed` / `rejected` / `archived`(수동). `source`: `discovery`(자동 발견 후 사용자 등록) / `manual`(직접 입력).
+
+#### enum 확장 (migration 059)
+
+`diary_meta_tags` CHECK 제약 16 → 22. 추가: `wealth_awareness` / `self_observation` / `social_activity` / `physical_activity` / `task_completion` / `clumsy_overflow`. `self_observation` 정의도 명확화(메타 인지/내성).
+
+LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack-ai-agents/issues/409)) — meta-extract cron이 createDiaryMetaLLMClient() 경유로 Opus 호출.
+
+#### 통계 알고리즘 (`src/shared/saju-hypothesis.ts`)
+
+- **Fisher's exact test (two-sided)**: hypergeometric log-space sum. n_trigger_days × n_baseline_days 2×2 분할표.
+- **Rate ratio**: `rate_trigger / rate_baseline` (효과량). 통계적 유의성 ≠ 실질적 의미를 분리 판단.
+- **BH-FDR**: Benjamini-Hochberg False Discovery Rate. 같은 주에 평가하는 가설 수만큼 multiple testing 보정. NaN(n<5 skip) 보존.
+
+임계치 (`saju-hypothesis.ts` 모듈 상단 상수, Phase 4에서만 사용):
+
+| 변수 | 값 | 의미 |
+|------|----|----|
+| `MIN_TRIGGER_SAMPLE` | 5 | 통계 계산 skip 하한 (trigger 발현일 < 5면 raw_p = NaN) |
+| `BASELINE_LOOKBACK_DAYS` | 90 | rate_baseline 계산 윈도우 |
+| `CONFIRM_MIN_N` | 30 | confirmed 진입 누적 trigger 발현일 |
+| `CONFIRM_MAX_Q` | 0.05 | 최근 4주 평균 FDR-corrected q-value 상한 |
+| `CONFIRM_MIN_RATE_RATIO` | 1.3 | 최근 4주 평균 효과량 하한 |
+| `REJECT_RATE_LOW` / `HIGH` | 0.95 / 1.05 | rejected: 최근 4주 모두 rate_ratio가 1 근처 |
+| `RECENT_WEEKS` | 4 | 상태 평가 윈도우 |
+
+발견 단계 임계치 (`hypothesis-discovery.ts`):
+
+| 변수 | 값 | 의미 |
+|------|----|----|
+| `DISCOVERY_MIN_N` | 5 | 후보 평가 최소 trigger 발현일 |
+| `DISCOVERY_MAX_RAW_P` | 0.1 | 1차 거르기 (BH-FDR 전, 보수적) |
+| `DISCOVERY_MAX_FDR_Q` | 0.2 | 다중 비교 보정 후 q-value 상한 |
+| `DISCOVERY_MIN_RATE_RATIO` | 1.3 | 효과량 하한 |
+
+#### 자동 패턴 발견 (`src/agents/insight/hypothesis-discovery.ts`)
+
+단일 함수 `discoverCandidates(userId, mode)`로 1차 셋업(`{mode:'setup', lookbackDays}`)과 주간 운영(`{mode:'recurring', weekStart}`) 모두 처리. 모든 (signalId × enum_target) 조합을 평가해 다음 조건 통과한 후보만 반환:
+
+- `DISCOVERY_MIN_N` (5)
+- `DISCOVERY_MAX_RAW_P` (0.1) → 1차 거르기 (보수적, BH-FDR 전)
+- `DISCOVERY_MAX_FDR_Q` (0.2) → multiple testing 보정 후
+- `DISCOVERY_MIN_RATE_RATIO` (1.3)
+
+`rate_ratio` 내림차순 정렬. CLI 백테스트는 `scripts/saju-hypothesis-backtest.ts` (`yarn tsx scripts/saju-hypothesis-backtest.ts --user 1 --lookback 60`).
+
+#### Block Kit 카드 (`src/agents/insight/hypothesis-cards.ts`)
+
+- **`buildCandidateCard`**: discoverCandidates 결과를 등록/폐기 버튼 카드로 변환. action_id: `hypothesis_register` / `hypothesis_dismiss`. payload는 type-safe JSON 인코딩.
+- **`buildWeeklyReviewBlocks`**: active 가설 표 (전주 대비 rate_ratio 변화 ▲▼─ 10% 임계) + 신규 후보 묶음.
+
+액션 핸들러 (`src/agents/insight/actions.ts`):
+- `hypothesis_register`: `INSERT INTO saju_hypotheses (status=active, source=auto_discovered)`
+- `hypothesis_dismiss`: 카드 메시지 update (DB 변경 X — 거부 기록만)
+
+#### Cron 시각
+
+| 시각 | 슬롯 | 의도 | 산출물 |
+|------|------|------|--------|
+| 월 08:00 KST | `weeklyHypothesisReview` | 주간 가설 통계 갱신 + 상태 평가 + 신규 후보 발굴 | #insight 묶음 카드 (active 표 + 후보 리스트) |
+
+`weekly-hypothesis-review.ts`는 매일 08:00 발사되지만 `getKSTDayOfWeek() !== 1`이면 즉시 return — `weeklyReport` / `weeklyLlmInsight`와 동일 패턴 (cron 슬롯 하나당 매일 발사 + 본체에서 요일 게이트).
+
+#### 일일 통합 흐름
+
+09:00 #life 사주 매칭 메시지 (Phase 3) 직후, 같은 cron에서 confirmed 가설을 1줄 잔소리로 추가 노출:
+
+```
+[Phase 3 결정론 + 60갑자 매칭 라인]
+[Phase 1 LLM 인사이트 ── 있을 때]
+*<signal_name>* 패턴 켜졌어 → `<enum_target>` 주의 (평균 1.5x).
+```
+
+`pickConfirmedHypothesisLines`는 `saju_hypotheses` confirmed × 오늘 `saju_daily_matches.trigger_activated = true` JOIN. Phase 1 11패턴 코드는 **무수정** — confirmed 가설이 11패턴 옆에 자동 합류하는 것은 별도 함수로 분리해 dedupe 로직과 격리.
+
+#### 가설 lifecycle
+
+```
+auto_discovered → active → confirmed → (영구 노출)
+                       ↓
+                    rejected (rate_ratio → 1, 4주 연속) → 잔소리 미노출
+                       ↓
+                    archived (수동, 본인이 더 안 보고 싶을 때)
+```
+
+상태 전이는 `evaluateStatusTransition(hypothesisId)` 단일 함수 — pure logic, DB 적용은 `applyStatusTransition`이 별도 수행.
+
+#### Phase 5 확장 가능성
+
+`trigger_spec`의 polymorphic JSONB 구조 덕에 시간 단위 확장(일운/월운/세운/대운)이 데이터 모델 변경 없이 가능 — 새 시드 카탈로그 + period 컬럼만 추가하면 동일 통계 파이프라인이 그대로 적용. 검증 사이클이 길어 누적 속도 차이 큼(세운 1년/대운 10년 단위). 상세: [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408).
+
+#### Fast Path 명령어
+
+Phase 4는 신규 fast path 명령어 없음. 카드 액션 버튼(`hypothesis_register` / `hypothesis_dismiss`)만 노출.
+
+설계 배경 및 대안 비교는 [ADR-0019](../adr/0019-saju-hypothesis-verification-pipeline.md) 참조.
+
 ## 파일 구조
 
 ```
 src/agents/insight/
-├── index.ts                  # 에이전트 생성, fast path 매칭, LLM 에이전트 루프
-├── prompt.ts                 # 시스템 프롬프트 빌더 (DB 데이터 실시간 로드)
-├── actions.ts                # 인터랙티브 버튼 핸들러
-├── blocks.ts                 # Slack Block Kit 메시지 빌더
-├── diary-fast-path.ts        # 일기 저장 + 자연스러운 응답
-└── saju-seed-fast-path.ts    # 사주 시드 보기/끄기/켜기 (Phase 3)
+├── index.ts                       # 에이전트 생성, fast path 매칭, LLM 에이전트 루프
+├── prompt.ts                      # 시스템 프롬프트 빌더 (DB 데이터 실시간 로드)
+├── actions.ts                     # 인터랙티브 버튼 핸들러 (+ Phase 4 가설 등록/폐기)
+├── blocks.ts                      # Slack Block Kit 메시지 빌더
+├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
+├── saju-seed-fast-path.ts         # 사주 시드 보기/끄기/켜기 (Phase 3)
+├── hypothesis-discovery.ts        # Phase 4 자동 패턴 발견 (setup/recurring)
+└── hypothesis-cards.ts            # Phase 4 카드 빌더 + 액션 payload
 
 src/shared/
-├── saju-match.ts             # Phase 3 매칭 엔진 (evaluateTrigger 6종 + evaluateMetric)
-├── saju-mappings.ts          # 십성 알고리즘 계산 (LLM 프롬프트용)
-├── insight-thresholds.ts     # 인사이트·시드 임계치 단일 관리
-└── insights.ts               # Phase 1 SQL 결정론 11종
+├── saju-match.ts                  # Phase 3 매칭 엔진 (evaluateTrigger 6종 + evaluateMetric)
+├── saju-mappings.ts               # 십성 알고리즘 계산 (LLM 프롬프트용)
+├── insight-thresholds.ts          # Phase 1/3 인사이트·시드 임계치 단일 관리 (Phase 4 임계치는 saju-hypothesis.ts 상수)
+├── insights.ts                    # Phase 1 SQL 결정론 11종 + Phase 4 confirmed 가설 라인
+└── saju-hypothesis.ts             # Phase 4 통계 (Fisher + BH-FDR + lifecycle)
 
 src/cron/
-├── daily-saju-matching.ts    # 09:00 사주 일일 매칭 (Phase 3)
-└── diary-meta-extract.ts     # 일기 → enum 태그 추출 cron (Phase 3)
+├── daily-saju-matching.ts         # 09:00 사주 일일 매칭 + confirmed 가설 슬롯 (Phase 3/4)
+├── diary-meta-extract.ts          # 일기 → enum 태그 추출 cron (Phase 3, Opus)
+└── weekly-hypothesis-review.ts    # 월 08:00 주간 가설 리포트 (Phase 4)
+
+scripts/
+└── saju-hypothesis-backtest.ts    # Phase 4 임계치 튜닝 CLI
 ```

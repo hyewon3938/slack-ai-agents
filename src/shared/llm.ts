@@ -110,6 +110,24 @@ export const createCronLLMClient = async (): Promise<LLMClient> => {
   return createLLMClient();
 };
 
+/**
+ * 일기 메타 추출 전용 LLM 클라이언트 (Opus).
+ * enum 분류기 — Sonnet 대비 enum 정의 ambiguity 해석(예: self_observation vs analytical_mode)
+ * 정밀도가 가설 검증 품질에 직결.
+ */
+export const createDiaryMetaLLMClient = async (): Promise<LLMClient> => {
+  const { CONFIG } = await import('./config.js');
+
+  if (CONFIG.llm.anthropicApiKey) {
+    // eslint-disable-next-line no-console
+    console.log('[LLM] 일기 메타 추출용 Opus 클라이언트 생성');
+    return new ClaudeLLMClient(CONFIG.llm.anthropicApiKey, 'claude-opus-4-7');
+  }
+
+  // Anthropic 키 없으면 크론 클라이언트로 폴백
+  return createCronLLMClient();
+};
+
 // ---- Claude 변환 함수 (테스트 가능하도록 export) ----
 
 export function toClaudeMessages(messages: LLMMessage[]): {

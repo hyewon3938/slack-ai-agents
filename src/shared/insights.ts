@@ -737,3 +737,55 @@ export const pickNightNudges = (today: string, userId: number): Promise<Insight[
 /** 주간 리포트용: weekly 인사이트 (도메인 dedupe + cap 동일) */
 export const pickWeeklyInsights = (today: string, userId: number): Promise<Insight[]> =>
   pickByTiming(today, userId, 'weekly');
+
+// ─── ADR-0019 Phase 4: confirmed 가설 → 일일 잔소리 합류 ───
+
+interface ConfirmedHypothesisRow {
+  enum_target: string;
+  signal_name: string;
+  rate_ratio: string | null;
+}
+
+/**
+ * 오늘 trigger가 발현한 confirmed 가설들의 잔소리 라인 반환.
+ * - confirmed 가설(saju_hypotheses.status='confirmed') × 오늘 saju_daily_matches.trigger_activated=true 조인
+ * - 가설별 최신 rate_ratio를 같이 보여줘 효과 크기 인지
+ * - 빈 결과면 빈 배열 반환 → daily-saju-matching 측에서 분기
+ */
+export const pickConfirmedHypothesisLines = async (
+  userId: number,
+  today: string,
+): Promise<string[]> => {
+  try {
+    const res = await query<ConfirmedHypothesisRow>(
+      `SELECT
+         h.enum_target,
+         c.name AS signal_name,
+         (
+           SELECT s.rate_ratio::TEXT
+             FROM saju_stats s
+            WHERE s.hypothesis_id = h.id
+            ORDER BY s.week_start DESC LIMIT 1
+         ) AS rate_ratio
+       FROM saju_hypotheses h
+       JOIN saju_signal_catalog c ON c.id = (h.trigger_spec->>'signalId')::INTEGER
+       JOIN saju_daily_matches m
+         ON m.user_id = h.user_id
+        AND m.signal_id = c.id
+        AND m.date = $2
+        AND m.trigger_activated = true
+       WHERE h.user_id = $1 AND h.status = 'confirmed'
+       ORDER BY c.name`,
+      [userId, today],
+    );
+    return res.rows.map((row) => {
+      const ratio = Number(row.rate_ratio);
+      const ratioPart = Number.isFinite(ratio) ? ` (평균 ${ratio.toFixed(1)}x)` : '';
+      return `*${row.signal_name}* 패턴 켜졌어 → \`${row.enum_target}\` 주의${ratioPart}.`;
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Insights] confirmed 가설 라인 조회 실패: ${msg}`);
+    return [];
+  }
+};
