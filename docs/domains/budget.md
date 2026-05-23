@@ -215,6 +215,7 @@ features/budget/
 | 13 | 결제주기 유틸 | — | — | billing/cycle.ts, billing/card-billing.ts | 전월 15일\~당월 14일, 카드별 startDay |
 | 14 | 할부 자산 차감 범위 토글 | expense-form / expense-edit-modal 조건부 라디오 | `/api/expenses` POST/PATCH + `/api/budget/settings` `?preview=true` | createInstallmentExpenses, updateExpense, settings-repo (analyzeTargetDateChange / applyTargetDateChange / computeInstallmentToggleAdjustment) | ADR 0018. 마지막 회차 > target_date 일 때만 노출. 그룹 단위 적용 |
 | 15 | 할부 exclude_from_budget 그룹 동기화 | expense-edit-modal 예산 토글 + 할부 그룹 안내 | `/api/expenses/[id]` PATCH | updateExpense, settings-repo `computeExcludeToggleAdjustment` / `applyExcludeToggleAdjustment` | 할부 행 토글 시 같은 installment_group 전체 UPDATE + 자산 보정 (delta 계산) |
+| 16 | 내역 type 필터 (수입/지출 세그먼트) | [expense-list.tsx](../../web/src/features/budget/components/expense-list.tsx) 세그먼트 + [manage/page.tsx](../../web/src/app/budget/manage/page.tsx) 상태 | — (클라이언트 필터) | `expense-list.tsx` 의 `filtered` (type AND 카테고리), `categoryPool` type별 분기 | 세그먼트(전체/지출/수입). type 변경 시 카테고리 자동 해제. 일별 합계는 `type === 'income'` 기준 차감으로 변경 (환불 특수처리 제거 — 환불은 migration 032에 의해 income으로 저장됨) |
 
 ### 🟡 부분 구현 (4)
 

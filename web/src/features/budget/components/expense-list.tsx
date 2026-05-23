@@ -4,9 +4,17 @@ import { useState } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { ExpenseRow } from '@/features/budget/lib/types';
-import { EXPENSE_CATEGORIES } from '@/features/budget/lib/types';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
 import { FunnelIcon, ChevronDownIcon } from '@/components/ui/icons';
+
+export type TypeFilter = 'all' | 'expense' | 'income';
+
+const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
+  { value: 'all', label: '전체' },
+  { value: 'expense', label: '지출' },
+  { value: 'income', label: '수입' },
+];
 
 /** 카테고리별 색상 맵 */
 const CATEGORY_COLORS: Record<string, string> = {
@@ -37,9 +45,9 @@ function getCategoryColor(category: string): string {
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
-  '현대카드': '현대',
-  '국민카드': '국민',
-  '현금': '현금',
+  현대카드: '현대',
+  국민카드: '국민',
+  현금: '현금',
 };
 
 function getPaymentLabel(method: string): string | null {
@@ -51,6 +59,8 @@ interface ExpenseListProps {
   onEdit: (expense: ExpenseRow) => void;
   selectedCategory: string | null;
   onCategoryChange: (cat: string | null) => void;
+  selectedType: TypeFilter;
+  onTypeChange: (t: TypeFilter) => void;
 }
 
 /** 날짜별로 그룹핑 */
@@ -64,22 +74,61 @@ function groupByDate(expenses: ExpenseRow[]): Map<string, ExpenseRow[]> {
   return map;
 }
 
-export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChange }: ExpenseListProps) {
+export function ExpenseList({
+  expenses,
+  onEdit,
+  selectedCategory,
+  onCategoryChange,
+  selectedType,
+  onTypeChange,
+}: ExpenseListProps) {
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const filtered = selectedCategory
-    ? expenses.filter((e) => e.category === selectedCategory)
-    : expenses;
+  // type + 카테고리 AND 필터
+  const filtered = expenses.filter((e) => {
+    if (selectedType !== 'all' && e.type !== selectedType) return false;
+    if (selectedCategory && e.category !== selectedCategory) return false;
+    return true;
+  });
 
   const grouped = groupByDate(filtered);
   const sortedDates = [...grouped.keys()].sort((a, b) => b.localeCompare(a));
 
-  // 현재 expenses에 실제 존재하는 카테고리만 필터에 표시
-  const activeCategories = [...new Set(expenses.map((e) => e.category))];
-  const sortedCategories = EXPENSE_CATEGORIES.filter((c) => activeCategories.includes(c));
+  // 카테고리 풀 = selectedType에 맞춰 분기
+  const categoryPool: readonly string[] =
+    selectedType === 'income'
+      ? INCOME_CATEGORIES
+      : selectedType === 'expense'
+        ? EXPENSE_CATEGORIES
+        : [...new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])];
+
+  // 활성 카테고리도 type 적용 후 추출
+  const typeScopedExpenses =
+    selectedType === 'all' ? expenses : expenses.filter((e) => e.type === selectedType);
+  const activeCategories = new Set(typeScopedExpenses.map((e) => e.category));
+  const sortedCategories = categoryPool.filter((c) => activeCategories.has(c));
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      {/* type 세그먼트 */}
+      <div className="border-b border-gray-100 px-4 py-2">
+        <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+          {TYPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onTypeChange(opt.value)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                selectedType === opt.value
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* 카테고리 필터 버튼 */}
       <div className="relative border-b border-gray-100 px-4 py-2">
         <button
@@ -100,9 +149,14 @@ export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChan
             <div className="fixed inset-0 z-40" onClick={() => setFilterOpen(false)} />
             <div className="absolute left-4 top-full z-50 mt-1 max-h-64 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
               <button
-                onClick={() => { onCategoryChange(null); setFilterOpen(false); }}
+                onClick={() => {
+                  onCategoryChange(null);
+                  setFilterOpen(false);
+                }}
                 className={`flex w-full items-center gap-2 px-3 py-2 text-xs ${
-                  selectedCategory === null ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+                  selectedCategory === null
+                    ? 'bg-blue-50 text-blue-700 font-medium'
+                    : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 전체
@@ -113,12 +167,20 @@ export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChan
                 return (
                   <button
                     key={cat}
-                    onClick={() => { onCategoryChange(cat); setFilterOpen(false); }}
+                    onClick={() => {
+                      onCategoryChange(cat);
+                      setFilterOpen(false);
+                    }}
                     className={`flex w-full items-center gap-2 px-3 py-2 text-xs ${
-                      selectedCategory === cat ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+                      selectedCategory === cat
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
                     <span className="flex-1 text-left">{cat}</span>
                     <span className="text-gray-400">{count}</span>
                   </button>
@@ -131,14 +193,15 @@ export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChan
 
       {/* 지출 목록 */}
       {filtered.length === 0 ? (
-        <div className="py-12 text-center text-sm text-gray-400">
-          지출 내역이 없습니다.
-        </div>
+        <div className="py-12 text-center text-sm text-gray-400">지출 내역이 없습니다.</div>
       ) : (
         <div className="divide-y divide-gray-100">
           {sortedDates.map((date) => {
             const dayExpenses = grouped.get(date) ?? [];
-            const dayTotal = dayExpenses.reduce((s, e) => e.category === '환불' ? s - e.amount : s + e.amount, 0);
+            const dayTotal = dayExpenses.reduce(
+              (s, e) => (e.type === 'income' ? s - e.amount : s + e.amount),
+              0,
+            );
             const dateObj = new Date(date + 'T00:00:00');
             return (
               <div key={date}>
@@ -148,7 +211,8 @@ export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChan
                     {format(dateObj, 'M월 d일 (E)', { locale: ko })}
                   </span>
                   <span className={`text-xs ${dayTotal < 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                    {dayTotal < 0 ? '+' : ''}{formatAmount(Math.abs(dayTotal))}
+                    {dayTotal < 0 ? '+' : ''}
+                    {formatAmount(Math.abs(dayTotal))}
                   </span>
                 </div>
 
@@ -156,31 +220,46 @@ export function ExpenseList({ expenses, onEdit, selectedCategory, onCategoryChan
                 {dayExpenses.map((expense) => {
                   const color = getCategoryColor(expense.category);
                   return (
-                    <div key={expense.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer" onClick={() => onEdit(expense)}>
+                    <div
+                      key={expense.id}
+                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer"
+                      onClick={() => onEdit(expense)}
+                    >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
                           <span className="text-xs font-medium text-gray-700">
                             {expense.category}
                           </span>
-                          {expense.is_installment && expense.installment_num !== null && expense.installment_total !== null && (
-                            <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-500">
-                              {expense.installment_num}/{expense.installment_total}
-                            </span>
-                          )}
-                          {expense.type === 'expense' && getPaymentLabel(expense.payment_method) && (
-                            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">
-                              {getPaymentLabel(expense.payment_method)}
-                            </span>
-                          )}
+                          {expense.is_installment &&
+                            expense.installment_num !== null &&
+                            expense.installment_total !== null && (
+                              <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-500">
+                                {expense.installment_num}/{expense.installment_total}
+                              </span>
+                            )}
+                          {expense.type === 'expense' &&
+                            getPaymentLabel(expense.payment_method) && (
+                              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">
+                                {getPaymentLabel(expense.payment_method)}
+                              </span>
+                            )}
                         </div>
                         {expense.description && (
-                          <p className="mt-0.5 truncate text-xs text-gray-500">{expense.description}</p>
+                          <p className="mt-0.5 truncate text-xs text-gray-500">
+                            {expense.description}
+                          </p>
                         )}
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className={`text-sm font-semibold ${expense.type === 'income' ? 'text-green-600' : 'text-gray-800'}`}>
-                          {expense.type === 'income' ? '+' : ''}{formatAmount(expense.amount)}
+                        <div
+                          className={`text-sm font-semibold ${expense.type === 'income' ? 'text-green-600' : 'text-gray-800'}`}
+                        >
+                          {expense.type === 'income' ? '+' : ''}
+                          {formatAmount(expense.amount)}
                         </div>
                       </div>
                     </div>

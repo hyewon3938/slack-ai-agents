@@ -5,7 +5,7 @@ import { useBudget } from '@/features/budget/hooks/use-budget';
 import type { ExpenseRow } from '@/features/budget/lib/types';
 import { MonthSummaryCard } from '@/features/budget/components/month-summary';
 import { ExpenseForm } from '@/features/budget/components/expense-form';
-import { ExpenseList } from '@/features/budget/components/expense-list';
+import { ExpenseList, type TypeFilter } from '@/features/budget/components/expense-list';
 import { ExpenseEditModal } from '@/features/budget/components/expense-edit-modal';
 import { IncomeEditModal } from '@/features/budget/components/income-edit-modal';
 import { CategoryChart } from '@/features/budget/components/category-chart';
@@ -38,8 +38,14 @@ export default function ManagePage() {
     updateExpense,
   } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<TypeFilter>('all');
   const [subTab, setSubTab] = useState<SubTab>('list');
   const [editingExpense, setEditingExpense] = useState<ExpenseRow | null>(null);
+
+  const handleTypeChange = (t: TypeFilter) => {
+    setSelectedType(t);
+    setSelectedCategory(null); // 다른 type의 카테고리 잔존 방지
+  };
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-4">
@@ -94,6 +100,8 @@ export default function ManagePage() {
             onEdit={setEditingExpense}
             selectedCategory={selectedCategory}
             onCategoryChange={setSelectedCategory}
+            selectedType={selectedType}
+            onTypeChange={handleTypeChange}
           />
         ))}
 
