@@ -116,9 +116,13 @@ export const buildWeeklyReviewBlocks = (
   ];
 
   if (active.length === 0) {
+    const noActiveText =
+      candidates.length === 0
+        ? '_active 가설 없음 — 신규 후보도 아직 없어. 데이터 더 쌓이면 자동으로 떠올거야._'
+        : '_active 가설 없음 — 아래 후보에서 골라 등록해._';
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: '_active 가설 없음 — 아래 후보에서 골라 등록해._' },
+      text: { type: 'mrkdwn', text: noActiveText },
     });
   } else {
     const lines = active.map((row) => {
