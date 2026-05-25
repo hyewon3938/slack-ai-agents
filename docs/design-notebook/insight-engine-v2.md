@@ -18,8 +18,8 @@
 - [x] **Phase 1**: 패턴 통합 · 임계치 외부화 · 주간 리포트 재구성 ([#389](https://github.com/hyewon3938/slack-ai-agents/issues/389), 2026-05-14 머지)
 - [x] **Phase 2**: LLM 자율 슬롯 + 측정 ([#390](https://github.com/hyewon3938/slack-ai-agents/issues/390), 2026-05-16 머지)
 - [x] **Phase 3**: 사주 60갑자 마스터 정규화 + 일일 매칭 catalog ([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391), 2026-05-17 머지)
-- [ ] **Phase 4**: 가설-검증 정량 파이프라인 + 자동 패턴 발견 ([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392), 설계 완료 2026-05-21)
-- [ ] **Phase 5**: 월운·세운·대운 시기 단위 확장 ([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408), Phase 4 이후)
+- [x] **Phase 4**: 가설-검증 정량 파이프라인 + 자동 패턴 발견 ([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392), 2026-05-22 머지)
+- [ ] **Phase 5**: 월운·세운·대운 시기 단위 확장 ([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408), Phase 4 운영 1\~3개월 누적 후)
 
 ---
 
@@ -205,14 +205,15 @@ SQL 결정론(Phase 1, 11개 패턴) 위에 **LLM 자율 발견 슬롯**을 추�
 
 ---
 
-## Phase 4: 가설-검증 정량 파이프라인 + 자동 패턴 발견 (2026-05-21 설계)
+## Phase 4: 가설-검증 정량 파이프라인 + 자동 패턴 발견 (2026-05-21 설계 / 2026-05-22 머지)
 
 - 이슈: [#392](https://github.com/hyewon3938/slack-ai-agents/issues/392)
 - 관련 ADR: [ADR-0019](../adr/0019-saju-hypothesis-verification-pipeline.md) (#392 머지 직전 budget PR이 0018 선점)
+- 관련 PR: [#415](https://github.com/hyewon3938/slack-ai-agents/pull/415)
 - 관련 계획서: `.claude/plans/392-phase4-hypothesis-pipeline.md`
-- 연관 이슈: [#409](https://github.com/hyewon3938/slack-ai-agents/issues/409) (diary-meta-extract Opus 이관, Phase 4 작업 1), [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408) (Phase 5 분리)
+- 연관 이슈: [#409](https://github.com/hyewon3938/slack-ai-agents/issues/409) (diary-meta-extract Opus 이관, Phase 4 작업 1 흡수), [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408) (Phase 5 분리)
 - Phase 4 scope 재정의: 원래 "사주 × 라이프 Hybrid Pipeline 정량 검증"이었으나 Phase 3에서 시드 작성 책임이 이동하면서 **시드 outcome 통계 검정 + 자동 패턴 발견 + 가설 운영 사이클**로 재정의
-- 상태: 설계 완료 / 구현 예정
+- 상태: 머지 완료
 
 ### 결정 요약
 
@@ -256,13 +257,23 @@ Phase 3에서 누적되는 시드 outcome 데이터(hit/miss/inconclusive)와 �
 
 ### 회고
 
-> 설계 단계 회고 (구현 후 머지 직후 회고 별도 추가 예정)
+> 설계 단계 회고 + 머지 직후 회고
 
 - **인터뷰 중 phase scope 재정의가 자연스럽게 풀린 사례**: 초기 #392는 "사주 × 라이프 Hybrid Pipeline 정량 검증"이었으나 Phase 3에서 시드 작성 책임이 이동하면서 Phase 4 정체성이 모호해졌다. 사용자가 "phase3은 시드 확인 장치, phase4는 그 데이터 보고 리포트?"로 물어 즉시 재정의 — "Phase 3 = 시드 운영, Phase 4 = 가설 운영" 구분으로 정리. design-notebook이 phase 사이 책임 이동을 흡수하는 도구로 작동
 - **사용자가 직접 다른 이슈와의 관계를 짚어준 사례**: 사용자가 "#408 ... 이거 읽어보고 Phase 4랑 비슷한 내용이면 합치고 아니면 분리해서 진행하자"로 제안 → Phase 5 분리 결정. 메타 이슈(#393) 마스터가 phase 흐름을 추적하는 동안 사용자가 별도 후속 이슈를 cross-check하는 패턴이 다음 마스터에서도 유효할 듯
 - **백테스팅 ↔ 자동 패턴 발견 통합이 사용자 인터뷰로 풀린 사례**: 처음에 두 개념을 분리해서 작업 항목 2개로 두었는데 사용자가 "이게 아니야? 다시 자세히 설명 부탁"으로 짚어 통합 발견. 같은 Fisher's exact + FDR 코드를 트리거만 다르게 재사용하면 됨 → 코드 재사용 + 작업 항목 절감. 사용자의 "이것 같은데?" 질문이 설계 시야를 좁혀준 패턴
 - **통계 학습 모먼트 흡수**: 사용자가 p-value / q-value 의미 학습 중. 인터뷰에서 직관적 설명(p="우연 확률", q="후보 중 false positive 예상 비율") + 표 + 함정(p 작다 ≠ 효과 크다) 형식으로 풀어냄. 다음 phase부터 통계·인프라 용어 등장 시 한 줄 정의 + 본인 시스템 예시 패턴 정착
 - **Phase 3 회고 교훈 적용 — 도메인 문서 phase 섹션 미리 작성**: Phase 3에서 도메인 문서가 `/design` 단계에 누락된 사례 → Phase 4에서는 `/design`이 docs/domains/insight.md Section 11 골격(TODO 마커)을 미리 작성하고 `/build`가 본문 채우는 패턴 적용. 4문서 → 5문서 아키텍처 owner 명시 결정의 첫 실전 적용
+
+#### 머지 직후 회고 (PR #415, 2026-05-22 머지 → 운영 첫 주)
+
+머지 직후 3일(05/22\~05/25) 운영하면서 발견된 점:
+
+- **2026-05-25(월) 08:00 weekly-hypothesis-review 첫 발송 정상 도달**: 설계대로 cron 슬롯 + 요일 게이트 + active 0건 fallback 메시지 흐름은 작동. n=0 baseline에서 "active 가설 없음 — 아래 후보에서 골라 등록해" fallback 본문까지 도달하는 happy path 확인
+- **active 0건 fallback이 사용자 행동 동선과 끊김** — 본문 "아래 후보에서 골라 등록해"는 후보 카드가 같이 가야 의미가 생기는데, 자동 후보 발견에서 임계 컷오프(n_trigger_days≥5, q<0.2, rate ratio ±10%)에 걸리면 후보 0개로 가서 본문 멘트가 공허하게 남음. **운영 첫 주 UX 이슈**로 fix PR 별도 진행 (이 회고에서 새 이슈 spawn)
+- **#life 일일 사주 시드 outcome 라인이 raw ID 노출** — `N1_임수_식신_천간 (식신): hit 0/1 (0%)` 같이 catalog ID + 한자 약어가 그대로 표시. 설계 단계에서는 catalog 이름 = 표시 이름이라고 자연스럽게 가정했으나 운영자(사용자) 인지 부담이 컸음. 짧은 설명 또는 풀어쓴 표현 필요. **운영 첫 주 UX 이슈**로 fix PR 별도 진행
+- **Phase 2 회고 교훈 재확인** — "머지 직후 1시간 내 첫 사용 피드백 반영" 패턴이 Phase 4에서도 운영 첫 주에 즉시 발견. design-notebook 회고가 다음 phase 회고로 이어지는 연속성이 작동. 다음 phase 진입 전 마무리 단계로 머지 직후 회고 + 운영 fix를 묶어 처리하는 흐름이 자연스러움
+- **catalog ID 표기 vs 사용자 표시 표기의 분리가 빠졌던 점**: 데이터 모델 정규화(ID 안정성)와 표시 레이어(사용자 인지 편의)는 보통 동시에 결정해야 하는데 Phase 3·4 모두 정규화 측면만 해결되고 표시 측면이 미루어짐. 표시 레이어 분리는 Phase 5 진입 전 fix PR에서 정착 권장
 
 ### 기술적 의의
 
