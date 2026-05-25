@@ -131,7 +131,7 @@
 
 ## 마스터 단위 진행 중 작업
 
-- **프로액티브 인사이트 v2** ([#393](https://github.com/hyewon3938/slack-ai-agents/issues/393)) — Phase 1·2 머지 완료, Phase 3([#391](https://github.com/hyewon3938/slack-ai-agents/issues/391)) 구현·검증 단계. Phase 4([#392](https://github.com/hyewon3938/slack-ai-agents/issues/392)) 사주×라이프 정량 검증 / Phase 5([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408)) 월운·세운·대운 확장 대기. 흐름: [design-notebook](./design-notebook/insight-engine-v2.md)
+- **프로액티브 인사이트 v2** ([#393](https://github.com/hyewon3938/slack-ai-agents/issues/393)) — Phase 1\~4 머지 완료 (Phase 4 = 가설-검증 정량 파이프라인, 2026-05-22 PR [#415](https://github.com/hyewon3938/slack-ai-agents/pull/415)). Phase 5([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408)) 월운·세운·대운 확장은 Phase 4 운영 1\~3개월 데이터 누적 후 진입 예정. 흐름: [design-notebook](./design-notebook/insight-engine-v2.md)
 
 ## 문서 지도
 
