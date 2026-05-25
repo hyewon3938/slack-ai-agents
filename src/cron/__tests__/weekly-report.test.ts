@@ -324,8 +324,22 @@ describe('aggregateSajuOutcome', () => {
       if (/saju_signal_catalog/.test(sql)) {
         return Promise.resolve({
           rows: [
-            { name: 'S1', sipsin: '편재', hit_count: 7, miss_count: 3, inconclusive_count: 1 },
-            { name: 'S2', sipsin: null, hit_count: 0, miss_count: 0, inconclusive_count: 5 },
+            {
+              name: 'S1',
+              sipsin: '편재',
+              description: '일운 천간 갑목(편재) → 일정/지출 폭증 가능성',
+              hit_count: 7,
+              miss_count: 3,
+              inconclusive_count: 1,
+            },
+            {
+              name: 'S2',
+              sipsin: null,
+              description: null,
+              hit_count: 0,
+              miss_count: 0,
+              inconclusive_count: 5,
+            },
           ],
         });
       }
@@ -337,6 +351,7 @@ describe('aggregateSajuOutcome', () => {
     expect(result.seeds[0]).toEqual({
       name: 'S1',
       sipsin: '편재',
+      description: '일운 천간 갑목(편재) → 일정/지출 폭증 가능성',
       hit: 7,
       miss: 3,
       inconclusive: 1,
@@ -344,6 +359,8 @@ describe('aggregateSajuOutcome', () => {
     });
     // total=0이면 hitRate null
     expect(result.seeds[1]?.hitRate).toBeNull();
+    // description null 허용
+    expect(result.seeds[1]?.description).toBeNull();
   });
 
   it('약화 후보: total ≥ 10 + hitRate < 0.3 인 시드만 포함', async () => {
@@ -352,13 +369,41 @@ describe('aggregateSajuOutcome', () => {
         return Promise.resolve({
           rows: [
             // 약화: total=12, hitRate=2/12≈0.17 < 0.3
-            { name: 'WEAK1', sipsin: null, hit_count: 2, miss_count: 10, inconclusive_count: 0 },
+            {
+              name: 'WEAK1',
+              sipsin: null,
+              description: null,
+              hit_count: 2,
+              miss_count: 10,
+              inconclusive_count: 0,
+            },
             // 약화 X (total<10): total=8
-            { name: 'SMALL', sipsin: null, hit_count: 0, miss_count: 8, inconclusive_count: 0 },
+            {
+              name: 'SMALL',
+              sipsin: null,
+              description: null,
+              hit_count: 0,
+              miss_count: 8,
+              inconclusive_count: 0,
+            },
             // 약화 X (hitRate 충분): total=10, hitRate=0.5
-            { name: 'OKAY', sipsin: null, hit_count: 5, miss_count: 5, inconclusive_count: 0 },
+            {
+              name: 'OKAY',
+              sipsin: null,
+              description: null,
+              hit_count: 5,
+              miss_count: 5,
+              inconclusive_count: 0,
+            },
             // 약화 경계: total=10, hitRate=0.2 < 0.3
-            { name: 'WEAK2', sipsin: null, hit_count: 2, miss_count: 8, inconclusive_count: 0 },
+            {
+              name: 'WEAK2',
+              sipsin: null,
+              description: null,
+              hit_count: 2,
+              miss_count: 8,
+              inconclusive_count: 0,
+            },
           ],
         });
       }

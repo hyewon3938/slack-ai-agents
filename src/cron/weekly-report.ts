@@ -50,6 +50,7 @@ export interface SleepRoutineCorrelation {
 export interface SajuSeedOutcome {
   name: string;
   sipsin: string | null;
+  description: string | null;
   hit: number;
   miss: number;
   inconclusive: number;
@@ -379,6 +380,7 @@ const WEAK_HIT_RATE = 0.3;
 interface SajuSeedRow {
   name: string;
   sipsin: string | null;
+  description: string | null;
   hit_count: number;
   miss_count: number;
   inconclusive_count: number;
@@ -389,7 +391,7 @@ export const aggregateSajuOutcome = async (
 ): Promise<SajuOutcomeData> => {
   try {
     const result = await query<SajuSeedRow>(
-      `SELECT name, sipsin, hit_count, miss_count, inconclusive_count
+      `SELECT name, sipsin, description, hit_count, miss_count, inconclusive_count
        FROM saju_signal_catalog
        WHERE user_id = $1 AND active = true
        ORDER BY (hit_count + miss_count) DESC, name`,
@@ -401,6 +403,7 @@ export const aggregateSajuOutcome = async (
       return {
         name: row.name,
         sipsin: row.sipsin,
+        description: row.description,
         hit: row.hit_count,
         miss: row.miss_count,
         inconclusive: row.inconclusive_count,
@@ -514,8 +517,8 @@ const buildSajuOutcomeLines = (saju: SajuOutcomeData): string | null => {
   for (const s of active.slice(0, 5)) {
     const total = s.hit + s.miss;
     const rate = s.hitRate !== null ? `${Math.round(s.hitRate * 100)}%` : '-';
-    const label = s.sipsin ? `${s.name} (${s.sipsin})` : s.name;
-    lines.push(`• ${label}: hit ${s.hit}/${total} (${rate})`);
+    const label = s.description ?? s.name;
+    lines.push(`• ${label} — hit ${s.hit}/${total} (${rate})`);
   }
 
   if (saju.weakCandidates.length > 0) {
