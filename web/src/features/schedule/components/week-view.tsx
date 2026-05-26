@@ -13,6 +13,7 @@ import {
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
+import { getDayPillar } from '@/lib/saju';
 import {
   computeWeekLayout,
   WEEK_START,
@@ -149,6 +150,7 @@ export function WeekView({
                     {format(day, 'd')}
                   </span>
                 </div>
+                <SajuPillarLabel dateStr={dateStr} today={today} />
               </div>
 
               {/* 스패닝 바 공간 확보 — 열별 실제 레인 수 기준 */}
@@ -229,8 +231,11 @@ export function WeekView({
                     </span>
                     <span className="text-base font-bold leading-tight">{format(day, 'd')}</span>
                   </div>
+                  <SajuPillarLabel dateStr={dateStr} today={today} className="mt-1.5" />
                   {daySchedules.length > 0 && (
-                    <span className="mt-1 text-[10px] text-gray-400">{daySchedules.length}건</span>
+                    <span className="mt-0.5 text-[10px] text-gray-400">
+                      {daySchedules.length}건
+                    </span>
                   )}
                 </div>
 
@@ -465,6 +470,28 @@ function WeekSpanBar({
           <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
       )}
+    </div>
+  );
+}
+
+function SajuPillarLabel({
+  dateStr,
+  today,
+  className = '',
+}: {
+  dateStr: string;
+  today: boolean;
+  className?: string;
+}) {
+  const pillar = getDayPillar(dateStr);
+  return (
+    <div
+      className={`flex flex-wrap items-baseline justify-center gap-x-1 text-[10px] leading-tight ${
+        today ? 'text-blue-600' : 'text-gray-500'
+      } ${className}`}
+    >
+      <span className="font-medium">{pillar.hanja}</span>
+      <span>{pillar.hangul}</span>
     </div>
   );
 }

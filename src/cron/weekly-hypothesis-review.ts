@@ -152,7 +152,7 @@ const processUser = async (
 
 /**
  * 본체 — life-cron SLOT_TASKS에서 호출.
- * cron은 매일 08:00에 발사되지만 월요일만 실행 (weeklyReport 패턴과 동일).
+ * cron은 매일 08:00에 발송되지만 월요일만 실행 (weeklyReport 패턴과 동일).
  */
 export const weeklyHypothesisReviewTask = async (
   app: App,

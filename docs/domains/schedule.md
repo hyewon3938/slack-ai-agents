@@ -133,6 +133,12 @@ features/schedule/
 - 3가지 뷰: month / week / day
 - 초기 뷰: 모바일(< 768px) = day, 데스크톱 = week
 - 15초 폴링 (탭 활성 시), 탭 복귀 시 날짜 갱신
+- 사주 일주 표시 (2026-05-26, #427): 주간·일간 뷰 날짜 셀에 일주(천간+지지) 한자+한글 병기
+  - 계산: `web/src/lib/saju.ts` `getDayPillar(dateStr)` — 봇 `src/shared/saju-calendar.ts`의 복제본 (순수 함수, ~50줄). 동기화 책임은 [ADR-0021](../adr/0021-web-shared-saju-code-duplication.md)
+  - 표시 형식: `庚子 경자` 한 줄 (한자 명조체 `font-serif` + 한글), `flex-wrap`으로 좁아지면 두 줄 자동 분리
+  - 적용 위치: `week-view.tsx` 데스크탑 grid 날짜 셀 + 모바일 세로 리스트 카드, `day-view.tsx` 헤더 옆
+  - 색상: 오늘 `text-blue-600`, 그 외 `text-gray-500` (day-view 헤더는 항상 `text-blue-600`)
+  - 컴포넌트: `SajuPillarLabel`은 week-view.tsx 내부 정의 (재사용 범위가 한 파일이라 별도 분리 안 함)
 
 ### 필터링
 - 카테고리 필터 (상위 + 하위 카테고리)
