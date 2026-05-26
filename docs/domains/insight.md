@@ -438,7 +438,7 @@ LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack
 |------|------|------|--------|
 | 월 08:00 KST | `weeklyHypothesisReview` | 주간 가설 통계 갱신 + 상태 평가 + 신규 후보 발굴 | #insight 묶음 카드 (active 표 + 후보 리스트) |
 
-`weekly-hypothesis-review.ts`는 매일 08:00 발사되지만 `getKSTDayOfWeek() !== 1`이면 즉시 return — `weeklyReport` / `weeklyLlmInsight`와 동일 패턴 (cron 슬롯 하나당 매일 발사 + 본체에서 요일 게이트).
+`weekly-hypothesis-review.ts`는 매일 08:00 발송되지만 `getKSTDayOfWeek() !== 1`이면 즉시 return — `weeklyReport` / `weeklyLlmInsight`와 동일 패턴 (cron 슬롯 하나당 매일 발송 + 본체에서 요일 게이트).
 
 #### 일일 통합 흐름
 
@@ -546,10 +546,10 @@ idempotency 테이블 `saju_weekly_reviews`:
 
 신 Routine `weekly-saju-review-v2` 배치 (Claude 앱 scheduled tasks 영역, 봇 cron 아님).
 
-**발사 메타**
+**발송 메타**
 - Routine ID: `weekly-saju-review-v2`
 - 위치: `~/.claude/scheduled-tasks/weekly-saju-review-v2/SKILL.md` (사용자 HOME, repo 외부)
-- cron: `0 8 * * 1` (매주 월요일 08:00 KST, scheduler jitter로 실제 발사는 08:04 표기)
+- cron: `0 8 * * 1` (매주 월요일 08:00 KST, scheduler jitter로 실제 발송는 08:04 표기)
 - 발송 채널: `#insight`
 - LLM: Claude Opus (Claude 앱 model selector에서 사용자가 지정 — schema에 model 파라미터 없음, 주의사항으로 명시)
 - 의존: `saju_influence_summary` view + `saju_weekly_reviews` 테이블 (A2 머지 후 사용 가능)
