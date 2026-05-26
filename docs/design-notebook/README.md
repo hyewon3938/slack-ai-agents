@@ -23,6 +23,7 @@ design-notebook은 ADR이 다루지 않는 **결정에 이르기까지의 사고
 docs/design-notebook/
 ├── README.md                       # 이 파일
 ├── insight-engine-v2.md            # 마스터 #393 — 프로액티브 인사이트 v2
+├── fortune-rework.md               # 마스터 #421 — 사주 풀이 시스템 책임 분리 + 주간 분석 재설계
 └── <master-slug>.md                # 다른 마스터 (있을 때마다)
 ```
 
@@ -43,3 +44,4 @@ docs/design-notebook/
 ## 목록
 
 - [insight-engine-v2.md](./insight-engine-v2.md) — 프로액티브 인사이트 v2 (마스터 #393)
+- [fortune-rework.md](./fortune-rework.md) — 사주 풀이 시스템 책임 분리 + 주간 분석 재설계 (마스터 #421)
