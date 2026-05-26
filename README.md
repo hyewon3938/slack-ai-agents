@@ -59,6 +59,8 @@ graph LR
 
 ### 2. LLM 자율성 + 출력 신뢰도 자동 검증
 
+> **운영 철학** — **LLM은 적극적으로 쓰되, 그 출력은 통계·DB 제약·도구 권한으로 시스템이 직접 검증한다.** LLM에겐 발견·합성·해석의 자율을 주고, 채택·기각·중복 방지·할루시네이션 차단은 결정론적 코드가 책임진다.
+
 LLM이 SQL을 자율로 쓰고 가설까지 자율 생성하는 구조는 강력하지만, "**LLM이 만든 게 진짜 맞나?**"를 사람이 매번 검증할 수는 없다. 이 시스템은 세 층의 자동화로 LLM 출력을 통제·검증한다.
 
 #### (a) 실행 안전 가드레일 — LLM이 짠 SQL이 위험하지 않은가
@@ -97,25 +99,34 @@ graph LR
 
 #### (b) 출력 신뢰도 자동 검증 — LLM이 만든 가설이 정말 맞나
 
+**용어 정리** — 이 시스템에서 가설(hypothesis)은 **"trigger 조건 X일 때 → outcome Y가 자주 발생한다"** 형태.
+
+- **trigger** (입력 조건, **SQL 결정론**) — 사주 시드 점수·천간 지지 관계·원진/충 등. 예: "정인 시드 점수 50 초과인 날"
+- **outcome** (결과, **22 enum 화이트리스트 + SQL 지표**) — 일기 메타 태그 또는 수면·루틴 SQL 지표. 예: "irritation 태그 등장"
+- **hit** = trigger 발현한 날에 outcome도 발생 (예측 적중) / **miss** = trigger 발현했으나 outcome 없음
+
+→ 입력은 결정론, 결과는 enum 강제. **LLM 자유 텍스트는 가설 평가에 어디에도 안 들어감.**
+
 두 시스템이 병렬로 돌고, 결과는 view 하나로 묶인다.
 
-- **카탈로그 누적 매칭** — 매일 사주 시드 점수 + 일기 22 enum 태그를 페어로 카운트. `saju_seed_outcome_catalog`가 hit/miss 카운터로 단순 누적 (통계 검정 없음, 빠른 시그널 트래킹)
+- **카탈로그 누적 매칭** — 매일 사주 시드 × 22 enum 태그를 페어로 카운트. `saju_seed_outcome_catalog`가 hit/miss 카운터로 단순 누적 (통계 검정 없음, 빠른 시그널 트래킹)
 - **가설 검증 파이프라인** — 충분히 누적된 페어 + Opus 자율 발견을 `saju_hypotheses`에 등록. status는 `active`/`confirmed`/`rejected`/`archived` 4종. 매주 월요일 cron이 통계로 자동 전이
 - **신뢰도 라벨링 view** — `saju_influence_summary` view가 두 시스템 결과를 confidence_tier로 묶어 실시간 응답에 노출 ([ADR 0020](docs/adr/0020-fortune-system-responsibility-split-via-view.md))
 
 ```mermaid
 graph TB
-    D[일기 22 enum 태그<br/>+ 일운 시드 점수] --> CAT[(카탈로그 카운터<br/>seed × tag · hit/miss)]
+    D[일기 22 enum 태그<br/>일운 시드 점수] --> CAT[(카탈로그 카운터<br/>seed x tag · hit/miss)]
     CAT -->|충분히 누적된 페어 승격<br/>+ Opus 자율 발견| H[(가설 saju_hypotheses<br/>status = active)]
-    H -->|매주 월요일 cron| ST[Fisher's exact + BH-FDR<br/>+ 4주 추세]
+    H -->|매주 월요일 cron| ST[Fisher's exact + BH-FDR<br/>4주 추세 평가]
     ST --> V{자동 전이 평가}
-    V -->|q < 0.05<br/>AND rate_ratio ≥ 1.3<br/>AND 누적 trigger ≥ 30일| CF[status = confirmed]
-    V -->|최근 4주 rate_ratio<br/>0.95 ~ 1.05 평탄| RJ[status = rejected]
+    V -->|q 임계치 이하 + 효과 크기 충분<br/>+ 누적 trigger 30일 이상| CF[status = confirmed]
+    V -->|4주 평탄 = 효과 없음| RJ[status = rejected]
     V -->|조건 미달| H
 
-    CF -. verified tier .-> VIEW[saju_influence_summary VIEW<br/>신뢰도 라벨링]
-    CAT -. accumulating tier<br/>hit_rate ≥ 0.55, n ≥ 5 .-> VIEW
-    REC[(최근 7일 trigger 발현)] -. recent tier .-> VIEW
+    CF --> VIEW
+    CAT --> VIEW
+    REC[(최근 7일<br/>trigger 발현)] --> VIEW
+    VIEW[saju_influence_summary VIEW<br/>신뢰도 라벨링<br/>verified · accumulating · recent]
     VIEW --> O([실시간 LLM 응답에<br/>tier별 노출])
 
     classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
@@ -134,7 +145,15 @@ graph TB
 - `active → rejected`: 최근 4주 rate_ratio가 **0.95 ~ 1.05에서 평탄** = 효과 없음
 - 조건 미달이면 `active` 유지하고 다음 주 재평가
 
+**3 tier 라벨링 — OR 조건 아닌 신뢰도 등급 표시** — view는 동일 페어가 어느 단계의 근거인지 동시에 라벨링한다. LLM은 tier에 따라 어휘 강도를 조절(verified는 단정, accumulating은 가능성, recent는 즉시성).
+
+- **verified**: 통계 검증 통과한 가설 (강한 신뢰도)
+- **accumulating**: 카탈로그 누적 충분(hit_rate ≥ 0.55, n ≥ 5) — 검증 전이지만 신호 있음
+- **recent**: 최근 7일 trigger 발현 — 즉시성
+
 **왜 두 시스템으로 나눴나** — catalog는 "이 페어가 자주 같이 나옴"의 빠른 트래킹(통계 검정 없이 카운터만). 검증된 신호로 격상하려면 가설 파이프라인을 거쳐 통계 검정을 받아야 함. 두 단계를 view로 묶어 신뢰도 단계별로 라벨링.
+
+**시간이 흐를수록 시스템이 자율로 학습한다** — 사용자는 일기·일정·수면을 기록하기만 하면 된다. 카탈로그가 자동으로 시드 × 태그 페어를 누적 카운트하고, 충분히 모이면 가설로 승격되어 통계 검증을 받는다. 통과한 가설만 잔소리에 등장. **사용자 손은 데이터 입력에만, 패턴 발견·검증·노출 결정은 모두 시스템이.**
 
 **왜 outcome 기반 검증인가** — LLM이 텍스트로 그럴듯한 가설을 만드는 건 쉽지만, **사용자 실제 데이터에 맞는지는 별개**. 이 시스템은 LLM 텍스트 의존을 최소화하고(일기 태그도 22 enum 화이트리스트로 강제), 가설의 채택·기각을 **실제 outcome 통계로만** 결정한다. 결정론(SQL 패턴·카탈로그 카운터)과 자율(LLM 가설)의 책임을 분리하고, 자율 출력엔 검증 기간을 의무화 — 신뢰 비용을 시스템에 외주화한다 ([ADR 0019](docs/adr/0019-saju-hypothesis-verification-pipeline.md)).
 
