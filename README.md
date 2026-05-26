@@ -347,3 +347,11 @@ yarn dev
 | [docs/optimization/](docs/optimization/)                       | 최적화 기록 — LLM 비용, 응답 속도, 배포 파이프라인                                                                           |
 | [docs/ops/db-backup.md](docs/ops/db-backup.md)                 | DB 백업/복원 운영 가이드                                                                                                     |
 | [docs/ops/health-monitoring.md](docs/ops/health-monitoring.md) | 업타임 모니터링 운영 가이드                                                                                                  |
+
+---
+
+## 작업 방식 / AI 협업
+
+이 프로젝트를 만들면서 다듬어 온 작업 방식 — Claude와 일하는 흐름, 문서 운영 체계, 의사결정 기록 — 은 별도 메타 repo에 정리되어 있다.
+
+- [hyewon3938/build-with-ai](https://github.com/hyewon3938/build-with-ai) — `/design`·`/build`·`/init-project` 스킬 흐름, 5문서 아키텍처(plans · design-notebook · ADR · features · domains), progressive disclosure 등 AI 협업 자산 누적
