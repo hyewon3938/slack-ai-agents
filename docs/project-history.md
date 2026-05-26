@@ -11,6 +11,20 @@
 
 ---
 
+## 2026-05-26: 사주 풀이 시스템 책임 분리 + 주간 사주 회고 v2 (#421, PR #422·#423)
+
+사주 풀이 routine과 v2 매칭 시스템 사이의 데이터 흐름을 정리.
+
+- **view 인터페이스 도입** — `saju_influence_summary` PostgreSQL view 하나로 verified(BH-FDR 통과 시드) · accumulating(catalog hit rate > 55%, n≥5) · recent(지난 7일 매칭) 3 tier를 통합 노출. 풀이 routine은 raw 테이블 4개를 직접 SELECT하지 않고 view만 SELECT
+- **신뢰도 라벨링 자동화** — `confidence_tier` 컬럼이 데이터 레벨에서 신뢰도 단계를 강제 (v2 헌장 ④ 신뢰 비용 분리 준수). 풀이 LLM이 신뢰도에 따른 해석 강도 조절 가능
+- **idempotency 테이블 신설** — `saju_weekly_reviews (user_id, week_start)` UNIQUE 제약 + ON CONFLICT DO NOTHING RETURNING. routine retry·prompt 중복 호출 어떤 원인이든 차단해 발송 정확히 1회 보장
+- **신 routine `weekly-saju-review-v2`** — Claude 앱 scheduled task로 매주 월요일 08:00 KST 발사. Opus가 view 결과 + 라이프 메트릭(schedule done/total · routine rate · diary_meta_tag · sleep avg)으로 사주 관점 회고 prose 4\~6줄 + 학습 3섹션을 Block Kit 카드 한 장으로 `#insight` 발송. 일기 원문 LLM 입력 금지(헌장 ①)
+- **마스터 분리 후 view 매개 통합** — 매칭 마스터(#393)와 풀이 마스터(#421)가 같은 view를 진화시키며 책임은 분리, 데이터 흐름은 단일. Phase A3에서 #408 머지 후 월운 layer를 view에 추가 예정 (컬럼 contract 유지로 후방 호환)
+
+설계 판단 → [ADR-0020](adr/0020-fortune-system-responsibility-split-via-view.md). 마스터 서사 → [design-notebook/fortune-rework.md](design-notebook/fortune-rework.md).
+
+---
+
 ## 2026-05-15: 4문서 아키텍처 도입 (#401, PR #402)
 
 설계 사고가 코드만 남으면 휘발되는 문제를 해결하기 위해 문서 체계를 4계층으로 재편.

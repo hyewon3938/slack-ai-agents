@@ -2,7 +2,7 @@
 
 > 마스터 이슈: [#421](https://github.com/hyewon3938/slack-ai-agents/issues/421)
 > 시작: 2026-05-26
-> 상태: 진행 중 (Phase A1·A2 design 완료, build 대기)
+> 상태: Phase A1·A2 완료 (2026-05-26 머지), Phase A3는 #408 머지 대기
 > 출처: [insight-engine-v2.md](./insight-engine-v2.md) Phase 5 진입 시도 중 분리됨
 
 ## 개요
@@ -16,8 +16,8 @@
 
 ## 전체 Phase 흐름
 
-- [ ] **Phase A1**: 책임 분리 + 형태 재설계 + Opus 이관 + 중복 발송 fix (design 완료, build 대기)
-- [ ] **Phase A2**: v2 데이터 expose 경로 — `saju_influence_summary` view + idempotency 테이블 (design 완료, build 대기)
+- [x] **Phase A1**: 책임 분리 + 형태 재설계 + Opus 이관 + 중복 발송 fix (PR #423 머지)
+- [x] **Phase A2**: v2 데이터 expose 경로 — `saju_influence_summary` view + idempotency 테이블 (PR #422 머지)
 - [ ] **Phase A3**: 4층 레이어 데이터 주입 (의존: [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408) Phase 5 머지)
 
 ---
@@ -82,3 +82,29 @@
 - **신뢰도 라벨링 view 패턴**: 한 view 안에서 verified/accumulating/recent 3 tier를 union하고 confidence_tier 컬럼으로 메타 분리. 자율 LLM 입력에 신뢰도 정보가 같이 들어가 LLM이 신뢰도에 따른 해석 강도 조절 가능. 데이터 측에서 신뢰 비용 분리를 강제하는 패턴
 - **idempotency 테이블이 LLM 측 retry 노이즈 흡수**: SKILL.md prompt에 "1회만" 명시하지 않고 DB 제약으로 강제. LLM·Routine 측 retry 정책에 무관하게 발송 1회 보장. 프롬프트 의존을 DB 제약으로 변환한 패턴
 - **마스터 분리 후 view를 매개로 통합**: 두 마스터(매칭 / 풀이)가 같은 view를 진화시키며 책임은 분리, 데이터 흐름은 단일. 마스터 분리가 통합을 방해하지 않는 구조
+
+---
+
+## Phase A1 + A2: 결과/회고 (2026-05-26 머지)
+
+- PR #422 (Phase A2): `saju_influence_summary` view + `saju_weekly_reviews` 테이블 + ADR-0020 + design-notebook 갱신
+- PR #423 (Phase A1): `weekly-saju-review-v2` Routine 등록 + 도메인 문서 Phase A1 본문 + 카탈로그 잔존 흔적 정리
+- 두 PR이 같은 날 머지되어 다음 월요일 첫 발사 준비 완료
+
+### 구현 단계에서 발견된 것
+
+- **plan SQL 버그 사전 캐치**: `.claude/plans/421-fortune-rework-A1-A2.md`의 view DDL 초안에서 `accumulating` dedup이 `WHERE a.id = r.signal_id` (실제 alias는 `signal_id`). 마이그레이션 작성 단계에서 CTE 컬럼 alias 일관성 점검 중 발견 → `a.signal_id = r.signal_id`로 수정. plan은 휘발 메모이므로 실제 마이그레이션 단계에서 한 번 더 검증해야 한다는 5문서 아키텍처의 owner 분리 가치를 재확인
+- **view 운영 환경 첫 SELECT 결과**: verified 0 / accumulating 0 / recent 14. 데이터 상태(Phase 4 fdr_q 통과 시드 아직 없음, accumulating 임계 hit rate > 55%·n≥5 미달) 자연 반영 — 쿼리 버그가 아님을 raw count 점검으로 확인. 첫 주 routine 발사 시 verified·accumulating 0건 메시지 표시 (`_아직 통계 검증 통과한 시드 없음_` / `_아직 누적 패턴 없음_`) 검증 대상
+- **SKILL.md 위치 혼동**: routine SKILL.md는 repo 내가 아니라 사용자 HOME `~/.claude/scheduled-tasks/<id>/SKILL.md`에 배치. 도메인 문서에 위치 명시 + 향후 routine 변경 시 SKILL.md 경로 추적 가능하도록 기록
+- **Opus 모델 지정 메커니즘**: `mcp__scheduled-tasks__create_scheduled_task` schema에 model 파라미터 없음. Claude 앱 model selector에서 사용자가 직접 지정 필요. SKILL.md 주의사항에 명시 + 도메인 문서 발사 메타에도 명시
+
+### 폐기 처리 결정
+
+- 구 `weekly-saju-review` routine: 비활성화 유지, archive는 v2 안정성 1\~2주 검증 후 별도 작업으로. 폐기 전에 v2 실패 시 fallback 가능성 확보
+- `saju_patterns` 테이블: 누적 row는 시스템 프롬프트 조회용으로 계속 사용, 갱신 routine만 정지. 신 routine은 새 데이터 모델(`saju_influence_summary` view)을 사용하므로 saju_patterns와 독립
+
+### 다음 액션
+
+- 다음 월요일(2026-06-01) 08:00 KST 첫 발사 — Block Kit 카드 가독성·idempotency 동작·Opus prose 톤 운영 검증
+- Phase A3 (4층 레이어 expose) — #408 Phase 5-B 머지 후 view에 월운 layer 추가 (컬럼 contract 유지)
+- A1 첫 주 운영 후 임계치 조정 여부 판단: accumulating tier hit rate > 55% / 5건 임계가 카드에 너무 많이/적게 잡으면 외부화 검토 (ADR-0020 후속 작업 항목)
