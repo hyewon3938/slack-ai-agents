@@ -474,6 +474,116 @@ Phase 4는 신규 fast path 명령어 없음. 카드 액션 버튼(`hypothesis_r
 
 설계 배경 및 대안 비교는 [ADR-0019](../adr/0019-saju-hypothesis-verification-pipeline.md) 참조.
 
+### 12. 프로액티브 인사이트 v2 — Phase 5 (월운 매칭 + 4층 영향력 데이터 expose)
+
+> [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408) · 본격 진입 보류 (Phase 4 운영 1\~3개월 후) · 마스터 A([#421](https://github.com/hyewon3938/slack-ai-agents/issues/421)) 일부와 연결
+> 설계 서사: [design-notebook/insight-engine-v2.md](../design-notebook/insight-engine-v2.md) Phase 5 섹션
+
+본격 진입 전 골격만 기록. 본격 진입 시 본문 채우기.
+
+#### 작업 (예정)
+
+- **Phase 5-A** 월운 매칭: saju_daily_matches → period 컬럼 추가, saju_signal_catalog → period_scope 컬럼 추가, 월운 매칭 cron(매월 1일), 월 단위 baseline 윈도우 별도 설계
+- **Phase 5-B** 4층 영향력 데이터 expose: 일운·월운 누적 영향력을 마스터 A view(`saju_influence_summary`)로 통합 노출 (마스터 A A3에서 소비)
+
+#### 헌장 cross-check (마스터 #393)
+
+- 매칭 영역, 텍스트 원문 노출 없음 (헌장 ①)
+- 결정론 SQL 매칭 (헌장 ②)
+- 일운·월운까지 outcome 사이클 적용 (헌장 ③)
+- 세운·대운 자체 outcome 검증 영구 기각, 대신 마스터 A 풀이로 우회
+
+### 13. 사주 풀이 시스템 책임 분리 + 주간 분석 재설계 (마스터 A)
+
+> [#421](https://github.com/hyewon3938/slack-ai-agents/issues/421) · design 완료, build 대기
+> 설계 서사: [design-notebook/fortune-rework.md](../design-notebook/fortune-rework.md)
+> 구현 계획: `.claude/plans/421-fortune-rework-A1-A2.md` (gitignored)
+
+마스터 #393 Phase 5 진입 인터뷰 중 파생. 사주 풀이 시스템 단일 책임화 + 주간 분석 메시지 형태 재설계 + v2 데이터 주입 경로 확립.
+
+#### Phase A2 — `saju_influence_summary` view + idempotency 테이블
+
+마이그레이션:
+- `db/migrations/061_saju_influence_summary_view.sql` — view 정의
+- `db/migrations/062_saju_weekly_reviews.sql` — idempotency 테이블
+
+view 컬럼 contract (Routine 의존):
+
+| 컬럼 | 의미 |
+|------|------|
+| `user_id` | WHERE 필터 |
+| `signal_id` | catalog FK · dedup 키 |
+| `signal_name` | 시드 이름 (예: `S1_갑목_편재_천간`) |
+| `sipsin` | 십성 |
+| `description` | 시드 설명 (LLM 표시·해석 입력 허용) |
+| `trigger_target_type` | `stem`/`branch`/`ganji`/`relation`/`element_density`/`sibiunsung` |
+| `enum_target` | 검증된 가설의 diary_meta_tag (verified만) |
+| `confidence_tier` | `verified`/`accumulating`/`recent` |
+| `metric_value` | tier별 의미 (ratio / hit rate / count) |
+| `fdr_q` | BH-FDR q-value (verified만) |
+| `evaluated_at` | 최근 평가일 (recent은 마지막 매칭일) |
+
+view 동작 (UNION ALL 3 source):
+
+| Tier | 소스 | 조건 | metric_value |
+|------|------|------|-------------|
+| `verified` | `saju_hypotheses` (status='active', trigger_spec type='seed') + `saju_stats` 최근 주 | `fdr_q < 0.05` | `rate_ratio` |
+| `accumulating` | `saju_signal_catalog` (active=true) | `(hit_count+miss_count) ≥ 5` AND `hit/(hit+miss) > 0.55` | hit rate |
+| `recent` | `saju_daily_matches` (지난 7일, trigger_activated=true) | GROUP BY (user_id, signal_id) | 발현 횟수 |
+
+중복 dedup: 같은 signal_id가 여러 tier 동시 충족 시 최상위 tier에만 (`verified` > `accumulating` > `recent`). 구현은 `NOT EXISTS` 서브쿼리로 하위 tier에서 상위 tier signal_id 제외.
+
+임계치 하드코딩 사실 (ADR-0020에 후속 작업으로 외부화 검토 명시):
+- `fdr_q < 0.05` — verified 컷오프
+- `(hit+miss) ≥ 5` AND `hit rate > 0.55` — accumulating 컷오프
+- `INTERVAL '7 days'` — recent 윈도우
+
+idempotency 테이블 `saju_weekly_reviews`:
+- 컬럼: `id` / `user_id` / `week_start` / `posted_at` / UNIQUE (`user_id`, `week_start`)
+- 사용: Routine 발송 직전 `INSERT ... ON CONFLICT (user_id, week_start) DO NOTHING RETURNING id` — 영향 row 0이면 즉시 종료 (Routine retry · prompt 중복 호출 어떤 원인이든 차단)
+
+#### Phase A1 — `weekly-saju-review-v2` Routine + Block Kit 카드
+
+TODO(/build): SKILL.md prompt 본문 · 실제 Block Kit JSON 구조 · Opus 모델 설정 방법 · 구 routine archive 절차 확정 후 본 섹션 본문 채움.
+
+발사 메타:
+- Routine ID: `weekly-saju-review-v2`
+- cron: `0 8 * * 1` (매주 월요일 08:00 KST)
+- LLM: Claude Opus (Sonnet → 이관)
+- 의존: `saju_influence_summary` view (A2 머지 후)
+
+카드 구조 골격:
+- 회고 섹션: LLM 회고 prose 4\~6줄 (사주 관점 회고, diary 원문 노출 금지)
+- 학습 ▸ 검증됨: 최대 3개 (verified tier)
+- 학습 ▸ 누적 중: 최대 5개 (accumulating tier)
+- 학습 ▸ 최근 7일 활동: 카운트만 (recent tier)
+- 섹션 사이 Block Kit Divider
+
+#### Phase A3 — 4층 레이어 데이터 주입 (의존: #408 머지)
+
+TODO: #408 Phase 5-B(영향력 데이터 expose) 완료 후 view 확장 + 풀이 prompt 결합 설계. 본 섹션은 #408 진행 시점에 다시 채움.
+
+#### 영향 받지 않는 영역 (본 마스터 범위 외)
+
+- `fortune_analyses` 테이블 (weekly-fortune routine은 계속 INSERT)
+- `insightMorningTask` 09:05 일운 발송 (역할 분리: 아침 짧은 일운 / 월요일 종합 회고)
+- fast path 명령어 (`/일운`·`/월운`·`/세운`·`/대운`)
+- Phase 3/4 매칭·검증 파이프라인
+
+#### 폐기 / 비활성화
+
+- `weekly-saju-review` routine (구) — 2026-05-26 비활성화. A1 신 routine 검증 후 archive
+- `saju_patterns` 갱신 동작 — 구 routine 폐기와 함께 자연 정지. 다른 소비자 있는지 A1 build 시 확인
+
+#### 헌장 cross-check (마스터 #393)
+
+- 풀이 LLM 입력에 사용자 텍스트 원문(diary 등) 노출 금지 (헌장 ①)
+- 본 마스터는 자율(LLM) 영역, 매칭·outcome 검증은 #408 (헌장 ②)
+- 풀이 자체는 outcome 검증 대상 아니나 v2 데이터 주입으로 정확도 향상 (헌장 ③)
+- 풀이 LLM은 view 결과 안에서만 해석, 새 가설 만들지 않음 (헌장 ④)
+
+설계 결정 배경: [ADR-0020](../adr/0020-fortune-system-responsibility-split-via-view.md) — 사주 풀이 시스템과 v2 매칭 시스템 책임 분리 + view 인터페이스 도입.
+
 ## 파일 구조
 
 ```
