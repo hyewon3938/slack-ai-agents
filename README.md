@@ -1,7 +1,7 @@
-# 내 라이프를 관찰하고 잔소리하는 LLM 에이전트
+# 라이프 데이터 LLM 에이전트 — 잔소리도 하고, 잔소리 근거도 통계로 검증한다
 
 > 자연어로 일정·루틴·수면·지출·일기를 기록하면, Claude가 SQL로 DB를 관리하고 크로스 분석해 "일찍 자야 일정 다 해내" 같은 잔소리를 먼저 건넨다.
-> **LLM이 자율 생성한 가설은 실제 outcome으로 통계 검정(Fisher's exact + BH-FDR)을 거쳐 lifecycle이 자동으로 관리된다** — 자기 출력의 신뢰도를 시스템이 직접 측정한다.
+> **LLM이 자율로 발견한 가설은 매주 통계 검정(Fisher's exact + BH-FDR)을 거쳐 채택·기각이 자동 결정된다** — 자기 출력의 신뢰도를 시스템이 직접 측정한다.
 > 기획·보안·운영까지 1인, 2026-03-05 시작 후 매일 사용 중.
 
 <p align="center">
@@ -26,8 +26,8 @@ LLM이 그날의 라이프 데이터(일정·루틴·수면·일기) + 명리학
 
 ```mermaid
 graph LR
-    D[일정 · 루틴 · 수면 · 일기] -->|즉시| P[SQL 패턴 5종<br/>비용 0]
-    D -->|사전 누적| L[(일기 테마 · 사주 패턴<br/>· 일운)]
+    D[일정 · 루틴 · 수면 · 일기] -->|즉시| P[SQL 패턴 11종<br/>비용 0]
+    D -->|사전 누적| L[(일기 22 enum 태그<br/>· 사주 패턴 · 일운)]
     P --> SY[잔소리 합성<br/>Sonnet]
     L --> SY
     SY --> O([Slack 잔소리<br/>아침 · 밤 크론])
@@ -42,18 +42,16 @@ graph LR
 
 **SQL이 잡는 패턴** (LLM 미경유, 비용 0)
 
-- **5가지 감지 패턴** — `streak`(연속 기록), `sleepTrend`(수면 추세), `slotGap`(시간대별 루틴 격차), `weekComparison`(전주 대비), `overdueAlert`(기한 초과). CTE·window function으로 직접 감지
+- **11가지 감지 패턴** — `streak`(연속 기록), `sleepTrend`(수면 추세), `slotGap`(시간대별 루틴 격차), `weekComparison`(전주 대비), `overdueAlert`(기한 초과), `categorySkew`(카테고리 편향), `drift`(점진적 이탈), `recovery`(회복 신호), `lapseAlert`(단절 경보), `weeklyRegression`(주간 회귀), `spottyPattern`(산발 패턴). CTE·window function으로 직접 감지
 - **수면·루틴·일정 영향 분석** — `sleepTrend` 패턴이 수면 부족 → 루틴/일정 하락 상관을 자동 감지
 
-**LLM이 합성하는 영역**
+**LLM이 합성하는 영역 — 출력은 다 화이트리스트·DB 제약으로 검증**
 
-- **일기 테마 추출** — 일기 텍스트에서 반복 테마/감정을 LLM이 추출 → `life_themes`에 누적. 2회 이상 감지되면 활성으로 승격되어 응답 프롬프트에 자동 주입
-- **주간 사주 회고** — 매주 월요일 아침 Opus가 지난 7일 메트릭 + 신뢰도 단계별 영향력(verified/accumulating/recent)을 받아 사주 관점 회고를 Block Kit 카드로 발송 (idempotency 테이블로 정확히 1회 보장)
+- **일기 메타 태그 추출 (22 enum 화이트리스트)** — Opus가 일기 텍스트에서 `irritation`·`mood_down`·`task_completion` 같은 22개 enum 태그를 골라낸다. 시스템 프롬프트가 "이 22개 외엔 절대 출력 금지"로 강제 + 응답 파싱 후 `TAG_SET` 화이트리스트로 한 번 더 필터. **자유 텍스트로 새 태그가 들어올 수 없는 구조** → 카탈로그·가설 검증의 입력 일관성 보장
+- **주간 사주 회고** — 매주 월요일 아침 Opus가 지난 7일 메트릭 + 신뢰도 단계별 영향력(verified/accumulating/recent)을 받아 사주 관점 회고를 Block Kit 카드로 발송. 멱등성(idempotency) DB 제약(`UNIQUE(user_id, week_start) ON CONFLICT DO NOTHING RETURNING`)으로 크론 재실행·재시도에도 정확히 1회 영속화
 - **잔소리 합성** — SQL이 모은 패턴 + 일기 + 사주 패턴을 받아 그날 톤·맥락에 맞는 잔소리로 합성
 
 **하루 두 번 작동** — 밤은 그날 데이터를 엮은 잔소리, 아침은 어제 루틴 달성도 + 오늘 일정 안내.
-
-> "일기 보니까 아침에 몸 무겁고 귀찮은 느낌으로 시작했는데, 그 상태로 루틴 95% 찍었어. 운세대로라면 오늘 진술충 강제 재충전일이었는데, 그 날에 이 정도면 솔직히 잘한 거야. 10일 연속 자정 이후 취침이 좀 쌓이고 있어서, 오늘은 일찍 자봐."
 
 <p align="center">
   <img src="docs/images/cron-night.jpg" alt="밤 크론 잔소리" width="80%"/>
@@ -67,7 +65,7 @@ LLM이 SQL을 자율로 쓰고 가설까지 자율 생성하는 구조는 강력
 
 ```mermaid
 graph LR
-    U([Slack 메시지]) --> R[라우터<br/>Rate Limit]
+    U([Slack 메시지]) --> R[라우터<br/>채널 매핑 · 봇 필터<br/>Rate Limit · 길이 제한]
     R --> F{Fast Path<br/>정규식 매칭}
     F -->|적중| FP[SQL 직접 조회]
     F -->|미적중| AL[Agent Loop<br/>Sonnet ↔ SQL 도구]
@@ -86,9 +84,10 @@ graph LR
     class A guard
 ```
 
+- **라우터 1차 필터** — 채널별 에이전트 매핑(`#life`/`#insight`/`#money`), 봇 메시지·subtype 필터(에코·루프 차단), 사용자별 슬라이딩 윈도우 Rate Limit(1분 5회), 메시지 길이 10KB 제한
 - **DB Proxy + SQL 화이트리스트** — DDL(테이블 생성·삭제·구조 변경) 차단, 위험 함수 차단, WHERE 필수, 벌크 처리 행 수 제한
 - **modify_db 승인 플로우** — 변경 쿼리는 Slack 카드로 dry-run 결과를 보여주고 사용자 승인 후 실행
-- **LLM 자율 슬롯 4중 안전장치** — LLM이 자유롭게 발견 쿼리를 짤 수 있는 슬롯엔 (1) SELECT-only 강제 (2) `get_schema` 사전 호출 의무 (3) `result_type` 화이트리스트 (4) `verify_after_days` 1\~28 clamp으로 폭주 방지 ([ADR 0016](docs/adr/0016-llm-autonomous-slot-outcome-verification.md))
+- **LLM 자율 슬롯 4중 안전장치** — LLM이 자유롭게 발견 쿼리를 짤 수 있는 슬롯엔 (1) SELECT-only 강제 (2) `get_schema` 사전 호출 의무 (3) `result_type` 화이트리스트 (4) `verify_after_days` 1\~28 clamp으로 폭주 방지. 슬롯 설계 전반 + 4중 안전장치 상세는 [ADR 0016](docs/adr/0016-llm-autonomous-slot-outcome-verification.md) Section 3
 
 <p align="center">
   <img src="docs/images/llm-approval-card-01.png" alt="modify_db 승인 카드 — dry-run 결과" width="45%" />
@@ -98,34 +97,48 @@ graph LR
 
 #### (b) 출력 신뢰도 자동 검증 — LLM이 만든 가설이 정말 맞나
 
+두 시스템이 병렬로 돌고, 결과는 view 하나로 묶인다.
+
+- **카탈로그 누적 매칭** — 매일 사주 시드 점수 + 일기 22 enum 태그를 페어로 카운트. `saju_seed_outcome_catalog`가 hit/miss 카운터로 단순 누적 (통계 검정 없음, 빠른 시그널 트래킹)
+- **가설 검증 파이프라인** — 충분히 누적된 페어 + Opus 자율 발견을 `saju_hypotheses`에 등록. status는 `active`/`confirmed`/`rejected`/`archived` 4종. 매주 월요일 cron이 통계로 자동 전이
+- **신뢰도 라벨링 view** — `saju_influence_summary` view가 두 시스템 결과를 confidence_tier로 묶어 실시간 응답에 노출 ([ADR 0020](docs/adr/0020-fortune-system-responsibility-split-via-view.md))
+
 ```mermaid
-graph LR
-    LLM[Opus<br/>자율 가설 발견] --> H[(saju_hypotheses<br/>active)]
-    DATA[(7일치 라이프 데이터<br/>+ 운세 + 일기)] --> LLM
-    H -->|월요일 cron<br/>Fisher + BH-FDR| V{검정 결과}
-    V -->|유의 + FDR pass| VR[verified]
-    V -->|기각| AR[archived]
-    V -->|n 부족| IC[inconclusive]
-    VR --> VIEW[saju_influence_summary<br/>신뢰도 라벨링 view]
-    VIEW --> RT([실시간 LLM 응답<br/>verified만 노출])
+graph TB
+    D[일기 22 enum 태그<br/>+ 일운 시드 점수] --> CAT[(카탈로그 카운터<br/>seed × tag · hit/miss)]
+    CAT -->|충분히 누적된 페어 승격<br/>+ Opus 자율 발견| H[(가설 saju_hypotheses<br/>status = active)]
+    H -->|매주 월요일 cron| ST[Fisher's exact + BH-FDR<br/>+ 4주 추세]
+    ST --> V{자동 전이 평가}
+    V -->|q < 0.05<br/>AND rate_ratio ≥ 1.3<br/>AND 누적 trigger ≥ 30일| CF[status = confirmed]
+    V -->|최근 4주 rate_ratio<br/>0.95 ~ 1.05 평탄| RJ[status = rejected]
+    V -->|조건 미달| H
+
+    CF -. verified tier .-> VIEW[saju_influence_summary VIEW<br/>신뢰도 라벨링]
+    CAT -. accumulating tier<br/>hit_rate ≥ 0.55, n ≥ 5 .-> VIEW
+    REC[(최근 7일 trigger 발현)] -. recent tier .-> VIEW
+    VIEW --> O([실시간 LLM 응답에<br/>tier별 노출])
 
     classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
-    classDef llm fill:#fff7ed,stroke:#f97316,color:#9a3412
-    classDef verify fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
-    classDef result fill:#ecfdf5,stroke:#10b981,color:#065f46
-    class DATA,RT io
-    class LLM llm
-    class H,VIEW verify
-    class VR,AR,IC result
+    classDef stat fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef store fill:#ecfdf5,stroke:#10b981,color:#065f46
+    classDef view fill:#fef3c7,stroke:#d97706,color:#92400e
+    class D,O,REC io
+    class V,CF,RJ,ST stat
+    class CAT,H store
+    class VIEW view
 ```
 
-- **자율 가설 등록** — Opus가 라이프 데이터에서 발견한 가설(trigger 조건 + outcome 정의)을 `saju_hypotheses`에 `active` 상태로 등록
-- **주간 통계 검정** — 매주 월요일 cron이 가설별 trigger/non-trigger 일에 outcome 비율을 비교 → **Fisher's exact test**로 p-value 계산 + **BH-FDR**로 다중 비교 보정
-- **자동 상태 전이** — 결과에 따라 `active → verified` / `archived` / `inconclusive`로 lifecycle 자동 관리. 사람 개입 없이 검증된 가설만 누적
-- **신뢰도 라벨링 view** — `saju_influence_summary` view가 confidence_tier(verified / accumulating / recent)에 따라 LLM에 노출할 영향력만 필터링 → **검증 안 된 가설이 실시간 잔소리에 섞이지 않음**. 마스터 시스템 통합에서 view를 인터페이스로 두는 패턴 ([ADR 0020](docs/adr/0020-fortune-system-responsibility-split-via-view.md))
-- **idempotency DB 제약** — 주간 회고 생성은 `UNIQUE(user_id, week_start) ON CONFLICT DO NOTHING RETURNING`으로 강제. 크론 재실행/Opus 처리 재시도가 있어도 정확히 1회 영속화
+**자동 전이 조건 — 코드가 가설을 결정한다 (사람 개입 0)**
 
-**왜 outcome 기반 검증인가** — LLM이 텍스트로 그럴듯한 가설을 만드는 건 쉽지만, **사용자 실제 데이터에 맞는지는 별개**. 이 시스템은 LLM 텍스트 의존을 최소화하고, 가설의 채택·기각을 **실제 outcome 통계로만** 결정한다. 결정론(SQL 패턴)과 자율(LLM 가설)의 책임을 분리하고, 자율 출력엔 검증 기간을 의무화 — 신뢰 비용을 시스템에 외주화한다 ([ADR 0019](docs/adr/0019-saju-hypothesis-verification-pipeline.md)).
+- `active → confirmed`: BH 보정 후 **q < 0.05** AND **rate_ratio ≥ 1.3** (effect size 컷 — 통계적 유의해도 효과 미미하면 채택 안 함) AND **누적 trigger 발현일 ≥ 30**
+- `active → rejected`: 최근 4주 rate_ratio가 **0.95 ~ 1.05에서 평탄** = 효과 없음
+- 조건 미달이면 `active` 유지하고 다음 주 재평가
+
+**왜 두 시스템으로 나눴나** — catalog는 "이 페어가 자주 같이 나옴"의 빠른 트래킹(통계 검정 없이 카운터만). 검증된 신호로 격상하려면 가설 파이프라인을 거쳐 통계 검정을 받아야 함. 두 단계를 view로 묶어 신뢰도 단계별로 라벨링.
+
+**왜 outcome 기반 검증인가** — LLM이 텍스트로 그럴듯한 가설을 만드는 건 쉽지만, **사용자 실제 데이터에 맞는지는 별개**. 이 시스템은 LLM 텍스트 의존을 최소화하고(일기 태그도 22 enum 화이트리스트로 강제), 가설의 채택·기각을 **실제 outcome 통계로만** 결정한다. 결정론(SQL 패턴·카탈로그 카운터)과 자율(LLM 가설)의 책임을 분리하고, 자율 출력엔 검증 기간을 의무화 — 신뢰 비용을 시스템에 외주화한다 ([ADR 0019](docs/adr/0019-saju-hypothesis-verification-pipeline.md)).
+
+**멱등성(idempotency) DB 제약** — 주간 회고 생성·일기 메타 적재 등은 `UNIQUE + ON CONFLICT DO NOTHING RETURNING`으로 강제. 크론 재실행·LLM 재시도가 일어나도 정확히 1회 영속화. LLM은 매번 다른 답을 줄 수 있으므로 신뢰 비용을 DB 제약으로 흡수.
 
 #### (c) 비용·품질·속도 제어 — 출력은 어떻게 빨라지나
 
@@ -234,7 +247,7 @@ graph LR
 
 **(3) 주간 분석 (두 routine 순차)** — 매주 일요일 Opus가 두 단계로 작동. 먼저 누적된 일기·지출·일정·루틴·수면 + 일운을 28일 윈도우로 cross-domain 분석해 `saju_patterns`·`life_themes`를 갱신, 이어서 다음 일주일치 일운을 사전 분석해 `fortune_analyses`에 저장. 활성 패턴은 다음 주 일운부터 자동 반영 → 해석이 매주 강화되는 루프.
 
-**(4) 가설-검증 정량 파이프라인** — Opus가 자율로 발견한 사주 trigger ↔ 라이프 outcome 가설을 매주 Fisher's exact + BH-FDR로 검정. verified로 승격된 가설만 잔소리·회고에 노출 ([2 (b)](#b-출력-신뢰도-자동-검증--llm이-만든-가설이-정말-맞나) 참조).
+**(4) 가설-검증 정량 파이프라인** — Opus가 자율로 발견한 사주 trigger ↔ 라이프 outcome 가설을 매주 Fisher's exact + BH-FDR로 검정. `confirmed`로 자동 전이된 가설만 잔소리·회고에 노출 ([2 (b)](#b-출력-신뢰도-자동-검증--llm이-만든-가설이-정말-맞나) 참조).
 
 **(5) 잔소리에 재활용** — 같은 날의 일기는 1번 차별점의 밤 잔소리 LLM에도 주입. 본인 진술과 데이터 패턴을 함께 짚는 잔소리가 가능.
 
@@ -250,6 +263,7 @@ graph LR
 - **할부 분산** — 결제 시점이 아닌 실제 지출 시점 기준으로 월별 배분 + 자산 차감 범위 토글
 - **고정비/결제수단 관리** — 반복 지출과 카드별 청구 주기 추적
 - **결제주기 종료 자동 정산** — 결제주기 종료 cron이 카드 자산을 자동 차감, 할부 미래 회차도 즉시 반영
+- **카테고리별 횟수 제한 트래커** — "이번 결제주기에 외식 N회 이하" 같은 카테고리별 횟수 목표를 설정하고 진행을 시각적으로 확인
 
 <p align="center">
   <img src="docs/images/budget-dashboard.png" alt="예산 대시보드" width="45%" />
