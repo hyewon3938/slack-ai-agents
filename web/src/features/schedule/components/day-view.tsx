@@ -65,7 +65,7 @@ export function DayView({
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-baseline gap-3">
           <h2 className="text-lg font-bold text-gray-800">{formatted}</h2>
-          <span className="flex items-baseline gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-blue-600">
+          <span className="flex items-baseline gap-1 rounded-md border border-gray-300 bg-white px-2 py-0.5 text-gray-700">
             <span className="text-base font-semibold">{dayPillar.hanja}</span>
             <span className="text-xs">{dayPillar.hangul}</span>
           </span>
