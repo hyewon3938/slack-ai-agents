@@ -11,6 +11,7 @@ import {
   getScheduleTopCategoryName,
 } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
+import { getDayPillar } from '@/lib/saju';
 import { ScheduleCard } from './schedule-card';
 import { ActionMenu } from './action-menu';
 
@@ -50,6 +51,7 @@ export function DayView({
   });
 
   const formatted = format(currentDate, 'yyyy년 M월 d일 (EEE)', { locale: ko });
+  const dayPillar = getDayPillar(dateStr);
 
   // 3단 섹션 분리: 기간 일정 → 중요 → 카테고리별
   const sections = buildDaySections(daySchedules, categories);
@@ -61,7 +63,13 @@ export function DayView({
   return (
     <div className="mx-auto w-full max-w-3xl p-4 pb-24 md:flex-1 md:pb-4">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-gray-800">{formatted}</h2>
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-lg font-bold text-gray-800">{formatted}</h2>
+          <span className="flex items-baseline gap-1 text-blue-600">
+            <span className="font-serif text-base font-semibold">{dayPillar.hanja}</span>
+            <span className="text-xs">{dayPillar.hangul}</span>
+          </span>
+        </div>
         {totalTasks > 0 && (
           <span className="text-sm text-gray-500">
             {doneTasks}/{totalTasks} 완료
