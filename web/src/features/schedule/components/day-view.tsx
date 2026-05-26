@@ -66,7 +66,7 @@ export function DayView({
         <div className="flex items-baseline gap-3">
           <h2 className="text-lg font-bold text-gray-800">{formatted}</h2>
           <span className="flex items-baseline gap-1 text-blue-600">
-            <span className="font-serif text-base font-semibold">{dayPillar.hanja}</span>
+            <span className="text-base font-semibold">{dayPillar.hanja}</span>
             <span className="text-xs">{dayPillar.hangul}</span>
           </span>
         </div>

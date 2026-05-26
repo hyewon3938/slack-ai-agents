@@ -231,7 +231,7 @@ export function WeekView({
                     </span>
                     <span className="text-base font-bold leading-tight">{format(day, 'd')}</span>
                   </div>
-                  <SajuPillarLabel dateStr={dateStr} today={today} />
+                  <SajuPillarLabel dateStr={dateStr} today={today} className="mt-1.5" />
                   {daySchedules.length > 0 && (
                     <span className="mt-0.5 text-[10px] text-gray-400">
                       {daySchedules.length}건
@@ -474,16 +474,24 @@ function WeekSpanBar({
   );
 }
 
-function SajuPillarLabel({ dateStr, today }: { dateStr: string; today: boolean }) {
+function SajuPillarLabel({
+  dateStr,
+  today,
+  className = '',
+}: {
+  dateStr: string;
+  today: boolean;
+  className?: string;
+}) {
   const pillar = getDayPillar(dateStr);
   return (
     <div
       className={`flex flex-wrap items-baseline justify-center gap-x-1 text-[10px] leading-tight ${
         today ? 'text-blue-600' : 'text-gray-500'
-      }`}
+      } ${className}`}
     >
-      <span className="font-serif font-medium">{pillar.hanja}</span>
-      <span className="text-[10px]">{pillar.hangul}</span>
+      <span className="font-medium">{pillar.hanja}</span>
+      <span>{pillar.hangul}</span>
     </div>
   );
 }
