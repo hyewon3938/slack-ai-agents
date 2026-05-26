@@ -40,7 +40,9 @@ interface WeekViewProps {
 
 const TASK_LANE_HEIGHT = 76;
 const EVENT_LANE_HEIGHT = 30;
-const DATE_ROW_HEIGHT = 72;
+// 헤더 영역 높이 (요일 + 날짜 동그라미 + 일주 라벨 + 여백).
+// 스패닝 바 top 위치 계산 기준 — 일주가 flex-wrap으로 두 줄이 되어도 가리지 않도록 여유 포함.
+const DATE_ROW_HEIGHT = 100;
 
 const NEXT_STATUS: Record<string, string> = {
   todo: 'in-progress',
@@ -486,7 +488,7 @@ function SajuPillarLabel({
   const pillar = getDayPillar(dateStr);
   return (
     <div
-      className={`flex flex-wrap items-baseline justify-center gap-x-1 text-[10px] leading-tight ${
+      className={`flex flex-wrap items-baseline justify-center gap-x-1 text-[11px] leading-tight ${
         today ? 'text-blue-600' : 'text-gray-500'
       } ${className}`}
     >
