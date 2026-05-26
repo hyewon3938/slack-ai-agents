@@ -136,7 +136,7 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 - 해결 시 `active = false`
 
 ### 4. 사주 패턴 (saju_patterns)
-- 주간 자동 분석(weekly-saju-review)으로 감지, 사용자 수동 관리 가능
+- 누적된 패턴은 시스템 프롬프트 조회에 계속 사용. 갱신 routine(구 `weekly-saju-review`)은 2026-05-26 비활성화 (마스터 #421 A1 신 routine 검증 후 archive 예정)
 - pattern_type: sipsin(십신) / ganji(특정 글자) / relation(합/형/충) / sibiunsung(십이운성)
 - **분석 도메인**: 일기, 수면, 지출, 일정, 루틴 (cross-domain 통합 분석, 28일 롤링 윈도우)
 - **evidence 표준 형식**: `{date, domain, summary, fortune_element, ...domain_specific}` — 도메인 추가(식사·운동 등) 시 마이그레이션 없이 확장 가능. 상세는 [ADR 0011](../adr/0011-saju-patterns-cross-domain.md) 참조
@@ -544,20 +544,38 @@ idempotency 테이블 `saju_weekly_reviews`:
 
 #### Phase A1 — `weekly-saju-review-v2` Routine + Block Kit 카드
 
-TODO(/build): SKILL.md prompt 본문 · 실제 Block Kit JSON 구조 · Opus 모델 설정 방법 · 구 routine archive 절차 확정 후 본 섹션 본문 채움.
+신 Routine `weekly-saju-review-v2` 배치 (Claude 앱 scheduled tasks 영역, 봇 cron 아님).
 
-발사 메타:
+**발사 메타**
 - Routine ID: `weekly-saju-review-v2`
-- cron: `0 8 * * 1` (매주 월요일 08:00 KST)
-- LLM: Claude Opus (Sonnet → 이관)
-- 의존: `saju_influence_summary` view (A2 머지 후)
+- 위치: `~/.claude/scheduled-tasks/weekly-saju-review-v2/SKILL.md` (사용자 HOME, repo 외부)
+- cron: `0 8 * * 1` (매주 월요일 08:00 KST, scheduler jitter로 실제 발사는 08:04 표기)
+- 발송 채널: `#insight`
+- LLM: Claude Opus (Claude 앱 model selector에서 사용자가 지정 — schema에 model 파라미터 없음, 주의사항으로 명시)
+- 의존: `saju_influence_summary` view + `saju_weekly_reviews` 테이블 (A2 머지 후 사용 가능)
 
-카드 구조 골격:
-- 회고 섹션: LLM 회고 prose 4\~6줄 (사주 관점 회고, diary 원문 노출 금지)
-- 학습 ▸ 검증됨: 최대 3개 (verified tier)
-- 학습 ▸ 누적 중: 최대 5개 (accumulating tier)
-- 학습 ▸ 최근 7일 활동: 카운트만 (recent tier)
-- 섹션 사이 Block Kit Divider
+**실행 단계 (SKILL.md 기반)**
+| 단계 | 동작 | 헌장 cross-check |
+|------|------|----------------|
+| 0 | `.env`에서 `DB_PROXY_URL` / `DB_PROXY_API_KEY` 추출 (특정 변수만 grep+cut) | secrets 노출 방지 |
+| 1 | `saju_weekly_reviews` INSERT idempotency 통과 시에만 진행 | ② 정확히 1회 발송 |
+| 2 | `saju_influence_summary` SELECT + accumulating raw counts(`saju_signal_catalog`) + 라이프 메트릭 4종(schedule done/total · routine rate · diary_meta_tag top5 · sleep avg) | ① 메트릭만, 일기 원문 SELECT 금지 |
+| 3 | Opus가 회고 prose 4\~6줄 작성 (반말·이모지 금지·diary 원문 인용 금지) | ① LLM 입력에 user 텍스트 노출 금지 |
+| 4 | Block Kit 카드 1개를 `chat.postMessage`로 `#insight` 발송 | ② 정확히 1회 |
+| 5 | 결과 요약 출력 (verified N / accumulating N / recent N) | — |
+
+**Block Kit 카드 구조**
+- Header: `🔮 주간 사주 리뷰 — YYYY-MM-DD 주`
+- Section 1 — 이번주 회고: Opus prose 4\~6줄
+- Section 2 — 학습 ▸ 검증됨: 최대 3개, 형식 `• \`{signal_name}\` _{sipsin}_ — {description} (q={fdr_q:.3f}, ratio {metric_value:.1f}x)` / 0건 시 `_아직 통계 검증 통과한 시드 없음_`
+- Section 3 — 학습 ▸ 누적 중: 최대 5개, 형식 `• \`{signal_name}\` _{sipsin}_ — hit rate {pct}% ({hit}/{hit+miss})` / 0건 시 `_아직 누적 패턴 없음 (5건 이상 누적 필요)_`
+- Section 4 — 학습 ▸ 최근 7일 활동: `지난 7일 매칭 {N}회, 상위 시드: {top3 signal_name 콤마}` / 0건 시 `_지난 7일 매칭 없음_`
+- Context: `_다음 주 월요일 아침 같은 시각에 다시 알려줄게_`
+- 섹션 사이 Divider
+
+**실패 모드**
+- idempotency INSERT 실패(=중복): 즉시 종료 (재발송 금지)
+- 발송 실패: `saju_weekly_reviews` row 별도 DELETE 안 함 — 해당 주는 재발송 불가, 다음 주 정상 동작 (정합성 우선)
 
 #### Phase A3 — 4층 레이어 데이터 주입 (의존: #408 머지)
 
