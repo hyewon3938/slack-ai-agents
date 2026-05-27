@@ -70,7 +70,7 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 - [ ] **Phase 3**: `life_signal` 시드 풀 셋 — 요일(월\~일 7) / 주말(2) / 월말(1) / 월초(1) / 계절(4) 등 1차 셋. 결정론 매트릭으로 작성
 - [ ] **Phase 4**: 매칭 cron + view 정비 — 매칭 cron이 `trigger_target_type='life_signal'`도 처리하도록 확장. `pattern_summary` view 본문 작성
 - [ ] **Phase 5**: 가설 발견·검증 업데이트 — `hypothesis-discovery`가 `life_signal` trigger를 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 출처(`pattern_kind`) 표시
-- [ ] **Phase 6**: LLM 자율 매트릭 + 승인 게이트 — 월간 LLM 슬롯이 매트릭 후보를 생성, Slack 승인 UI(`/insight metric-approve` + Block Kit inline button). 활성화된 매트릭만 매칭 cron 진입
+- [ ] **Phase 6**: LLM 자율 매트릭 + 승인 게이트 — 월간 LLM 슬롯이 매트릭 후보를 생성, Slack 승인 UI(`/insight metric-approve` + Block Kit inline button). 활성화된 매트릭만 매칭 cron 진입. **운영은 Claude 앱 routines 기반** ([ADR-0027](../adr/0027-llm-async-routine-unification.md))
 - [ ] **Phase 7**: Bayesian update 도입 — `posterior_p` 컬럼 채움. Beta-Binomial 사후 갱신 헬퍼(\~100줄). 가설 카드에 frequentist p값 + Bayesian posterior 병기
 - [ ] **Phase 8**: 인사이트 카드 UI + 마스터 close — `#insight` 채널 패턴 발견 카드(Block Kit). `life_signal` 패턴(요일 효과 등)도 같은 카드에서 출력. 마스터 회고 + 운영 1\~3개월 시점 follow-up 이슈 7건 일괄 등록
 
@@ -202,7 +202,74 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 
 ---
 
-## Phase 2\~8 (TODO: 각 Phase 진입 시 섹션 누적)
+## Phase 2: 사주 시드 풀세트 + 빈 매트릭 evidence-only (2026-05-28)
+
+- 이슈: [#437](https://github.com/hyewon3938/slack-ai-agents/issues/437)
+- 관련 ADR: [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0025](../adr/0025-llm-metric-approval-gate.md), **[ADR-0027](../adr/0027-llm-async-routine-unification.md) 신설**
+- 관련 계획서: `.claude/plans/434-phase-2-seed-pool.md`
+- 상태: 설계 완료, 구현 대기
+
+### 결정 요약
+
+사주 6종 풀세트 161개 신규 시드를 `pattern_catalog`에 박는다. 풀셋 단일 시드는 **매트릭 없이** 등록되며, 매일 09:00 매칭 cron이 trigger만 평가 + `pattern_matches.evidence` JSONB 누적. `matched=NULL` + `verify_status='no_metric'`로 hit/miss 채점 스킵. 60+일 evidence 누적 후 Phase 6 LLM 매트릭 제안 슬롯의 가설 후보 풀로 활용.
+
+| 종류 | 마스터 카운트 | 기존 시드 | 신규 시드 | 합계 |
+|---|---|---|---|---|
+| stem | 10 | 8 | 2 | 10 |
+| branch | 12 | 3 + 1 통합 | 9 | 13 (단일 12 + 통합 1) |
+| ganji | 60 | 0 | 60 | 60 |
+| element_density | 10 | 1 | 9 | 10 |
+| sibiunsung | 12 | 1 | 11 | 12 |
+| relation | 72 | 2 | 70 | 72 |
+| **합계** | **176** | **16** | **161** | **177** |
+
+신규 시드 이름은 `pool_<대상>_<카테고리>` 패턴 (예: `pool_갑_천간`, `pool_자_지지`, `pool_충_진술`). 기존 16개 시드는 이름 보존(운영 자산 우선). 통합 시드(N4_축미 / S6_사지묘지 / S2_사화_사술원진)와 풀셋 단일 시드 둘 다 유지 — 데이터 풍부도 우선, 단일 시드가 분리 검증을 제공.
+
+### 핵심 변경
+
+- **`pattern_matches.matched` NOT NULL → NULL 허용** (Migration 069)
+- **`verify_status` enum에 `'no_metric'` 추가** (Migration 069)
+- **시드 풀세트 INSERT** (Migration 070 + `scripts/generate-saju-seed-pool.ts`)
+- **`src/shared/saju-match.ts`** — 빈 매트릭 시드는 `matched=null`, recordDailyMatches가 `verify_status='no_metric'`로 INSERT, verifyDailyMatches는 자연스럽게 스킵
+- **ADR-0027 신설** — LLM 비동기 작업은 모두 Claude 앱 routines로 통일. Phase 6 매트릭 제안 슬롯은 처음부터 routine으로 등록. 기존 6건 LLM cron은 follow-up 이슈로 점진 이관
+
+### 의사결정 분기점
+
+1. **풀셋 범위** — 사주 6종 only (life_signal은 Phase 3) — life_signal과 책임 분리
+2. **시드 vs 매트릭** — 시드 풀셋 + 매트릭은 선별 + 빈 매트릭 evidence-only — 사용자 명시 ("매트릭은 전부 채우지 않아도 돼, 시드는 모두 등록")
+3. **통합 시드 처리** — 기존 통합 + 풀셋 단일 둘 다 유지 — 데이터 풍부도 우선
+4. **LLM 비동기 작업 운영** — Claude 앱 routines 통일 (ADR-0027) — 사용자 명시 "실시간 답변이 아닌 건 무조건 routines" → "LLM 호출 있는 비실시간 작업" 해석
+5. **Element density 판정 기준** — 본인 8자 + 일진 2자 = 10자 기준 3+ — 명리학적 정합성 + 운 반영
+6. **Relation 시드 trigger 표현** — `trigger_target_id=NULL` + `trigger_aux` JSONB (관계 명세) — relation은 단일 소속 아니므로 JSONB가 자연
+7. **description 형식** — `<대상> 발현일 — <십신>(<해석>)` 패턴 + 사용자 임상 데이터 — ADR-0025 `description NOT NULL`과 자연스러움
+
+### 사용자 임상 데이터 반영 (description에 박힘)
+
+- **자수 (지지) — 상관** (사용자 임상 정정, 식신 X) — 충동적 식사/배달/과식, 다 뒤집어 엎기·전면 개편, 관성 충돌
+- **갑목 (천간) — 편재** — 충동 지출·투자 명목 지출 주의, 일정 폭주·대청소·다 떠오름 (일을 많이 벌이는 경향)
+- **사화 (지지) — 편관** — 추진·도전 + 신체 증상(대상포진·피부 트러블·탈진). 사술원진/오행 쏠림 동반 시 강화 — 분리 검증 필요
+- **편인 (자기 일지 술토 / 진토 / 무토)** — 깊은 몰입, 철학적 사고, 영화·책 깊게 봄
+- **진술충** — 본인 일지 충, 자기 영역 흔들림, **과거 기억 문득문득 떠오름** ⚠️
+- **사술원진** — 본인 일지 원진, **부모님/전남친에 대한 원망 발현** 가능 ⚠️
+- **화 과다 (10자 중 3+)** — 화극금(본인 일간 경금 피해, 신체적 피로·발열·피부 트러블)
+- **목 과다 (10자 중 3+)** — 재다신약(편재·정재 폭주, 일간 약화)
+- **사 / 묘 (십이운성)** — 단절·체력 저하·몸 무거움·지침
+- **건록 / 제왕 (십이운성)** — 활력·열정·업무 폭주·운동 잘됨
+
+위 단서는 Phase 6 LLM이 evidence 60+일 보고 매트릭을 제안할 때 가설 hint로 활용. 단순 단일 시드(예: 사화) vs 복합 조건(사화 + 사술원진 / 사화 + 오행 쏠림)의 차별화는 Phase 6 자동 발견 후보.
+
+### 포기한 안 / 미룬 항목
+
+- **기존 16개 시드 이름 통일 마이그레이션** (`S1_갑목_편재_천간` → `pool_갑_천간`) — 운영 자산 보존 우선
+- **풀셋 + 매트릭 자동 매핑** — Phase 6 LLM이 evidence 보고 제안. 자동 매핑은 가설 공간 폭주
+- **사화 단독 vs 사술원진 vs 오행 쏠림 차별화** — description hint로 박아두고 Phase 6 자동 발견
+- **축토 정인 vs 미토 정인 차이** — Phase 6 자동 발견 후보
+
+### 회고 (TODO: `/build` 후 보강)
+
+---
+
+## Phase 3\~8 (TODO: 각 Phase 진입 시 섹션 누적)
 
 > 각 Phase 진입 시 `/design`이 본 문서에 해당 Phase 섹션을 추가한다. 템플릿: 결정 요약 / 의사결정 분기점 / 포기한 안 / 회고.
 
