@@ -265,7 +265,13 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 - **사화 단독 vs 사술원진 vs 오행 쏠림 차별화** — description hint로 박아두고 Phase 6 자동 발견
 - **축토 정인 vs 미토 정인 차이** — Phase 6 자동 발견 후보
 
-### 회고 (TODO: `/build` 후 보강)
+### 회고
+
+- **TypeScript 타입 변경의 파급 효과** — `SeedMatchResult.matched: boolean → boolean | null` 변경이 `compactMatchedLine`의 `filter((r) => r.matched)`에 자연스럽게 흡수됨 (null도 falsy). 명시적 분기를 추가하지 않고도 의도(evidence-only seed는 Slack 노출 안 함)가 표현됨 — 타입 시스템이 의도를 강제하는 좋은 사례
+- **migration 070 생성 전략** — 161개 시드 SQL을 직접 손으로 쓰지 않고 TypeScript 스크립트가 stdout으로 생성. 십신 매핑·description·기존 시드 제외 규칙을 코드로 표현해 휴먼 에러 차단. 다만 `EXISTING_RELATIONS` 상수가 정의됐지만 사용되지 않음(LOOP 내부 하드코딩으로 대체) — 다음 phase에서 일회성 스크립트 정리 시 제거 가능
+- **테스트 커버리지 trade-off** — `matchAllSeedsForDay`의 `matched=null` 분기를 직접 단위 테스트하려면 `getDayPillar`/`loadActiveSeeds`/`buildNameIdMap` 등을 새로 mocking해야 함. 3줄 ternary의 테스트 가치 < mocking 부담이라 판단, 대신 `evaluateTrigger`의 새 `relation {type, members}` 포맷을 5건 추가. 가설 후보 풀로 사용되는 trigger 평가가 더 중요한 검증 대상
+- **사용자 임상 단서 description 박기** — 명리학적 십신만 적는 게 아니라 사용자 본인이 실제로 관측한 단서(예: "진술충 → 과거 기억 문득문득 떠오름")를 description에 박음. Phase 6 LLM이 evidence 60+일 보고 매트릭 제안할 때 가설 hint로 활용 — 자료가 LLM의 가설 공간을 좁히는 역할
+- **ADR-0027 신설의 trigger** — Phase 2 인터뷰 중 Phase 6 LLM 매트릭 제안 슬롯을 어떻게 운영할지 분기점에서 발생. 사용자 명시 "실시간 답변이 아닌 건 무조건 routines" → 신규 ADR로 분리. 기존 Node.js cron 6건은 follow-up 이슈로 점진 이관 — 운영 패턴 통일이라 PR과 별도 트랙으로 분리하는 게 맞음
 
 ---
 
