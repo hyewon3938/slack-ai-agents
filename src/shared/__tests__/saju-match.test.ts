@@ -272,6 +272,85 @@ describe('evaluateTrigger - relation', () => {
     const ctx = baseCtx({ dayBranch: '사' });
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
   });
+
+  // ── 풀셋 형태 (마스터 #434 Phase 2): {type, members} ──
+
+  it('풀셋 branch_충 — 본명 멤버 있고 일운이 반대 멤버면 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'relation',
+      trigger_aux: { type: 'branch_충', members: ['자', '오'] },
+    });
+    // 본명 자 있음, 일운 오 → trigger
+    const ctx = baseCtx({
+      dayBranch: '오',
+      natal: {
+        stems: ['갑', '경', '경', '경'],
+        branches: ['자', '술', '술', '술'],
+        dayMaster: '경',
+      },
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('풀셋 branch_충 — 본명 + 일운 양방향 평가, 반대도 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'relation',
+      trigger_aux: { type: 'branch_충', members: ['자', '오'] },
+    });
+    // 본명 오 있음, 일운 자 → trigger (양방향)
+    const ctx = baseCtx({
+      dayBranch: '자',
+      natal: {
+        stems: ['갑', '경', '경', '경'],
+        branches: ['오', '술', '술', '술'],
+        dayMaster: '경',
+      },
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('풀셋 branch_충 — 본명에 양쪽 멤버 모두 없으면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'relation',
+      trigger_aux: { type: 'branch_충', members: ['자', '오'] },
+    });
+    const ctx = baseCtx({
+      dayBranch: '자',
+      natal: {
+        stems: ['갑', '경', '경', '경'],
+        branches: ['신', '술', '술', '술'], // 자/오 둘 다 없음
+        dayMaster: '경',
+      },
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('풀셋 stem_합 — 본명 천간 + 일운 천간 양방향 평가', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'relation',
+      trigger_aux: { type: 'stem_합', members: ['을', '경'] },
+    });
+    // 본명 경 있음, 일운 을 → trigger
+    const ctx = baseCtx({
+      dayStem: '을',
+      dayBranch: '술',
+      natal: {
+        stems: ['갑', '경', '경', '경'],
+        branches: ['자', '술', '술', '술'],
+        dayMaster: '경',
+      },
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('풀셋 type prefix 알 수 없으면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'relation',
+      trigger_aux: { type: 'unknown_x', members: ['자', '오'] },
+    });
+    const ctx = baseCtx({ dayBranch: '오' });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
 });
 
 // ─── evaluateTrigger: sibiunsung ──────────────────────────
@@ -408,6 +487,7 @@ describe('compactMatchedLine', () => {
       passed: true,
     })),
     matched,
+    isEvidenceOnly: false,
   });
 
   it('matched 시드 없으면 null', () => {

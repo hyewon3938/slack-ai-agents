@@ -133,6 +133,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0024](0024-bayesian-posterior-update.md) | Beta-Binomial Bayesian posterior 도입 — frequentist 검증과 병기 | Accepted | 2026-05-27 | data, statistics, insight |
 | [0025](0025-llm-metric-approval-gate.md) | LLM 자율 매트릭 승인 게이트 — `description NOT NULL` + Slack inline button | Accepted | 2026-05-27 | data, llm, ux |
 | [0026](0026-pattern-prefix-rename.md) | `pattern_*` prefix 전면 rename — saju_signal_* 잔존 결정 폐기 | Accepted | 2026-05-27 | data, insight, architecture, refactor |
+| [0027](0027-llm-async-routine-unification.md) | LLM 비동기 작업 Claude 앱 routines 기반 통일 | Accepted | 2026-05-28 | process, llm, infra, ops |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
