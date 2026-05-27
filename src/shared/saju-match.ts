@@ -1,13 +1,13 @@
 /**
  * 사주 시드 카탈로그 기반 일일 매칭 엔진.
- * ADR-0017 참조.
+ * ADR-0017 + ADR-0026(pattern_* rename) 참조.
  *
  * 흐름:
- *   1) loadActiveSeeds — saju_signal_catalog + metrics 조회
+ *   1) loadActiveSeeds — pattern_catalog + pattern_metrics 조회
  *   2) getDailyContext — 일운(getDayPillar) + 본명(saju_profiles) 로드
  *   3) evaluateTrigger — trigger_target_type별 분기 평가
  *   4) evaluateMetrics — 메트릭 SQL 실행 + 28일 baseline 비교 → matched 판정
- *   5) recordDailyMatch — saju_daily_matches UPSERT
+ *   5) recordDailyMatch — pattern_matches UPSERT
  */
 
 import { query, queryWithClient } from './db.js';
@@ -35,7 +35,7 @@ export interface SajuSeed {
 
 export interface SajuMetric {
   id: number;
-  signal_id: number;
+  pattern_id: number;
   metric_name: string;
   expected_metric_sql: string;
   expected_direction: 'above_avg' | 'below_avg' | 'above_abs' | 'below_abs' | 'flag_present';
@@ -129,7 +129,7 @@ export const loadActiveSeeds = async (userId: number): Promise<SajuSeedWithMetri
     `SELECT id, user_id, name, sipsin, description,
             trigger_target_type, trigger_target_id, trigger_aux,
             active, source, hit_count, miss_count, inconclusive_count
-       FROM saju_signal_catalog
+       FROM pattern_catalog
       WHERE user_id = $1 AND active = true
       ORDER BY id`,
     [userId],
@@ -137,25 +137,26 @@ export const loadActiveSeeds = async (userId: number): Promise<SajuSeedWithMetri
   if (seeds.rows.length === 0) return [];
 
   const ids = seeds.rows.map((s) => s.id);
+  // Phase 1: 결정론 시드 매트릭만 활성. LLM 자율 매트릭(status='pending')은 Phase 4에서.
   const metrics = await query<MetricRow>(
-    `SELECT id, signal_id, metric_name, expected_metric_sql,
+    `SELECT id, pattern_id, metric_name, expected_metric_sql,
             expected_direction, expected_threshold, domain
-       FROM saju_signal_metrics
-      WHERE signal_id = ANY($1)
+       FROM pattern_metrics
+      WHERE pattern_id = ANY($1) AND status = 'active'
       ORDER BY id`,
     [ids],
   );
 
-  const metricBySignal = new Map<number, SajuMetric[]>();
+  const metricByPattern = new Map<number, SajuMetric[]>();
   for (const m of metrics.rows) {
-    const list = metricBySignal.get(m.signal_id) ?? [];
+    const list = metricByPattern.get(m.pattern_id) ?? [];
     list.push(m);
-    metricBySignal.set(m.signal_id, list);
+    metricByPattern.set(m.pattern_id, list);
   }
 
   return seeds.rows.map((s) => ({
     ...s,
-    metrics: metricBySignal.get(s.id) ?? [],
+    metrics: metricByPattern.get(s.id) ?? [],
   }));
 };
 
@@ -471,10 +472,10 @@ export const recordDailyMatches = async (
       ]),
     );
     await query(
-      `INSERT INTO saju_daily_matches
-         (user_id, date, signal_id, trigger_activated, metric_values, matched, verify_status)
+      `INSERT INTO pattern_matches
+         (user_id, date, pattern_id, trigger_activated, metric_values, matched, verify_status)
        VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'pending')
-       ON CONFLICT (user_id, date, signal_id) DO UPDATE
+       ON CONFLICT (user_id, date, pattern_id) DO UPDATE
          SET trigger_activated = EXCLUDED.trigger_activated,
              metric_values = EXCLUDED.metric_values,
              matched = EXCLUDED.matched`,
@@ -487,9 +488,10 @@ export const recordDailyMatches = async (
 
 export const verifyDailyMatches = async (userId: number): Promise<void> => {
   // 어제 trigger_activated=true 매칭의 pending → hit/miss 확정
-  const pending = await query<{ id: number; signal_id: number; matched: boolean | null }>(
-    `SELECT id, signal_id, matched
-       FROM saju_daily_matches
+  // Phase 1: 카운터는 pattern_catalog(deprecated) 유지 — 매트릭 단위 이전은 Phase 4에서.
+  const pending = await query<{ id: number; pattern_id: number; matched: boolean | null }>(
+    `SELECT id, pattern_id, matched
+       FROM pattern_matches
       WHERE user_id = $1 AND verify_status = 'pending'
         AND date <= (CURRENT_DATE - INTERVAL '1 day')
         AND trigger_activated = true`,
@@ -498,19 +500,16 @@ export const verifyDailyMatches = async (userId: number): Promise<void> => {
 
   for (const row of pending.rows) {
     const outcome = row.matched ? 'hit' : 'miss';
-    await query(`UPDATE saju_daily_matches SET verify_status = $1 WHERE id = $2`, [
-      outcome,
-      row.id,
-    ]);
+    await query(`UPDATE pattern_matches SET verify_status = $1 WHERE id = $2`, [outcome, row.id]);
     const counter = outcome === 'hit' ? 'hit_count' : 'miss_count';
-    await query(`UPDATE saju_signal_catalog SET ${counter} = ${counter} + 1 WHERE id = $1`, [
-      row.signal_id,
+    await query(`UPDATE pattern_catalog SET ${counter} = ${counter} + 1 WHERE id = $1`, [
+      row.pattern_id,
     ]);
   }
 
   // trigger_activated=false는 inconclusive 처리 (시드는 카운트하되 outcome에 영향 X)
   await query(
-    `UPDATE saju_daily_matches
+    `UPDATE pattern_matches
         SET verify_status = 'inconclusive'
       WHERE user_id = $1 AND verify_status = 'pending'
         AND date <= (CURRENT_DATE - INTERVAL '1 day')

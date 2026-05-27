@@ -392,7 +392,7 @@ export const aggregateSajuOutcome = async (
   try {
     const result = await query<SajuSeedRow>(
       `SELECT name, sipsin, description, hit_count, miss_count, inconclusive_count
-       FROM saju_signal_catalog
+       FROM pattern_catalog
        WHERE user_id = $1 AND active = true
        ORDER BY (hit_count + miss_count) DESC, name`,
       [userId],

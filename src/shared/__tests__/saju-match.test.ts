@@ -313,7 +313,7 @@ describe('evaluateTrigger - sibiunsung', () => {
 describe('evaluateMetric', () => {
   const baseMetric = (overrides: Partial<SajuMetric> = {}): SajuMetric => ({
     id: 1,
-    signal_id: 1,
+    pattern_id: 1,
     metric_name: 'test_metric',
     expected_metric_sql: 'SELECT 1',
     expected_direction: 'above_avg',

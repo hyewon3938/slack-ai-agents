@@ -379,7 +379,7 @@ for (const seed of seeds) {
   // catalog INSERT
   const auxClause = auxJson ? `'${auxJson.replace(/'/g, "''")}'::jsonb` : 'NULL';
   const sipsinClause = seed.sipsin ? `'${seed.sipsin}'` : 'NULL';
-  out.push(`  INSERT INTO saju_signal_catalog
+  out.push(`  INSERT INTO pattern_catalog
     (user_id, name, sipsin, description, trigger_target_type, trigger_target_id, trigger_aux, source)
     VALUES (1, '${seed.name}', ${sipsinClause}, ${dq(seed.description)}, '${seed.triggerTargetType}', t_id, ${auxClause}, 'seed')
     ON CONFLICT (user_id, name) DO UPDATE SET description=EXCLUDED.description, trigger_target_id=EXCLUDED.trigger_target_id, trigger_aux=EXCLUDED.trigger_aux
@@ -388,9 +388,9 @@ for (const seed of seeds) {
   // metrics INSERT
   for (const m of seed.metrics) {
     const thresh = m.threshold === null ? 'NULL' : String(m.threshold);
-    out.push(`  INSERT INTO saju_signal_metrics (signal_id, metric_name, expected_metric_sql, expected_direction, expected_threshold, domain)
+    out.push(`  INSERT INTO pattern_metrics (pattern_id, metric_name, expected_metric_sql, expected_direction, expected_threshold, domain)
     VALUES (s_id, '${m.name}', ${dq(m.sql)}, '${m.direction}', ${thresh}, '${m.domain}')
-    ON CONFLICT (signal_id, metric_name) DO UPDATE SET expected_metric_sql=EXCLUDED.expected_metric_sql, expected_direction=EXCLUDED.expected_direction, expected_threshold=EXCLUDED.expected_threshold, domain=EXCLUDED.domain;`);
+    ON CONFLICT (pattern_id, metric_name) DO UPDATE SET expected_metric_sql=EXCLUDED.expected_metric_sql, expected_direction=EXCLUDED.expected_direction, expected_threshold=EXCLUDED.expected_threshold, domain=EXCLUDED.domain;`);
   }
 
   out.push('END $$;');

@@ -2,8 +2,8 @@
  * 사주 시드 토글 fast path.
  * 패턴 (약속된 단일 명령어, 자유언어 추출 금지):
  *   - "사주 시드 보기" → 활성 시드 + hit rate 목록
- *   - "사주 시드 끄기 N" → signal_id=N active=false
- *   - "사주 시드 켜기 N" → signal_id=N active=true
+ *   - "사주 시드 끄기 N" → pattern_id=N active=false
+ *   - "사주 시드 켜기 N" → pattern_id=N active=true
  *   - "사주 시드 모두 보기" → 비활성 포함 전체
  */
 
@@ -38,7 +38,7 @@ const listSeeds = async (userId: number, includeInactive: boolean): Promise<stri
   const where = includeInactive ? 'user_id = $1' : 'user_id = $1 AND active = true';
   const result = await query<SeedRow>(
     `SELECT id, name, sipsin, active, hit_count, miss_count, inconclusive_count
-     FROM saju_signal_catalog
+     FROM pattern_catalog
      WHERE ${where}
      ORDER BY id`,
     [userId],
@@ -50,16 +50,20 @@ const listSeeds = async (userId: number, includeInactive: boolean): Promise<stri
   return [header, ...result.rows.map(formatSeedLine)].join('\n');
 };
 
-const toggleSeed = async (userId: number, signalId: number, active: boolean): Promise<string> => {
+const togglePattern = async (
+  userId: number,
+  patternId: number,
+  active: boolean,
+): Promise<string> => {
   const result = await query<{ id: number; name: string }>(
-    `UPDATE saju_signal_catalog
+    `UPDATE pattern_catalog
      SET active = $3
      WHERE user_id = $1 AND id = $2
      RETURNING id, name`,
-    [userId, signalId, active],
+    [userId, patternId, active],
   );
   const row = result.rows[0];
-  if (!row) return `#${signalId} 시드를 찾을 수 없어.`;
+  if (!row) return `#${patternId} 시드를 찾을 수 없어.`;
   const verb = active ? '켰어' : '껐어';
   return `#${row.id} ${row.name} ${verb}.`;
 };
@@ -83,12 +87,12 @@ export const trySajuSeedFastPath = async (
     }
     const offMatch = trimmed.match(SAJU_SEED_OFF_RE);
     if (offMatch) {
-      await sendMessage(say, await toggleSeed(userId, Number(offMatch[1]), false));
+      await sendMessage(say, await togglePattern(userId, Number(offMatch[1]), false));
       return true;
     }
     const onMatch = trimmed.match(SAJU_SEED_ON_RE);
     if (onMatch) {
-      await sendMessage(say, await toggleSeed(userId, Number(onMatch[1]), true));
+      await sendMessage(say, await togglePattern(userId, Number(onMatch[1]), true));
       return true;
     }
   } catch (error: unknown) {
