@@ -128,6 +128,10 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0019](0019-saju-hypothesis-verification-pipeline.md) | 프로액티브 인사이트 v2 Phase 4 — 가설-검증 정량 파이프라인 | Accepted | 2026-05-21 | data, llm, statistics |
 | [0020](0020-fortune-system-responsibility-split-via-view.md) | 사주 풀이 시스템과 v2 매칭 시스템 책임 분리 + view 인터페이스 도입 | Accepted | 2026-05-26 | data, insight, architecture |
 | [0021](0021-web-shared-saju-code-duplication.md) | web shared 사주 계산 코드 — 복제 방식 채택 | Accepted | 2026-05-26 | process, web, shared-code |
+| [0022](0022-target-type-generalization.md) | target-type 일반화 — 사주 6종 + life_signal 통합 (단일 카탈로그) | Accepted | 2026-05-27 | data, insight, architecture |
+| [0023](0023-metric-unit-counter-and-summary-view.md) | hit/miss 카운터는 매트릭 단위 + seed 합계는 view로 derive | Accepted | 2026-05-27 | data, insight, schema |
+| [0024](0024-bayesian-posterior-update.md) | Beta-Binomial Bayesian posterior 도입 — frequentist 검증과 병기 | Accepted | 2026-05-27 | data, statistics, insight |
+| [0025](0025-llm-metric-approval-gate.md) | LLM 자율 매트릭 승인 게이트 — `description NOT NULL` + Slack inline button | Accepted | 2026-05-27 | data, llm, ux |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
