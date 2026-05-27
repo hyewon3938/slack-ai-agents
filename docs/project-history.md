@@ -11,6 +11,19 @@
 
 ---
 
+## 2026-05-27: 프로액티브 인사이트 v2 close + 본인 1명 패턴 발견 시스템 신규 마스터 (#393 close, #434 open)
+
+마스터 #393 (사주 검증 시스템) close + 마스터 #434 (본인 1명 패턴 발견 시스템) open. 정체성 재정의 — 사주 단일 검증 → 사주 + 라이프 통념 통합 가설-검증 파이프라인.
+
+- **마스터 #393 누적**: Phase 1\~4 머지 완료 (\~13일). SQL 결정론 11종, LLM 자율 슬롯 + outcome 검증, 사주 60갑자 일일 매칭, 가설-검증 정량 파이프라인(Fisher + BH-FDR)
+- **마스터 #434 setup**: 5어휘 데이터 모델 분리(시드 → 매트릭 → 매칭 → 가설 → 검증), target-type 일반화(`life_signal` 추가), 매트릭 단위 카운터 + view derive, Beta-Binomial Bayesian posterior 도입, LLM 자율 매트릭 승인 게이트. 8-Phase 흐름 설계
+- **분리 트랙 유지**: Phase 5 (#408, 월운 매칭) — 검증 사이클 길이 차이로 본격 진입 보류 정책 계승. 운영 1\~3개월 누적 후 본격 인터뷰
+- **헌장 계승 + 확장**: v2 헌장 4개(LLM 텍스트 의존 최소화 / 결정론↔자율 분리 / outcome 검증 / 신뢰 비용 분리) 그대로 + 마스터 #434 자체 헌장 5개 추가(n=1 single-case design / 5어휘 분리 / target-type 일반화 / 승인 게이트 / Bayesian + frequentist 병기)
+
+설계 판단 → [ADR-0022](adr/0022-target-type-generalization.md), [ADR-0023](adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0024](adr/0024-bayesian-posterior-update.md), [ADR-0025](adr/0025-llm-metric-approval-gate.md). 마스터 서사 → [design-notebook/personal-pattern-discovery.md](design-notebook/personal-pattern-discovery.md). v2 close 서사 → [design-notebook/insight-engine-v2.md](design-notebook/insight-engine-v2.md#마스터-close-2026-05-27).
+
+---
+
 ## 2026-05-26: 사주 풀이 시스템 책임 분리 + 주간 사주 회고 v2 (#421, PR #422·#423)
 
 사주 풀이 routine과 v2 매칭 시스템 사이의 데이터 흐름을 정리.
