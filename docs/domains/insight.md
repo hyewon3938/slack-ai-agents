@@ -750,9 +750,95 @@ GROUP BY c.id;
 
 설계 결정 배경: [ADR-0022](../adr/0022-target-type-generalization.md) (Superseded by 0026), [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0024](../adr/0024-bayesian-posterior-update.md), [ADR-0025](../adr/0025-llm-metric-approval-gate.md), [ADR-0026](../adr/0026-pattern-prefix-rename.md)
 
-### 15. 본인 1명 패턴 발견 시스템 — Phase 2 (사주 시드 풀 셋)
+### 15. 본인 1명 패턴 발견 시스템 — Phase 2 (사주 시드 풀세트 + 빈 매트릭 evidence-only)
 
-> TODO(`/build`): 구현 후 본문 채우기. Phase 3에서 작성된 사주 시드 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태에서 풀 셋으로). 누락 시드 식별 방법, 추가 시드 목록, 매트릭 description 작성. `pattern_catalog`·`pattern_metrics` 어휘 기준.
+#### 시드 풀세트 카운트
+
+사주 6종 풀세트 161개 신규 시드를 `pattern_catalog`에 박는다. 풀셋 단일 시드는 매트릭 없이 등록되며, 매일 매칭 cron이 trigger만 평가하고 `pattern_matches.evidence` JSONB만 누적한다.
+
+| 종류 | 마스터 카운트 | 기존 시드 | 신규 시드 | 합계 |
+|------|------|------|------|------|
+| stem | 10 | 8 | 2 | 10 |
+| branch | 12 | 3 + 1 통합 | 9 | 13 (단일 12 + 통합 1) |
+| ganji | 60 | 0 | 60 | 60 |
+| element_density | 10 | 1 | 9 | 10 |
+| sibiunsung | 12 | 1 | 11 | 12 |
+| relation | 72 | 2 | 70 | 72 |
+| **합계** | **176** | **16** | **161** | **177** |
+
+신규 시드 이름은 `pool_<대상>_<카테고리>` 패턴 (예: `pool_갑_천간`, `pool_자_지지`, `pool_충_진술`). 기존 16개 시드는 이름 보존(운영 자산 우선). 통합 시드와 풀셋 단일 시드 둘 다 유지 — 데이터 풍부도 우선.
+
+#### 데이터 모델 변경
+
+| 마이그레이션 | 내용 |
+|------|------|
+| `069_pattern_matches_no_metric.sql` | `pattern_matches.matched` NOT NULL → NULL 허용. `verify_status` CHECK 재정의 (`'no_metric'` 추가). 부분 인덱스 `idx_pattern_matches_no_metric ON pattern_matches (user_id, date) WHERE verify_status='no_metric'` |
+| `070_saju_seed_pool.sql` | 신규 161개 시드 INSERT (`pattern_catalog`) + 같은 ID `pattern_metrics` row 생성. `ON CONFLICT DO NOTHING` (멱등). 풀셋 시드는 `pattern_metrics`에 row가 없으므로 evidence-only로 동작 |
+
+마이그레이션 070은 직접 SQL을 손으로 쓰지 않고 `scripts/generate-saju-seed-pool.ts`가 stdout으로 생성한 SQL을 파일로 저장한 형태. 십신 매핑·description·기존 시드 제외 규칙을 모두 TypeScript 코드로 표현해 휴먼 에러 차단.
+
+#### Evidence-only 흐름 (`src/shared/saju-match.ts`)
+
+매칭 결과 인터페이스 확장:
+
+```typescript
+export interface SeedMatchResult {
+  seed: SajuSeedWithMetrics;
+  triggerActivated: boolean;
+  metricEvaluations: MetricEvaluation[];
+  matched: boolean | null;       // 매트릭 없으면 null
+  isEvidenceOnly: boolean;       // seed.metrics.length === 0
+}
+```
+
+매칭 cron 분기:
+
+```
+matched        = isEvidenceOnly ? null : triggerActivated && passed
+verify_status  = isEvidenceOnly ? 'no_metric' : 'pending'
+```
+
+`verifyDailyMatches`는 `verify_status='pending'` 행만 평가하므로 `no_metric` 행은 자연 스킵. 누적된 `evidence` JSONB는 Phase 6 LLM 매트릭 제안 슬롯의 가설 후보 풀로 사용.
+
+#### 시드별 trigger 표현
+
+| 종류 | trigger_target_type | trigger_target | trigger_aux |
+|------|------|------|------|
+| stem | `stem` | 천간 1자 | — |
+| branch | `branch` | 지지 1자 | — |
+| ganji | `ganji` | 갑자 1조 | — |
+| element_density | `element_density` | NULL | `{"element": "화", "mode": "over"}` 또는 `"lack"` (10자 기준 3+/0) |
+| sibiunsung | `sibiunsung` | NULL | `{"name": "장생"}` 등 |
+| relation | `relation` | NULL | `{"type": "branch_clash", "members": ["진", "술"]}` 등 (`branch_*` / `stem_*` prefix) |
+
+기존 `relation` 시드는 `{"day_branch": ..., "natal_branches": [...], "relation_types": [...]}` 포맷도 유지 (regression 방지). `evaluateTrigger`에서 새 `{type, members}` 포맷을 먼저 처리하고 폴백.
+
+#### 사용자 임상 단서를 description에 박기
+
+description 형식: `<대상> 발현일 — <십신>(<해석 + 사용자 임상 단서>)`. 사용자가 실제로 그날 어떤 패턴이 나타났는지 임상적으로 관측한 단서를 시드 description에 직접 박아 Phase 6 LLM 매트릭 제안 시 가설 hint로 활용. 십신 매핑 정정도 함께 반영 — **자수(지지) = 상관** (식신 X, 사용자 임상 정정). 60갑자 자수 ganji 시드(갑자/병자/무자/경자/임자)에도 동일 적용.
+
+상세 단서 목록: [design-notebook Phase 2 — 사용자 임상 데이터 반영](../design-notebook/personal-pattern-discovery.md#사용자-임상-데이터-반영-description에-박힘).
+
+#### Phase 6 연결
+
+60+일 evidence JSONB 누적 → Phase 6 LLM 매트릭 제안 슬롯이 가설 후보 풀로 활용. Phase 6 운영 형태는 **Claude 앱 routines 기반** ([ADR-0027](../adr/0027-llm-async-routine-unification.md)) — 기존 Node.js cron이 LLM API를 호출하던 비실시간 작업 6건도 routines로 점진 이관.
+
+#### 파일 구조
+
+```
+scripts/
+  generate-saju-seed-pool.ts   # SQL 생성기 (TypeScript, stdout)
+
+db/migrations/
+  069_pattern_matches_no_metric.sql
+  070_saju_seed_pool.sql       # 생성기 출력 (1154줄, 161 시드)
+
+src/shared/
+  saju-match.ts                # SeedMatchResult.matched: boolean | null
+                               # evaluateTrigger('relation') 새 {type, members} 포맷 분기
+```
+
+설계 결정 배경: [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0025](../adr/0025-llm-metric-approval-gate.md), [ADR-0027](../adr/0027-llm-async-routine-unification.md), [design-notebook Phase 2](../design-notebook/personal-pattern-discovery.md#phase-2-사주-시드-풀세트--빈-매트릭-evidence-only-2026-05-28)
 
 ### 16. 본인 1명 패턴 발견 시스템 — Phase 3 (life_signal 시드 풀 셋)
 
@@ -768,7 +854,7 @@ GROUP BY c.id;
 
 ### 19. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
 
-> TODO(`/build`): 구현 후 본문 채우기. 월간 LLM 슬롯이 매트릭 후보 생성, 월 cap 5개. Slack `/insight metric-approve` 명령어 + Block Kit 승인 카드 (`metric-approval-cards.ts`). 승인 시 `pattern_metrics.status = 'active'` 전환. 거절 시 `'rejected'`.
+> TODO(`/build`): 구현 후 본문 채우기. 월간 LLM 슬롯이 매트릭 후보 생성, 월 cap 5개. **운영은 Claude 앱 routines 기반** ([ADR-0027](../adr/0027-llm-async-routine-unification.md)) — Phase 2에서 누적된 60+일 evidence JSONB(`pattern_matches.evidence`, `verify_status='no_metric'` 행)를 가설 후보 풀로 사용. Slack `/insight metric-approve` 명령어 + Block Kit 승인 카드 (`metric-approval-cards.ts`). 승인 시 `pattern_metrics.status = 'active'` 전환. 거절 시 `'rejected'`.
 
 ### 20. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian update)
 
