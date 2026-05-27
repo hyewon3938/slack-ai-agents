@@ -1,10 +1,10 @@
 /**
  * Phase 3 — 매일 09시 사주 일일 매칭 cron.
- * ADR-0017 참조.
+ * ADR-0017 + ADR-0026(pattern_* rename) 참조.
  *
  * 흐름:
  *   1) 어제 pending 매칭 verify_status 확정 (hit/miss/inconclusive)
- *   2) 오늘 활성 시드 평가 → saju_daily_matches UPSERT
+ *   2) 오늘 활성 시드 평가 → pattern_matches UPSERT
  *   3) matched=true 시드를 #life 잔소리 끝 한 줄로 압축 전송
  */
 

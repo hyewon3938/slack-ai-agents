@@ -310,7 +310,7 @@ describe('aggregateSleepRoutineCorrelation', () => {
 describe('aggregateSajuOutcome', () => {
   it('active 시드 없으면 빈 seeds + 빈 weakCandidates', async () => {
     mockQuery.mockImplementation((sql: string) => {
-      if (/saju_signal_catalog/.test(sql)) return Promise.resolve({ rows: [] });
+      if (/pattern_catalog/.test(sql)) return Promise.resolve({ rows: [] });
       return Promise.resolve({ rows: [] });
     });
 
@@ -321,7 +321,7 @@ describe('aggregateSajuOutcome', () => {
 
   it('hit/miss 값으로 hitRate 계산', async () => {
     mockQuery.mockImplementation((sql: string) => {
-      if (/saju_signal_catalog/.test(sql)) {
+      if (/pattern_catalog/.test(sql)) {
         return Promise.resolve({
           rows: [
             {
@@ -365,7 +365,7 @@ describe('aggregateSajuOutcome', () => {
 
   it('약화 후보: total ≥ 10 + hitRate < 0.3 인 시드만 포함', async () => {
     mockQuery.mockImplementation((sql: string) => {
-      if (/saju_signal_catalog/.test(sql)) {
+      if (/pattern_catalog/.test(sql)) {
         return Promise.resolve({
           rows: [
             // 약화: total=12, hitRate=2/12≈0.17 < 0.3

@@ -40,7 +40,7 @@ export const previousMondayISO = (todayIso: string): string => {
 const loadSignalNames = async (signalIds: number[]): Promise<Map<number, string>> => {
   if (signalIds.length === 0) return new Map();
   const res = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM saju_signal_catalog WHERE id = ANY($1::int[])`,
+    `SELECT id, name FROM pattern_catalog WHERE id = ANY($1::int[])`,
     [signalIds],
   );
   return new Map(res.rows.map((r) => [r.id, r.name]));
@@ -65,7 +65,7 @@ const loadPrevStat = async (
             n_trigger_days, n_total_days,
             rate_trigger::TEXT, rate_baseline::TEXT, rate_ratio::TEXT,
             raw_p::TEXT, fdr_q::TEXT
-       FROM saju_stats
+       FROM pattern_stats
       WHERE hypothesis_id = $1 AND week_start < $2
       ORDER BY week_start DESC LIMIT 1`,
     [hypothesisId, beforeWeek],

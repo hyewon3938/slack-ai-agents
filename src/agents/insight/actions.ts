@@ -43,7 +43,7 @@ export const registerInsightActions = (app: App): void => {
     try {
       const userId = await resolveBodyUserId(body);
       await query(
-        `INSERT INTO saju_hypotheses (user_id, trigger_spec, enum_target, source)
+        `INSERT INTO pattern_hypotheses (user_id, trigger_spec, enum_target, source)
          VALUES ($1, $2, $3, 'discovery')`,
         [userId, payload.triggerSpec, payload.enumTarget],
       );

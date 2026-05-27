@@ -139,8 +139,8 @@ const loadTriggerWindow = async (
 ): Promise<TriggerWindow> => {
   const triggerRes = await query<{ date: string }>(
     `SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date
-       FROM saju_daily_matches
-      WHERE user_id = $1 AND signal_id = $2
+       FROM pattern_matches
+      WHERE user_id = $1 AND pattern_id = $2
         AND date >= $3 AND date <= $4
         AND trigger_activated = true`,
     [userId, signalId, startDate, endDate],
@@ -221,7 +221,7 @@ export const computeHypothesisStat = async (
 };
 
 /**
- * 다중 가설 통계 일괄 계산 + BH-FDR 보정 + saju_stats UPSERT.
+ * 다중 가설 통계 일괄 계산 + BH-FDR 보정 + pattern_stats UPSERT.
  * UPSERT는 (hypothesis_id, week_start) UNIQUE 충돌 시 갱신.
  */
 export const computeAndPersistWeeklyStats = async (
@@ -243,7 +243,7 @@ export const computeAndPersistWeeklyStats = async (
 
   for (const stat of finalStats) {
     await query(
-      `INSERT INTO saju_stats
+      `INSERT INTO pattern_stats
          (hypothesis_id, week_start, n_trigger_days, n_total_days,
           rate_trigger, rate_baseline, rate_ratio, raw_p, fdr_q)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -291,7 +291,7 @@ const RECENT_WEEKS = 4;
 export const evaluateStatusTransition = async (hypothesisId: number): Promise<HypothesisStatus> => {
   const cumulativeRes = await query<{ total: string }>(
     `SELECT COALESCE(SUM(n_trigger_days), 0)::TEXT AS total
-       FROM saju_stats WHERE hypothesis_id = $1`,
+       FROM pattern_stats WHERE hypothesis_id = $1`,
     [hypothesisId],
   );
   const cumulativeN = Number(cumulativeRes.rows[0]?.total ?? 0);
@@ -302,7 +302,7 @@ export const evaluateStatusTransition = async (hypothesisId: number): Promise<Hy
     fdr_q: string;
   }>(
     `SELECT rate_ratio::TEXT, fdr_q::TEXT
-       FROM saju_stats WHERE hypothesis_id = $1
+       FROM pattern_stats WHERE hypothesis_id = $1
        ORDER BY week_start DESC LIMIT $2`,
     [hypothesisId, RECENT_WEEKS],
   );
@@ -339,7 +339,7 @@ export const applyStatusTransition = async (
   };
   const column = columnMap[next];
   await query(
-    `UPDATE saju_hypotheses
+    `UPDATE pattern_hypotheses
         SET status = $1, ${column} = NOW()
       WHERE id = $2 AND status = 'active'`,
     [next, hypothesisId],
@@ -370,7 +370,7 @@ export const loadActiveHypotheses = async (userId: number): Promise<Hypothesis[]
   }>(
     `SELECT id, user_id, trigger_spec, enum_target, status, source,
             registered_at, confirmed_at, rejected_at, archived_at, notes
-       FROM saju_hypotheses WHERE user_id = $1 AND status = 'active'
+       FROM pattern_hypotheses WHERE user_id = $1 AND status = 'active'
        ORDER BY id`,
     [userId],
   );

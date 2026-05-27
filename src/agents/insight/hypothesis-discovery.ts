@@ -40,7 +40,7 @@ interface ActiveSignal {
 
 const loadActiveSignals = async (userId: number): Promise<ActiveSignal[]> => {
   const res = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM saju_signal_catalog
+    `SELECT id, name FROM pattern_catalog
        WHERE user_id = $1 AND active = true
        ORDER BY id`,
     [userId],
@@ -50,7 +50,7 @@ const loadActiveSignals = async (userId: number): Promise<ActiveSignal[]> => {
 
 const loadRegisteredCombos = async (userId: number): Promise<Set<string>> => {
   const res = await query<{ trigger_spec: TriggerSpec; enum_target: string }>(
-    `SELECT trigger_spec, enum_target FROM saju_hypotheses
+    `SELECT trigger_spec, enum_target FROM pattern_hypotheses
        WHERE user_id = $1 AND status IN ('active', 'confirmed')`,
     [userId],
   );
@@ -80,9 +80,9 @@ interface DayMap {
 }
 
 const loadDayMap = async (userId: number, startDate: string, endDate: string): Promise<DayMap> => {
-  const triggerRes = await query<{ signal_id: number; date: string }>(
-    `SELECT signal_id, TO_CHAR(date, 'YYYY-MM-DD') AS date
-       FROM saju_daily_matches
+  const triggerRes = await query<{ pattern_id: number; date: string }>(
+    `SELECT pattern_id, TO_CHAR(date, 'YYYY-MM-DD') AS date
+       FROM pattern_matches
       WHERE user_id = $1
         AND date >= $2 AND date <= $3
         AND trigger_activated = true`,
@@ -101,9 +101,9 @@ const loadDayMap = async (userId: number, startDate: string, endDate: string): P
 
   const triggerByDate = new Map<number, Set<string>>();
   for (const row of triggerRes.rows) {
-    const set = triggerByDate.get(row.signal_id) ?? new Set();
+    const set = triggerByDate.get(row.pattern_id) ?? new Set();
     set.add(row.date);
-    triggerByDate.set(row.signal_id, set);
+    triggerByDate.set(row.pattern_id, set);
   }
   const enumByDate = new Map<string, Set<string>>();
   for (const row of enumRes.rows) {
