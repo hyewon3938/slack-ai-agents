@@ -74,7 +74,10 @@ export interface SeedMatchResult {
   seed: SajuSeedWithMetrics;
   triggerActivated: boolean;
   metricEvaluations: MetricEvaluation[];
-  matched: boolean;
+  /** 매트릭 평가 결과. 매트릭 없는 풀셋 시드(evidence-only)는 null. */
+  matched: boolean | null;
+  /** 풀셋 evidence-only 시드 여부. true면 verify_status='no_metric'로 INSERT. */
+  isEvidenceOnly: boolean;
 }
 
 // ─── 본명 / 일운 컨텍스트 ────────────────────────────────
@@ -294,6 +297,26 @@ export const evaluateTrigger = async (
     }
 
     case 'relation': {
+      // 풀셋 형태 (마스터 #434 Phase 2): {type, members} — 양 멤버 자동 양방향 평가
+      // type='branch_<관계명>' 또는 'stem_<관계명>', members=['<a>', '<b>']
+      const typeAux = aux['type'];
+      const membersAux = aux['members'];
+      if (typeof typeAux === 'string' && isStringArray(membersAux) && membersAux.length === 2) {
+        const [a, b] = membersAux;
+        if (typeAux.startsWith('branch_')) {
+          if (ctx.natal.branches.includes(a as Jiji) && ctx.dayBranch === b) return true;
+          if (ctx.natal.branches.includes(b as Jiji) && ctx.dayBranch === a) return true;
+          return false;
+        }
+        if (typeAux.startsWith('stem_')) {
+          if (ctx.natal.stems.includes(a as Cheongan) && ctx.dayStem === b) return true;
+          if (ctx.natal.stems.includes(b as Cheongan) && ctx.dayStem === a) return true;
+          return false;
+        }
+        return false;
+      }
+
+      // 기존 형태 (N3 진술충, S2 사술원진): day_branch + natal_branches + relation_types
       const dayBranchName = typeof aux['day_branch'] === 'string' ? aux['day_branch'] : null;
       const natalBranches = aux['natal_branches'];
       const relationTypes = aux['relation_types'];
@@ -449,8 +472,13 @@ export const matchAllSeedsForDay = async (
       }
     }
 
-    const matched = triggerActivated && metricEvaluations.some((e) => e.passed);
-    results.push({ seed, triggerActivated, metricEvaluations, matched });
+    // 풀셋 evidence-only 시드(매트릭 없음)는 채점 스킵 — matched=null
+    // 마스터 #434 Phase 2: 60+일 evidence 누적 후 Phase 6 LLM 매트릭 제안 슬롯이 활용
+    const isEvidenceOnly = seed.metrics.length === 0;
+    const matched = isEvidenceOnly
+      ? null
+      : triggerActivated && metricEvaluations.some((e) => e.passed);
+    results.push({ seed, triggerActivated, metricEvaluations, matched, isEvidenceOnly });
   }
   return results;
 };
@@ -471,15 +499,25 @@ export const recordDailyMatches = async (
         },
       ]),
     );
+    const verifyStatus = r.isEvidenceOnly ? 'no_metric' : 'pending';
     await query(
       `INSERT INTO pattern_matches
          (user_id, date, pattern_id, trigger_activated, metric_values, matched, verify_status)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'pending')
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
        ON CONFLICT (user_id, date, pattern_id) DO UPDATE
          SET trigger_activated = EXCLUDED.trigger_activated,
              metric_values = EXCLUDED.metric_values,
-             matched = EXCLUDED.matched`,
-      [userId, date, r.seed.id, r.triggerActivated, JSON.stringify(metricValues), r.matched],
+             matched = EXCLUDED.matched,
+             verify_status = EXCLUDED.verify_status`,
+      [
+        userId,
+        date,
+        r.seed.id,
+        r.triggerActivated,
+        JSON.stringify(metricValues),
+        r.matched,
+        verifyStatus,
+      ],
     );
   }
 };
