@@ -326,3 +326,44 @@ Phase 4 머지(2026-05-22) 직후 4일 만에 사용자가 Phase 5 진입을 요
 - **마스터 분리 결정이 헌장 cross-check로 자동 도출된 패턴**: design 단계에서 헌장(v2 4개 원칙)이 단순 가이드가 아니라 "이 마스터에 속하는가" 판정 도구로 작동. 외부 폐기·내부 채택 사이 빠른 결정 가능
 - **마스터 사이 의존 관계 명시 (5-B → A3)**: design-notebook끼리 cross-link로 두 마스터의 만나는 지점이 문서 차원에서 추적 가능. 단일 마스터 안에 모든 걸 두지 않아도 책임 분리와 통합을 동시에 가능
 
+---
+
+## 마스터 close (2026-05-27)
+
+본 마스터(#393, 프로액티브 인사이트 v2)는 **2026-05-27 close** 되었다. Phase 1\~4 머지 완료, Phase 5 분리.
+
+### Close 이유
+
+마스터 정체성이 "사주 검증 시스템"에서 "**본인 1명 패턴 발견 시스템 — 라이프 통념 + 사주 통합 시드 카탈로그**"로 진화. 새 정체성은 사주 갑자뿐 아니라 라이프 통념(요일·계절·월말 등)을 동일 가설-검증 파이프라인에서 다루므로 마스터 단위로 재구성하는 것이 자연스러움. 새 마스터 [#434](https://github.com/hyewon3938/slack-ai-agents/issues/434)로 이관.
+
+### 누적 결과 (Phase 1\~4)
+
+- **Phase 1**: SQL 결정론 잔소리 엔진 11개 패턴 + 임계치 외부화 + 주간 리포트 재구성 (PR #396)
+- **Phase 2**: LLM 자율 발견 슬롯 + outcome 검증 + 점진적 노출 (PR #404, #405, #406)
+- **Phase 3**: 사주 60갑자 마스터 정규화 + Polymorphic Trigger 6종 + 일일 매칭 catalog + 28일 baseline outcome + S2(사술원진) 분석/영화 메트릭 (PR #407)
+- **Phase 4**: 가설-검증 정량 파이프라인 (Fisher's exact + BH-FDR) + weeklyHypothesisReview + diary-meta-extract Opus 이관 + 가설 lifecycle (PR #415, fix PR #420)
+
+### 이관 처리
+
+- **Phase 5 (#408, 월운 매칭 + 4층 영향력 데이터)** → **마스터 #434로 흡수**되지 않고 **별도 트랙 유지**. 검증 사이클 길이 차이(\~2년 4개월)로 본격 진입 보류 정책 유지. 본 마스터 종료와 무관하게 운영 1\~3개월 누적 후 본격 인터뷰 진입
+- **세운·대운 LLM 회고 해석 (구 Phase 5-B)**: 마스터 [#421](https://github.com/hyewon3938/slack-ai-agents/issues/421) (사주 풀이 재설계)로 이관 완료 (2026-05-26)
+- **v2 헌장 4개**: 마스터 #434에 그대로 계승 + 자체 헌장 5개 추가. [project_insight_v2_core_principles 메모리](../../.claude/projects/-Users-ihyewon-slack-ai-agents/memory/project_insight_v2_core_principles.md)는 v2 헌장 본가로 유지
+
+### 후속 관련 ADR
+
+마스터 #434에서 v2 데이터 모델을 확장:
+
+- [ADR-0022](../adr/0022-target-type-generalization.md): target-type 일반화 — 사주 6종 + life_signal 통합
+- [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md): hit/miss 카운터 위치 + saju_signal_summary view
+- [ADR-0024](../adr/0024-bayesian-posterior-update.md): Beta-Binomial Bayesian posterior 도입
+- [ADR-0025](../adr/0025-llm-metric-approval-gate.md): LLM 자율 매트릭 승인 게이트
+
+### 회고 (마스터 단위)
+
+- **Phase 1\~4가 \~13일 만에 머지** (2026-05-14 \~ 2026-05-22): 헌장 cross-check + 5문서 아키텍처 + ADR 누적이 phase 사이 컨텍스트 손실을 방지한 사례. 평균 phase 당 3\~5일이라는 속도는 design-notebook 누적 + ADR 명시가 없었으면 어려웠을 것
+- **마스터 close가 새 마스터 시작 직전에 결정된 패턴**: 새 마스터 #434 인터뷰 중 "정체성이 바뀐다"는 자각이 마스터 단위 close 트리거가 됨. 마스터 close 시점을 "다음 마스터 인터뷰의 마지막 분기점"으로 두는 패턴 확인. close-only PR을 별도로 두지 않고 #434 setup PR에 close docs 통합
+- **헌장이 도구로 작동한 누적 사례**: Phase 2 (#354 흡수), Phase 5 분리 (#421 spawn), 마스터 #434 정체성 결정 — 세 분기점 모두 헌장 cross-check가 결정의 기준이 됐음. 헌장이 "변경 불가 원칙" 역할 외에도 "마스터 경계 판정 도구" 역할까지 수행
+
+### 다음 마스터
+
+→ [마스터 #434 personal-pattern-discovery.md](./personal-pattern-discovery.md)
