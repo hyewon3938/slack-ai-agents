@@ -28,7 +28,7 @@
 - 일기 자동 저장 (`diary_entries`)
 - 삶의 테마 관리 (`life_themes`, 자동 진화)
 - 사주 패턴 누적 (`saju_patterns`, 28일 롤링 — 갱신 routine 2026-05-26 비활성화, 누적분만 시스템 프롬프트에 활용)
-- 사주 일일 매칭 시드 카탈로그 (`saju_signal_catalog`, Phase 3 — 결정론 매칭)
+- 사주 일일 매칭 시드 카탈로그 (`pattern_catalog`, Phase 3 — 결정론 매칭, 마스터 #434 Phase 1 rename per ADR-0026)
 - 일기 LLM enum 16종 추출 (`diary_meta_tags`, Phase 3)
 - 주간 사주 회고 카드 (`weekly-saju-review-v2`, 매주 월요일 08:00 KST `#insight` — 마스터 #421)
 - 상세: [docs/domains/insight.md](./domains/insight.md)

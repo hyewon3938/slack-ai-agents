@@ -527,11 +527,13 @@ view 동작 (UNION ALL 3 source):
 
 | Tier | 소스 | 조건 | metric_value |
 |------|------|------|-------------|
-| `verified` | `saju_hypotheses` (status='active', trigger_spec type='seed') + `saju_stats` 최근 주 | `fdr_q < 0.05` | `rate_ratio` |
-| `accumulating` | `saju_signal_catalog` (active=true) | `(hit_count+miss_count) ≥ 5` AND `hit/(hit+miss) > 0.55` | hit rate |
-| `recent` | `saju_daily_matches` (지난 7일, trigger_activated=true) | GROUP BY (user_id, signal_id) | 발현 횟수 |
+| `verified` | `pattern_hypotheses` (status='active', trigger_spec type='seed') + `pattern_stats` 최근 주 | `fdr_q < 0.05` | `rate_ratio` |
+| `accumulating` | `pattern_summary` view (active=true) | `(hit_count+miss_count) ≥ 5` AND `hit/(hit+miss) > 0.55` | hit rate |
+| `recent` | `pattern_matches` (지난 7일, trigger_activated=true) | GROUP BY (user_id, pattern_id) | 발현 횟수 |
 
-중복 dedup: 같은 signal_id가 여러 tier 동시 충족 시 최상위 tier에만 (`verified` > `accumulating` > `recent`). 구현은 `NOT EXISTS` 서브쿼리로 하위 tier에서 상위 tier signal_id 제외.
+중복 dedup: 같은 pattern_id가 여러 tier 동시 충족 시 최상위 tier에만 (`verified` > `accumulating` > `recent`). 구현은 `NOT EXISTS` 서브쿼리로 하위 tier에서 상위 tier pattern_id 제외.
+
+> **2026-05-27 Phase 1 view body rebuild**: 마스터 #434 Phase 1에서 `saju_signal_*` → `pattern_*` rename 후 view body를 재정의(`db/migrations/068_saju_influence_summary_rebuild.sql`). **컬럼 이름·view 이름은 보존**(컬럼 `signal_id`/`signal_name`은 `pattern_id`/`pattern_name` 별칭) — Routine `weekly-saju-review-v2` 등 소비자는 영향 없음. 내부 카운터 소스는 `pattern_summary` view(매트릭 단위 SoT, ADR-0023)로 이전.
 
 임계치 하드코딩 사실 (ADR-0020에 후속 작업으로 외부화 검토 명시):
 - `fdr_q < 0.05` — verified 컷오프
@@ -559,7 +561,7 @@ idempotency 테이블 `saju_weekly_reviews`:
 |------|------|----------------|
 | 0 | `.env`에서 `DB_PROXY_URL` / `DB_PROXY_API_KEY` 추출 (특정 변수만 grep+cut) | secrets 노출 방지 |
 | 1 | `saju_weekly_reviews` INSERT idempotency 통과 시에만 진행 | ② 정확히 1회 발송 |
-| 2 | `saju_influence_summary` SELECT + accumulating raw counts(`saju_signal_catalog`) + 라이프 메트릭 4종(schedule done/total · routine rate · diary_meta_tag top5 · sleep avg) | ① 메트릭만, 일기 원문 SELECT 금지 |
+| 2 | `saju_influence_summary` SELECT + accumulating raw counts(`pattern_summary` view, 2026-05-27 rebuild) + 라이프 메트릭 4종(schedule done/total · routine rate · diary_meta_tag top5 · sleep avg) | ① 메트릭만, 일기 원문 SELECT 금지 |
 | 3 | Opus가 회고 prose 4\~6줄 작성 (반말·이모지 금지·diary 원문 인용 금지) | ① LLM 입력에 user 텍스트 노출 금지 |
 | 4 | Block Kit 카드 1개를 `chat.postMessage`로 `#insight` 발송 | ② 정확히 1회 |
 | 5 | 결과 요약 출력 (verified N / accumulating N / recent N) | — |
@@ -602,39 +604,179 @@ TODO: #408 Phase 5-B(영향력 데이터 expose) 완료 후 view 확장 + 풀이
 
 설계 결정 배경: [ADR-0020](../adr/0020-fortune-system-responsibility-split-via-view.md) — 사주 풀이 시스템과 v2 매칭 시스템 책임 분리 + view 인터페이스 도입.
 
-### 14. 본인 1명 패턴 발견 시스템 — Phase 1 (스키마 일반화)
+### 14. 본인 1명 패턴 발견 시스템 — Phase 1 (스키마 일반화 + `pattern_*` rename)
 
-> TODO(`/build`): 구현 후 본문 채우기. target_type enum 확장(`life_signal`), `saju_signal_metrics` 컬럼 추가(description NOT NULL, window_days, hit/miss/inconclusive counts, status, source, proposed_at/approved_at, posterior_alpha/beta/p), `saju_signal_summary` view 신설, 결정론 매트릭 description backfill, seed_kind 컬럼 + CHECK constraint
+> [#434](https://github.com/hyewon3938/slack-ai-agents/issues/434) Phase 1
+> 설계 서사: [design-notebook/personal-pattern-discovery.md](../design-notebook/personal-pattern-discovery.md)
+> 구현 계획: `.claude/plans/434-phase-1-schema.md` (gitignored)
 
-설계 결정 배경: [ADR-0022](../adr/0022-target-type-generalization.md), [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0024](../adr/0024-bayesian-posterior-update.md), [ADR-0025](../adr/0025-llm-metric-approval-gate.md)
+마스터 #393(프로액티브 인사이트 v2)을 close하고 정체성을 **본인 1명 패턴 발견 시스템**으로 재정의하면서, 사주 한정 어휘(`saju_signal_*`)를 5어휘 모델(시드 → 매트릭 → 매칭 → 가설 → 검증)을 직접 표현하는 `pattern_*`로 전면 rename. 동시에 라이프 통념(`life_signal` target_type)도 같은 파이프라인에서 다룰 수 있도록 스키마를 일반화.
+
+#### 데이터 모델 변경
+
+**테이블·컬럼 rename**
+
+| 변경 전 | 변경 후 |
+|---------|---------|
+| `saju_signal_catalog` | `pattern_catalog` |
+| `saju_signal_metrics` | `pattern_metrics` |
+| `saju_daily_matches` | `pattern_matches` |
+| `saju_hypotheses` | `pattern_hypotheses` |
+| `saju_stats` | `pattern_stats` |
+| `pattern_metrics.signal_id` (FK) | `pattern_metrics.pattern_id` |
+| `pattern_matches.signal_id` (FK) | `pattern_matches.pattern_id` |
+
+인덱스 6종 동시 rename(`*_user_date`, `*_signal`, `*_pattern_lookup` 등). View `saju_influence_summary` body 재정의(다음 절).
+
+**`pattern_catalog` 신규 컬럼**
+
+| 컬럼 | 타입 | 의미 |
+|------|------|------|
+| `pattern_kind` | `TEXT NOT NULL DEFAULT 'saju' CHECK (pattern_kind IN ('saju','life_signal'))` | 시드 출처 분류 (사주 / 라이프 통념) — Phase 3에서 `life_signal` 시드 14\~20개 작성 시 활용 |
+| `trigger_target_type` | (CHECK 확장) | 기존 6종(`stem`/`branch`/`ganji`/`element_density`/`sibiunsung`/`relation`)에 `life_signal` 추가 |
+
+**`pattern_metrics` 신규 컬럼 (13종)**
+
+| 컬럼 | 타입 / 기본값 | 의미 |
+|------|---------------|------|
+| `description` | `TEXT NOT NULL DEFAULT ''` | LLM 표시 + 매트릭 승인 게이트 대상 (ADR-0025). Phase 2에서 시드 풀 검토 시 정식 본문 채움 |
+| `window_days` | `INTEGER` (NULL 허용) | 매트릭 평가 윈도우 (예: 28일 이동평균) |
+| `status` | `TEXT NOT NULL DEFAULT 'active'` | `'pending'`(LLM 제안) / `'active'`(승인) / `'rejected'`(거절) — Phase 6 LLM 게이트 도입 시 활용 |
+| `source` | `TEXT NOT NULL DEFAULT 'deterministic'` | `'deterministic'` / `'llm'` — 매트릭 출처 추적 |
+| `proposed_at` / `approved_at` | `TIMESTAMPTZ` (NULL 허용) | 제안·승인 시각 |
+| `hit_count` / `miss_count` / `inconclusive_count` | `INTEGER NOT NULL DEFAULT 0` | 매트릭 단위 카운터 (ADR-0023 — catalog 카운터는 DEPRECATED 전환) |
+| `last_matched_at` | `TIMESTAMPTZ` (NULL 허용) | 마지막 매칭 발생 시각 |
+| `posterior_alpha` | `NUMERIC NOT NULL DEFAULT 1.0` | Beta-Binomial 사후 분포 α (ADR-0024) |
+| `posterior_beta` | `NUMERIC NOT NULL DEFAULT 1.0` | Beta-Binomial 사후 분포 β |
+| `posterior_p` | `NUMERIC` (NULL 허용) | `α / (α+β)` 계산값 (편의용 캐시) |
+
+부분 인덱스 `idx_pattern_metrics_status_active ON pattern_metrics (pattern_id) WHERE status='active'` — 매칭 cron이 active 매트릭만 빠르게 탐색.
+
+#### 신규 view `pattern_summary` (seed-level 집계)
+
+매트릭 카운터(ADR-0023)에서 seed-level hit/miss를 합성하는 view. accumulating tier 임계치 판정 + 풀이 prompt 보조 용도.
+
+```sql
+CREATE OR REPLACE VIEW pattern_summary AS
+SELECT
+  c.id AS pattern_id, c.user_id, c.name AS pattern_name, c.sipsin, c.pattern_kind,
+  c.trigger_target_type, c.trigger_target, c.active,
+  COALESCE(SUM(m.hit_count), 0)          AS hit_count,
+  COALESCE(SUM(m.miss_count), 0)         AS miss_count,
+  COALESCE(SUM(m.inconclusive_count), 0) AS inconclusive_count,
+  -- Beta 합성: α=1+Σhit, β=1+Σmiss
+  1.0 + COALESCE(SUM(m.hit_count), 0)  AS aggregate_alpha,
+  1.0 + COALESCE(SUM(m.miss_count), 0) AS aggregate_beta,
+  CASE WHEN COALESCE(SUM(m.hit_count + m.miss_count), 0) > 0
+       THEN (1.0 + COALESCE(SUM(m.hit_count), 0))
+          / (2.0 + COALESCE(SUM(m.hit_count + m.miss_count), 0))
+       ELSE 0.5
+  END AS aggregate_posterior_p,
+  MAX(m.last_matched_at) AS last_matched_at
+FROM pattern_catalog c
+LEFT JOIN pattern_metrics m
+  ON m.pattern_id = c.id AND m.status = 'active'
+GROUP BY c.id;
+```
+
+#### `saju_influence_summary` view body 재정의 (운영 자산 보존)
+
+| 항목 | 결정 |
+|------|------|
+| view 이름 | **유지** (`saju_influence_summary`) — Routine `weekly-saju-review-v2` SKILL.md가 view 이름으로 SELECT |
+| 컬럼 이름 | **유지** (`signal_id`/`signal_name`이지만 내부 source는 `pattern_id`/`pattern_name`로 alias) |
+| 내부 source | 모두 `pattern_*`로 변경 + accumulating tier는 `pattern_summary` view 경유 (ADR-0023 SoT) |
+
+마이그레이션 `068_saju_influence_summary_rebuild.sql`이 `CREATE OR REPLACE VIEW` 한 번에 처리. 외부 contract는 변하지 않으므로 Routine·풀이 prompt 영향 없음.
+
+#### 마이그레이션 번호 매핑
+
+| 번호 | 내용 |
+|------|------|
+| `063_pattern_rename.sql` | 5개 테이블 + FK 컬럼 2개 + 인덱스 6종 rename |
+| `064_pattern_trigger_target_type_and_kind.sql` | CHECK constraint 재정의(`life_signal` 추가) + `pattern_kind` 컬럼 추가 |
+| `065_pattern_metrics_extension.sql` | `pattern_metrics` 신규 컬럼 13종 + 부분 인덱스 |
+| `066_pattern_metric_backfill.sql` | description placeholder backfill + catalog raw → metric counter 이전 + Bayesian α/β/p 초기화 + 기존 catalog 카운터 DEPRECATED 주석 |
+| `067_pattern_summary_view.sql` | `pattern_summary` view 신설 |
+| `068_saju_influence_summary_rebuild.sql` | `saju_influence_summary` view body 재정의 (이름·컬럼 contract 보존) |
+
+#### Backfill 정책
+
+**description backfill (Phase 2 보강)**
+- Phase 1은 placeholder 문구로 일괄 채움(예: `'(매트릭 설명 미작성 — Phase 2에서 보강)'`). NOT NULL 제약 만족이 목표
+- Phase 2(시드 풀 보완)에서 매트릭별로 사람이 읽을 수 있는 description 작성
+
+**hit/miss/inconclusive backfill (catalog → metric)**
+- `pattern_matches` raw 데이터를 매트릭 단위로 GROUP BY(pattern_id, status별 COUNT)
+- `pattern_metrics`의 카운터 컬럼에 UPDATE — 이때 status='active' 매트릭만 대상(`source='deterministic'`인 시드는 status='active'로 기본 시작)
+- `pattern_catalog`의 기존 `hit_count`/`miss_count` 컬럼은 **DEPRECATED 주석만** — Phase 4 매칭 cron 확장 시점에 컬럼 자체 제거 검토
+
+**Bayesian α/β/p backfill (ADR-0024)**
+- `posterior_alpha = 1.0 + hit_count`
+- `posterior_beta = 1.0 + miss_count`
+- `posterior_p = α / (α+β)` (단, hit+miss = 0이면 NULL 유지)
+
+#### Phase 1 적용 범위 (단독 머지 동작)
+
+| 영역 | Phase 1 변경 | Phase 4 이후 |
+|------|-------------|--------------|
+| 매칭 cron(`daily-saju-matching.ts`) | 어휘만 교체(테이블·컬럼명) — catalog 카운터는 그대로 UPDATE | catalog 카운터 UPDATE 제거 → `pattern_metrics` 카운터로 이전 |
+| 가설 검증(`saju-hypothesis.ts`) | 어휘만 교체 | `pattern_metrics.status='active'`만 검증 대상 |
+| 시드 카탈로그 | `pattern_kind = 'saju'` 기본값 (기존 시드 전부) | Phase 3에서 `life_signal` 14\~20종 추가 |
+| LLM 매트릭 승인 | status enum 정의만 (`'active'` 기본) | Phase 6에서 `/insight metric-approve` 명령어 + Block Kit 승인 카드 |
+
+→ **Phase 1 단독 머지로는 동작 변화 0**. 어휘만 바뀌고 외부 contract(view 이름·컬럼·Routine 의존)는 유지. 회귀 테스트는 기존 vitest suite + view SELECT 결과 동등성으로 확인.
+
+#### 영향 받지 않는 영역
+
+- `weekly-saju-review-v2` Routine — view 인터페이스 유지로 영향 없음 (Section 13)
+- `weekly-fortune` Routine + `fortune_analyses` 테이블 — 본 마스터 범위 외
+- `diary_meta_tags` enum 22종 — 마스터 #393 Phase 4 (그대로)
+- fast path 명령어(`/일운`·`/월운`·`/세운`·`/대운`) — 그대로
+
+#### 다음 Phase
+
+- **Phase 2** — 시드 카탈로그 풀 검토 + 누락 보완. 매트릭 description 정식 본문 채움
+- **Phase 3** — `life_signal` 시드 1차 셋 작성(요일 7 + 주말 1 + 평일 1 + 월말 1 + 월초 1 + 계절 4)
+- **Phase 4** — 매칭 cron이 `pattern_metrics` 카운터로 이전 + `life_signal` 처리 + `pattern_summary` view 활용
+
+#### 헌장 cross-check (마스터 #434)
+
+- ① **본인 1명 데이터**: 변동 없음 (n=1 가정 유지)
+- ② **결정론 매칭 + 통계 검증**: 어휘 교체뿐 매칭 로직 불변
+- ③ **5어휘 모델 직접 표현**: `pattern_*` prefix가 시드·매트릭·매칭·가설·검증 5어휘를 직접 표현 — 본 Phase의 핵심 산출물
+- ④ **확장 가능 스키마**: `pattern_kind` + `trigger_target_type='life_signal'`로 라이프 통념 합류 준비 완료
+- ⑤ **LLM 매트릭 승인 게이트**: status enum 정의로 게이트 진입점 마련 (Phase 6에서 본격 활용)
+
+설계 결정 배경: [ADR-0022](../adr/0022-target-type-generalization.md) (Superseded by 0026), [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0024](../adr/0024-bayesian-posterior-update.md), [ADR-0025](../adr/0025-llm-metric-approval-gate.md), [ADR-0026](../adr/0026-pattern-prefix-rename.md)
 
 ### 15. 본인 1명 패턴 발견 시스템 — Phase 2 (사주 시드 풀 셋)
 
-> TODO(`/build`): 구현 후 본문 채우기. Phase 3에서 작성된 사주 시드 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태에서 풀 셋으로). 누락 시드 식별 방법, 추가 시드 목록, 매트릭 description 작성
+> TODO(`/build`): 구현 후 본문 채우기. Phase 3에서 작성된 사주 시드 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태에서 풀 셋으로). 누락 시드 식별 방법, 추가 시드 목록, 매트릭 description 작성. `pattern_catalog`·`pattern_metrics` 어휘 기준.
 
 ### 16. 본인 1명 패턴 발견 시스템 — Phase 3 (life_signal 시드 풀 셋)
 
-> TODO(`/build`): 구현 후 본문 채우기. `life_signal` 시드 1차 셋(14\~20개 — 요일 7 + 주말 1 + 평일 1 + 월말 1 + 월초 1 + 계절 4 + 기타). 각 시드의 매트릭(SQL + window_days + description). 결정론 매트릭으로 작성
+> TODO(`/build`): 구현 후 본문 채우기. `life_signal` 시드 1차 셋(14\~20개 — 요일 7 + 주말 1 + 평일 1 + 월말 1 + 월초 1 + 계절 4 + 기타). 각 시드의 매트릭(SQL + window_days + description). 결정론 매트릭으로 작성 (`pattern_metrics.source = 'deterministic'`).
 
 ### 17. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron + view 정비)
 
-> TODO(`/build`): 구현 후 본문 채우기. `daily-saju-matching` cron이 `target_type='life_signal'`도 처리하도록 확장. `saju_signal_summary` view 본문 작성 + 사용 예시. 카운트 UPDATE 로직 변경
+> TODO(`/build`): 구현 후 본문 채우기. 매칭 cron이 `trigger_target_type='life_signal'`도 처리하도록 확장 (필요 시 파일명 변경 검토 — `daily-saju-matching` → `daily-pattern-matching`). `pattern_summary` view 본문 작성 + 사용 예시. 매칭 시 `pattern_metrics`의 hit/miss/inconclusive UPDATE 로직 (catalog 카운트는 backfill 후 미사용).
 
 ### 18. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 업데이트)
 
-> TODO(`/build`): 구현 후 본문 채우기. `hypothesis-discovery`가 `life_signal` trigger 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 seed_kind 표시. 검증 매트릭 수 증가에 따른 BH-FDR 그룹 정의
+> TODO(`/build`): 구현 후 본문 채우기. `hypothesis-discovery`가 `life_signal` trigger 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 `pattern_kind` 표시. 검증 매트릭 수 증가에 따른 BH-FDR 그룹 정의.
 
 ### 19. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
 
-> TODO(`/build`): 구현 후 본문 채우기. 월간 LLM 슬롯이 매트릭 후보 생성, 월 cap 5개. Slack `/insight metric-approve` 명령어 + Block Kit 승인 카드 (`metric-approval-cards.ts`). 승인 시 status='active' 전환. 거절 시 status='rejected'
+> TODO(`/build`): 구현 후 본문 채우기. 월간 LLM 슬롯이 매트릭 후보 생성, 월 cap 5개. Slack `/insight metric-approve` 명령어 + Block Kit 승인 카드 (`metric-approval-cards.ts`). 승인 시 `pattern_metrics.status = 'active'` 전환. 거절 시 `'rejected'`.
 
 ### 20. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian update)
 
-> TODO(`/build`): 구현 후 본문 채우기. `src/shared/bayesian-posterior.ts` 헬퍼(\~100줄), Beta-Binomial 사후 갱신, posterior_p UPDATE. 가설 카드에 frequentist p값 + Bayesian posterior 병기. beta inverse CDF 라이브러리 선택
+> TODO(`/build`): 구현 후 본문 채우기. `src/shared/bayesian-posterior.ts` 헬퍼(\~100줄), Beta-Binomial 사후 갱신, `pattern_metrics.posterior_p` UPDATE. 가설 카드에 frequentist p값 + Bayesian posterior 병기. beta inverse CDF 라이브러리 선택.
 
 ### 21. 본인 1명 패턴 발견 시스템 — Phase 8 (인사이트 카드 UI + 마스터 close)
 
-> TODO(`/build`): 구현 후 본문 채우기. `#insight` 채널 패턴 발견 카드 (Block Kit). `life_signal` 패턴(요일 효과 등)도 같은 카드에서 출력. 마스터 회고 + 운영 1\~3개월 후 follow-up 이슈 7건 일괄 등록 (SPRT, Change Point Detection, informed prior, 카테고리 가중치 자동 튜닝, 가설 자동 제거, 매트릭 자동 비활성화, 웹 대시보드 승인 페이지)
+> TODO(`/build`): 구현 후 본문 채우기. `#insight` 채널 패턴 발견 카드 (Block Kit). `life_signal` 패턴(요일 효과 등)도 같은 카드에서 출력. 마스터 회고 + 운영 1\~3개월 후 follow-up 이슈 7건 일괄 등록 (SPRT, Change Point Detection, informed prior, 카테고리 가중치 자동 튜닝, 가설 자동 제거, 매트릭 자동 비활성화, 웹 대시보드 승인 페이지).
 
 설계 결정 배경: [design-notebook personal-pattern-discovery](../design-notebook/personal-pattern-discovery.md)
 
@@ -664,5 +806,14 @@ src/cron/
 └── weekly-hypothesis-review.ts    # 월 08:00 주간 가설 리포트 (Phase 4)
 
 scripts/
-└── saju-hypothesis-backtest.ts    # Phase 4 임계치 튜닝 CLI
+├── saju-hypothesis-backtest.ts    # Phase 4 임계치 튜닝 CLI
+└── generate-saju-seeds.ts         # Phase 3 사주 시드 생성기 (pattern_catalog/metrics 어휘, Phase 1 rename 반영)
+
+db/migrations/  (마스터 #434 Phase 1 — 2026-05-27)
+├── 063_pattern_rename.sql                       # 5 테이블 + FK 2종 + 인덱스 6종 rename
+├── 064_pattern_trigger_target_type_and_kind.sql # CHECK 확장 + pattern_kind 컬럼
+├── 065_pattern_metrics_extension.sql            # 13 컬럼 + 부분 인덱스
+├── 066_pattern_metric_backfill.sql              # description placeholder + 카운터 이전 + Bayesian α/β/p 초기화
+├── 067_pattern_summary_view.sql                 # seed-level 집계 view 신설
+└── 068_saju_influence_summary_rebuild.sql       # view body 재정의 (이름·컬럼 contract 보존)
 ```
