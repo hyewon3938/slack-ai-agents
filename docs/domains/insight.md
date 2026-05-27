@@ -602,6 +602,42 @@ TODO: #408 Phase 5-B(영향력 데이터 expose) 완료 후 view 확장 + 풀이
 
 설계 결정 배경: [ADR-0020](../adr/0020-fortune-system-responsibility-split-via-view.md) — 사주 풀이 시스템과 v2 매칭 시스템 책임 분리 + view 인터페이스 도입.
 
+### 14. 본인 1명 패턴 발견 시스템 — Phase 1 (스키마 일반화)
+
+> TODO(`/build`): 구현 후 본문 채우기. target_type enum 확장(`life_signal`), `saju_signal_metrics` 컬럼 추가(description NOT NULL, window_days, hit/miss/inconclusive counts, status, source, proposed_at/approved_at, posterior_alpha/beta/p), `saju_signal_summary` view 신설, 결정론 매트릭 description backfill, seed_kind 컬럼 + CHECK constraint
+
+설계 결정 배경: [ADR-0022](../adr/0022-target-type-generalization.md), [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0024](../adr/0024-bayesian-posterior-update.md), [ADR-0025](../adr/0025-llm-metric-approval-gate.md)
+
+### 15. 본인 1명 패턴 발견 시스템 — Phase 2 (사주 시드 풀 셋)
+
+> TODO(`/build`): 구현 후 본문 채우기. Phase 3에서 작성된 사주 시드 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태에서 풀 셋으로). 누락 시드 식별 방법, 추가 시드 목록, 매트릭 description 작성
+
+### 16. 본인 1명 패턴 발견 시스템 — Phase 3 (life_signal 시드 풀 셋)
+
+> TODO(`/build`): 구현 후 본문 채우기. `life_signal` 시드 1차 셋(14\~20개 — 요일 7 + 주말 1 + 평일 1 + 월말 1 + 월초 1 + 계절 4 + 기타). 각 시드의 매트릭(SQL + window_days + description). 결정론 매트릭으로 작성
+
+### 17. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron + view 정비)
+
+> TODO(`/build`): 구현 후 본문 채우기. `daily-saju-matching` cron이 `target_type='life_signal'`도 처리하도록 확장. `saju_signal_summary` view 본문 작성 + 사용 예시. 카운트 UPDATE 로직 변경
+
+### 18. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 업데이트)
+
+> TODO(`/build`): 구현 후 본문 채우기. `hypothesis-discovery`가 `life_signal` trigger 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 seed_kind 표시. 검증 매트릭 수 증가에 따른 BH-FDR 그룹 정의
+
+### 19. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
+
+> TODO(`/build`): 구현 후 본문 채우기. 월간 LLM 슬롯이 매트릭 후보 생성, 월 cap 5개. Slack `/insight metric-approve` 명령어 + Block Kit 승인 카드 (`metric-approval-cards.ts`). 승인 시 status='active' 전환. 거절 시 status='rejected'
+
+### 20. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian update)
+
+> TODO(`/build`): 구현 후 본문 채우기. `src/shared/bayesian-posterior.ts` 헬퍼(\~100줄), Beta-Binomial 사후 갱신, posterior_p UPDATE. 가설 카드에 frequentist p값 + Bayesian posterior 병기. beta inverse CDF 라이브러리 선택
+
+### 21. 본인 1명 패턴 발견 시스템 — Phase 8 (인사이트 카드 UI + 마스터 close)
+
+> TODO(`/build`): 구현 후 본문 채우기. `#insight` 채널 패턴 발견 카드 (Block Kit). `life_signal` 패턴(요일 효과 등)도 같은 카드에서 출력. 마스터 회고 + 운영 1\~3개월 후 follow-up 이슈 7건 일괄 등록 (SPRT, Change Point Detection, informed prior, 카테고리 가중치 자동 튜닝, 가설 자동 제거, 매트릭 자동 비활성화, 웹 대시보드 승인 페이지)
+
+설계 결정 배경: [design-notebook personal-pattern-discovery](../design-notebook/personal-pattern-discovery.md)
+
 ## 파일 구조
 
 ```
