@@ -1,9 +1,11 @@
 # 0022. target-type 일반화 — 사주 6종 + life_signal 통합 (단일 카탈로그)
 
-- Status: Accepted
+- Status: Superseded by [ADR-0026](0026-pattern-prefix-rename.md)
 - Date: 2026-05-27
 - Related: [#434](https://github.com/hyewon3938/slack-ai-agents/issues/434)
 - Tags: data, insight, architecture
+
+> **Note (2026-05-27)**: 본 ADR의 *target_type 일반화 결정 자체*는 ADR-0026이 유지·계승한다. 그러나 *테이블명 잔존 결정 (대안 C `signal_catalog` rename 기각)*은 ADR-0026이 폐기하고 `pattern_*` 전면 rename으로 전환했다. 본문은 immutable 원칙 따라 그대로 보존하되, 본문의 `ALTER TYPE target_type` SQL은 실제 스키마(TEXT CHECK constraint)와 불일치하므로 Phase 1 plan에서 정확한 마이그레이션 어휘로 정정한다.
 
 ## Context
 

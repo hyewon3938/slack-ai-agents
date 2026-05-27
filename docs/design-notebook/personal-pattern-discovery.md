@@ -27,17 +27,19 @@ v2 헌장 4개([project_insight_v2_core_principles 메모리](../../.claude/proj
 
 데이터 흐름 어휘를 5개로 명확히 분리한다.
 
-| 어휘 | 정의 | 테이블 |
+| 어휘 | 정의 | 테이블 (Phase 1 rename 후) |
 |------|------|--------|
-| **시드** (seed) | "어떤 환경/조건이 자주 등장하는가" 카탈로그 (사주 갑자 + 라이프 통념) | `saju_signal_catalog` |
-| **매트릭** (metric) | 시드를 검증하기 위한 평가 방법 (SQL + window_days + 임계치) | `saju_signal_metrics` |
-| **매칭** (matching) | 매트릭 평가가 발생한 단일 사건 기록 (trigger 발동일 + outcome 결과) | `saju_daily_matches` |
-| **가설** (hypothesis) | trigger seed × outcome seed 인과 후보 (자동 발견 + LLM 발견) | `saju_hypotheses` |
-| **검증** (verification) | 매칭 누적 → Fisher's exact + BH-FDR + Bayesian posterior | `saju_stats` |
+| **시드** (seed) | "어떤 환경/조건이 자주 등장하는가" 카탈로그 (사주 갑자 + 라이프 통념) | `pattern_catalog` |
+| **매트릭** (metric) | 시드를 검증하기 위한 평가 방법 (SQL + window_days + 임계치) | `pattern_metrics` |
+| **매칭** (matching) | 매트릭 평가가 발생한 단일 사건 기록 (trigger 발동일 + outcome 결과) | `pattern_matches` |
+| **가설** (hypothesis) | trigger seed × outcome seed 인과 후보 (자동 발견 + LLM 발견) | `pattern_hypotheses` |
+| **검증** (verification) | 매칭 누적 → Fisher's exact + BH-FDR + Bayesian posterior | `pattern_stats` |
 
-### 3. target-type 일반화 — 사주 + life_signal 통합 (ADR-0022)
+### 3. target-type 일반화 — 사주 + life_signal 통합 (ADR-0022 → ADR-0026)
 
-v2 Phase 3의 6종(stem/branch/ganji/element_density/sibiunsung/relation)에 **`life_signal`** 1종을 추가한다. 사주 갑자와 라이프 통념(요일·주말·월말·계절 등)을 동일한 `saju_signal_catalog` 스키마에서 다룬다. 별도 테이블 분리하지 않는 이유는 매칭·매트릭·가설 파이프라인이 모두 동일하기 때문 — 출처만 다르고 통계 처리는 동일.
+v2 Phase 3의 6종(stem/branch/ganji/element_density/sibiunsung/relation)에 **`life_signal`** 1종을 추가한다. 사주 갑자와 라이프 통념(요일·주말·월말·계절 등)을 동일한 `pattern_catalog` 스키마에서 다룬다. 별도 테이블 분리하지 않는 이유는 매칭·매트릭·가설 파이프라인이 모두 동일하기 때문 — 출처만 다르고 통계 처리는 동일.
+
+테이블명은 ADR-0026이 `saju_signal_catalog` → `pattern_catalog` 전면 rename으로 정정 (ADR-0022 잔존 결정 폐기).
 
 ### 4. 결정론 ↔ LLM 자율 + 승인 게이트 (ADR-0025)
 
@@ -63,11 +65,11 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 
 > Phase 사이에 1주 운영 검증을 두지 않는다. 짧은 PR 검증(코드 리뷰 + 테스트 + setup 모드 단위 검증)으로 대체. 통계 누적 검증은 마스터 종료 후 운영 1\~3개월 누적 시점에 [부록 E](#부록-e-운영-1-3개월-후-도입-검토-기능-7건) 7건과 함께 회고.
 
-- [ ] **Phase 1**: 스키마 일반화 — target_type enum 확장(`life_signal` 추가), `saju_signal_metrics`에 `description TEXT NOT NULL` + `window_days INTEGER` + `hit_count/miss_count/inconclusive_count` + `status` 컬럼, `posterior_p NUMERIC(6,4)` 예약, `saju_signal_summary` view 추가
+- [ ] **Phase 1**: 스키마 일반화 + `pattern_*` rename — 테이블·컬럼 rename (`saju_signal_*` → `pattern_*`, ADR-0026), `trigger_target_type` CHECK constraint 확장(`life_signal` 추가), `pattern_metrics`에 `description TEXT NOT NULL` + `window_days INTEGER` + `hit_count/miss_count/inconclusive_count` + `status` 컬럼, `posterior_alpha/beta/p` 예약, `pattern_summary` view 신설, `saju_influence_summary` view body 재정의 (운영 자산 보존)
 - [ ] **Phase 2**: 사주 시드 풀 셋 — Phase 3에서 작성된 시드를 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태였음)
 - [ ] **Phase 3**: `life_signal` 시드 풀 셋 — 요일(월\~일 7) / 주말(2) / 월말(1) / 월초(1) / 계절(4) 등 1차 셋. 결정론 매트릭으로 작성
-- [ ] **Phase 4**: 매칭 cron + view 정비 — `daily-saju-matching` cron이 `target_type='life_signal'`도 처리하도록 확장. `saju_signal_summary` view 본문 작성
-- [ ] **Phase 5**: 가설 발견·검증 업데이트 — `hypothesis-discovery`가 `life_signal` trigger를 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 출처(seed_kind) 표시
+- [ ] **Phase 4**: 매칭 cron + view 정비 — 매칭 cron이 `trigger_target_type='life_signal'`도 처리하도록 확장. `pattern_summary` view 본문 작성
+- [ ] **Phase 5**: 가설 발견·검증 업데이트 — `hypothesis-discovery`가 `life_signal` trigger를 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 출처(`pattern_kind`) 표시
 - [ ] **Phase 6**: LLM 자율 매트릭 + 승인 게이트 — 월간 LLM 슬롯이 매트릭 후보를 생성, Slack 승인 UI(`/insight metric-approve` + Block Kit inline button). 활성화된 매트릭만 매칭 cron 진입
 - [ ] **Phase 7**: Bayesian update 도입 — `posterior_p` 컬럼 채움. Beta-Binomial 사후 갱신 헬퍼(\~100줄). 가설 카드에 frequentist p값 + Bayesian posterior 병기
 - [ ] **Phase 8**: 인사이트 카드 UI + 마스터 close — `#insight` 채널 패턴 발견 카드(Block Kit). `life_signal` 패턴(요일 효과 등)도 같은 카드에서 출력. 마스터 회고 + 운영 1\~3개월 시점 follow-up 이슈 7건 일괄 등록
@@ -86,13 +88,14 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 
 → **B (선택)**. 마스터 정체성이 "사주 검증" → "본인 1명 패턴 발견"으로 바뀌므로 새 마스터가 자연스럽다. 본 PR에 #393 close docs도 함께(c 부분 통합) 포함.
 
-### 2. target-type 확장 위치
+### 2. target-type 확장 위치 + 테이블명 처리
 
-- A. `saju_signal_catalog`에 `life_signal` target_type 추가 (선택) — 동일 파이프라인 재사용. 별도 카탈로그 분리 시 매칭·가설 코드 중복
+- A. 기존 catalog에 `life_signal` trigger_target_type 추가 (선택, 파이프라인 재사용) — 동일 파이프라인 재사용. 별도 카탈로그 분리 시 매칭·가설 코드 중복
 - B. 별도 `life_signal_catalog` 테이블 신설 — 테이블명이 의미적으로 정확하나, 매칭·매트릭·가설·검증 코드 4중 중복
-- C. catalog를 `signal_catalog`로 rename — 가장 의미적이지만 v2 마이그레이션 부담 + 외부 API 변경 폭증
+- C. catalog를 `signal_catalog`로 rename — 의미적이나 5어휘 모델(시드/매트릭/매칭/가설/검증) 중 한 어휘에만 묶임. 매칭·가설은 시그널 자체 아님
+- D. catalog를 `pattern_catalog`로 rename + 전체 테이블에 `pattern_*` prefix 통일 (최종 선택) — 시스템 정체성("패턴 발견") 직접 표현, 5어휘 모두 자연 묶임
 
-→ **A (선택)**. target_type enum 확장만으로 모든 파이프라인 재사용. 테이블명 `saju_*`는 역사적 명칭으로 보존 (ADR-0022).
+→ **A 안 (파이프라인 재사용) + D 안 (테이블명 `pattern_*` 일괄 rename)**. ADR-0022는 A+잔존을 채택했으나 잔존 결정은 압축 사고로 사용자 명시 합의 없이 박혔음 — ADR-0026으로 잔존 폐기 + `pattern_*` rename 전환. 테이블명은 본 마스터 정체성과 일치 (`life_signal` 들어와도 `saju_signal_` 잔존 안 함).
 
 ### 3. hit/miss/inconclusive 카운터 위치
 
@@ -100,7 +103,7 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 - B. metric에 카운트 컬럼 (선택) — 매트릭이 단위 검증 주체이므로 source of truth. seed는 view로 derive
 - C. matches만 두고 매번 집계 — view derive 비용 ↑
 
-→ **B + view (선택)**. metric에 hit/miss/inconclusive 컬럼을 source of truth로 두고, `saju_signal_summary` view가 seed 단위 합산을 derive (v2 PR #422 `saju_influence_summary` view 패턴 계승). ADR-0023.
+→ **B + view (선택)**. `pattern_metrics`에 hit/miss/inconclusive 컬럼을 source of truth로 두고, `pattern_summary` view가 seed 단위 합산을 derive (v2 PR #422 `saju_influence_summary` view 패턴 계승). ADR-0023.
 
 ### 4. Bayesian update 도입 시점
 
@@ -143,37 +146,41 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 > [portfolio-candidates 부록 B](../_personal/portfolio-candidates.md)의 표를 공개용으로 간소화한 버전.
 
 ```
-시드 (saju_signal_catalog)
-  ├─ target_type ∈ {stem, branch, ganji, element_density, sibiunsung, relation, life_signal}
-  ├─ target_value (예: '甲', '주말', '월말', '木 강')
-  ├─ seed_kind ∈ {saju, life_signal}
+시드 (pattern_catalog)
+  ├─ trigger_target_type ∈ {stem, branch, ganji, element_density, sibiunsung, relation, life_signal}
+  ├─ trigger_target_id (예: '甲'·'주말'·'월말'·'木 강')
+  ├─ pattern_kind ∈ {saju, life_signal}
   └─ description (자연어)
 
-매트릭 (saju_signal_metrics) ← seed 1:N
+매트릭 (pattern_metrics) ← seed 1:N (FK: pattern_id)
   ├─ window_days  (외부화된 윈도우 길이)
   ├─ sql_body     (평가 SQL)
   ├─ description  (자연어 설명 — LLM 매트릭 승인 UI에 노출)
   ├─ status ∈ {active, pending, rejected}
   ├─ source ∈ {deterministic, llm_autonomous}
   ├─ hit_count / miss_count / inconclusive_count  (source of truth)
-  └─ posterior_p  (Beta-Binomial 사후, Phase 7~)
+  └─ posterior_alpha / posterior_beta / posterior_p  (Beta-Binomial 사후, Phase 7~)
 
-매칭 (saju_daily_matches) ← metric 1:N (매일 평가 결과 1행)
+매칭 (pattern_matches) ← metric 평가 결과 1행 (시드 단위 매일 1행, metric_values JSONB로 N개 매트릭 결과 보관)
   ├─ matched_date
-  ├─ outcome ∈ {hit, miss, inconclusive}
+  ├─ trigger_activated
+  ├─ metric_values (JSONB, 매트릭별 hit/miss/inconclusive)
   └─ evidence (JSONB, 평가 시점 컨텍스트)
 
-가설 (saju_hypotheses) ← trigger seed × outcome seed
-  ├─ trigger_seed_id / outcome_seed_id
+가설 (pattern_hypotheses) ← trigger × outcome 인과 후보
+  ├─ trigger_spec (JSONB, 현재는 {type:'seed', signalId})
+  ├─ outcome_spec (JSONB, enum_target 등)
   ├─ status ∈ {candidate, active, confirmed, rejected}
   └─ source ∈ {auto_discovered, llm_proposed}
 
-검증 (saju_stats) ← hypothesis 1:1 (snapshot per cycle)
-  ├─ p_value (Fisher's exact)
-  ├─ q_value (BH-FDR adjusted)
+검증 (pattern_stats) ← hypothesis 1:N (주간 시계열)
+  ├─ week_start
+  ├─ rate_trigger / rate_baseline / rate_ratio
+  ├─ raw_p (Fisher's exact)
+  ├─ fdr_q (BH-FDR adjusted)
   └─ posterior_p (Beta-Binomial)
 
-뷰 (saju_signal_summary) ← metric 집계로 seed 단위 derive
+뷰 (pattern_summary) ← metric 집계로 시드 단위 derive
 ```
 
 ---
@@ -181,13 +188,13 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 ## Phase 1: 스키마 일반화 (예정)
 
 - 이슈: TBD (Phase 1 진입 시 생성)
-- 관련 ADR: ADR-0022, ADR-0023, ADR-0025
+- 관련 ADR: ADR-0022 (Superseded), ADR-0023, ADR-0024, ADR-0025, ADR-0026 (pattern_* rename)
 - 관련 계획서: `.claude/plans/434-phase-1-schema.md`
 - 상태: 설계 완료, 구현 대기
 
 ### 결정 요약 (TODO: `/build` 구현 후 보강)
 
-target_type enum에 `life_signal` 추가. `saju_signal_metrics`에 `description NOT NULL` + `window_days` + `hit_count/miss_count/inconclusive_count` + `status` + `source` 컬럼 + `posterior_p` 예약. `saju_signal_summary` view 신설. 결정론 매트릭 backfill (기존 시드의 카운트 채움).
+테이블 rename: `saju_signal_catalog` → `pattern_catalog`, `saju_signal_metrics` → `pattern_metrics`, `saju_daily_matches` → `pattern_matches`, `saju_hypotheses` → `pattern_hypotheses`, `saju_stats` → `pattern_stats` (ADR-0026). `trigger_target_type` CHECK constraint에 `life_signal` 추가. `pattern_metrics`에 `description NOT NULL` + `window_days` + `hit_count/miss_count/inconclusive_count` + `status` + `source` + `posterior_alpha/beta/p` 컬럼 추가. `pattern_summary` view 신설. catalog → metric으로 카운트 backfill. `saju_influence_summary` view body 재정의 (운영 자산 보존).
 
 ### 의사결정 분기점 (TODO)
 

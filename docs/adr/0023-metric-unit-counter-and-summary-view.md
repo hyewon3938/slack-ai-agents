@@ -1,9 +1,11 @@
 # 0023. hit/miss 카운터는 매트릭 단위 + seed 합계는 view로 derive
 
-- Status: Accepted
+- Status: Accepted (어휘 정정 2026-05-27)
 - Date: 2026-05-27
-- Related: [#434](https://github.com/hyewon3938/slack-ai-agents/issues/434)
+- Related: [#434](https://github.com/hyewon3938/slack-ai-agents/issues/434), [ADR-0026](0026-pattern-prefix-rename.md)
 - Tags: data, insight, schema
+
+> **Note (어휘 정정, 2026-05-27)**: 본 ADR의 Decision 의도(매트릭 단위 source of truth + view로 시드 합계 derive)는 그대로 유효하다. 단 본 ADR 작성 시점에 사용한 컬럼 어휘(`seed_id`, `target_type`, `target_value`, `saju_signal_catalog`, `saju_signal_metrics`, `saju_signal_summary`)가 실제 v2 스키마와 다르고 본 마스터의 `pattern_*` rename 결정(ADR-0026)과 정렬되지 않아 본문 SQL의 어휘만 `pattern_*` 기준으로 정정한다 (오탈자 범위 정정, 결정 의도는 unchanged).
 
 ## Context
 
@@ -19,36 +21,36 @@ hit / miss / inconclusive 카운터를 어디에 둘지가 결정 필요:
 
 ## Decision
 
-**hit/miss/inconclusive 카운터는 `saju_signal_metrics` 테이블에 직접 컬럼으로 둔다 (source of truth).** 시드 단위 합계는 `saju_signal_summary` view로 derive.
+**hit/miss/inconclusive 카운터는 `pattern_metrics` 테이블에 직접 컬럼으로 둔다 (source of truth).** 시드 단위 합계는 `pattern_summary` view로 derive.
 
-세부 구조:
+세부 구조 (ADR-0026의 `pattern_*` 어휘 적용):
 
 ```sql
--- migration: 064_signal_metrics_counters.sql (예정)
-ALTER TABLE saju_signal_metrics
+-- migration: 064_pattern_metrics_counters.sql (예정)
+ALTER TABLE pattern_metrics
   ADD COLUMN hit_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN miss_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN inconclusive_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN last_matched_at TIMESTAMPTZ;
 
-CREATE VIEW saju_signal_summary AS
+CREATE VIEW pattern_summary AS
 SELECT
-  c.id AS seed_id,
-  c.target_type,
-  c.target_value,
-  c.seed_kind,
+  c.id AS pattern_id,
+  c.trigger_target_type,
+  c.trigger_target_id,
+  c.pattern_kind,
   COUNT(m.id) AS metric_count,
   SUM(m.hit_count) AS total_hits,
   SUM(m.miss_count) AS total_misses,
   SUM(m.inconclusive_count) AS total_inconclusive,
   MAX(m.last_matched_at) AS last_matched_at
-FROM saju_signal_catalog c
-LEFT JOIN saju_signal_metrics m ON m.seed_id = c.id
+FROM pattern_catalog c
+LEFT JOIN pattern_metrics m ON m.pattern_id = c.id
 WHERE m.status = 'active'
 GROUP BY c.id;
 ```
 
-매칭 cron(`daily-saju-matching.ts`)이 매일 평가할 때마다 해당 매트릭의 카운트를 UPDATE.
+매칭 cron(`daily-saju-matching.ts` — Phase 4에서 일반화 후 파일명도 변경 검토)이 매일 평가할 때마다 해당 매트릭의 카운트를 UPDATE.
 
 ## Alternatives considered
 
@@ -84,7 +86,7 @@ GROUP BY c.id;
 - 매트릭이 검증의 단위와 일치 (Fisher 검증, Bayesian posterior 모두 매트릭 단위)
 - 시드 단위 view derive로 조회 단순성 유지
 - LLM 매트릭이 거절(`status='rejected'`)되어도 시드 카운트에 잔존하지 않음 (history 오염 방지)
-- v2 PR #422 view 패턴 일관 (`saju_influence_summary` ← view 패턴 → `saju_signal_summary`)
+- v2 PR #422 view 패턴 일관 (`saju_influence_summary` ← view 패턴 → `pattern_summary`)
 
 ### 단점 / 제약
 
@@ -93,10 +95,10 @@ GROUP BY c.id;
 
 ### 후속 작업
 
-- [ ] Phase 1 migration에 hit/miss/inconclusive 컬럼 추가
-- [ ] `saju_signal_summary` view 작성
+- [ ] Phase 1 migration에 hit/miss/inconclusive 컬럼 추가 (`pattern_metrics`)
+- [ ] `pattern_summary` view 작성
 - [ ] 매칭 cron이 매트릭 카운트 UPDATE하도록 수정
-- [ ] 기존 시드의 카운트 backfill (Phase 1)
+- [ ] 기존 시드의 카운트 backfill — catalog 카운트 → metric 카운트 이전 (Phase 1)
 
 ---
 
