@@ -28,7 +28,7 @@
 - 일기 자동 저장 (`diary_entries`)
 - 삶의 테마 관리 (`life_themes`, 자동 진화)
 - 사주 패턴 누적 (`saju_patterns`, 28일 롤링 — 갱신 routine 2026-05-26 비활성화, 누적분만 시스템 프롬프트에 활용)
-- 사주 일일 매칭 시드 카탈로그 (`pattern_catalog`, Phase 3 — 결정론 매칭, 마스터 #434 Phase 1 rename per ADR-0026, 마스터 #434 Phase 2에서 6종 풀세트 161개 신규 시드 추가)
+- 사주 일일 매칭 시드 카탈로그 (`pattern_catalog`, Phase 3 — 결정론 매칭, 마스터 #434 Phase 1 rename per ADR-0026, 마스터 #434 Phase 2에서 6종 풀세트 161개 신규 시드 추가, Phase 2.5에서 `pillar_level` 차원 + `cumulative_pillar_count` trigger + 14 신규 시드 추가)
 - 일기 LLM enum 16종 추출 (`diary_meta_tags`, Phase 3)
 - 주간 사주 회고 카드 (`weekly-saju-review-v2`, 매주 월요일 08:00 KST `#insight` — 마스터 #421)
 - 상세: [docs/domains/insight.md](./domains/insight.md)
@@ -69,7 +69,8 @@
 - 약한 시드(누적 \~10건 + hit rate < 30%) 주간 알림 → 사용자 명령어로 active 토글
 - 슬랙 조회/토글: `사주 시드 보기` / `사주 시드 모두 보기` / `사주 시드 끄기 #N` / `사주 시드 켜기 #N`
 - 풀셋 시드(매트릭 없음, 마스터 #434 Phase 2): trigger만 평가하고 `pattern_matches.matched=NULL` + `verify_status='no_metric'`로 evidence-only 누적. 60+일 후 LLM 매트릭 제안 슬롯(Phase 6)이 가설 후보 풀로 사용
-- 결정 기록: [ADR-0017](./adr/0017-saju-ganji-master-normalization.md)
+- 운 레벨 차원(마스터 #434 Phase 2.5): 시드별 `pillar_level`(원국/대운/세운/월운/일운/누적) 차원 도입 + `cumulative_pillar_count` trigger(N=1..5 풀셋 임계치) + 화 오행 누적 시드 OR 매칭(`diary_meta` + `expense_category_present`). 월요일 09:15 자동 분포 분석 cron이 hit-rate 분포 노출
+- 결정 기록: [ADR-0017](./adr/0017-saju-ganji-master-normalization.md), [ADR-0028](./adr/0028-pillar-level-and-threshold-pool.md)
 
 ### Slack fast path 명령어
 
@@ -102,6 +103,7 @@
 | 09:05 | 오늘 일정 + 낮 루틴 체크리스트 + 어제 리뷰 + morning 인사이트 |
 | 09:10 | LLM 자율 발견 outcome 검증 (대기열 50건) |
 | 월요일 09:00 | 주간 인사이트 리포트 (Block Kit) |
+| 월요일 09:15 | 운 레벨 분포 분석 — `pillar_level`별·누적 N=1..5 hit-rate 분포 (`#insight`, Phase 2.5) |
 | 월요일 09:30 | 주간 LLM 자율 발견 슬롯 (Block Kit) |
 | 매월 1일 09:30 | 월간 LLM 자율 발견 슬롯 (Block Kit) |
 | 23:55 | 하루 종합 리뷰 + 밤 루틴 + 마무리 잔소리 + night 인사이트 |
@@ -134,6 +136,7 @@
 ## 마스터 단위 진행 중 작업
 
 - **프로액티브 인사이트 v2** ([#393](https://github.com/hyewon3938/slack-ai-agents/issues/393)) — Phase 1\~4 머지 완료 (Phase 4 = 가설-검증 정량 파이프라인, 2026-05-22 PR [#415](https://github.com/hyewon3938/slack-ai-agents/pull/415)). Phase 5([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408)) 월운·세운·대운 확장은 Phase 4 운영 1\~3개월 데이터 누적 후 진입 예정. 흐름: [design-notebook](./design-notebook/insight-engine-v2.md)
+- **본인 1명 패턴 발견 시스템** ([#434](https://github.com/hyewon3938/slack-ai-agents/issues/434)) — Phase 1(스키마 rename, ADR-0022\~0026) / Phase 2(사주 시드 풀셋 161개 + evidence-only) / Phase 2.5(운 레벨 차원 + 풀셋 임계치 + 분포 분석 cron, ADR-0028) 머지 완료. Phase 3 이후는 life_signal 시드 풀 셋 + 매칭 cron 일반화 + LLM 매트릭 승인 게이트 + Bayesian update + UI. 흐름: [design-notebook](./design-notebook/personal-pattern-discovery.md)
 
 ## 문서 지도
 

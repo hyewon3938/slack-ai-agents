@@ -11,11 +11,25 @@
  */
 
 import { query, queryWithClient } from './db.js';
-import { getDayPillar, type Cheongan, type Jiji } from './saju-calendar.js';
+import {
+  computeCumulativePillarCount,
+  getDayPillar,
+  getDaeunPillar,
+  getMonthPillar,
+  getYearPillar,
+  makePillar,
+  type Cheongan,
+  type Element,
+  type Jiji,
+  type Pillar,
+  type PillarSet,
+} from './saju-calendar.js';
 import { addDays } from './kst.js';
 
 const METRIC_TIMEOUT_MS = 5_000;
 const BASELINE_WINDOW_DAYS = 28;
+
+export type PillarLevel = 'wonguk' | 'daeun' | 'seun' | 'wolun' | 'ilun' | 'cumulative';
 
 export interface SajuSeed {
   id: number;
@@ -23,9 +37,18 @@ export interface SajuSeed {
   name: string;
   sipsin: string | null;
   description: string | null;
-  trigger_target_type: 'stem' | 'branch' | 'ganji' | 'element_density' | 'sibiunsung' | 'relation';
+  trigger_target_type:
+    | 'stem'
+    | 'branch'
+    | 'ganji'
+    | 'element_density'
+    | 'sibiunsung'
+    | 'relation'
+    | 'cumulative_pillar_count';
   trigger_target_id: number | null;
   trigger_aux: Record<string, unknown> | null;
+  /** 사주 시드 발현 운 레벨. life_signal/null은 미적용 (마스터 #434 Phase 2.5). */
+  pillar_level: PillarLevel | null;
   active: boolean;
   source: 'seed' | 'llm_promoted';
   hit_count: number;
@@ -40,7 +63,14 @@ export interface SajuMetric {
   expected_metric_sql: string;
   expected_direction: 'above_avg' | 'below_avg' | 'above_abs' | 'below_abs' | 'flag_present';
   expected_threshold: number | null;
-  domain: 'schedule' | 'routine' | 'sleep' | 'expense' | 'diary_meta' | 'audit';
+  domain:
+    | 'schedule'
+    | 'routine'
+    | 'sleep'
+    | 'expense'
+    | 'diary_meta'
+    | 'audit'
+    | 'expense_category_present';
 }
 
 export interface SajuSeedWithMetrics extends SajuSeed {
@@ -51,6 +81,12 @@ export interface NatalContext {
   stems: Cheongan[];
   branches: Jiji[];
   dayMaster: Cheongan;
+  /** 원국 4주 (year/month/day/hour 순) — Phase 2.5 cumulative trigger용 */
+  pillars: Pillar[];
+  /** 생년월일 (YYYY-MM-DD) — 대운 추출용. 미등록 시 null */
+  birthDate: string | null;
+  /** saju_profiles.daewun_list — 대운 추출용 */
+  daewunList: ReadonlyArray<{ age: number; pillar: string }>;
 }
 
 export interface DailyContext {
@@ -58,6 +94,14 @@ export interface DailyContext {
   dayStem: Cheongan;
   dayBranch: Jiji;
   natal: NatalContext;
+  /** 일운 Pillar (= {cheongan: dayStem, jiji: dayBranch}) — Phase 2.5 */
+  ilun: Pillar;
+  /** 월운 Pillar — Phase 2.5 */
+  wolun: Pillar;
+  /** 세운 Pillar (= year pillar of target date) — Phase 2.5 */
+  seun: Pillar;
+  /** 대운 Pillar (적용 구간 외 또는 미등록 시 null) — Phase 2.5 */
+  daeun: Pillar | null;
 }
 
 export interface MetricEvaluation {
@@ -87,23 +131,49 @@ interface SajuProfileRow {
   year_pillar: string;
   month_pillar: string;
   hour_pillar: string;
+  birth_date: string | null;
+  daewun_list: unknown;
 }
+
+interface DaewunEntry {
+  age: number;
+  pillar: string;
+}
+
+const isDaewunEntryArray = (value: unknown): value is DaewunEntry[] => {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (v) =>
+      typeof v === 'object' &&
+      v !== null &&
+      typeof (v as Record<string, unknown>).age === 'number' &&
+      typeof (v as Record<string, unknown>).pillar === 'string',
+  );
+};
 
 export const loadNatalContext = async (userId: number): Promise<NatalContext | null> => {
   const result = await query<SajuProfileRow>(
-    'SELECT day_pillar, year_pillar, month_pillar, hour_pillar FROM saju_profiles WHERE user_id = $1',
+    `SELECT day_pillar, year_pillar, month_pillar, hour_pillar,
+            birth_date::text AS birth_date, daewun_list
+       FROM saju_profiles WHERE user_id = $1`,
     [userId],
   );
   const row = result.rows[0];
   if (!row) return null;
 
-  const pillars = [row.year_pillar, row.month_pillar, row.day_pillar, row.hour_pillar];
-  const stems = pillars.map((p) => p.charAt(0)) as Cheongan[];
-  const branches = pillars.map((p) => p.charAt(1)) as Jiji[];
+  const pillarStrs = [row.year_pillar, row.month_pillar, row.day_pillar, row.hour_pillar];
+  const stems = pillarStrs.map((p) => p.charAt(0)) as Cheongan[];
+  const branches = pillarStrs.map((p) => p.charAt(1)) as Jiji[];
+  const pillars = pillarStrs.map((p) => makePillar(p.charAt(0) as Cheongan, p.charAt(1) as Jiji));
+  const daewunList = isDaewunEntryArray(row.daewun_list) ? row.daewun_list : [];
+
   return {
     stems,
     branches,
     dayMaster: row.day_pillar.charAt(0) as Cheongan,
+    pillars,
+    birthDate: row.birth_date,
+    daewunList,
   };
 };
 
@@ -113,12 +183,19 @@ export const getDailyContext = async (
 ): Promise<DailyContext | null> => {
   const natal = await loadNatalContext(userId);
   if (!natal) return null;
-  const pillar = getDayPillar(date);
+  const ilun = getDayPillar(date);
+  const wolun = getMonthPillar(date);
+  const seun = getYearPillar(date);
+  const daeun = natal.birthDate ? getDaeunPillar(natal.birthDate, natal.daewunList, date) : null;
   return {
     date,
-    dayStem: pillar.cheongan,
-    dayBranch: pillar.jiji,
+    dayStem: ilun.cheongan,
+    dayBranch: ilun.jiji,
     natal,
+    ilun,
+    wolun,
+    seun,
+    daeun,
   };
 };
 
@@ -130,7 +207,7 @@ type MetricRow = SajuMetric;
 export const loadActiveSeeds = async (userId: number): Promise<SajuSeedWithMetrics[]> => {
   const seeds = await query<SeedRow>(
     `SELECT id, user_id, name, sipsin, description,
-            trigger_target_type, trigger_target_id, trigger_aux,
+            trigger_target_type, trigger_target_id, trigger_aux, pillar_level,
             active, source, hit_count, miss_count, inconclusive_count
        FROM pattern_catalog
       WHERE user_id = $1 AND active = true
@@ -242,6 +319,64 @@ const getNumberField = (obj: Record<string, unknown>, key: string): number | nul
   return null;
 };
 
+/**
+ * pillar_level에 따라 평가 대상 pillar 선택 (Phase 2.5).
+ * - null / 'ilun' → 일운 (= ctx.ilun, 기존 dayStem/dayBranch 동등)
+ * - 'wolun' / 'seun' / 'daeun' → 해당 운 pillar
+ * - 'wonguk' / 'cumulative' → null (직접 매칭 불가 — wonguk은 Phase 2.5 1차에서 시드 없음, cumulative는 별도 trigger)
+ * - 'daeun'이 미적용 구간이면 null (대운 미시작 사용자 / 데이터 누락)
+ */
+const pickPillarByLevel = (level: PillarLevel | null, ctx: DailyContext): Pillar | null => {
+  switch (level) {
+    case null:
+    case 'ilun':
+      return ctx.ilun;
+    case 'wolun':
+      return ctx.wolun;
+    case 'seun':
+      return ctx.seun;
+    case 'daeun':
+      return ctx.daeun;
+    case 'wonguk':
+    case 'cumulative':
+      return null;
+  }
+};
+
+const VALID_ELEMENTS: readonly Element[] = ['목', '화', '토', '금', '수'];
+
+const isElement = (v: unknown): v is Element =>
+  typeof v === 'string' && (VALID_ELEMENTS as readonly string[]).includes(v);
+
+/**
+ * cumulative_pillar_count trigger 평가 (Phase 2.5).
+ * trigger_aux:
+ *   - { element: '화', count_min: 3 } — 화 오행이 5개 운 레벨 중 3개 이상에서 발현
+ *   - { sipsin: '편재', count_min: 2 } — 편재가 5개 운 레벨 중 2개 이상에서 발현
+ */
+const evaluateCumulativePillarCount = (seed: SajuSeed, ctx: DailyContext): boolean => {
+  const aux = seed.trigger_aux ?? {};
+  const countMin = getNumberField(aux as Record<string, unknown>, 'count_min');
+  if (countMin === null || countMin <= 0) return false;
+
+  const pillarSet: PillarSet = {
+    wonguk: ctx.natal.pillars,
+    daeun: ctx.daeun,
+    seun: ctx.seun,
+    wolun: ctx.wolun,
+    ilun: ctx.ilun,
+  };
+  const count = computeCumulativePillarCount(ctx.natal.dayMaster, pillarSet);
+
+  if (isElement(aux['element'])) {
+    return count.element[aux['element']] >= countMin;
+  }
+  if (typeof aux['sipsin'] === 'string') {
+    return (count.sipsin[aux['sipsin']] ?? 0) >= countMin;
+  }
+  return false;
+};
+
 export const evaluateTrigger = async (
   seed: SajuSeedWithMetrics,
   ctx: DailyContext,
@@ -249,19 +384,27 @@ export const evaluateTrigger = async (
   branchNameToId: Map<string, number>,
 ): Promise<boolean> => {
   const aux = seed.trigger_aux ?? {};
-  const dayStemId = stemNameToId.get(ctx.dayStem);
-  const dayBranchId = branchNameToId.get(ctx.dayBranch);
 
   switch (seed.trigger_target_type) {
-    case 'stem':
-      return seed.trigger_target_id !== null && seed.trigger_target_id === dayStemId;
+    case 'stem': {
+      const pillar = pickPillarByLevel(seed.pillar_level, ctx);
+      if (!pillar) return false;
+      const stemId = stemNameToId.get(pillar.cheongan);
+      return seed.trigger_target_id !== null && seed.trigger_target_id === stemId;
+    }
 
     case 'branch': {
-      if (seed.trigger_target_id !== null && seed.trigger_target_id === dayBranchId) return true;
+      const pillar = pickPillarByLevel(seed.pillar_level, ctx);
+      if (!pillar) return false;
+      const branchId = branchNameToId.get(pillar.jiji);
+      if (seed.trigger_target_id !== null && seed.trigger_target_id === branchId) return true;
       const orBranches = aux['or_branches'];
-      if (isStringArray(orBranches) && orBranches.includes(ctx.dayBranch)) return true;
+      if (isStringArray(orBranches) && orBranches.includes(pillar.jiji)) return true;
       return false;
     }
+
+    case 'cumulative_pillar_count':
+      return evaluateCumulativePillarCount(seed, ctx);
 
     case 'ganji': {
       // ganji_master.id 매칭 — 일운 stem+branch 조합의 ganji id

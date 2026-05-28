@@ -65,8 +65,9 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 
 > Phase 사이에 1주 운영 검증을 두지 않는다. 짧은 PR 검증(코드 리뷰 + 테스트 + setup 모드 단위 검증)으로 대체. 통계 누적 검증은 마스터 종료 후 운영 1\~3개월 누적 시점에 [부록 E](#부록-e-운영-1-3개월-후-도입-검토-기능-7건) 7건과 함께 회고.
 
-- [ ] **Phase 1**: 스키마 일반화 + `pattern_*` rename — 테이블·컬럼 rename (`saju_signal_*` → `pattern_*`, ADR-0026), `trigger_target_type` CHECK constraint 확장(`life_signal` 추가), `pattern_metrics`에 `description TEXT NOT NULL` + `window_days INTEGER` + `hit_count/miss_count/inconclusive_count` + `status` 컬럼, `posterior_alpha/beta/p` 예약, `pattern_summary` view 신설, `saju_influence_summary` view body 재정의 (운영 자산 보존)
-- [ ] **Phase 2**: 사주 시드 풀 셋 — Phase 3에서 작성된 시드를 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태였음)
+- [x] **Phase 1**: 스키마 일반화 + `pattern_*` rename — 테이블·컬럼 rename (`saju_signal_*` → `pattern_*`, ADR-0026), `trigger_target_type` CHECK constraint 확장(`life_signal` 추가), `pattern_metrics`에 `description TEXT NOT NULL` + `window_days INTEGER` + `hit_count/miss_count/inconclusive_count` + `status` 컬럼, `posterior_alpha/beta/p` 예약, `pattern_summary` view 신설, `saju_influence_summary` view body 재정의 (운영 자산 보존)
+- [x] **Phase 2**: 사주 시드 풀 셋 — Phase 3에서 작성된 시드를 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태였음)
+- [x] **Phase 2.5**: 사주 시드 운 레벨 차원 도입 + 자동 분포 분석 cron — `pillar_level` 컬럼(원국/대운/세운/월운/일운/cumulative), `cumulative_pillar_count` trigger(N=1..5 풀셋), `expense_category_present` 메트릭, `pillar-level-distribution-review` cron (월요일 09:15 KST). 14개 신규 시드(편재 9 + 화 오행 5). [ADR-0028](../adr/0028-pillar-level-and-threshold-pool.md)
 - [ ] **Phase 3**: `life_signal` 시드 풀 셋 — 요일(월\~일 7) / 주말(2) / 월말(1) / 월초(1) / 계절(4) 등 1차 셋. 결정론 매트릭으로 작성
 - [ ] **Phase 4**: 매칭 cron + view 정비 — 매칭 cron이 `trigger_target_type='life_signal'`도 처리하도록 확장. `pattern_summary` view 본문 작성
 - [ ] **Phase 5**: 가설 발견·검증 업데이트 — `hypothesis-discovery`가 `life_signal` trigger를 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 출처(`pattern_kind`) 표시
@@ -272,6 +273,105 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 - **테스트 커버리지 trade-off** — `matchAllSeedsForDay`의 `matched=null` 분기를 직접 단위 테스트하려면 `getDayPillar`/`loadActiveSeeds`/`buildNameIdMap` 등을 새로 mocking해야 함. 3줄 ternary의 테스트 가치 < mocking 부담이라 판단, 대신 `evaluateTrigger`의 새 `relation {type, members}` 포맷을 5건 추가. 가설 후보 풀로 사용되는 trigger 평가가 더 중요한 검증 대상
 - **사용자 임상 단서 description 박기** — 명리학적 십신만 적는 게 아니라 사용자 본인이 실제로 관측한 단서(예: "진술충 → 과거 기억 문득문득 떠오름")를 description에 박음. Phase 6 LLM이 evidence 60+일 보고 매트릭 제안할 때 가설 hint로 활용 — 자료가 LLM의 가설 공간을 좁히는 역할
 - **ADR-0027 신설의 trigger** — Phase 2 인터뷰 중 Phase 6 LLM 매트릭 제안 슬롯을 어떻게 운영할지 분기점에서 발생. 사용자 명시 "실시간 답변이 아닌 건 무조건 routines" → 신규 ADR로 분리. 기존 Node.js cron 6건은 follow-up 이슈로 점진 이관 — 운영 패턴 통일이라 PR과 별도 트랙으로 분리하는 게 맞음
+
+---
+
+## Phase 2.5: 사주 시드 운 레벨 차원 도입 + 자동 분포 분석 cron (2026-05-28)
+
+> [#445](https://github.com/hyewon3938/slack-ai-agents/issues/445), [ADR-0028](../adr/0028-pillar-level-and-threshold-pool.md)
+
+### 도입 동기 (임상 단서)
+
+Phase 2 풀세트 시드 161개를 머지한 직후, 다음 세 단서가 명료해졌다:
+
+1. **천간 vs 지지 체감 차이**: 같은 십성이라도 천간(드러난 기운)으로 들어올 때와 지지(저변 기운)로 들어올 때 행동 패턴이 다를 가능성 — 사용자 임상
+2. **운 레벨 차원 부재**: 일운 발현만 추적하면 월운·세운·대운에 같은 십성이 들어왔을 때 효과를 못 잡음
+3. **누적 효과**: 한 오행이 5개 운 레벨(원국·대운·세운·월운·일운) 중 여러 곳에 동시 출현할 때 체감이 강해진다는 임상 단서 (예: 화 오행이 3개 이상 운 레벨에 누적되면 건강 이슈 발생)
+
+Phase 2 시드는 모두 일운 single-shot 평가라 이 단서들을 정량 검증할 수 없었다.
+
+### 결정 요약
+
+**3개 결정을 ADR-0028로 묶음** (분리하면 결정 사이 종속성 사라짐).
+
+#### (a) `pillar_level` 컬럼 도입
+
+```sql
+ALTER TABLE pattern_catalog ADD COLUMN pillar_level VARCHAR(20)
+  CHECK (pillar_level IN ('wonguk', 'daeun', 'seun', 'wolun', 'ilun', 'cumulative'));
+
+-- Phase 2 161개 시드를 'ilun'으로 backfill
+UPDATE pattern_catalog SET pillar_level = 'ilun'
+WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
+```
+
+`saju-match.ts:evaluateTrigger`는 `pillar_level`에 따라 `ctx.daily_pillar` / `ctx.monthly_pillar` / `ctx.yearly_pillar` / `ctx.major_pillar` / `ctx.natal_pillar` 중 어디서 매칭할지 분기.
+
+#### (b) `cumulative_pillar_count` trigger + 풀셋 임계치
+
+새 trigger type. `trigger_aux = { element?, sipsin?, count_min: N }`. 5개 운 레벨에서 같은 오행/십성이 N번 이상 출현하면 hit.
+
+**임계치 N을 임의로 박지 않는다.** N=1, 2, 3, 4, 5를 **모두 별도 시드**로 등록. 풀셋 철학(Phase 2 갑자 차원)을 **임계치 차원으로 확장**.
+
+14개 신규 시드:
+
+| # | 시드명 | 운 레벨 | trigger | 임상 가설 |
+|---|--------|--------|---------|----------|
+| 1 | `pool_편재_갑_천간_일운` | ilun | stem=갑 | 천간 편재 일운 → 일 많이 벌이는 경향 |
+| 2 | `pool_편재_갑_천간_월운` | wolun | stem=갑 | 천간 편재 월운 → 한 달 단위 일 폭주 |
+| 3 | `pool_편재_인_지지_일운` | ilun | branch=인 | 지지 편재 일운 → 천간과 체감 비교 |
+| 4 | `pool_편재_인_지지_월운` | wolun | branch=인 | 지지 편재 월운 |
+| 5\~9 | `pool_편재_천간_누적_N1` \~ `N5` | cumulative | stem 십성=편재, count_min=N | 천간 편재 누적 N개 운 레벨 |
+| 10\~14 | `pool_화_오행_누적_N1` \~ `N5` | cumulative | element=화, count_min=N | 화 오행 누적 N개 → 건강 이슈 |
+
+#### (c) 자동 분포 분석 cron — 임의 가중치 배제
+
+`pillar-level-distribution-review` cron — 매주 월요일 09:15 KST. 결정론 SQL([ADR-0027](../adr/0027-llm-async-routine-unification.md) 분류: 결정론 → Node.js cron).
+
+```sql
+-- 운 레벨별 hit rate 분포 + 누적 카운트 N별 hit rate 분포
+-- 90일 윈도우, evidence-only 매칭 제외
+```
+
+`#insight` 채널에 한 줄 메시지 발송. LLM 해석 없음. 60\~90일 누적 시점에 임계치 학습과 운 레벨 가중치 적용을 **별도 후속 phase**(번호 TBD)로 진행. 자동화 cron 자체가 사용자에게 "지금 임계치 학습할 만한가" 트리거 역할 → 별도 follow-up 이슈 불필요.
+
+### 의사결정 분기점
+
+1. **임의값 박지 않기 원칙 (사용자 명시)**: "미리 임의의 값을 넣어두는 건 좀 별로임" — 운 레벨 가중치(일운 1.0, 월운 0.5 등) 박는 안 즉시 기각. 풀셋 임계치로 우회 결정
+2. **천간 vs 지지 비교는 별도 시드** — `pillar_level='ilun'/'wolun'` × `trigger_target_type='stem'/'branch'` 조합으로 자연스럽게 분리. 한 시드 안에 두 차원 섞지 않음
+3. **누적 카운트 trigger 도입 위치** — `element_density` 확장 안과 새 `cumulative_pillar_count` trigger 안 중 선택. element_density는 원국 single-shot이라 의미 다름 → 새 trigger 분리
+4. **자동화 cron의 LLM 여부** — ADR-0027에 따라 결정론 SQL이므로 Node.js cron 잔존 결정. LLM 해석 도입 시 routines로 이관
+5. **운 레벨 가중치 적용 시점** — 즉시 박지 않고 **60\~90일 데이터 누적 후 후속 phase**. 어느 phase 번호인지 미정 (Phase 8 마무리 시점에 부록 E와 함께 결정)
+6. **scheduled-check 이슈 등록 여부** — 처음에는 60\~90일 후 점검용 이슈 등록 계획이었으나, 자동화 cron 자체가 트리거되므로 사용자 명시 "자동화 해두면 이슈에 박아둘 필요 없지 않아?" → 이슈 등록 항목 제거
+
+### 핵심 변경
+
+- 마이그레이션 071: `pattern_signals.pillar_level` 컬럼 + CHECK + index + Phase 2 161개 backfill = `'ilun'`
+- `trigger_target_type` enum 확장: `'cumulative_pillar_count'` 추가
+- `pattern_metrics.source_type` enum 확장: `'expense_category_present'` 추가 (cross-domain 메트릭)
+- `saju-match.ts:evaluateTrigger`: `pillar_level` 분기 + `cumulative_pillar_count` 케이스 + `evaluateMetric`의 `expense_category_present` 케이스 + OR 매칭 (한 시드 → 여러 매트릭 후보 중 하나라도 hit이면 hit)
+- `saju-calendar.ts`: `computeCumulativePillarCount(natal, daeun, seun, wolun, ilun)` 함수 — 오행/십성 카운트만 (누적 비중 아님)
+- `src/cron/pillar-level-distribution-review.ts`: 신규 cron (Monday 09:15 KST, 결정론 SQL)
+- `index.ts`: cron 등록
+- 14개 신규 시드 SQL
+
+### 사용자 임상 데이터 반영 (description에 박힘)
+
+- "천간 편재 = 일을 많이 벌이는 경향" — 일간 庚金 기준 천간 甲에 해당
+- "지지 편재 ≠ 천간 편재 체감" — 같은 십성이라도 체감 다름 (정량 검증 가설)
+- "화 오행 누적 → 건강 이슈" — 화극금 체질, `health_complaint` 일기 enum + `의료/건강` 지출 카테고리로 cross-domain 검증
+
+### 포기한 안 / 미룬 항목
+
+- **운 레벨 가중치 박기** — 임의값 배제 원칙 위반. 풀셋 임계치로 우회
+- **임계치 자동 추출 시점 이슈 등록** — 자동화 cron으로 대체
+- **세운·대운 LLM 회고 해석** — 이미 마스터 #421로 이관됨 (Phase 2와 동일 결정)
+- **천간 정관·정인 등 다른 십성도 같은 구조로 분화** — 편재만 1차 도입. 운영 검증 후 다른 십성 동일 패턴 복제 가능 (후속 phase)
+- **`pillar_level='wonguk'` 시드** — 원국은 본인 사주 상수(천간 편재 항상 ON, 지지 편재 항상 OFF). 변동 가능한 일운·월운만 1차 도입. 원국 영향 검증은 누적 카운트 trigger가 대신함
+
+### 회고 (TODO: `/build` 구현 후 보강)
+
+> 회고는 PR 머지 후 추가.
 
 ---
 
