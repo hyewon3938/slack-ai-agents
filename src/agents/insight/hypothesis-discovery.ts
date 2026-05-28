@@ -18,6 +18,7 @@ export type DiscoveryMode =
 export interface CandidateHypothesis {
   triggerSpec: TriggerSpec;
   signalName: string;
+  patternKind: 'saju' | 'life_signal';
   enumTarget: DiaryMetaTag;
   nTriggerDays: number;
   nTotalDays: number;
@@ -36,16 +37,17 @@ const DISCOVERY_MIN_RATE_RATIO = 1.3;
 interface ActiveSignal {
   id: number;
   name: string;
+  patternKind: 'saju' | 'life_signal';
 }
 
 const loadActiveSignals = async (userId: number): Promise<ActiveSignal[]> => {
-  const res = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM pattern_catalog
+  const res = await query<{ id: number; name: string; pattern_kind: 'saju' | 'life_signal' }>(
+    `SELECT id, name, pattern_kind FROM pattern_catalog
        WHERE user_id = $1 AND active = true
        ORDER BY id`,
     [userId],
   );
-  return res.rows;
+  return res.rows.map((r) => ({ id: r.id, name: r.name, patternKind: r.pattern_kind }));
 };
 
 const loadRegisteredCombos = async (userId: number): Promise<Set<string>> => {
@@ -220,6 +222,7 @@ export const discoverCandidates = async (
     candidates.push({
       triggerSpec: { type: 'seed', signalId: raw.signal.id },
       signalName: raw.signal.name,
+      patternKind: raw.signal.patternKind,
       enumTarget: raw.enumTarget,
       nTriggerDays: raw.triggerDays,
       nTotalDays: raw.totalDays,

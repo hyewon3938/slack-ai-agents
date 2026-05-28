@@ -12,6 +12,13 @@ import type { Hypothesis, HypothesisStat, TriggerSpec } from '../../shared/patte
 export const HYPOTHESIS_REGISTER_ACTION_ID = 'hypothesis_register';
 export const HYPOTHESIS_DISMISS_ACTION_ID = 'hypothesis_dismiss';
 
+const KIND_LABEL: Record<'saju' | 'life_signal', string> = {
+  saju: '[사주]',
+  life_signal: '[생활]',
+};
+
+const CANDIDATE_CAP_PER_KIND = 5;
+
 /** Slack action value 직렬화 — JSON 한도(2000자) 안전 */
 export interface HypothesisActionPayload {
   triggerSpec: TriggerSpec;
@@ -62,7 +69,8 @@ export const buildCandidateCard = (cand: CandidateHypothesis): KnownBlock[] => {
     triggerSpec: cand.triggerSpec,
     enumTarget: cand.enumTarget,
   });
-  const header = `*${cand.signalName}* → \`${cand.enumTarget}\``;
+  const kindLabel = KIND_LABEL[cand.patternKind];
+  const header = `${kindLabel} *${cand.signalName}* → \`${cand.enumTarget}\``;
   const detail =
     `발현일 n=${cand.nTriggerDays} · trigger ${formatPercent(cand.rateTrigger)} ` +
     `vs baseline ${formatPercent(cand.rateBaseline)} ` +
@@ -98,6 +106,7 @@ export const buildCandidateCard = (cand: CandidateHypothesis): KnownBlock[] => {
 export interface ActiveHypothesisRow {
   hypothesis: Hypothesis;
   signalName: string;
+  patternKind: 'saju' | 'life_signal';
   latest: HypothesisStat;
   prev: HypothesisStat | null;
 }
@@ -129,8 +138,9 @@ export const buildWeeklyReviewBlocks = (
       const prev = row.prev;
       const trigArrow = arrow(row.latest.rateTrigger, prev?.rateTrigger ?? null);
       const qArrow = arrow(row.latest.fdrQ, prev?.fdrQ ?? null);
+      const kindLabel = KIND_LABEL[row.patternKind];
       return (
-        `• *${row.signalName}* → \`${row.hypothesis.enumTarget}\` — ` +
+        `• ${kindLabel} *${row.signalName}* → \`${row.hypothesis.enumTarget}\` — ` +
         `n=${row.latest.nTriggerDays} ` +
         `trig ${formatPercent(row.latest.rateTrigger)} ${trigArrow} ` +
         `ratio ${formatRatio(row.latest.rateRatio)}x ` +
@@ -143,18 +153,24 @@ export const buildWeeklyReviewBlocks = (
     });
   }
 
-  if (candidates.length > 0) {
+  const sajuCands = candidates
+    .filter((c) => c.patternKind === 'saju')
+    .slice(0, CANDIDATE_CAP_PER_KIND);
+  const lifeCands = candidates
+    .filter((c) => c.patternKind === 'life_signal')
+    .slice(0, CANDIDATE_CAP_PER_KIND);
+
+  if (sajuCands.length + lifeCands.length > 0) {
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*신규 후보 (${candidates.length}건)* — 등록할 거 골라`,
+        text: `*신규 후보 (사주 ${sajuCands.length} / 생활 ${lifeCands.length})* — 등록할 거 골라`,
       },
     });
-    for (const cand of candidates.slice(0, 5)) {
-      blocks.push(...buildCandidateCard(cand));
-    }
+    for (const cand of sajuCands) blocks.push(...buildCandidateCard(cand));
+    for (const cand of lifeCands) blocks.push(...buildCandidateCard(cand));
   }
 
   return blocks;
