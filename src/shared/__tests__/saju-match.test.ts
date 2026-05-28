@@ -34,9 +34,17 @@ import {
   __resetCacheForTest,
   type SajuSeedWithMetrics,
   type DailyContext,
+  type NatalContext,
   type SeedMatchResult,
   type SajuMetric,
 } from '../saju-match.js';
+import {
+  getMonthPillar,
+  getYearPillar,
+  makePillar,
+  type Cheongan,
+  type Jiji,
+} from '../saju-calendar.js';
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -94,6 +102,7 @@ const baseSeed = (overrides: Partial<SajuSeedWithMetrics> = {}): SajuSeedWithMet
   trigger_target_type: 'stem',
   trigger_target_id: null,
   trigger_aux: null,
+  pillar_level: null,
   active: true,
   source: 'seed',
   hit_count: 0,
@@ -103,17 +112,44 @@ const baseSeed = (overrides: Partial<SajuSeedWithMetrics> = {}): SajuSeedWithMet
   ...overrides,
 });
 
-const baseCtx = (overrides: Partial<DailyContext> = {}): DailyContext => ({
-  date: '2026-05-17',
-  dayStem: '경',
-  dayBranch: '술',
-  natal: {
-    stems: ['갑', '경', '경', '경'],
-    branches: ['자', '술', '술', '술'],
-    dayMaster: '경',
-  },
-  ...overrides,
+/** stems/branches/dayMaster만 받아서 NatalContext 완성 (Phase 2.5 신규 필드 자동 채움) */
+export const buildNatal = (partial: {
+  stems: Cheongan[];
+  branches: Jiji[];
+  dayMaster: Cheongan;
+}): NatalContext => ({
+  stems: partial.stems,
+  branches: partial.branches,
+  dayMaster: partial.dayMaster,
+  pillars: partial.stems.map((s, i) => makePillar(s, partial.branches[i])),
+  birthDate: null,
+  daewunList: [],
 });
+
+const baseCtx = (
+  overrides: Partial<Omit<DailyContext, 'natal'>> & { natal?: NatalContext } = {},
+): DailyContext => {
+  const date = overrides.date ?? '2026-05-17';
+  const dayStem = overrides.dayStem ?? '경';
+  const dayBranch = overrides.dayBranch ?? '술';
+  const ilun = overrides.ilun ?? makePillar(dayStem, dayBranch);
+  return {
+    date,
+    dayStem,
+    dayBranch,
+    natal:
+      overrides.natal ??
+      buildNatal({
+        stems: ['갑', '경', '경', '경'],
+        branches: ['자', '술', '술', '술'],
+        dayMaster: '경',
+      }),
+    ilun,
+    wolun: overrides.wolun ?? getMonthPillar(date),
+    seun: overrides.seun ?? getYearPillar(date),
+    daeun: overrides.daeun ?? null,
+  };
+};
 
 // ─── evaluateTrigger: stem ────────────────────────────────
 
@@ -255,11 +291,11 @@ describe('evaluateTrigger - relation', () => {
     });
     const ctx = baseCtx({
       dayBranch: '사',
-      natal: {
+      natal: buildNatal({
         stems: ['갑', '경', '경', '경'],
         branches: ['자', '축', '신', '유'], // 진 없음
         dayMaster: '경',
-      },
+      }),
     });
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
   });
@@ -283,11 +319,11 @@ describe('evaluateTrigger - relation', () => {
     // 본명 자 있음, 일운 오 → trigger
     const ctx = baseCtx({
       dayBranch: '오',
-      natal: {
+      natal: buildNatal({
         stems: ['갑', '경', '경', '경'],
         branches: ['자', '술', '술', '술'],
         dayMaster: '경',
-      },
+      }),
     });
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
   });
@@ -300,11 +336,11 @@ describe('evaluateTrigger - relation', () => {
     // 본명 오 있음, 일운 자 → trigger (양방향)
     const ctx = baseCtx({
       dayBranch: '자',
-      natal: {
+      natal: buildNatal({
         stems: ['갑', '경', '경', '경'],
         branches: ['오', '술', '술', '술'],
         dayMaster: '경',
-      },
+      }),
     });
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
   });
@@ -316,11 +352,11 @@ describe('evaluateTrigger - relation', () => {
     });
     const ctx = baseCtx({
       dayBranch: '자',
-      natal: {
+      natal: buildNatal({
         stems: ['갑', '경', '경', '경'],
         branches: ['신', '술', '술', '술'], // 자/오 둘 다 없음
         dayMaster: '경',
-      },
+      }),
     });
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
   });
@@ -334,11 +370,11 @@ describe('evaluateTrigger - relation', () => {
     const ctx = baseCtx({
       dayStem: '을',
       dayBranch: '술',
-      natal: {
+      natal: buildNatal({
         stems: ['갑', '경', '경', '경'],
         branches: ['자', '술', '술', '술'],
         dayMaster: '경',
-      },
+      }),
     });
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
   });
@@ -521,5 +557,192 @@ describe('compactMatchedLine', () => {
     const results = [buildResult('S5_토_과다', null, true, 3)];
     const line = compactMatchedLine(ctx, results);
     expect(line).toContain('S5_토_과다');
+  });
+});
+
+// ─── Phase 2.5: pillar_level (운 레벨) 분기 ────────────────
+
+describe('evaluateTrigger - pillar_level (Phase 2.5)', () => {
+  it('pillar_level=wolun + stem trigger — 월운 천간이 target과 일치하면 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'stem',
+      trigger_target_id: 1, // 갑
+      pillar_level: 'wolun',
+    });
+    const ctx = baseCtx({
+      dayStem: '경', // ilun.cheongan=경
+      wolun: makePillar('갑', '인'), // wolun.cheongan=갑 → trigger
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('pillar_level=wolun + stem trigger — 일운만 일치하고 월운 미일치면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'stem',
+      trigger_target_id: 7, // 경
+      pillar_level: 'wolun',
+    });
+    const ctx = baseCtx({
+      dayStem: '경', // ilun.cheongan=경 (target과 같지만 무시)
+      wolun: makePillar('갑', '인'), // wolun.cheongan=갑 → 미일치
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('pillar_level=seun + branch trigger — 세운 지지 일치 시 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'branch',
+      trigger_target_id: 3, // 인
+      pillar_level: 'seun',
+    });
+    const ctx = baseCtx({
+      dayBranch: '술',
+      seun: makePillar('병', '인'), // seun.jiji=인 → trigger
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('pillar_level=daeun + stem trigger — 대운 적용 시 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'stem',
+      trigger_target_id: 1, // 갑
+      pillar_level: 'daeun',
+    });
+    const ctx = baseCtx({
+      dayStem: '경',
+      daeun: makePillar('갑', '인'), // daeun.cheongan=갑 → trigger
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('pillar_level=daeun + daeun=null이면 false (미적용 구간)', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'stem',
+      trigger_target_id: 7, // 경
+      pillar_level: 'daeun',
+    });
+    const ctx = baseCtx({
+      dayStem: '경',
+      daeun: null, // 대운 미시작 / 미등록
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('pillar_level=wonguk이면 stem/branch trigger는 false (직접 매칭 불가)', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'stem',
+      trigger_target_id: 7, // 경
+      pillar_level: 'wonguk',
+    });
+    const ctx = baseCtx({ dayStem: '경' });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('pillar_level=null이면 일운 기준 (기존 동작 유지)', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'stem',
+      trigger_target_id: 7, // 경
+      pillar_level: null,
+    });
+    const ctx = baseCtx({ dayStem: '경' });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+});
+
+// ─── Phase 2.5: cumulative_pillar_count ────────────────────
+
+describe('evaluateTrigger - cumulative_pillar_count (Phase 2.5)', () => {
+  it('element 화 count_min=2 — 본명(병/정)에 화 + 월운 화 천간이면 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'cumulative_pillar_count',
+      trigger_aux: { element: '화', count_min: 2 },
+      pillar_level: 'cumulative',
+    });
+    // 본명에 정(화)/오(화) 있음 → wonguk 화 +1
+    // wolun.cheongan=병(화) → wolun 화 +1
+    // 합계 2 ≥ 2 → true
+    const ctx = baseCtx({
+      natal: buildNatal({
+        stems: ['정', '경', '경', '경'],
+        branches: ['오', '술', '술', '술'],
+        dayMaster: '경',
+      }),
+      wolun: makePillar('병', '자'),
+      seun: makePillar('갑', '술'), // 화 없음
+      ilun: makePillar('경', '술'), // 화 없음
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('element 화 count_min=3 — 화가 2개 레벨에만 있으면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'cumulative_pillar_count',
+      trigger_aux: { element: '화', count_min: 3 },
+      pillar_level: 'cumulative',
+    });
+    const ctx = baseCtx({
+      natal: buildNatal({
+        stems: ['정', '경', '경', '경'],
+        branches: ['오', '술', '술', '술'],
+        dayMaster: '경',
+      }),
+      wolun: makePillar('병', '자'),
+      seun: makePillar('갑', '술'),
+      ilun: makePillar('경', '술'),
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('sipsin 편재 count_min=2 — 일간 경 기준 갑(편재)이 본명+일운에서 발현', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'cumulative_pillar_count',
+      trigger_aux: { sipsin: '편재', count_min: 2 },
+      pillar_level: 'cumulative',
+    });
+    // 일간 경 기준 편재 = 갑(천간) / 인(지지)
+    // 본명 stems에 갑 → wonguk +1
+    // ilun.cheongan=갑 → ilun +1
+    // 합계 2 ≥ 2 → true
+    const ctx = baseCtx({
+      natal: buildNatal({
+        stems: ['갑', '경', '경', '경'],
+        branches: ['자', '술', '술', '술'],
+        dayMaster: '경',
+      }),
+      ilun: makePillar('갑', '술'),
+      wolun: makePillar('경', '자'),
+      seun: makePillar('경', '자'),
+    });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('count_min<=0이면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'cumulative_pillar_count',
+      trigger_aux: { element: '화', count_min: 0 },
+      pillar_level: 'cumulative',
+    });
+    const ctx = baseCtx();
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('aux에 element/sipsin 둘 다 없으면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'cumulative_pillar_count',
+      trigger_aux: { count_min: 1 },
+      pillar_level: 'cumulative',
+    });
+    const ctx = baseCtx();
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('element 값이 오행이 아니면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'cumulative_pillar_count',
+      trigger_aux: { element: '잘못된오행', count_min: 1 },
+      pillar_level: 'cumulative',
+    });
+    const ctx = baseCtx();
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
   });
 });

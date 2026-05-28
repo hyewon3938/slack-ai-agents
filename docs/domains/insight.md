@@ -840,27 +840,166 @@ src/shared/
 
 설계 결정 배경: [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md), [ADR-0025](../adr/0025-llm-metric-approval-gate.md), [ADR-0027](../adr/0027-llm-async-routine-unification.md), [design-notebook Phase 2](../design-notebook/personal-pattern-discovery.md#phase-2-사주-시드-풀세트--빈-매트릭-evidence-only-2026-05-28)
 
-### 16. 본인 1명 패턴 발견 시스템 — Phase 3 (life_signal 시드 풀 셋)
+### 16. 본인 1명 패턴 발견 시스템 — Phase 2.5 (운 레벨 차원 + 풀셋 임계치 + 자동 분포 분석 cron)
+
+Phase 2의 사주 시드는 모두 일운(日運) 단위로만 발현되어 "월운/세운/대운 단위로도 같은 패턴이 나타나는가?" 라는 질문을 데이터로 답할 수 없었다. Phase 2.5는 시드의 발현 운 레벨을 데이터 모델 차원으로 끌어올리고, 임의 임계치를 박는 대신 풀셋(N=1..5) 형태로 누적 카운트 자체를 시드화한다. 어느 N 임계치가 의미 있는지는 누적된 데이터가 결정 ([ADR-0028](../adr/0028-pillar-level-and-threshold-pool.md)).
+
+#### 데이터 모델 변경
+
+| 마이그레이션 | 내용 |
+|------|------|
+| `071_pattern_signals_pillar_level.sql` | `pattern_catalog.pillar_level VARCHAR(20)` 추가 (CHECK enum 6값) + Phase 2 사주 시드 161개 backfill (`pillar_level='ilun'`) + `trigger_target_type` CHECK에 `cumulative_pillar_count` 추가 + `pattern_metrics.domain` CHECK에 `expense_category_present` 추가 + 부분 인덱스 + 신규 14 시드 + cron 슬롯 시드 |
+
+`pattern_catalog.pillar_level` enum:
+
+| 값 | 의미 |
+|------|------|
+| `wonguk` | 원국(natal) — Phase 2.5 1차에서는 직접 매칭 시드 없음. cumulative 카운트에는 포함 |
+| `daeun` | 대운 (10년 단위, `saju_profiles.daewun_list`에서 추출) |
+| `seun` | 세운 (해당 연도 year pillar) |
+| `wolun` | 월운 (해당 월 month pillar) |
+| `ilun` | 일운 (해당 일 day pillar) — Phase 2 시드 161개 기본값 |
+| `cumulative` | 5개 운 레벨 누적 카운트 시드 (별도 trigger type) |
+
+`life_signal` 및 `pillar_level IS NULL`은 미적용 (Phase 3 이후 life_signal 시드는 본 차원과 무관).
+
+#### `cumulative_pillar_count` trigger type
+
+5개 운 레벨(원국/대운/세운/월운/일운) 중 오행 또는 십성이 발현된 레벨 수를 세서 `count_min` 임계치와 비교. 발현 정의는 "해당 레벨의 천간 또는 지지 1자라도 해당 오행/십성에 해당하면 +1".
+
+| trigger_aux | 의미 |
+|------|------|
+| `{"element": "화", "count_min": 3}` | 화 오행이 5개 레벨 중 3개 이상에서 발현 |
+| `{"sipsin": "편재", "count_min": 2}` | 편재가 5개 레벨 중 2개 이상에서 발현 |
+
+원국 레벨은 4주(年月日時) 중 하나라도 해당하면 카운트 +1. 대운이 미적용 구간(생년 이전 또는 daewun_list 비어있음)이면 해당 레벨은 0으로 처리. 풀셋 임계치 — N=1..5를 각각 별도 시드로 등록해 데이터가 임계치를 결정.
+
+#### `expense_category_present` 메트릭 domain
+
+지출 카테고리 발현 여부를 cross-domain 메트릭으로 식별. 본 phase에서는 화 오행 누적 시드의 보조 메트릭(`expense_의료건강` — 화극금 건강 가설 검증)으로 사용. `pattern_metrics.expected_direction='flag_present'` + `expected_threshold=1`.
+
+#### 14개 신규 시드 카탈로그
+
+| 카테고리 | 시드 수 | 이름 패턴 | trigger_target_type | pillar_level |
+|------|------|------|------|------|
+| 편재 천간(갑) | 2 | `pool_편재_갑_천간_<일운\|월운>` | `stem` | `ilun` / `wolun` |
+| 편재 지지(인) | 2 | `pool_편재_인_지지_<일운\|월운>` | `branch` | `ilun` / `wolun` |
+| 편재 누적 N=1..5 | 5 | `pool_편재_누적_N<1..5>` | `cumulative_pillar_count` | `cumulative` |
+| 화 오행 누적 N=1..5 | 5 | `pool_화_오행_누적_N<1..5>` | `cumulative_pillar_count` | `cumulative` |
+
+화 오행 누적 시드 5개는 각각 2개 메트릭 (OR 매칭):
+- `diary_health_complaint` (`diary_meta_tags.tag='health_complaint'`, domain=`diary_meta`)
+- `expense_의료건강` (`expenses.category='의료/건강'`, domain=`expense_category_present`)
+
+매트릭 둘 중 하나만 hit이어도 시드 hit — `saju-match.ts`의 `metricEvaluations.some((e) => e.passed)`가 기존부터 OR 동작.
+
+편재 9개 시드는 매트릭 없는 evidence-only (Phase 2 풀셋과 동일).
+
+#### `saju-match.ts` 운 레벨 분기
+
+`evaluateTrigger`의 `stem` / `branch` 케이스가 `pickPillarByLevel(seed.pillar_level, ctx)`로 평가 대상 pillar를 선택:
+
+```typescript
+const pickPillarByLevel = (level: PillarLevel | null, ctx: DailyContext): Pillar | null => {
+  switch (level) {
+    case null: case 'ilun': return ctx.ilun;
+    case 'wolun': return ctx.wolun;
+    case 'seun': return ctx.seun;
+    case 'daeun': return ctx.daeun;  // 미적용 구간이면 null → trigger false
+    case 'wonguk': case 'cumulative': return null;  // 직접 매칭 불가
+  }
+};
+```
+
+`cumulative_pillar_count` 케이스는 별도 `evaluateCumulativePillarCount(seed, ctx)`로 분기. `DailyContext`에 `ilun`/`wolun`/`seun`/`daeun` 필드 추가, `NatalContext`에 `pillars`/`birthDate`/`daewunList` 추가.
+
+#### `saju-calendar.ts:computeCumulativePillarCount`
+
+```typescript
+export const computeCumulativePillarCount = (
+  dayMaster: Cheongan,
+  pillars: PillarSet,
+): CumulativeCount => { ... }
+```
+
+5개 레벨 각각에 대해 천간/지지 → 오행/십성 변환 후, 레벨 내 발현 집합을 만들어 누적. 같은 레벨 내 중복은 1회만 카운트(`Set`). 원국은 4주 통합(`pillars.wonguk: readonly Pillar[]`), 그 외는 1주씩.
+
+#### `pillar-level-distribution-review` cron (월요일 09:15 KST)
+
+`pattern_matches` 90일 윈도우의 `pillar_level`별 hit-rate 분포 + `cumulative_pillar_count` trigger의 N=1..5 분포를 한 줄로 압축해 `#insight` 채널에 발송. 결정론 SQL만 사용 — LLM 호출 없음([ADR-0027](../adr/0027-llm-async-routine-unification.md) 준수).
+
+- `getKSTDayOfWeek() !== 1`이면 즉시 return (다른 요일에도 09:15에 트리거되지만 본체가 스킵 — `weeklyHypothesisReview`와 동일 패턴).
+- 양쪽 분포 모두 빈 결과면 `buildMessage` → null → 발송 스킵 (`데이터 부족` 로그만).
+- `verify_status='no_metric'` 행은 hit-rate 분포에서 제외 (evidence-only 시드의 채점은 무의미).
+- 멀티유저: `queryAllUserMappings()` 순회 + 유저별 channel fallback.
+
+```
+📊 운 레벨 분포 (90일 윈도우)
+- ilun: 120건, hit 18.5%
+- wolun: 40건, hit 8.0%
+...
+🔢 누적 카운트 분포 (오행/십성 × N=1..5)
+- 화 오행 N=1: 70건, hit 12
+- 화 오행 N=2: 25건, hit 6
+- 편재 N=3: 4건, hit 0
+...
+```
+
+자동으로 "어느 N이 의미 있는 임계치인가?"의 판단 단서를 노출. 사용자가 분포를 보고 Phase 6 LLM 매트릭 제안 슬롯에 임계치 hint를 줄 수 있도록.
+
+#### 크론 시각
+
+| 시각 | 슬롯 | 의도 | 산출물 |
+|------|------|------|------|
+| 09:15 (월요일만) | `pillarLevelDistributionReview` | 운 레벨별·누적별 hit-rate 분포 노출 | `#insight` 채널 한 줄 압축 메시지 |
+
+`weeklyReport`(09:00 월요일) / `weeklyHypothesisReview`(08:00 월요일)와 시간대 겹치지 않게 분리.
+
+#### 파일 구조
+
+```
+db/migrations/
+  071_pattern_signals_pillar_level.sql  # 컬럼·CHECK·backfill·14 시드·cron 슬롯
+
+src/shared/
+  saju-calendar.ts                       # +computeCumulativePillarCount, +getDaeunPillar, +makePillar
+                                         # +types: Element, PillarSet, CumulativeCount
+  saju-match.ts                          # +pickPillarByLevel, +evaluateCumulativePillarCount
+                                         # +DailyContext.{ilun,wolun,seun,daeun}
+                                         # +NatalContext.{pillars,birthDate,daewunList}
+
+src/cron/
+  pillar-level-distribution-review.ts    # 월요일 09:15 KST 결정론 분포 cron
+  life-cron.ts                           # SLOT_TASKS에 pillarLevelDistributionReview 등록
+```
+
+#### 다음 phase 연결
+
+본 phase에서 추가된 `pillar_level` 차원은 Phase 3 이후 `life_signal` 시드에서는 미적용 (`pillar_level IS NULL` 유지). Phase 5 가설 검증·BH-FDR 그룹은 `pillar_level`도 그룹화 키로 활용 가능 (예: "월운 기준으로만 confirmed된 가설 그룹"). 자동 분포 cron은 Phase 6 LLM 매트릭 제안 슬롯의 임계치 hint 입력으로 사용.
+
+설계 결정 배경: [ADR-0028](../adr/0028-pillar-level-and-threshold-pool.md), [design-notebook Phase 2.5](../design-notebook/personal-pattern-discovery.md#phase-25-운-레벨-차원-도입--자동-분포-분석-cron-2026-05-28)
+
+### 17. 본인 1명 패턴 발견 시스템 — Phase 3 (life_signal 시드 풀 셋)
 
 > TODO(`/build`): 구현 후 본문 채우기. `life_signal` 시드 1차 셋(14\~20개 — 요일 7 + 주말 1 + 평일 1 + 월말 1 + 월초 1 + 계절 4 + 기타). 각 시드의 매트릭(SQL + window_days + description). 결정론 매트릭으로 작성 (`pattern_metrics.source = 'deterministic'`).
 
-### 17. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron + view 정비)
+### 18. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron + view 정비)
 
 > TODO(`/build`): 구현 후 본문 채우기. 매칭 cron이 `trigger_target_type='life_signal'`도 처리하도록 확장 (필요 시 파일명 변경 검토 — `daily-saju-matching` → `daily-pattern-matching`). `pattern_summary` view 본문 작성 + 사용 예시. 매칭 시 `pattern_metrics`의 hit/miss/inconclusive UPDATE 로직 (catalog 카운트는 backfill 후 미사용).
 
-### 18. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 업데이트)
+### 19. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 업데이트)
 
 > TODO(`/build`): 구현 후 본문 채우기. `hypothesis-discovery`가 `life_signal` trigger 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 `pattern_kind` 표시. 검증 매트릭 수 증가에 따른 BH-FDR 그룹 정의.
 
-### 19. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
+### 20. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
 
 > TODO(`/build`): 구현 후 본문 채우기. 월간 LLM 슬롯이 매트릭 후보 생성, 월 cap 5개. **운영은 Claude 앱 routines 기반** ([ADR-0027](../adr/0027-llm-async-routine-unification.md)) — Phase 2에서 누적된 60+일 evidence JSONB(`pattern_matches.evidence`, `verify_status='no_metric'` 행)를 가설 후보 풀로 사용. Slack `/insight metric-approve` 명령어 + Block Kit 승인 카드 (`metric-approval-cards.ts`). 승인 시 `pattern_metrics.status = 'active'` 전환. 거절 시 `'rejected'`.
 
-### 20. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian update)
+### 21. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian update)
 
 > TODO(`/build`): 구현 후 본문 채우기. `src/shared/bayesian-posterior.ts` 헬퍼(\~100줄), Beta-Binomial 사후 갱신, `pattern_metrics.posterior_p` UPDATE. 가설 카드에 frequentist p값 + Bayesian posterior 병기. beta inverse CDF 라이브러리 선택.
 
-### 21. 본인 1명 패턴 발견 시스템 — Phase 8 (인사이트 카드 UI + 마스터 close)
+### 22. 본인 1명 패턴 발견 시스템 — Phase 8 (인사이트 카드 UI + 마스터 close)
 
 > TODO(`/build`): 구현 후 본문 채우기. `#insight` 채널 패턴 발견 카드 (Block Kit). `life_signal` 패턴(요일 효과 등)도 같은 카드에서 출력. 마스터 회고 + 운영 1\~3개월 후 follow-up 이슈 7건 일괄 등록 (SPRT, Change Point Detection, informed prior, 카테고리 가중치 자동 튜닝, 가설 자동 제거, 매트릭 자동 비활성화, 웹 대시보드 승인 페이지).
 
@@ -887,9 +1026,10 @@ src/shared/
 └── saju-hypothesis.ts             # Phase 4 통계 (Fisher + BH-FDR + lifecycle)
 
 src/cron/
-├── daily-saju-matching.ts         # 09:00 사주 일일 매칭 + confirmed 가설 슬롯 (Phase 3/4)
-├── diary-meta-extract.ts          # 일기 → enum 태그 추출 cron (Phase 3, Opus)
-└── weekly-hypothesis-review.ts    # 월 08:00 주간 가설 리포트 (Phase 4)
+├── daily-saju-matching.ts                 # 09:00 사주 일일 매칭 + confirmed 가설 슬롯 (Phase 3/4)
+├── diary-meta-extract.ts                  # 일기 → enum 태그 추출 cron (Phase 3, Opus)
+├── weekly-hypothesis-review.ts            # 월 08:00 주간 가설 리포트 (Phase 4)
+└── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5)
 
 scripts/
 ├── saju-hypothesis-backtest.ts    # Phase 4 임계치 튜닝 CLI
@@ -902,4 +1042,13 @@ db/migrations/  (마스터 #434 Phase 1 — 2026-05-27)
 ├── 066_pattern_metric_backfill.sql              # description placeholder + 카운터 이전 + Bayesian α/β/p 초기화
 ├── 067_pattern_summary_view.sql                 # seed-level 집계 view 신설
 └── 068_saju_influence_summary_rebuild.sql       # view body 재정의 (이름·컬럼 contract 보존)
+
+db/migrations/  (마스터 #434 Phase 2 — 2026-05-28)
+├── 069_pattern_matches_no_metric.sql            # matched NULL 허용 + verify_status='no_metric'
+└── 070_saju_seed_pool.sql                       # 사주 시드 풀셋 161개 INSERT
+
+db/migrations/  (마스터 #434 Phase 2.5 — 2026-05-28)
+└── 071_pattern_signals_pillar_level.sql         # pillar_level 컬럼 + cumulative_pillar_count trigger
+                                                 # + expense_category_present 메트릭 + 14 신규 시드
+                                                 # + pillarLevelDistributionReview 슬롯
 ```

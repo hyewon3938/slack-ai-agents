@@ -53,6 +53,7 @@ import { verifyLlmInsightsTask } from './verify-llm-insights.js';
 import { dailySajuMatchingTask } from './daily-saju-matching.js';
 import { diaryMetaExtractTask } from './diary-meta-extract.js';
 import { weeklyHypothesisReviewTask } from './weekly-hypothesis-review.js';
+import { pillarLevelDistributionReviewTask } from './pillar-level-distribution-review.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView } from '../agents/life/home.js';
 
@@ -660,6 +661,7 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   dailySajuMatching: dailySajuMatchingTask,
   diaryMetaExtract: diaryMetaExtractTask,
   weeklyHypothesisReview: weeklyHypothesisReviewTask,
+  pillarLevelDistributionReview: pillarLevelDistributionReviewTask,
 };
 
 // ─── CronScheduler 클래스 ───────────────────────────────
