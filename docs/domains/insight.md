@@ -1068,9 +1068,61 @@ src/shared/
 - **Phase 5\~7**: 가설 발견·검증 파이프라인이 `pattern_kind` 무관하게 동작 (이미 일반화 완료)
 - **Phase 8**: `insights.ts` detect 함수 → 시드 evaluator로 일원화 (잔소리 시스템 통합)
 
-### 18. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron + view 정비)
+### 18. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron 카운터 source of truth 전환 + pattern-match rename)
 
-> TODO(`/build`): 구현 후 본문 채우기. 매칭 cron이 `trigger_target_type='life_signal'`도 처리하도록 확장 (필요 시 파일명 변경 검토 — `daily-saju-matching` → `daily-pattern-matching`). `pattern_summary` view 본문 작성 + 사용 예시. 매칭 시 `pattern_metrics`의 hit/miss/inconclusive UPDATE 로직 (catalog 카운트는 backfill 후 미사용).
+ADR-0023 실행 단계. Phase 1\~3에서 매칭 결과가 `pattern_catalog.hit_count/miss_count/inconclusive_count`에 누적되던 것을, **매트릭 단위 카운터(`pattern_metrics`) + Bayesian posterior**로 전환하고 시드 단위 합계는 `pattern_summary` view에서 derive하도록 정리. 잔존 catalog 카운터는 Phase 8에서 DROP.
+
+#### 변경된 데이터 흐름
+
+| 단계 | Phase 3 (Before) | Phase 4 (After) |
+|------|-----------------|-----------------|
+| `verifyDailyMatches` 카운터 대상 | `pattern_catalog.hit_count/miss_count` | `pattern_metrics.hit_count/miss_count/inconclusive_count` |
+| Bayesian 갱신 | (없음) | `posterior_alpha/beta/p` 동시 UPDATE — ADR-0024 산식 |
+| `last_matched_at` | (없음) | UPDATE마다 `NOW()` 기록 |
+| evidence-only(matched IS NULL) | inconclusive UPDATE만, 카운터는 catalog UPDATE | inconclusive UPDATE만, 매트릭 카운터 SKIP (no_metric 자연 계승) |
+| `compactMatchedLine` 정렬 키 | `seed.hit_count` (in-memory) | `pattern_summary.total_hits` (view SELECT) |
+| 함수 시그니처 | sync `(ctx, results) => string \| null` | **async** `(ctx, results) => Promise<string \| null>` |
+| 매칭 부담 로그 | (없음) | `console.warn('[pattern-match] user=… date=… seeds=… elapsed=…ms')` |
+
+#### Bayesian posterior 산식 (ADR-0024)
+
+```
+hit:  alpha' = alpha + 1, p' = (alpha + 1) / (alpha + beta + 1)
+miss: beta'  = beta + 1,  p' = alpha / (alpha + beta + 1)
+```
+
+`posterior_p` 초기값 0.5 (uniform prior `alpha=beta=1`). 매트릭이 hit/miss 누적될수록 `p`가 실측 비율로 수렴.
+
+#### evidence-only 시드 처리
+
+매트릭이 0개인 시드(Phase 2 `no_metric` 패턴)는 `matched IS NULL`로 기록된다. `verifyDailyMatches`는:
+
+1. `SELECT … WHERE trigger_activated = true AND matched IS NOT NULL` → hit/miss 카운터 UPDATE
+2. `SELECT … WHERE trigger_activated = false OR matched IS NULL` → `verify_status='inconclusive'`만 박음. matched IS NULL이면 매트릭 카운터 SKIP (그래야 evidence-only 시드가 카운터에 오염을 안 줌).
+
+#### 파일명 rename (ADR-0026 확장)
+
+| 이전 | 이후 |
+|------|------|
+| `src/shared/saju-match.ts` | `src/shared/pattern-match.ts` |
+| `src/cron/daily-saju-matching.ts` | `src/cron/daily-pattern-matching.ts` |
+| `src/shared/__tests__/saju-match.test.ts` | `src/shared/__tests__/pattern-match.test.ts` |
+
+import 일괄 갱신(15+ 파일): 8 life-signal-evaluator + 6 evaluator test + `insights.ts` comment + `life-cron.ts`. SLOT_TASKS 키 `dailySajuMatching`은 DB `notification_settings.slot_name` 호환성을 위해 보존(value만 `dailyPatternMatchingTask`로). 함수명도 `dailyPatternMatching*`로 일관 변경.
+
+잔존 `saju-hypothesis.ts`·`saju-seed-fast-path.ts`·`scripts/saju-hypothesis-backtest.ts`·`weekly-report.ts`의 catalog 카운터 SELECT는 Phase 5 follow-up PR로 분리.
+
+#### 후속 정리 항목
+
+- `saju-seed-fast-path.ts`의 catalog `hit_count/miss_count` 표시 → view `total_hits/total_misses` 전환
+- `weekly-report.ts`의 사주 시드 섹션 → view 기반 재구성
+- `pattern_catalog.hit_count/miss_count/inconclusive_count` 컬럼 DROP (Phase 8)
+
+#### 결정 기록
+
+- [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md) (counter source of truth) — Phase 4가 실행 단계
+- [ADR-0024](../adr/0024-beta-binomial-bayesian-posterior.md) (Beta-Binomial posterior) — `posterior_alpha/beta/p` 산식
+- [ADR-0026](../adr/0026-pattern-prefix-rename.md) (pattern_* prefix) — 파일명까지 확장
 
 ### 19. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 업데이트)
 

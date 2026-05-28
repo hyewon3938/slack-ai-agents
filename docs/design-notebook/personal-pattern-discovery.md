@@ -68,8 +68,8 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 - [x] **Phase 1**: 스키마 일반화 + `pattern_*` rename — 테이블·컬럼 rename (`saju_signal_*` → `pattern_*`, ADR-0026), `trigger_target_type` CHECK constraint 확장(`life_signal` 추가), `pattern_metrics`에 `description TEXT NOT NULL` + `window_days INTEGER` + `hit_count/miss_count/inconclusive_count` + `status` 컬럼, `posterior_alpha/beta/p` 예약, `pattern_summary` view 신설, `saju_influence_summary` view body 재정의 (운영 자산 보존)
 - [x] **Phase 2**: 사주 시드 풀 셋 — Phase 3에서 작성된 시드를 카탈로그 풀(전체) 검토 + 누락 보완 (s1 일부만 작성된 상태였음)
 - [x] **Phase 2.5**: 사주 시드 운 레벨 차원 도입 + 자동 분포 분석 cron — `pillar_level` 컬럼(원국/대운/세운/월운/일운/cumulative), `cumulative_pillar_count` trigger(N=1..5 풀셋), `expense_category_present` 메트릭, `pillar-level-distribution-review` cron (월요일 09:15 KST). 14개 신규 시드(편재 9 + 화 오행 5). [ADR-0028](../adr/0028-pillar-level-and-threshold-pool.md)
-- [ ] **Phase 3**: `life_signal` 시드 풀 셋 — 요일(월\~일 7) / 주말(2) / 월말(1) / 월초(1) / 계절(4) 등 1차 셋. 결정론 매트릭으로 작성
-- [ ] **Phase 4**: 매칭 cron + view 정비 — 매칭 cron이 `trigger_target_type='life_signal'`도 처리하도록 확장. `pattern_summary` view 본문 작성
+- [x] **Phase 3**: `life_signal` 시드 풀 셋 + 매칭 cron 일반화 — 환경 결정론 + 임계치 풀셋 + 11종 결정론 패턴 승격 = 신규 38개 시드. `trigger_aux.kind` 7 kinds(weekday/weekday_group/month_position/season/calendar_event/threshold/behavior_baseline) discriminated union. [ADR-0029](../adr/0029-life-signal-trigger-aux-standard.md)
+- [ ] **Phase 4**: 매칭 cron 카운터 source of truth 전환 + pattern-match rename — verifyDailyMatches가 catalog 대신 `pattern_metrics` 카운터 + Bayesian posterior 산식 갱신. compactMatchedLine은 `pattern_summary` view 정렬. evidence-only 시드는 카운터 SKIP. 파일명 `saju-match.ts` → `pattern-match.ts`, `daily-saju-matching.ts` → `daily-pattern-matching.ts` (잔존 saju-* 파일은 후속 phase 진입 전 별도 PR)
 - [ ] **Phase 5**: 가설 발견·검증 업데이트 — `hypothesis-discovery`가 `life_signal` trigger를 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 출처(`pattern_kind`) 표시
 - [ ] **Phase 6**: LLM 자율 매트릭 + 승인 게이트 — 월간 LLM 슬롯이 매트릭 후보를 생성, Slack 승인 UI(`/insight metric-approve` + Block Kit inline button). 활성화된 매트릭만 매칭 cron 진입. **운영은 Claude 앱 routines 기반** ([ADR-0027](../adr/0027-llm-async-routine-unification.md))
 - [ ] **Phase 7**: Bayesian update 도입 — `posterior_p` 컬럼 채움. Beta-Binomial 사후 갱신 헬퍼(\~100줄). 가설 카드에 frequentist p값 + Bayesian posterior 병기
@@ -456,7 +456,67 @@ WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
 
 ---
 
-## Phase 4\~8 (TODO: 각 Phase 진입 시 섹션 누적)
+## Phase 4: 매칭 cron 카운터 source of truth 전환 + pattern-match rename (2026-05-28)
+
+- 이슈: [#449](https://github.com/hyewon3938/slack-ai-agents/issues/449)
+- 관련 ADR: [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md) (실행), [ADR-0024](../adr/0024-bayesian-posterior-update.md) (산식만), [ADR-0026](../adr/0026-pattern-prefix-rename.md) (파일명까지)
+- 관련 계획서: `.claude/plans/449-phase-4-metric-counter.md`
+- 상태: 설계 완료, 구현 대기
+
+### 결정 요약
+
+ADR-0023이 결정한 매트릭 단위 카운터 source of truth를 실제 코드로 실행한다. 현재는 Phase 1에서 신설된 `pattern_summary` view가 마스터 A 한 곳에서만 활용 중이고, `verifyDailyMatches`는 여전히 `pattern_catalog`의 deprecated 카운터를 UPDATE 중 — 즉 ADR-0023의 의도가 구현 단절 상태.
+
+본 phase로 4개 코드 경로가 전환된다:
+
+1. `verifyDailyMatches` — `pattern_metrics.hit_count/miss_count/inconclusive_count` + `last_matched_at` + Bayesian `posterior_alpha/beta/p` 동시 갱신. evidence-only 시드(matched IS NULL)는 status='inconclusive'만 박고 카운터 SKIP.
+2. `compactMatchedLine` — `seed.hit_count` 정렬을 `pattern_summary.total_hits`로 전환 (sync → async).
+3. `loadActiveSeeds` — catalog의 deprecated 카운터 컬럼 SELECT 제거.
+4. `matchAllSeedsForDay` — 시드 수·duration_ms 로그 (cron 부담 측정, 5초 한도 관측).
+
+추가로 ADR-0026의 prefix 통일성을 파일명까지 확장: `saju-match.ts` → `pattern-match.ts`, `daily-saju-matching.ts` → `daily-pattern-matching.ts`. 잔존 `saju-hypothesis.ts`·`saju-seed-fast-path.ts` 등은 Phase 5 진입 전 follow-up PR로 분리.
+
+### 핵심 변경
+
+- `src/shared/pattern-match.ts` (rename + verifyDailyMatches 매트릭 갱신 + compactMatchedLine async)
+- `src/shared/types.ts` — `PatternCatalog`의 hit/miss/inconclusive deprecated 표시 또는 optional
+- `src/cron/daily-pattern-matching.ts` (rename + `await compactMatchedLine`)
+- import 경로 일괄 갱신 (cron/agents/scripts)
+- 새 ADR 없음 — ADR-0023의 실행 단계
+
+### 의사결정 분기점
+
+1. **evidence-only 시드 카운터 처리** — 매트릭 0개면 카운터 자체 비대상 (verify_status='no_metric'만 박고 SKIP). 이중 source 방지 + Phase 2 패턴(`no_metric` enum) 자연 계승
+2. **정렬 기준** — `pattern_summary.total_hits` 사용. view derive 패턴 정착. aggregate_posterior_p는 Phase 7 운영 검증 전이라 미루고, 카운트 단순 정렬이 현 단계 적합
+3. **Bayesian posterior 갱신 시점** — Phase 4에서 같이 갱신 (산식 `alpha = 1+hit, beta = 1+miss`). counter source가 같은 위치에서 갱신되는 게 정합성 ↑. Phase 7은 UI/가설 카드 노출 + 임계치 정책으로 scope 축소
+4. **catalog deprecated 카운터** — 잔존 유지 + 코드 참조 완전 제거. Phase 8에서 DROP 검토 (단발 PR diff 최소화)
+5. **매칭 cron 부담 측정** — 본 PR에 포함 (간단한 시간 로그). 5초 한도 초과 시 follow-up 이슈로 인덱스/분리 cron 조치
+6. **파일명 rename 범위** — Phase 4는 `pattern-match.ts`·`daily-pattern-matching.ts` 두 쌍만. 나머지(`saju-hypothesis`·`saju-seed-fast-path`·`saju-hypothesis-backtest`)는 사용자 명시 "phase 5 진입 전 후속작업" — 별도 follow-up PR로 빼서 본 phase 의도 명확화
+
+### 포기한 안 / 미룬 항목
+
+- **pattern_summary view를 fast path `/insight pattern-summary` 명령어로 노출** — Phase 8 카드 UI와 중복, 사용자 임상 데이터 결정 기준 명확치 않음
+- **분포 분석 cron 신설(pillar-level cron 패턴 확장)** — Phase 6 LLM 슬롯 입력으로도 가능한 정보. PR 비대화 회피
+- **catalog 카운터 즉시 DROP** — backfill된 과거 값 손실 + view 정합성 검증 비용. Phase 8까지 marker로 잔존
+- **잔존 saju-* 파일 일괄 rename (saju-hypothesis 등)** — Phase 5 진입 전 별도 follow-up PR. 본 phase는 매칭 cron 중심으로 scope 한정
+- **시드 1:N 매트릭 분기 처리** — Phase 5+ 시드 1:N 매트릭이 실제 발생하는 시점에 metric_values JSONB로 매트릭별 outcome 기록 + verifyDailyMatches 분배 분기 추가
+
+### 미해결 / 가설
+
+- **매칭 cron 5초 한도** — Phase 2.5 + Phase 3 후 시드 213+개. behavior_baseline 11개가 SQL 부담 주축. 측정값에 따라 인덱스 최적화 또는 분리 cron 필요할 수 있음
+- **시드:매트릭 1:1 가정의 수명** — 현 운영 정확. Phase 6 LLM 매트릭이 동일 시드에 추가 매트릭을 붙이는 시점부터 분배 로직 필요
+
+### 회고
+
+- **catalog → metrics 카운터 전환은 4단계 deprecation 패턴이 정착되는 첫 사례**: Phase 1에서 backfill, 본 phase에서 reference 제거, Phase 8에서 DROP. 한 PR에서 다 하면 빌드 깨질 위험 있는 schema migration에서 이 패턴이 비용 대비 안전성 높음
+- **evidence-only (matched IS NULL) 분기는 Phase 2의 `no_metric` 패턴이 그대로 카운터에 살아남는 흐름** — Phase 2에서 enum + verify_status 분기를 미리 박아두지 않았으면 Phase 4 verifyDailyMatches가 evidence-only 시드를 잘못 hit/miss로 카운트할 뻔. phase 간 invariant 누적이 효과를 발휘한 케이스
+- **compactMatchedLine sync → async 전환은 PR 진단 가치가 높았다**: view SELECT 의존이 생기는 시점에 caller가 자동으로 await하는지 typecheck로 확인. `runDailyPatternMatchingDryRun` 한 곳만 caller라 변경 비용이 작았고 단일 PR로 완결됨
+- **파일명 rename은 의외로 import 일괄 갱신이 부담** — 8 evaluator + 6 test + life-cron + insights comment + 3 rename = 18 파일 동시 수정. SLOT_TASKS 키 `dailySajuMatching`만 DB 호환성을 위해 보존하는 비대칭이 발생 (DB 컬럼은 코드 rename을 쉽게 따라가지 못함을 재확인)
+- **Bayesian posterior를 Phase 4에 흡수한 결정은 정합성 ↑**: counter source가 같은 위치에서 갱신되니 Phase 7이 UI/임계치 정책에만 집중 가능. 다만 산식 검증 테스트(`posterior_alpha + 1.0` 형태)가 SQL 문자열 매칭으로만 가능해 vitest assertion이 조금 약함 — Phase 7에서 헬퍼로 추출하면서 단위 테스트 추가 예정
+
+---
+
+## Phase 5\~8 (TODO: 각 Phase 진입 시 섹션 누적)
 
 > 각 Phase 진입 시 `/design`이 본 문서에 해당 Phase 섹션을 추가한다. 템플릿: 결정 요약 / 의사결정 분기점 / 포기한 안 / 회고.
 
