@@ -135,6 +135,7 @@ const baseCtx = (
   const ilun = overrides.ilun ?? makePillar(dayStem, dayBranch);
   return {
     date,
+    userId: overrides.userId ?? 1,
     dayStem,
     dayBranch,
     natal:
@@ -741,6 +742,56 @@ describe('evaluateTrigger - cumulative_pillar_count (Phase 2.5)', () => {
       trigger_target_type: 'cumulative_pillar_count',
       trigger_aux: { element: '잘못된오행', count_min: 1 },
       pillar_level: 'cumulative',
+    });
+    const ctx = baseCtx();
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+});
+
+// ─── evaluateTrigger: life_signal (Phase 3, ADR-0029) ──────
+
+describe('evaluateTrigger - life_signal', () => {
+  it('weekday(dow=1) 시드는 월요일 ctx에 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'life_signal',
+      trigger_aux: { kind: 'weekday', dow: 1 },
+    });
+    // 2026-06-01 = 월요일
+    const ctx = baseCtx({ date: '2026-06-01' });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('weekday(dow=1) 시드는 화요일 ctx에 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'life_signal',
+      trigger_aux: { kind: 'weekday', dow: 1 },
+    });
+    const ctx = baseCtx({ date: '2026-06-02' });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('season(spring) 시드는 5월 ctx에 true', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'life_signal',
+      trigger_aux: { kind: 'season', season: 'spring' },
+    });
+    const ctx = baseCtx({ date: '2026-05-17' });
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('잘못된 trigger_aux는 false (isLifeSignalAux 가드)', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'life_signal',
+      trigger_aux: { kind: 'invalid_kind' } as unknown as Record<string, unknown>,
+    });
+    const ctx = baseCtx();
+    expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('trigger_aux=null이면 false', async () => {
+    const seed = baseSeed({
+      trigger_target_type: 'life_signal',
+      trigger_aux: null,
     });
     const ctx = baseCtx();
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
