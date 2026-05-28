@@ -5,7 +5,7 @@ import { queryOne } from '../../shared/db.js';
 import { getTodayISO, getEffectiveTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import { saveDiaryEntry, pickDiaryConfirmation, naturalDelay } from './diary-fast-path.js';
-import { trySajuSeedFastPath } from './saju-seed-fast-path.js';
+import { tryPatternSeedFastPath } from './pattern-seed-fast-path.js';
 import { formatFortuneText } from '../../shared/fortune-format.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
@@ -120,7 +120,7 @@ const showTodayDiary = async (say: Parameters<AgentHandler>[1], userId: number):
  * 일기 자동 저장 + 운세 조회 fast path + 오늘 일기 조회.
  * LLM 에이전트 루프 없음 — 모든 비명령 메시지는 일기로 저장.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
   return async (message, say) => {
     const text = 'text' in message ? (message.text ?? '') : '';
@@ -142,7 +142,7 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
     if (await tryFortuneFastPath(trimmed, say, userId)) return;
 
     // ── fast path: 사주 시드 토글 ──
-    if (await trySajuSeedFastPath(trimmed, say, userId)) return;
+    if (await tryPatternSeedFastPath(trimmed, say, userId)) return;
 
     // ── fast path: 오늘 일기 조회 ──
     if (TODAY_DIARY_RE.test(trimmed)) {

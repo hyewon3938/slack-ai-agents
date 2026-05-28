@@ -5,7 +5,7 @@
  * 누적된 시드 outcome + diary_meta_tags 60일을 1회 스캔해 후보 가설 콘솔 출력.
  * 사용자가 결과를 보고 가설 5\~10개를 직접 등록 (`/insight 가설` 명령 또는 신규 register API).
  *
- * 실행: yarn tsx scripts/saju-hypothesis-backtest.ts --user 1 --lookback 60
+ * 실행: yarn tsx scripts/pattern-hypothesis-backtest.ts --user 1 --lookback 60
  */
 
 import { discoverCandidates } from '../src/agents/insight/hypothesis-discovery.js';

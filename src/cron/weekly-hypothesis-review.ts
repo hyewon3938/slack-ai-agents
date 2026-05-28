@@ -21,7 +21,7 @@ import {
   evaluateStatusTransition,
   loadActiveHypotheses,
   type HypothesisStat,
-} from '../shared/saju-hypothesis.js';
+} from '../shared/pattern-hypothesis.js';
 import { discoverCandidates } from '../agents/insight/hypothesis-discovery.js';
 import {
   buildWeeklyReviewBlocks,
