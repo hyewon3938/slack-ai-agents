@@ -110,7 +110,8 @@ export interface DailyContext {
 
 // ─── life_signal trigger_aux 타입 (ADR-0029) ───────────────
 // Phase 3 (마스터 #434) — life_signal 단일 type + trigger_aux.kind 분기
-// 8 kinds: weekday / weekday_group / month_position / season / calendar_event / lunar / threshold / behavior_baseline
+// 7 kinds: weekday / weekday_group / month_position / season / calendar_event / threshold / behavior_baseline
+// (lunar는 폐기 — 사주는 절기 기준이지 음력 기준이 아니다. 명절은 calendar_event(holiday/holiday_next)로 커버.)
 
 export type LifeSignalKind =
   | 'weekday'
@@ -118,7 +119,6 @@ export type LifeSignalKind =
   | 'month_position'
   | 'season'
   | 'calendar_event'
-  | 'lunar'
   | 'threshold'
   | 'behavior_baseline';
 
@@ -153,11 +153,6 @@ export interface CalendarEventAux {
   day_of_month?: number;
 }
 
-export interface LunarAux {
-  kind: 'lunar';
-  day: 1 | 15;
-}
-
 export interface ThresholdAux {
   kind: 'threshold';
   source: 'sleep_minutes' | 'routine_streak_max';
@@ -189,7 +184,6 @@ export type LifeSignalAux =
   | MonthPositionAux
   | SeasonAux
   | CalendarEventAux
-  | LunarAux
   | ThresholdAux
   | BehaviorBaselineAux;
 
@@ -232,8 +226,6 @@ export const isLifeSignalAux = (v: unknown): v is LifeSignalAux => {
         obj['event'] === 'holiday_next' ||
         obj['event'] === 'autopay_day'
       );
-    case 'lunar':
-      return obj['day'] === 1 || obj['day'] === 15;
     case 'threshold':
       return (
         (obj['source'] === 'sleep_minutes' || obj['source'] === 'routine_streak_max') &&

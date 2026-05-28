@@ -9,7 +9,7 @@
 
 마스터 #434 Phase 3 진입 시점에 `life_signal` 카테고리에 들어갈 시드가 세 갈래로 갈라졌다:
 
-1. **환경 시그널** — 요일 / 주말·평일 / 월말·월초·중순 / 계절 / 공휴일 / 음력 / 자동이체일. 캘린더만 보면 평가 가능, 본인 데이터 무관
+1. **환경 시그널** — 요일 / 주말·평일 / 월말·월초·중순 / 계절 / 공휴일. 캘린더만 보면 평가 가능, 본인 데이터 무관
 2. **임계치 풀셋 시드** — 수면 ≤ N시간 (N=5,6,7,8), 루틴 streak ≥ N일 (N=3,5,7,14,30). 본인 시계열 기반. Phase 2.5 풀셋 임계치 정신(ADR-0028) 확장
 3. **11종 결정론 패턴 승격** — `insights.ts`의 11개 detect 함수(`detectStreak`·`detectSleepTrend`·`detectSlotGap`·... `detectSpottyPattern`)를 시드로 옮기는 작업. baseline 비교 SQL 포함
 
@@ -34,18 +34,19 @@
 
 ### `trigger_aux.kind` 표준 (Phase 3 도입분)
 
+총 **7 kinds**. 음력(`lunar`) kind는 설계 단계에 포함됐다가 구현 직전 폐기 — 사유는 아래 "폐기 결정" 참조.
+
 | kind | 의미 | trigger_aux 예시 | 평가 방식 |
 |------|------|-----------------|----------|
 | `weekday` | 특정 요일 발현 | `{kind:'weekday', dow:1}` | `EXTRACT(DOW FROM ctx.date) === dow` (1=월) |
 | `weekday_group` | 주말 / 평일 | `{kind:'weekday_group', group:'weekend'}` | dow ∈ {0,6} ↔ {1..5} |
 | `month_position` | 월말 / 월초 / 중순 | `{kind:'month_position', position:'end', range_days:3}` | 월 마지막/처음 N일 |
 | `season` | 4계절 | `{kind:'season', season:'spring'}` | 3\~5월 ↔ spring 등 |
-| `calendar_event` | 공휴일 / 공휴일 다음날 | `{kind:'calendar_event', event:'holiday'}` | 한국 공휴일 테이블 lookup |
-| `lunar` | 음력 1일 / 15일 | `{kind:'lunar', day:15}` | `saju-calendar.ts:solarToLunar` |
+| `calendar_event` | 공휴일 / 공휴일 다음날 / 자동이체일 | `{kind:'calendar_event', event:'holiday'}` | 한국 공휴일 lookup + day-of-month 매칭 |
 | `threshold` | 임계치 풀셋 (sleep·streak 등) | `{kind:'threshold', source:'sleep_minutes', op:'lte', value:420}` | source별 SQL evaluator |
 | `behavior_baseline` | 11종 승격 (동적 baseline) | `{kind:'behavior_baseline', signal_name:'streak'}` | `insights.ts` detect 함수를 evaluator로 매핑 |
 
-각 kind는 `src/shared/life-signal-evaluators/<kind>.ts` 모듈 1개로 분리 (디렉토리 신설). 모든 evaluator 함수는 동일 시그니처:
+각 kind는 `src/shared/life-signal-evaluators/<kind>.ts` 모듈 1개로 분리 (디렉토리 신설, 총 7 모듈). 모든 evaluator 함수는 동일 시그니처:
 
 ```typescript
 type LifeSignalEvaluator = (
@@ -67,7 +68,6 @@ export type LifeSignalKind =
   | 'month_position'
   | 'season'
   | 'calendar_event'
-  | 'lunar'
   | 'threshold'
   | 'behavior_baseline';
 
@@ -103,7 +103,7 @@ export interface BehaviorBaselineAux extends LifeSignalAuxBase {
     | 'spottyPattern';
 }
 
-// (8 kind 모두 비슷한 패턴으로 정의)
+// (7 kind 모두 비슷한 패턴으로 정의)
 
 export type LifeSignalAux =
   | WeekdayAux
@@ -111,7 +111,6 @@ export type LifeSignalAux =
   | MonthPositionAux
   | SeasonAux
   | CalendarEventAux
-  | LunarAux
   | ThresholdAux
   | BehaviorBaselineAux;
 ```
@@ -175,14 +174,27 @@ Phase 1 도입된 `pattern_kind ∈ {saju, life_signal}` 컬럼은 **유지**. �
 
 ### 후속 작업
 
-- [ ] Phase 3 마이그레이션 072: `life_signal` 시드 INSERT (\~35-40개)
-- [ ] `src/shared/life-signal-evaluators/` 디렉토리 신설 (kind별 모듈 8개)
-- [ ] `evaluateTrigger`에 `case 'life_signal'` 추가 + evaluators 객체 dispatch
-- [ ] TypeScript type 정의 (`LifeSignalAux` discriminated union)
-- [ ] `behavior_baseline` evaluator 매핑 — 11개 detect 함수 SQL을 evaluator로 옮기되 `insights.ts`는 *변경 없음* (일시 공존)
-- [ ] vitest: kind별 evaluator 단위 테스트
-- [ ] 매칭 cron 부담 측정 — Phase 2.5 후 시드 175개 + Phase 3 신규 \~35-40개 = \~215개. 매일 매칭 5초 한도 점검
-- [ ] 도메인 문서 `insight.md` Section 17 본문 작성 (`/build` 단계)
+- [x] Phase 3 마이그레이션 072: `life_signal` 시드 INSERT (38개)
+- [x] `src/shared/life-signal-evaluators/` 디렉토리 신설 (kind별 모듈 7개)
+- [x] `evaluateTrigger`에 `case 'life_signal'` 추가 + `dispatchLifeSignal` switch
+- [x] TypeScript type 정의 (`LifeSignalAux` discriminated union)
+- [x] `behavior_baseline` evaluator 매핑 — 11개 detect 함수 SQL을 evaluator로 옮기되 `insights.ts`는 *변경 없음* (일시 공존)
+- [x] vitest: kind별 evaluator 단위 테스트
+- [ ] 매칭 cron 부담 측정 — Phase 2.5 후 시드 175개 + Phase 3 신규 38개 = \~213개. 매일 매칭 5초 한도 점검 (Phase 4)
+- [x] 도메인 문서 `insight.md` Section 17 본문 작성
+
+### 폐기 결정 — `lunar` kind (구현 직전)
+
+설계 단계(8 kinds)에 포함됐던 `lunar` kind는 구현 직후 코드 cleanup에서 폐기. 사유:
+
+1. **사주 매칭 정합성 불일치** — 사주 운(運) 단위는 절기(立春·入夏 등) 기준이지 음력 1일/15일 기준이 아니다. `lunar` kind를 `life_signal`(사주가 아닌 결정론 trigger)에 두면 어휘 의미는 맞으나 사주 도메인 컨텍스트에서 혼동 유발
+2. **명절/계절 효과는 다른 kind로 충분 커버** —
+   - 설/추석 등 명절 후유증 가설은 `calendar_event:holiday_next`로 검증 (한국 공휴일 lookup, 양력)
+   - 계절 환절기 효과는 `season:spring|autumn`로 검증 (양력 월 기반)
+   - 음력 보름달/초하루 자체가 본인 임상 가설로 명시된 적 없음 (가설 0개)
+3. **양력→음력 변환 의존성 제거** — `korean-lunar-calendar` 같은 외부 패키지 또는 정적 매핑 테이블 의존을 1개 더 만들 필요가 없어짐
+
+음력 1/15 단일 효과에 대한 본인 임상 가설이 발견되면, 그때 별도 kind로 재도입 + 변환 인프라 신설. 현 단계 catalog에는 음력 시드 0개로 시작했으므로 폐기에 따른 데이터 손실 없음.
 
 ---
 

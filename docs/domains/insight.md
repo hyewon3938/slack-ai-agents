@@ -993,12 +993,11 @@ Phase 1 ADR-0022(`life_signal` 추가)와 Phase 2 ADR-0026(`pattern_*` rename) �
 | `weekday_group` | weekend / weekday 분류 | 2 |
 | `month_position` | start (1\~3일) / end (말일-3\~말일) / mid (11\~20일) | 3 |
 | `season` | spring (3\~5월) / summer (6\~8) / autumn (9\~11) / winter (12·1·2) | 4 |
-| `calendar_event` | 한국 공휴일 / 공휴일 다음날 / 자동이체일 | 2 (autopay_day는 follow-up) |
-| `lunar` | 음력 초하루 / 보름 | 0 (양력→음력 변환 미구현, follow-up) |
+| `calendar_event` | 한국 공휴일 / 공휴일 다음날 | 2 (자동이체일은 후속 — 사용자별 day_of_month 설정 필요) |
 | `threshold` | 수면 분 ≤ N (4개) + 루틴 streak ≥ N일 (5개) | 9 |
 | `behavior_baseline` | `insights.ts` 11종 detect 함수 위임 | 11 |
 
-총 **38개 신규 시드** (1차 catalog INSERT 기준). `lunar` 2개, `autopay_day` 1개는 follow-up.
+총 **7 kinds / 38개 신규 시드** (catalog INSERT 기준). 설계 시 8 kinds였으나 `lunar`(음력 1·15일) kind는 구현 직후 폐기 — 사주 운(運)은 절기 기준이지 음력 1/15 기준이 아니며, 명절/계절 효과는 `calendar_event:holiday_next`와 `season`으로 커버 가능. 본인 음력 단일 효과에 대한 임상 가설도 0개. 상세: [ADR-0029 폐기 결정 섹션](../adr/0029-life-signal-trigger-aux-standard.md).
 
 #### 평가 흐름
 
@@ -1010,7 +1009,7 @@ matchAllSeedsForDay(userId, date)
        evaluateTrigger(seed, ctx, stemMap, branchMap)
          → case 'life_signal':
               if (!isLifeSignalAux(aux)) return false   // type guard
-              return dispatchLifeSignal(aux, ctx)        // 8-way dispatch
+              return dispatchLifeSignal(aux, ctx)        // 7-way dispatch
                 → src/shared/life-signal-evaluators/<kind>.ts
 ```
 
@@ -1039,19 +1038,17 @@ matchAllSeedsForDay(userId, date)
 #### 외부 의존성 (1차 정적 상수)
 
 - 한국 공휴일: `src/shared/life-signal-evaluators/korean-holidays.ts` — 2026년 15개 양력 날짜 (`KOREAN_HOLIDAYS` Set). 2027+ 데이터는 follow-up
-- 음력 변환: 미구현 (`evaluateLunar`는 stub `return false`). follow-up
 
 #### 파일 구조 갱신
 
 ```
 src/shared/
 ├── life-signal-evaluators/         (신규 디렉토리)
-│   ├── index.ts                    dispatcher (kind → evaluator)
+│   ├── index.ts                    dispatcher (kind → evaluator, 7-way)
 │   ├── weekday.ts                  WeekdayAux / WeekdayGroupAux
 │   ├── month-position.ts           start / end / mid
 │   ├── season.ts                   봄·여름·가을·겨울
 │   ├── calendar-event.ts           공휴일 / 공휴일 다음날 / 자동이체일
-│   ├── lunar.ts                    초하루 / 보름 (stub, follow-up)
 │   ├── threshold.ts                sleep_minutes / routine_streak_max
 │   ├── behavior-baseline.ts        insights.ts 11종 detect 위임
 │   ├── korean-holidays.ts          KOREAN_HOLIDAYS 정적 Set (2026)

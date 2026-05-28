@@ -12,9 +12,12 @@
 --   강한 임상 가설 3개만 결정론 매트릭 (life_sleep_le_7, life_dow_월, life_holiday)
 --   나머지 35개는 evidence-only (matched=NULL, verify_status='no_metric')
 --
--- 1차 제외 (follow-up):
---   life_lunar_1 / life_lunar_15 — 양력→음력 변환 미구현
---   life_autopay — day_of_month 사용자 설정 UI 미구현
+-- 폐기 결정 (구현 직후):
+--   life_lunar_1 / life_lunar_15 — lunar kind 폐기. 사주는 절기 기준이지 음력 1/15 기준 아님,
+--     명절/계절 효과는 calendar_event:holiday_next + season으로 커버, 임상 가설 0개 (ADR-0029 폐기 결정)
+--
+-- Follow-up (재진입 가능):
+--   life_autopay — day_of_month 사용자 설정 UI 미구현. 본인 자동이체일 임시 박기는 가능
 
 BEGIN;
 

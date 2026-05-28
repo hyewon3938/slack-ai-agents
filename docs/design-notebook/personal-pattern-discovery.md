@@ -386,22 +386,21 @@ WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
 
 `life_signal` 시드를 세 갈래로 풀세트 등록 + 매칭 cron이 `case 'life_signal'`로 일반화:
 
-1. **환경 결정론 시드** (논리적 풀셋 A군 \~20-25개) — 요일 7 + 주말/평일 2 + 월말/월초/중순 3 + 계절 4 + 공휴일 + 공휴일 다음날 2 + 음력 1·15일 2 + 자동이체일 1
+1. **환경 결정론 시드** (논리적 풀셋 A군 \~18개) — 요일 7 + 주말/평일 2 + 월말/월초/중순 3 + 계절 4 + 공휴일 + 공휴일 다음날 2
 2. **임계치 풀셋 시드** (Phase 2.5 풀셋 임계치 정신 확장) — 수면 ≤ N시간 4개 (N=5,6,7,8) + 루틴 streak ≥ N일 풀셋 (N=3,5,7,14,30)
 3. **11종 결정론 패턴 시드 승격** — `insights.ts` 11개 detect 함수(streak·sleepTrend·slotGap·weekComparison·overdueAlert·categorySkew·drift·recovery·lapseAlert·weeklyRegression·spottyPattern)를 `behavior_baseline` kind 시드로 등록
 
-총 신규 시드 \~35-40개. 모두 `trigger_target_type='life_signal'` + `pattern_kind='life_signal'`. `trigger_aux.kind`(weekday / weekday_group / month_position / season / calendar_event / lunar / threshold / behavior_baseline)로 평가 명세 분기.
+총 신규 시드 **38개**. 모두 `trigger_target_type='life_signal'` + `pattern_kind='life_signal'`. `trigger_aux.kind`(weekday / weekday_group / month_position / season / calendar_event / threshold / behavior_baseline) **7 kinds**로 평가 명세 분기.
 
-매칭 cron(`evaluateTrigger`)에 `case 'life_signal'` 추가 + `src/shared/life-signal-evaluators/` 모듈 디렉토리 신설(kind별 evaluator 8개). `pattern_summary` view 본문은 Phase 4로 분리.
+매칭 cron(`evaluateTrigger`)에 `case 'life_signal'` 추가 + `src/shared/life-signal-evaluators/` 모듈 디렉토리 신설(kind별 evaluator 7개). `pattern_summary` view 본문은 Phase 4로 분리.
 
 ### 핵심 변경
 
-- 마이그레이션 072: 신규 life_signal 시드 INSERT (\~35-40개)
-- `src/shared/life-signal-evaluators/` — kind별 evaluator 8개 모듈
-- `src/shared/saju-match.ts:evaluateTrigger` — `case 'life_signal'` 추가, evaluators dispatch
-- `src/shared/types.ts` — `LifeSignalKind` enum + `LifeSignalAux` discriminated union
-- `src/shared/saju-calendar.ts` — 음력 변환 함수 확장 (기존 함수 재사용 또는 신설)
-- 공휴일 lookup — 한국 공휴일 테이블(`korean_holidays`) 신설 또는 정적 상수
+- 마이그레이션 072: 신규 life_signal 시드 INSERT (38개)
+- `src/shared/life-signal-evaluators/` — kind별 evaluator 7개 모듈 (lunar 폐기 — 폐기 결정 섹션 참조)
+- `src/shared/saju-match.ts:evaluateTrigger` — `case 'life_signal'` 추가, `dispatchLifeSignal` switch
+- `src/shared/saju-match.ts` — `LifeSignalKind` enum + `LifeSignalAux` discriminated union + `isLifeSignalAux` type guard
+- 공휴일 lookup — `korean-holidays.ts` 정적 상수(2026년 15개 양력 날짜)
 - 매트릭 정책 = 혼합 — 강한 임상 가설 있는 시드(예: 수면 ≤ 7시간 → 다음날 health_complaint, 월요일 → 일정 폭주)만 결정론 매트릭 채움. 나머지는 evidence-only(Phase 2 패턴)
 - 잔소리 파이프라인(`insights.ts`) 그대로 유지 — 시드는 데이터 누적만, Phase 8 카드 UI에서 통합
 
@@ -413,7 +412,7 @@ WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
 4. **11종 승격** — Phase 3 포함. 시드 등록만, 잔소리 파이프라인은 기존 `insights.ts` SQL 그대로 유지(일시 공존). Phase 8 카드 UI에서 통합
 5. **수면·streak 임계치 풀셋도 Phase 3 포함** — ADR-0028 풀셋 임계치 정신 확장. 임의값 배제 원칙과 일치
 6. **`trigger_target_type` 어휘** — `life_signal` 단일 통합. `behavior_signal` 분리 안 함. 평가 분기 본질은 type이 아니라 kind. ADR-0029
-7. **`trigger_aux.kind` 표준** — 8 kind(weekday/weekday_group/month_position/season/calendar_event/lunar/threshold/behavior_baseline). evaluator 모듈 1:1 매핑. discriminated union 타입 안전성
+7. **`trigger_aux.kind` 표준** — 7 kind(weekday/weekday_group/month_position/season/calendar_event/threshold/behavior_baseline). evaluator 모듈 1:1 매핑. discriminated union 타입 안전성. (설계 시 8 kind였으나 `lunar`는 구현 직전 폐기 — 아래 "폐기 결정" 참조)
 
 ### 사용자 임상 데이터 (description에 박힘)
 
@@ -433,12 +432,22 @@ WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
 - **임계치 매트릭 자동 매핑** — Phase 6 LLM 매트릭 발견 슬롯에 맡김 (사주 풀세트 패턴과 일치)
 - **11종 detect 함수 폐기 + 시드 evaluator로 source of truth 일원화** — 일시 공존 유지. Phase 8 시점에 일원화 검토
 
+### 폐기 결정 (구현 직후 cleanup)
+
+- **`lunar` kind / 음력 1·15일 시드** — 구현 직후 PR cleanup에서 폐기. 사유:
+  - 사주 운(運) 단위는 절기(立春·入夏 등) 기준이지 음력 1/15 기준이 아니다 → `life_signal` 카테고리에 두면 사주 도메인과 어휘 충돌
+  - 명절 후유증 가설은 `calendar_event:holiday_next`(양력 한국 공휴일 lookup)로 커버 가능
+  - 계절 환절기 효과는 `season:spring|autumn`로 커버 가능
+  - 본인 음력 1/15 단일 효과에 대한 임상 가설 0개 → 시드 후보로 안 두는 게 카탈로그 순도 ↑
+  - 양력→음력 변환 인프라(`korean-lunar-calendar` 패키지 등) 의존 1개 제거
+  - 임상 가설 발견 시 별도 kind로 재도입 + 변환 인프라 신설 (ADR-0029 "폐기 결정" 섹션)
+- **`autopay_day` kind 분리** — 시드는 유지하되 별도 kind 없이 `calendar_event:autopay_day`로 흡수. 자동이체일 추적이 환경 결정론 시그널이라는 점은 동일
+
 ### 미해결 / 가설
 
 - **매칭 cron 부담** — Phase 2.5 후 175개 시드 + Phase 3 신규 \~35-40개 = \~215개. 매일 매칭 5초 한도 초과 가능. `behavior_baseline` kind는 baseline SQL이 무거우므로 측정 필수
 - **공휴일 데이터 source** — 한국 공휴일 정적 상수(\~15개/년) vs API. 1차는 정적 상수, 운영 후 API 검토
 - **자동이체일 본인 명시 일자** — 사용자별 설정 테이블 필요 or `.env` 박기. 1차는 한 시드 등록 + 본인 day_of_month 임시 박기 (`trigger_aux.day_of_month`), 사용자 설정 UI는 follow-up
-- **음력 변환 정확성** — `saju-calendar.ts`에 이미 양력→음력 변환 있으면 재사용, 없으면 한 곳에서 신설
 - **잔소리 매트릭 → 시드 매트릭 source 일원화 비용** — Phase 8 시점에 11종 detect 함수 폐기 + 시드 evaluator만 유지로 일원화. 잔소리 메시지 빌드는 별도 layer
 
 ### 회고 (TODO: `/build` 구현 후 보강)
