@@ -53,9 +53,6 @@ export interface SajuSeed {
   pillar_level: PillarLevel | null;
   active: boolean;
   source: 'seed' | 'llm_promoted';
-  hit_count: number;
-  miss_count: number;
-  inconclusive_count: number;
 }
 
 export interface SajuMetric {
@@ -346,7 +343,7 @@ export const loadActiveSeeds = async (userId: number): Promise<SajuSeedWithMetri
   const seeds = await query<SeedRow>(
     `SELECT id, user_id, name, sipsin, description,
             trigger_target_type, trigger_target_id, trigger_aux, pillar_level,
-            active, source, hit_count, miss_count, inconclusive_count
+            active, source
        FROM pattern_catalog
       WHERE user_id = $1 AND active = true
       ORDER BY id`,
@@ -730,6 +727,7 @@ export const matchAllSeedsForDay = async (
   userId: number,
   date: string,
 ): Promise<SeedMatchResult[]> => {
+  const t0 = Date.now();
   const ctx = await getDailyContext(userId, date);
   if (!ctx) return [];
   const seeds = await loadActiveSeeds(userId);
@@ -753,7 +751,7 @@ export const matchAllSeedsForDay = async (
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           console.error(
-            `[saju-match] metric 평가 실패 seed=${seed.name} metric=${m.metric_name}: ${errMsg}`,
+            `[pattern-match] metric 평가 실패 seed=${seed.name} metric=${m.metric_name}: ${errMsg}`,
           );
         }
       }
@@ -767,6 +765,11 @@ export const matchAllSeedsForDay = async (
       : triggerActivated && metricEvaluations.some((e) => e.passed);
     results.push({ seed, triggerActivated, metricEvaluations, matched, isEvidenceOnly });
   }
+
+  const elapsedMs = Date.now() - t0;
+  console.warn(
+    `[pattern-match] user=${userId} date=${date} seeds=${seeds.length} elapsed=${elapsedMs}ms`,
+  );
   return results;
 };
 
@@ -812,56 +815,109 @@ export const recordDailyMatches = async (
 // ─── 검증 사이클 (다음날 verify_status 확정 + outcome 카운트 누적) ─────
 
 export const verifyDailyMatches = async (userId: number): Promise<void> => {
-  // 어제 trigger_activated=true 매칭의 pending → hit/miss 확정
-  // Phase 1: 카운터는 pattern_catalog(deprecated) 유지 — 매트릭 단위 이전은 Phase 4에서.
+  // 어제 trigger_activated=true + matched IS NOT NULL인 pending → hit/miss 확정 + pattern_metrics 카운터 UPDATE.
+  // ADR-0023: counter source of truth는 pattern_metrics. ADR-0024: posterior_alpha/beta Beta-Binomial.
   const pending = await query<{ id: number; pattern_id: number; matched: boolean | null }>(
     `SELECT id, pattern_id, matched
        FROM pattern_matches
       WHERE user_id = $1 AND verify_status = 'pending'
         AND date <= (CURRENT_DATE - INTERVAL '1 day')
-        AND trigger_activated = true`,
+        AND trigger_activated = true
+        AND matched IS NOT NULL`,
     [userId],
   );
 
   for (const row of pending.rows) {
     const outcome = row.matched ? 'hit' : 'miss';
     await query(`UPDATE pattern_matches SET verify_status = $1 WHERE id = $2`, [outcome, row.id]);
-    const counter = outcome === 'hit' ? 'hit_count' : 'miss_count';
-    await query(`UPDATE pattern_catalog SET ${counter} = ${counter} + 1 WHERE id = $1`, [
-      row.pattern_id,
-    ]);
+    if (outcome === 'hit') {
+      await query(
+        `UPDATE pattern_metrics
+            SET hit_count       = hit_count + 1,
+                last_matched_at = NOW(),
+                posterior_alpha = posterior_alpha + 1.0,
+                posterior_p     = (posterior_alpha + 1.0) /
+                                  (posterior_alpha + posterior_beta + 1.0)
+          WHERE pattern_id = $1 AND status = 'active'`,
+        [row.pattern_id],
+      );
+    } else {
+      await query(
+        `UPDATE pattern_metrics
+            SET miss_count      = miss_count + 1,
+                last_matched_at = NOW(),
+                posterior_beta  = posterior_beta + 1.0,
+                posterior_p     = posterior_alpha /
+                                  (posterior_alpha + posterior_beta + 1.0)
+          WHERE pattern_id = $1 AND status = 'active'`,
+        [row.pattern_id],
+      );
+    }
   }
 
-  // trigger_activated=false는 inconclusive 처리 (시드는 카운트하되 outcome에 영향 X)
-  await query(
-    `UPDATE pattern_matches
-        SET verify_status = 'inconclusive'
+  // trigger_activated=false 또는 matched IS NULL(evidence-only)은 inconclusive 처리.
+  // matched IS NOT NULL이지만 trigger_activated=false인 케이스만 매트릭 inconclusive_count++.
+  const inconclusiveRows = await query<{
+    id: number;
+    pattern_id: number;
+    matched: boolean | null;
+  }>(
+    `SELECT id, pattern_id, matched
+       FROM pattern_matches
       WHERE user_id = $1 AND verify_status = 'pending'
         AND date <= (CURRENT_DATE - INTERVAL '1 day')
-        AND trigger_activated = false`,
+        AND (trigger_activated = false OR matched IS NULL)`,
     [userId],
   );
+
+  for (const row of inconclusiveRows.rows) {
+    await query(`UPDATE pattern_matches SET verify_status = 'inconclusive' WHERE id = $1`, [
+      row.id,
+    ]);
+    if (row.matched !== null) {
+      await query(
+        `UPDATE pattern_metrics
+            SET inconclusive_count = inconclusive_count + 1,
+                last_matched_at    = NOW()
+          WHERE pattern_id = $1 AND status = 'active'`,
+        [row.pattern_id],
+      );
+    }
+  }
 };
 
 // ─── Slack 한 줄 압축 ────────────────────────────────────
 
 const MAX_LINE_SEEDS = 3;
 
-export const compactMatchedLine = (
+export const compactMatchedLine = async (
   ctx: DailyContext,
   results: SeedMatchResult[],
-): string | null => {
+): Promise<string | null> => {
   const matched = results.filter((r) => r.matched);
   if (matched.length === 0) return null;
 
-  // 우선순위: hit_count 높은 시드 = 검증된 시드 우선 (재현성 신뢰도)
-  matched.sort((a, b) => b.seed.hit_count - a.seed.hit_count);
+  // 우선순위: pattern_summary view의 total_hits 높은 시드 = 검증된 시드 우선 (재현성 신뢰도)
+  // ADR-0023: 시드 단위 합계는 view에서 derive (catalog 카운터 의존 제거).
+  const patternIds = matched.map((r) => r.seed.id);
+  const summary = await query<{ pattern_id: number; total_hits: string }>(
+    `SELECT pattern_id, total_hits
+       FROM pattern_summary
+      WHERE pattern_id = ANY($1)`,
+    [patternIds],
+  );
+  const hitsByPattern = new Map<number, number>();
+  for (const row of summary.rows) {
+    hitsByPattern.set(row.pattern_id, Number(row.total_hits));
+  }
+
+  matched.sort((a, b) => (hitsByPattern.get(b.seed.id) ?? 0) - (hitsByPattern.get(a.seed.id) ?? 0));
   const top = matched.slice(0, MAX_LINE_SEEDS);
 
   const labels = top.map((r) => {
     const passedDomains = new Set(r.metricEvaluations.filter((e) => e.passed).map((e) => e.domain));
-    const summary = Array.from(passedDomains).join('/');
-    return `${r.seed.sipsin ?? r.seed.name} (${summary})`;
+    const summaryText = Array.from(passedDomains).join('/');
+    return `${r.seed.sipsin ?? r.seed.name} (${summaryText})`;
   });
 
   return `오늘 일운 ${ctx.dayStem}${ctx.dayBranch} — ${labels.join(', ')}`;

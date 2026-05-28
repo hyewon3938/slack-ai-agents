@@ -16,7 +16,7 @@ vi.mock('../../insights.js', () => ({
 }));
 
 import * as insights from '../../insights.js';
-import type { BehaviorBaselineAux, DailyContext } from '../../saju-match.js';
+import type { BehaviorBaselineAux, DailyContext } from '../../pattern-match.js';
 import { evaluateBehaviorBaseline } from '../behavior-baseline.js';
 
 const baseCtx = (date: string): DailyContext => ({ date, userId: 1 }) as unknown as DailyContext;

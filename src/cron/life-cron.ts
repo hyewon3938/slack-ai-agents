@@ -50,7 +50,7 @@ import { weeklyReportTask } from './weekly-report.js';
 import { weeklyLlmInsightTask } from './weekly-llm-insight.js';
 import { monthlyLlmInsightTask } from './monthly-llm-insight.js';
 import { verifyLlmInsightsTask } from './verify-llm-insights.js';
-import { dailySajuMatchingTask } from './daily-saju-matching.js';
+import { dailyPatternMatchingTask } from './daily-pattern-matching.js';
 import { diaryMetaExtractTask } from './diary-meta-extract.js';
 import { weeklyHypothesisReviewTask } from './weekly-hypothesis-review.js';
 import { pillarLevelDistributionReviewTask } from './pillar-level-distribution-review.js';
@@ -658,7 +658,7 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   verifyLlmInsights: async () => {
     await verifyLlmInsightsTask();
   },
-  dailySajuMatching: dailySajuMatchingTask,
+  dailySajuMatching: dailyPatternMatchingTask,
   diaryMetaExtract: diaryMetaExtractTask,
   weeklyHypothesisReview: weeklyHypothesisReviewTask,
   pillarLevelDistributionReview: pillarLevelDistributionReviewTask,

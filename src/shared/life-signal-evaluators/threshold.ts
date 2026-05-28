@@ -9,7 +9,7 @@
  */
 
 import { query } from '../db.js';
-import type { DailyContext, ThresholdAux } from '../saju-match.js';
+import type { DailyContext, ThresholdAux } from '../pattern-match.js';
 
 interface SleepMinutesRow {
   minutes: string;

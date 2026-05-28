@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DailyContext, SeasonAux } from '../../saju-match.js';
+import type { DailyContext, SeasonAux } from '../../pattern-match.js';
 import { evaluateSeason } from '../season.js';
 
 const baseCtx = (date: string): DailyContext => ({ date, userId: 1 }) as unknown as DailyContext;

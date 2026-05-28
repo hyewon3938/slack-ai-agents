@@ -750,7 +750,7 @@ interface ConfirmedHypothesisRow {
  * 오늘 trigger가 발현한 confirmed 가설들의 잔소리 라인 반환.
  * - confirmed 가설(pattern_hypotheses.status='confirmed') × 오늘 pattern_matches.trigger_activated=true 조인
  * - 가설별 최신 rate_ratio를 같이 보여줘 효과 크기 인지
- * - 빈 결과면 빈 배열 반환 → daily-saju-matching 측에서 분기
+ * - 빈 결과면 빈 배열 반환 → daily-pattern-matching 측에서 분기
  */
 export const pickConfirmedHypothesisLines = async (
   userId: number,
