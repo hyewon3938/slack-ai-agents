@@ -369,9 +369,11 @@ WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
 - **천간 정관·정인 등 다른 십성도 같은 구조로 분화** — 편재만 1차 도입. 운영 검증 후 다른 십성 동일 패턴 복제 가능 (후속 phase)
 - **`pillar_level='wonguk'` 시드** — 원국은 본인 사주 상수(천간 편재 항상 ON, 지지 편재 항상 OFF). 변동 가능한 일운·월운만 1차 도입. 원국 영향 검증은 누적 카운트 trigger가 대신함
 
-### 회고 (TODO: `/build` 구현 후 보강)
+### 회고
 
-> 회고는 PR 머지 후 추가.
+- **풀셋 임계치 정신을 운 레벨로 확장한 결정이 후속 phase의 길을 열었다** — Phase 2의 60갑자 풀셋과 본 phase의 운 레벨 풀셋(편재 일운/월운, 누적 카운트 시드)이 같은 "임의값 배제 + 데이터로 분포 발견" 원칙을 공유. Phase 3에서 life_signal 임계치 풀셋(수면 4개·streak 5개)을 동일 패턴으로 박을 수 있었던 건 본 phase가 인프라보다 **원칙을 먼저 정립**해 둔 덕
+- **분포 분석 cron은 "운영 검증 1\~3개월 후 회고"를 대체하지 않는다** — 분포 분석 cron이 매주 cron으로 돌면서 운 레벨 빈도를 누적하는 형태이지만, 임계치 자동 추출 시점·signal 신호 강도 판단은 여전히 마스터 종료 후 부록 E 누적 회고와 같이 다뤄야 한다는 점이 본 phase 설계 중 명확해졌다
+- **`pillar_level` 컬럼을 매트릭이 아닌 시드 catalog에 둔 결정** — 시드 레벨에서 "이 시드가 어느 운(원국/세운/대운/일운/월운)에 속하는지" 명시되니까 후속 cron이 시드 풀셋 전체를 운 레벨로 group by 가능. 매트릭에 박았으면 매트릭 폭주 시 정확도 떨어졌을 것
 
 ---
 
@@ -450,9 +452,12 @@ WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
 - **자동이체일 본인 명시 일자** — 사용자별 설정 테이블 필요 or `.env` 박기. 1차는 한 시드 등록 + 본인 day_of_month 임시 박기 (`trigger_aux.day_of_month`), 사용자 설정 UI는 follow-up
 - **잔소리 매트릭 → 시드 매트릭 source 일원화 비용** — Phase 8 시점에 11종 detect 함수 폐기 + 시드 evaluator만 유지로 일원화. 잔소리 메시지 빌드는 별도 layer
 
-### 회고 (TODO: `/build` 구현 후 보강)
+### 회고
 
-> 회고는 PR 머지 후 추가.
+- **`trigger_aux.kind` 7종 표준 + evaluator 모듈 1:1 매핑은 후속 phase 확장 비용을 크게 낮췄다** — 본 phase에서 7 kind 표준을 박은 직후 Phase 5(가설 발견·검증 파이프라인)에서 `life_signal` 시드도 동일 인터페이스로 처리됨. evaluator 추가 비용 = 새 파일 1개 + dispatch switch 1줄. discriminated union이 가져온 정합성이 후속에서 입증됨
+- **`lunar` kind 구현 직전 폐기는 ADR 절차의 효용 사례** — ADR-0029 작성 중 음력 기준이 사주 절기 기준(立春)과 어휘 충돌한다는 점이 부각되어 구현 시작 전 폐기. ADR이 "결정 기록"만이 아니라 "결정 자체를 다시 검토하게 하는 강제 절차"로 기능. 코드 작성 비용 + 의존 패키지 1개 + 잘못된 임상 가설 1개를 사전에 막음
+- **본 phase의 threshold sleep_minutes 시드가 실제 sleep_records 스키마와 어긋난 채 머지됨 → follow-up [#456](https://github.com/hyewon3938/slack-ai-agents/issues/456)에서 hotfix** — `evaluateThreshold`가 존재하지 않는 `wake_at`/`sleep_at` 컬럼을 가정. Phase 마무리 측정 좌수 시도 중 발견하지 못했다면 익일 09:00 매칭 cron이 전체 throw할 뻔. **`evaluateTrigger`가 try/catch 없이 호출되어 단일 시드 SQL 오류가 매칭 전체를 죽이는 구조**도 같이 노출됨 — Phase 8 또는 별도 안정성 chore에서 per-seed try/catch 격리 검토 필요
+- **인접 reader(insights.ts)의 컬럼명을 따라가는 코드 리뷰 체크리스트가 필요** — 신규 evaluator 작성 시 동일 테이블을 다루는 기존 reader가 어떤 컬럼을 쓰는지 1분 grep으로 확인하는 단계만 있었어도 본 hotfix는 미연 방지 가능. `/build` 5-3 보안 감사 단계에 "동일 테이블의 다른 reader 컬럼 일치 점검" 추가 후보
 
 ---
 
@@ -513,6 +518,7 @@ ADR-0023이 결정한 매트릭 단위 카운터 source of truth를 실제 코�
 - **compactMatchedLine sync → async 전환은 PR 진단 가치가 높았다**: view SELECT 의존이 생기는 시점에 caller가 자동으로 await하는지 typecheck로 확인. `runDailyPatternMatchingDryRun` 한 곳만 caller라 변경 비용이 작았고 단일 PR로 완결됨
 - **파일명 rename은 의외로 import 일괄 갱신이 부담** — 8 evaluator + 6 test + life-cron + insights comment + 3 rename = 18 파일 동시 수정. SLOT_TASKS 키 `dailySajuMatching`만 DB 호환성을 위해 보존하는 비대칭이 발생 (DB 컬럼은 코드 rename을 쉽게 따라가지 못함을 재확인)
 - **Bayesian posterior를 Phase 4에 흡수한 결정은 정합성 ↑**: counter source가 같은 위치에서 갱신되니 Phase 7이 UI/임계치 정책에만 집중 가능. 다만 산식 검증 테스트(`posterior_alpha + 1.0` 형태)가 SQL 문자열 매칭으로만 가능해 vitest assertion이 조금 약함 — Phase 7에서 헬퍼로 추출하면서 단위 테스트 추가 예정
+- **매칭 cron elapsed log를 본 phase에서 박은 결정이 follow-up [#456](https://github.com/hyewon3938/slack-ai-agents/issues/456)에서 가치 입증** — Phase 5 후 elapsed log 누적 측정 시도(좌수 실행) 중 Phase 3의 threshold SQL 컬럼 불일치를 우연 발견·hotfix. 측정 인프라가 의도된 측정 목적 외에도 운영 정합성 점검 도구로 기능. 측정 누적은 본 PR 머지 후 자연 누적되도록 분리
 
 ---
 

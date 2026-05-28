@@ -21,9 +21,9 @@ interface StreakMaxRow {
 
 const loadSleepMinutes = async (userId: number, date: string): Promise<number | null> => {
   const result = await query<SleepMinutesRow>(
-    `SELECT (EXTRACT(EPOCH FROM (wake_at - sleep_at))::int / 60)::text AS minutes
+    `SELECT duration_minutes::text AS minutes
        FROM sleep_records
-      WHERE user_id = $1 AND date = $2
+      WHERE user_id = $1 AND date = $2 AND duration_minutes IS NOT NULL
       LIMIT 1`,
     [userId, date],
   );
