@@ -979,9 +979,97 @@ src/cron/
 
 설계 결정 배경: [ADR-0028](../adr/0028-pillar-level-and-threshold-pool.md), [design-notebook Phase 2.5](../design-notebook/personal-pattern-discovery.md#phase-25-운-레벨-차원-도입--자동-분포-분석-cron-2026-05-28)
 
-### 17. 본인 1명 패턴 발견 시스템 — Phase 3 (life_signal 시드 풀 셋)
+### 17. 본인 1명 패턴 발견 시스템 — Phase 3 (life_signal 시드 풀 셋 + 매칭 cron 일반화)
 
-> TODO(`/build`): 구현 후 본문 채우기. `life_signal` 시드 1차 셋(14\~20개 — 요일 7 + 주말 1 + 평일 1 + 월말 1 + 월초 1 + 계절 4 + 기타). 각 시드의 매트릭(SQL + window_days + description). 결정론 매트릭으로 작성 (`pattern_metrics.source = 'deterministic'`).
+설계 결정 배경: [ADR-0029](../adr/0029-life-signal-trigger-aux-standard.md), [design-notebook Phase 3](../design-notebook/personal-pattern-discovery.md#phase-3-life_signal-시드-풀-셋--매칭-cron-일반화-2026-05-28)
+
+#### 데이터 모델 — `life_signal` 단일 통합 + `trigger_aux.kind` 분기
+
+Phase 1 ADR-0022(`life_signal` 추가)와 Phase 2 ADR-0026(`pattern_*` rename) 위에서, Phase 3는 사주 외 환경/임계치/행동 데이터를 **하나의 `trigger_target_type='life_signal'`로 통합** + `trigger_aux.kind` 디스크리미네이터로 평가 명세 분기.
+
+| `trigger_aux.kind` | 평가 방식 | 시드 수 |
+|---|---|---|
+| `weekday` | dow 매칭 (월\~일) | 7 |
+| `weekday_group` | weekend / weekday 분류 | 2 |
+| `month_position` | start (1\~3일) / end (말일-3\~말일) / mid (11\~20일) | 3 |
+| `season` | spring (3\~5월) / summer (6\~8) / autumn (9\~11) / winter (12·1·2) | 4 |
+| `calendar_event` | 한국 공휴일 / 공휴일 다음날 / 자동이체일 | 2 (autopay_day는 follow-up) |
+| `lunar` | 음력 초하루 / 보름 | 0 (양력→음력 변환 미구현, follow-up) |
+| `threshold` | 수면 분 ≤ N (4개) + 루틴 streak ≥ N일 (5개) | 9 |
+| `behavior_baseline` | `insights.ts` 11종 detect 함수 위임 | 11 |
+
+총 **38개 신규 시드** (1차 catalog INSERT 기준). `lunar` 2개, `autopay_day` 1개는 follow-up.
+
+#### 평가 흐름
+
+```
+matchAllSeedsForDay(userId, date)
+  → loadActiveSeeds(userId)         // pattern_kind='life_signal' 포함
+  → getDailyContext(userId, date)   // DailyContext.userId 포함 (Phase 3 신설)
+  → for each seed:
+       evaluateTrigger(seed, ctx, stemMap, branchMap)
+         → case 'life_signal':
+              if (!isLifeSignalAux(aux)) return false   // type guard
+              return dispatchLifeSignal(aux, ctx)        // 8-way dispatch
+                → src/shared/life-signal-evaluators/<kind>.ts
+```
+
+`evaluateTrigger` 시그너처는 변경 X (4 args 유지). 본인 데이터 SELECT가 필요한 `threshold` / `behavior_baseline` evaluator는 `DailyContext.userId`를 통해 접근 — 인터페이스 안정성 + 테스트 stub 간소화.
+
+#### 매트릭 정책 — 혼합 (강한 임상 가설만 결정론)
+
+| 시드 | metric_name | direction | SQL 요약 |
+|---|---|---|---|
+| `life_sleep_le_7` | `same_day_health_complaint` | flag_present | 같은날 `diary_meta_tags.tag='health_complaint'` COUNT |
+| `life_dow_월` | `schedule_count_today` | above_avg | 같은날 schedules COUNT vs 28일 baseline |
+| `life_holiday` | `schedule_count_today` | below_avg | 같은날 schedules COUNT vs 28일 baseline |
+
+나머지 35개는 evidence-only — `pattern_matches.matched=NULL`, `verify_status='no_metric'`. 60+일 누적 후 Phase 6 LLM 매트릭 제안 슬롯 가설 후보로 활용.
+
+> 매트릭은 모두 **같은날**(`$2`) 평가. 다음날 효과(예: 수면→다음날 컨디션)는 현 `pattern_matches` 1:1 모델에서는 표현이 까다로워 1차에서 단순화. follow-up으로 재검토.
+
+#### 잔소리 시스템 일시 공존
+
+`insights.ts`의 11개 detect 함수(`detectStreak` 등)는 **잔소리 응답 생성**에 계속 사용. 시드 evaluator(`behavior-baseline.ts`)는 같은 detect 함수를 호출해 **매칭 데이터 누적**용으로만 동작. 두 시스템이 같은 SQL을 두 번 실행 — Phase 8에서 시드 evaluator로 일원화.
+
+#### 마이그레이션
+
+- `db/migrations/072_life_signal_seed_pool.sql` — 시드 38개 INSERT + 매트릭 3개 INSERT (모두 멱등 `ON CONFLICT DO NOTHING`)
+
+#### 외부 의존성 (1차 정적 상수)
+
+- 한국 공휴일: `src/shared/life-signal-evaluators/korean-holidays.ts` — 2026년 15개 양력 날짜 (`KOREAN_HOLIDAYS` Set). 2027+ 데이터는 follow-up
+- 음력 변환: 미구현 (`evaluateLunar`는 stub `return false`). follow-up
+
+#### 파일 구조 갱신
+
+```
+src/shared/
+├── life-signal-evaluators/         (신규 디렉토리)
+│   ├── index.ts                    dispatcher (kind → evaluator)
+│   ├── weekday.ts                  WeekdayAux / WeekdayGroupAux
+│   ├── month-position.ts           start / end / mid
+│   ├── season.ts                   봄·여름·가을·겨울
+│   ├── calendar-event.ts           공휴일 / 공휴일 다음날 / 자동이체일
+│   ├── lunar.ts                    초하루 / 보름 (stub, follow-up)
+│   ├── threshold.ts                sleep_minutes / routine_streak_max
+│   ├── behavior-baseline.ts        insights.ts 11종 detect 위임
+│   ├── korean-holidays.ts          KOREAN_HOLIDAYS 정적 Set (2026)
+│   └── __tests__/
+│       ├── weekday.test.ts
+│       ├── month-position.test.ts
+│       ├── season.test.ts
+│       ├── calendar-event.test.ts
+│       ├── threshold.test.ts
+│       └── behavior-baseline.test.ts
+└── saju-match.ts                   case 'life_signal' + LifeSignalAux 타입 + isLifeSignalAux 가드
+```
+
+#### 다음 phase 연결
+
+- **Phase 4**: `pattern_summary` view 본문 작성, 매칭 cron 파일명 일반화(`daily-saju-matching` → `daily-pattern-matching`) 검토, `pattern_metrics` hit/miss UPDATE 로직
+- **Phase 5\~7**: 가설 발견·검증 파이프라인이 `pattern_kind` 무관하게 동작 (이미 일반화 완료)
+- **Phase 8**: `insights.ts` detect 함수 → 시드 evaluator로 일원화 (잔소리 시스템 통합)
 
 ### 18. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron + view 정비)
 

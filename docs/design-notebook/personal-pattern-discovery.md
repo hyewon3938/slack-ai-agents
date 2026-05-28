@@ -375,7 +375,79 @@ WHERE pattern_kind = 'saju' AND source = 'seed' AND pillar_level IS NULL;
 
 ---
 
-## Phase 3\~8 (TODO: 각 Phase 진입 시 섹션 누적)
+## Phase 3: `life_signal` 시드 풀 셋 + 매칭 cron 일반화 (2026-05-28)
+
+- 이슈: [#447](https://github.com/hyewon3938/slack-ai-agents/issues/447)
+- 관련 ADR: **[ADR-0029](../adr/0029-life-signal-trigger-aux-standard.md) 신설** (`life_signal` 단일 통합 + `trigger_aux.kind` 표준)
+- 관련 계획서: `.claude/plans/447-phase-3-life-signal.md`
+- 상태: 설계 완료, 구현 대기
+
+### 결정 요약
+
+`life_signal` 시드를 세 갈래로 풀세트 등록 + 매칭 cron이 `case 'life_signal'`로 일반화:
+
+1. **환경 결정론 시드** (논리적 풀셋 A군 \~20-25개) — 요일 7 + 주말/평일 2 + 월말/월초/중순 3 + 계절 4 + 공휴일 + 공휴일 다음날 2 + 음력 1·15일 2 + 자동이체일 1
+2. **임계치 풀셋 시드** (Phase 2.5 풀셋 임계치 정신 확장) — 수면 ≤ N시간 4개 (N=5,6,7,8) + 루틴 streak ≥ N일 풀셋 (N=3,5,7,14,30)
+3. **11종 결정론 패턴 시드 승격** — `insights.ts` 11개 detect 함수(streak·sleepTrend·slotGap·weekComparison·overdueAlert·categorySkew·drift·recovery·lapseAlert·weeklyRegression·spottyPattern)를 `behavior_baseline` kind 시드로 등록
+
+총 신규 시드 \~35-40개. 모두 `trigger_target_type='life_signal'` + `pattern_kind='life_signal'`. `trigger_aux.kind`(weekday / weekday_group / month_position / season / calendar_event / lunar / threshold / behavior_baseline)로 평가 명세 분기.
+
+매칭 cron(`evaluateTrigger`)에 `case 'life_signal'` 추가 + `src/shared/life-signal-evaluators/` 모듈 디렉토리 신설(kind별 evaluator 8개). `pattern_summary` view 본문은 Phase 4로 분리.
+
+### 핵심 변경
+
+- 마이그레이션 072: 신규 life_signal 시드 INSERT (\~35-40개)
+- `src/shared/life-signal-evaluators/` — kind별 evaluator 8개 모듈
+- `src/shared/saju-match.ts:evaluateTrigger` — `case 'life_signal'` 추가, evaluators dispatch
+- `src/shared/types.ts` — `LifeSignalKind` enum + `LifeSignalAux` discriminated union
+- `src/shared/saju-calendar.ts` — 음력 변환 함수 확장 (기존 함수 재사용 또는 신설)
+- 공휴일 lookup — 한국 공휴일 테이블(`korean_holidays`) 신설 또는 정적 상수
+- 매트릭 정책 = 혼합 — 강한 임상 가설 있는 시드(예: 수면 ≤ 7시간 → 다음날 health_complaint, 월요일 → 일정 폭주)만 결정론 매트릭 채움. 나머지는 evidence-only(Phase 2 패턴)
+- 잔소리 파이프라인(`insights.ts`) 그대로 유지 — 시드는 데이터 누적만, Phase 8 카드 UI에서 통합
+
+### 의사결정 분기점
+
+1. **Phase 4 view 분리** — view 정비(`pattern_summary` 본문)는 별도 Phase 4. Phase 3는 시드 + 매칭 cron까지만. PR 크기 관리 + 데이터 누적 후 view 본문 작성이 자연
+2. **매트릭 정책** — 혼합. 강한 임상 가설(수면 ≤ N시간, 월요일·일요일 등)만 결정론 매트릭. 나머지 evidence-only — Phase 2 일관성
+3. **1차 셋 범위** — 논리적 풀셋 A군 다 박기. life_signal은 사주 60갑자와 달리 자연 풀세트 경계가 없으나, 환경 차원(요일/월/계절)별로 논리적 풀셋 정의 가능
+4. **11종 승격** — Phase 3 포함. 시드 등록만, 잔소리 파이프라인은 기존 `insights.ts` SQL 그대로 유지(일시 공존). Phase 8 카드 UI에서 통합
+5. **수면·streak 임계치 풀셋도 Phase 3 포함** — ADR-0028 풀셋 임계치 정신 확장. 임의값 배제 원칙과 일치
+6. **`trigger_target_type` 어휘** — `life_signal` 단일 통합. `behavior_signal` 분리 안 함. 평가 분기 본질은 type이 아니라 kind. ADR-0029
+7. **`trigger_aux.kind` 표준** — 8 kind(weekday/weekday_group/month_position/season/calendar_event/lunar/threshold/behavior_baseline). evaluator 모듈 1:1 매핑. discriminated union 타입 안전성
+
+### 사용자 임상 데이터 (description에 박힘)
+
+- **월요일** — 일정 폭주, 한 주 시작 부담
+- **일요일** — 선데이 블루 가설(아직 임상 미확정)
+- **수면 ≤ 7시간** — 다음날 health_complaint enum 발현 가능 (사용자 자주 언급)
+- **월말 (마지막 3일)** — 카드 결제일 직전, 마무리 분위기
+- **계절 환절기 (봄·가을)** — 알레르기·기분 변화
+- **공휴일 다음날** — 명절 후유증 검증
+
+### 포기한 안 / 미룬 항목
+
+- **`behavior_signal` 분리 type** — 의미적 분리 매력적이나 평가 분기 본질이 kind라 type 분리 가치 ↓ (ADR-0029 Alternative A)
+- **trigger 평가 SQL을 sql_body로 영속** — 환경 시드는 코드 분기가 단순, 11종은 SQL 복잡. trigger 평가는 code-first, sql_body는 매트릭 영역에 한정 (ADR-0029 Alternative B)
+- **view 본문 작성** — Phase 4로 분리. 데이터 누적 후 작성이 자연
+- **잔소리 시스템 통합** — Phase 8 인사이트 카드 UI 시점. 본 phase는 시드 시스템과 잔소리 시스템 일시 공존
+- **임계치 매트릭 자동 매핑** — Phase 6 LLM 매트릭 발견 슬롯에 맡김 (사주 풀세트 패턴과 일치)
+- **11종 detect 함수 폐기 + 시드 evaluator로 source of truth 일원화** — 일시 공존 유지. Phase 8 시점에 일원화 검토
+
+### 미해결 / 가설
+
+- **매칭 cron 부담** — Phase 2.5 후 175개 시드 + Phase 3 신규 \~35-40개 = \~215개. 매일 매칭 5초 한도 초과 가능. `behavior_baseline` kind는 baseline SQL이 무거우므로 측정 필수
+- **공휴일 데이터 source** — 한국 공휴일 정적 상수(\~15개/년) vs API. 1차는 정적 상수, 운영 후 API 검토
+- **자동이체일 본인 명시 일자** — 사용자별 설정 테이블 필요 or `.env` 박기. 1차는 한 시드 등록 + 본인 day_of_month 임시 박기 (`trigger_aux.day_of_month`), 사용자 설정 UI는 follow-up
+- **음력 변환 정확성** — `saju-calendar.ts`에 이미 양력→음력 변환 있으면 재사용, 없으면 한 곳에서 신설
+- **잔소리 매트릭 → 시드 매트릭 source 일원화 비용** — Phase 8 시점에 11종 detect 함수 폐기 + 시드 evaluator만 유지로 일원화. 잔소리 메시지 빌드는 별도 layer
+
+### 회고 (TODO: `/build` 구현 후 보강)
+
+> 회고는 PR 머지 후 추가.
+
+---
+
+## Phase 4\~8 (TODO: 각 Phase 진입 시 섹션 누적)
 
 > 각 Phase 진입 시 `/design`이 본 문서에 해당 Phase 섹션을 추가한다. 템플릿: 결정 요약 / 의사결정 분기점 / 포기한 안 / 회고.
 
