@@ -25,6 +25,7 @@ import {
   type PillarSet,
 } from './saju-calendar.js';
 import { addDays } from './kst.js';
+import { dispatchLifeSignal } from './life-signal-evaluators/index.js';
 
 const METRIC_TIMEOUT_MS = 5_000;
 const BASELINE_WINDOW_DAYS = 28;
@@ -44,7 +45,8 @@ export interface SajuSeed {
     | 'element_density'
     | 'sibiunsung'
     | 'relation'
-    | 'cumulative_pillar_count';
+    | 'cumulative_pillar_count'
+    | 'life_signal';
   trigger_target_id: number | null;
   trigger_aux: Record<string, unknown> | null;
   /** 사주 시드 발현 운 레벨. life_signal/null은 미적용 (마스터 #434 Phase 2.5). */
@@ -91,6 +93,8 @@ export interface NatalContext {
 
 export interface DailyContext {
   date: string;
+  /** 평가 대상 사용자 ID. life_signal threshold/behavior_baseline evaluator가 본인 데이터 SELECT 시 사용 (마스터 #434 Phase 3). */
+  userId: number;
   dayStem: Cheongan;
   dayBranch: Jiji;
   natal: NatalContext;
@@ -103,6 +107,147 @@ export interface DailyContext {
   /** 대운 Pillar (적용 구간 외 또는 미등록 시 null) — Phase 2.5 */
   daeun: Pillar | null;
 }
+
+// ─── life_signal trigger_aux 타입 (ADR-0029) ───────────────
+// Phase 3 (마스터 #434) — life_signal 단일 type + trigger_aux.kind 분기
+// 8 kinds: weekday / weekday_group / month_position / season / calendar_event / lunar / threshold / behavior_baseline
+
+export type LifeSignalKind =
+  | 'weekday'
+  | 'weekday_group'
+  | 'month_position'
+  | 'season'
+  | 'calendar_event'
+  | 'lunar'
+  | 'threshold'
+  | 'behavior_baseline';
+
+export type WeekdayDow = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface WeekdayAux {
+  kind: 'weekday';
+  dow: WeekdayDow;
+}
+
+export interface WeekdayGroupAux {
+  kind: 'weekday_group';
+  group: 'weekend' | 'weekday';
+}
+
+export interface MonthPositionAux {
+  kind: 'month_position';
+  position: 'start' | 'end' | 'mid';
+  range_days?: number;
+  start?: number;
+  end?: number;
+}
+
+export interface SeasonAux {
+  kind: 'season';
+  season: 'spring' | 'summer' | 'autumn' | 'winter';
+}
+
+export interface CalendarEventAux {
+  kind: 'calendar_event';
+  event: 'holiday' | 'holiday_next' | 'autopay_day';
+  day_of_month?: number;
+}
+
+export interface LunarAux {
+  kind: 'lunar';
+  day: 1 | 15;
+}
+
+export interface ThresholdAux {
+  kind: 'threshold';
+  source: 'sleep_minutes' | 'routine_streak_max';
+  op: 'lte' | 'gte' | 'eq';
+  value: number;
+}
+
+export type BehaviorSignalName =
+  | 'streak'
+  | 'sleepTrend'
+  | 'slotGap'
+  | 'weekComparison'
+  | 'overdueAlert'
+  | 'categorySkew'
+  | 'drift'
+  | 'recovery'
+  | 'lapseAlert'
+  | 'weeklyRegression'
+  | 'spottyPattern';
+
+export interface BehaviorBaselineAux {
+  kind: 'behavior_baseline';
+  signal_name: BehaviorSignalName;
+}
+
+export type LifeSignalAux =
+  | WeekdayAux
+  | WeekdayGroupAux
+  | MonthPositionAux
+  | SeasonAux
+  | CalendarEventAux
+  | LunarAux
+  | ThresholdAux
+  | BehaviorBaselineAux;
+
+const BEHAVIOR_SIGNAL_NAMES: ReadonlySet<string> = new Set<BehaviorSignalName>([
+  'streak',
+  'sleepTrend',
+  'slotGap',
+  'weekComparison',
+  'overdueAlert',
+  'categorySkew',
+  'drift',
+  'recovery',
+  'lapseAlert',
+  'weeklyRegression',
+  'spottyPattern',
+]);
+
+/** trigger_aux JSONB를 LifeSignalAux로 안전하게 좁히는 type guard. 잘못된 aux는 false 반환(예외 X). */
+export const isLifeSignalAux = (v: unknown): v is LifeSignalAux => {
+  if (typeof v !== 'object' || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  const kind = obj['kind'];
+  switch (kind) {
+    case 'weekday':
+      return typeof obj['dow'] === 'number' && obj['dow'] >= 0 && obj['dow'] <= 6;
+    case 'weekday_group':
+      return obj['group'] === 'weekend' || obj['group'] === 'weekday';
+    case 'month_position':
+      return obj['position'] === 'start' || obj['position'] === 'end' || obj['position'] === 'mid';
+    case 'season':
+      return (
+        obj['season'] === 'spring' ||
+        obj['season'] === 'summer' ||
+        obj['season'] === 'autumn' ||
+        obj['season'] === 'winter'
+      );
+    case 'calendar_event':
+      return (
+        obj['event'] === 'holiday' ||
+        obj['event'] === 'holiday_next' ||
+        obj['event'] === 'autopay_day'
+      );
+    case 'lunar':
+      return obj['day'] === 1 || obj['day'] === 15;
+    case 'threshold':
+      return (
+        (obj['source'] === 'sleep_minutes' || obj['source'] === 'routine_streak_max') &&
+        (obj['op'] === 'lte' || obj['op'] === 'gte' || obj['op'] === 'eq') &&
+        typeof obj['value'] === 'number'
+      );
+    case 'behavior_baseline':
+      return (
+        typeof obj['signal_name'] === 'string' && BEHAVIOR_SIGNAL_NAMES.has(obj['signal_name'])
+      );
+    default:
+      return false;
+  }
+};
 
 export interface MetricEvaluation {
   metric_name: string;
@@ -189,6 +334,7 @@ export const getDailyContext = async (
   const daeun = natal.birthDate ? getDaeunPillar(natal.birthDate, natal.daewunList, date) : null;
   return {
     date,
+    userId,
     dayStem: ilun.cheongan,
     dayBranch: ilun.jiji,
     natal,
@@ -482,6 +628,12 @@ export const evaluateTrigger = async (
         }
       }
       return false;
+    }
+
+    case 'life_signal': {
+      // Phase 3 — life_signal 단일 type + trigger_aux.kind 분기 (ADR-0029)
+      if (!isLifeSignalAux(aux)) return false;
+      return dispatchLifeSignal(aux, ctx);
     }
 
     default:
