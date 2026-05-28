@@ -6,7 +6,7 @@
  * position='mid':   start..end 범위 (기본 11..20)
  */
 
-import type { DailyContext, MonthPositionAux } from '../saju-match.js';
+import type { DailyContext, MonthPositionAux } from '../pattern-match.js';
 
 export const evaluateMonthPosition = async (
   aux: MonthPositionAux,

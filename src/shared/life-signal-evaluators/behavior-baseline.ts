@@ -9,7 +9,7 @@
  * Phase 8에서 잔소리 시스템을 시드 evaluator로 일원화 (도메인 문서 §17 참조).
  */
 
-import type { BehaviorBaselineAux, BehaviorSignalName, DailyContext } from '../saju-match.js';
+import type { BehaviorBaselineAux, BehaviorSignalName, DailyContext } from '../pattern-match.js';
 import {
   detectCategorySkew,
   detectDrift,

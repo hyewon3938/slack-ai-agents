@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DailyContext, WeekdayAux, WeekdayGroupAux } from '../../saju-match.js';
+import type { DailyContext, WeekdayAux, WeekdayGroupAux } from '../../pattern-match.js';
 import { evaluateWeekday, evaluateWeekdayGroup } from '../weekday.js';
 
 const baseCtx = (date: string): DailyContext =>

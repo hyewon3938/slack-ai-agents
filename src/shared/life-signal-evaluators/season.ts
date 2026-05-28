@@ -9,7 +9,7 @@
  * 절기 기반 계절(입춘 등)이 아니라 양력 월 기반. Phase 4+에서 절기 기반 fine-grain 검토.
  */
 
-import type { DailyContext, SeasonAux } from '../saju-match.js';
+import type { DailyContext, SeasonAux } from '../pattern-match.js';
 
 const SEASON_MONTHS: Record<SeasonAux['season'], readonly number[]> = {
   spring: [3, 4, 5],
