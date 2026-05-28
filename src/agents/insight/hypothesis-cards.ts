@@ -7,7 +7,7 @@
 
 import type { KnownBlock } from '@slack/types';
 import type { CandidateHypothesis } from './hypothesis-discovery.js';
-import type { Hypothesis, HypothesisStat, TriggerSpec } from '../../shared/saju-hypothesis.js';
+import type { Hypothesis, HypothesisStat, TriggerSpec } from '../../shared/pattern-hypothesis.js';
 
 export const HYPOTHESIS_REGISTER_ACTION_ID = 'hypothesis_register';
 export const HYPOTHESIS_DISMISS_ACTION_ID = 'hypothesis_dismiss';

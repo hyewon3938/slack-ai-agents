@@ -35,12 +35,16 @@ const formatSeedLine = (s: SeedRow): string => {
 };
 
 const listSeeds = async (userId: number, includeInactive: boolean): Promise<string> => {
-  const where = includeInactive ? 'user_id = $1' : 'user_id = $1 AND active = true';
+  const where = includeInactive ? 's.user_id = $1' : 's.user_id = $1 AND s.active = true';
   const result = await query<SeedRow>(
-    `SELECT id, name, sipsin, active, hit_count, miss_count, inconclusive_count
-     FROM pattern_catalog
+    `SELECT s.id, s.name, s.sipsin, s.active,
+            COALESCE(v.total_hits, 0)        AS hit_count,
+            COALESCE(v.total_misses, 0)      AS miss_count,
+            COALESCE(v.total_inconclusive, 0) AS inconclusive_count
+     FROM pattern_catalog s
+     LEFT JOIN pattern_summary v ON v.pattern_id = s.id
      WHERE ${where}
-     ORDER BY id`,
+     ORDER BY s.id`,
     [userId],
   );
   if (result.rows.length === 0) {
@@ -71,7 +75,7 @@ const togglePattern = async (
 /**
  * 사주 시드 fast path 시도. 매칭 시 응답 전송 후 true 반환.
  */
-export const trySajuSeedFastPath = async (
+export const tryPatternSeedFastPath = async (
   trimmed: string,
   say: SayFn,
   userId: number,

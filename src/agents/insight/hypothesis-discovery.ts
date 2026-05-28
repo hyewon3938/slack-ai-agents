@@ -8,7 +8,7 @@
  */
 
 import { query } from '../../shared/db.js';
-import { fisherExact, bhFdr, type TriggerSpec } from '../../shared/saju-hypothesis.js';
+import { fisherExact, bhFdr, type TriggerSpec } from '../../shared/pattern-hypothesis.js';
 import { DIARY_META_TAGS, type DiaryMetaTag } from '../../cron/diary-meta-extract.js';
 
 export type DiscoveryMode =
