@@ -516,7 +516,65 @@ ADR-0023이 결정한 매트릭 단위 카운터 source of truth를 실제 코�
 
 ---
 
-## Phase 5\~8 (TODO: 각 Phase 진입 시 섹션 누적)
+## Phase 5: 가설 발견·검증 파이프라인 target-type 확장 대응 (2026-05-28)
+
+- 이슈: [#454](https://github.com/hyewon3938/slack-ai-agents/issues/454)
+- 관련 ADR: 새 ADR 없음. [ADR-0019](../adr/0019-saju-hypothesis-verification-pipeline.md) 위 실행. [ADR-0026](../adr/0026-pattern-prefix-rename.md)·[ADR-0029](../adr/0029-life-signal-trigger-aux-standard.md) 기반
+- 관련 계획서: `.claude/plans/454-phase-5-discovery-cards.md`
+- 상태: 설계 완료, 구현 대기
+
+### 결정 요약
+
+Phase 4까지 매칭 cron이 saju 175 + life_signal 38 = 213개 시드의 `trigger_activated`를 누적하기 시작했고, `hypothesis-discovery.ts`는 ADR-0019 단계에서 시드 ID 기반 type-agnostic으로 작성됐기에 데이터 흐름은 이미 일반화 완료 상태. 본 phase는 코드 흐름이 아닌 **운영 가시성 + cap 분리 + 동작 검증**에 집중.
+
+남은 작업 3건:
+
+1. **카드 출처 표시** — `buildCandidateCard`·`buildWeeklyReviewBlocks`가 saju/life_signal 출처를 prefix(`[사주]` / `[생활]`)로 표시. 텍스트 prefix 선택(이모지 충돌 회피, 컨벤션 안전)
+2. **신규 가설 후보 cap 분리** — `slice(0, 5)` 단일 cap → `pattern_kind`별 분리 cap (saju 최대 5 + life_signal 최대 5, 발견된 만큼만)
+3. **DISCOVERY 임계치 유지** — `q<0.2`, `p<0.1`, `ratio≥1.3`, `n≥5` 그대로. BH-FDR이 조합 N으로 자동 보정(`q = p × N / rank` 산식)하므로 N이 13배 늘면 같은 p에 대해 q도 13배 더 엄격. 임의값 박지 않기 헌장 정합
+
+새 ADR 작성 불필요 — UI 표시·cap 분리는 되돌리기 쉽고 ADR-0019 위 운영 결정.
+
+### 핵심 변경
+
+- `src/agents/insight/hypothesis-discovery.ts` — `ActiveSignal`·`CandidateHypothesis`에 `patternKind: 'saju' | 'life_signal'` 필드 추가, `loadActiveSignals` SQL에 `pattern_kind` SELECT
+- `src/agents/insight/hypothesis-cards.ts` — `KIND_LABEL` 상수 + `buildCandidateCard` header prefix + `buildWeeklyReviewBlocks`의 cap 분리(saju/life_signal 각각 5개) + 신규 후보 섹션 헤더에 `사주 N / 생활 M` 카운트 + `ActiveHypothesisRow`에 `patternKind`
+- `src/cron/weekly-hypothesis-review.ts` — `loadSignalNames` → `loadSignalMeta` (pattern_kind 동반 SELECT), `ActiveHypothesisRow` 빌드 시 `patternKind` 채움
+- 신규 vitest — `hypothesis-cards.test.ts`(prefix·cap 분리·카운트 헤더·0건 처리)
+
+### 의사결정 분기점
+
+1. **임계치 재조정 vs 유지** — A 유지 선택. BH-FDR 자동 보정 충분 + 헌장 정합 + 분리 통제(임계치는 신뢰도용, cap은 노출용 책임 분리). B 안(q<0.1) C 안(n≥7)은 운영 데이터 없이 추측해 박는 추가 임의값
+2. **prefix 어휘** — `[사주]` / `[생활]` 텍스트 선택. 이모지 prefix는 본 프로젝트 에이전트 말투 톤(이모지 금지)과 충돌, 텍스트 prefix는 안전 + 카드 라벨링 컨벤션 자연
+3. **cap 분리 방식** — 종류별 5개씩 분리 (saju 5 + life_signal 5). 발견된 만큼만 노출 — 0건이면 안 나옴. 단일 cap(5) 시 saju 임상 가설 강해 life_signal 가려질 위험 회피
+4. **새 ADR 작성 여부** — 불필요. UI 표시·cap 분리는 되돌리기 쉽고, 임계치 유지는 ADR-0019 결정 그대로
+5. **discovery 코드 변경 범위** — `CandidateHypothesis`에 `patternKind` 필드 1개만 추가, 통계 알고리즘은 변경 없음. 검증 부담 ↓
+
+### 사용자 임상 데이터
+
+본 phase는 데이터 모델·통계 신규 도입 없음. Phase 3에서 박힌 life_signal 시드 38개의 description(요일 효과·수면 ≤ N시간·streak 등 사용자 임상 단서)이 카드 노출에서 그대로 활용됨.
+
+### 포기한 안 / 미룬 항목
+
+- **임계치 조이기** (q<0.1·n≥7 등) — 헌장 "임의값 박지 않기" 위배. 운영 1~3개월 누적 후 데이터 보고 재조정. 마스터 close 시 follow-up 이슈 일괄 등록
+- **outcome enum 확장** (life_signal/metric 카운터를 outcome으로) — 본 phase scope 외. 데이터 모델 확장 + 통계 의미 확장이라 별도 phase 후보. 현재는 `diary_meta_tags` 22개만 outcome
+- **cap 늘리기** (5→8 또는 10) — 단순 확장은 사용자 검토 부담만 증가. 분리 cap(5+5)으로 두 카테고리 노출 보장
+- **카드 디자인 별도 섹션 분리** — saju 후보 / 생활 후보 두 section header로 묶는 안. prefix만으로 충분히 시각 구분, 디자인 부담 ↑
+- **이모지 prefix** — 에이전트 말투 톤(이모지 금지)과 충돌 회피
+
+### 미해결 / 가설
+
+- **첫 주 후보 노출량** — saju 175 + life_signal 38 × enum 22 = 4,686 조합 BH-FDR 보정 후 임계치 통과 후보가 몇 개 나올지 사전 예측 불가. 0개일 가능성도 있고 30개일 가능성도 있음. 운영 첫 주 결과 보고 follow-up 판단
+- **active 가설 prefix 일관성** — 현재 active 가설은 ADR-0019 시점에 등록된 사주 시드 기반. life_signal 시드의 첫 active 가설은 본 phase 머지 후 후보 → 등록 사이클을 통해야 발생. 첫 사례 발생 시 카드 표시 검증
+- **behavior_baseline kind 11개의 discovery 부담** — 매칭 cron 5초 한도 점검은 Phase 4 미해결 사항으로 표시. discovery는 setup 모드(lookbackDays=90)에서 가장 부담. 운영 데이터 보고 분리 cron 검토
+
+### 회고 (TODO: `/build` 구현 후 보강)
+
+> 회고는 PR 머지 후 추가. 운영 첫 주 결과(saju/life_signal 후보 비율, 노이즈 정도, 카드 가독성)도 같이 보강.
+
+---
+
+## Phase 6\~8 (TODO: 각 Phase 진입 시 섹션 누적)
 
 > 각 Phase 진입 시 `/design`이 본 문서에 해당 Phase 섹션을 추가한다. 템플릿: 결정 요약 / 의사결정 분기점 / 포기한 안 / 회고.
 

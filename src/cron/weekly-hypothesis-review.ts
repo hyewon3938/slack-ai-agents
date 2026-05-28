@@ -37,13 +37,18 @@ export const previousMondayISO = (todayIso: string): string => {
   return addDays(todayIso, -(daysSinceMonday + 7));
 };
 
-const loadSignalNames = async (signalIds: number[]): Promise<Map<number, string>> => {
+interface SignalMeta {
+  name: string;
+  patternKind: 'saju' | 'life_signal';
+}
+
+const loadSignalMeta = async (signalIds: number[]): Promise<Map<number, SignalMeta>> => {
   if (signalIds.length === 0) return new Map();
-  const res = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM pattern_catalog WHERE id = ANY($1::int[])`,
+  const res = await query<{ id: number; name: string; pattern_kind: 'saju' | 'life_signal' }>(
+    `SELECT id, name, pattern_kind FROM pattern_catalog WHERE id = ANY($1::int[])`,
     [signalIds],
   );
-  return new Map(res.rows.map((r) => [r.id, r.name]));
+  return new Map(res.rows.map((r) => [r.id, { name: r.name, patternKind: r.pattern_kind }]));
 };
 
 const loadPrevStat = async (
@@ -115,7 +120,7 @@ const processUser = async (
       ...active.map((h) => h.triggerSpec.signalId),
     ]),
   );
-  const signalNameMap = await loadSignalNames(signalIds);
+  const signalMetaMap = await loadSignalMeta(signalIds);
 
   const statByHypothesisId = new Map(stats.map((s) => [s.hypothesisId, s]));
   const rows: ActiveHypothesisRow[] = [];
@@ -123,9 +128,11 @@ const processUser = async (
     const latest = statByHypothesisId.get(h.id);
     if (!latest) continue;
     const prev = await loadPrevStat(h.id, weekStart);
+    const meta = signalMetaMap.get(h.triggerSpec.signalId);
     rows.push({
       hypothesis: h,
-      signalName: signalNameMap.get(h.triggerSpec.signalId) ?? `signal#${h.triggerSpec.signalId}`,
+      signalName: meta?.name ?? `signal#${h.triggerSpec.signalId}`,
+      patternKind: meta?.patternKind ?? 'saju',
       latest,
       prev,
     });

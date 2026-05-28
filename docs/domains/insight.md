@@ -1124,9 +1124,64 @@ import 일괄 갱신(15+ 파일): 8 life-signal-evaluator + 6 evaluator test + `
 - [ADR-0024](../adr/0024-beta-binomial-bayesian-posterior.md) (Beta-Binomial posterior) — `posterior_alpha/beta/p` 산식
 - [ADR-0026](../adr/0026-pattern-prefix-rename.md) (pattern_* prefix) — 파일명까지 확장
 
-### 19. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 업데이트)
+### 19. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 파이프라인 target-type 확장 대응)
 
-> TODO(`/build`): 구현 후 본문 채우기. `hypothesis-discovery`가 `life_signal` trigger 포함하도록 일반화. weekly 가설 리뷰 카드 본문에 `pattern_kind` 표시. 검증 매트릭 수 증가에 따른 BH-FDR 그룹 정의.
+> 이슈: [#454](https://github.com/hyewon3938/slack-ai-agents/issues/454) · 계획서: `.claude/plans/454-phase-5-discovery-cards.md` · 관련 design-notebook: [personal-pattern-discovery.md](../design-notebook/personal-pattern-discovery.md)
+>
+> 한 줄 요약: ADR-0019 위 운영 결정 — UI 가시성(prefix)·노출 cap(종류별 분리)·동작 검증. discovery 통계 알고리즘(Fisher + BH-FDR)·임계치(`q<0.2`·`p<0.1`·`ratio≥1.3`·`n≥5`)는 변경 없음.
+
+#### 변경 파일
+
+- `src/agents/insight/hypothesis-discovery.ts` — `ActiveSignal`·`CandidateHypothesis`에 `patternKind: 'saju' | 'life_signal'` 필드 추가. `loadActiveSignals` SQL이 `pattern_kind` SELECT.
+- `src/agents/insight/hypothesis-cards.ts` — `KIND_LABEL` 상수, `buildCandidateCard` header에 prefix(`[사주]` / `[생활]`), `buildWeeklyReviewBlocks` 후보 노출을 종류별 cap 5+5로 분리, 신규 후보 섹션 헤더에 종류별 카운트 표기, `ActiveHypothesisRow`에 `patternKind` + active row 라인에도 prefix.
+- `src/cron/weekly-hypothesis-review.ts` — `loadSignalNames` → `loadSignalMeta` 전환, `pattern_kind`까지 함께 적재하여 `ActiveHypothesisRow.patternKind` 채움.
+- `src/agents/insight/__tests__/hypothesis-cards.test.ts` (신규) — prefix·종류별 cap·카운트 헤더·0건 처리·active row prefix 검증.
+- `src/agents/insight/__tests__/hypothesis-discovery.test.ts` (신규) — saju + life_signal 섞어 입력 시 두 후보 모두 `patternKind` 채워지는지 검증.
+
+#### 카드 표시 어휘
+
+| `pattern_kind` | prefix | 의도 |
+|---|---|---|
+| `saju` | `[사주]` | 사주 시드 (175개, Phase 1\~2 확정) |
+| `life_signal` | `[생활]` | 생활 시드 (38개, Phase 3에서 도입) |
+
+이모지 prefix(🌙/🏃 등) 후보가 있었으나, Slack iOS/macOS 간 이모지 렌더링 차이로 정렬이 깨지는 경우가 있어 텍스트 prefix 채택.
+
+#### cap 분리 정책
+
+신규 가설 후보는 `pattern_kind`별로 **각각 최대 5건**까지 노출 (합 최대 10건, 발견된 만큼만):
+
+```typescript
+const CANDIDATE_CAP_PER_KIND = 5;
+const sajuCands = candidates
+  .filter((c) => c.patternKind === 'saju')
+  .slice(0, CANDIDATE_CAP_PER_KIND);
+const lifeCands = candidates
+  .filter((c) => c.patternKind === 'life_signal')
+  .slice(0, CANDIDATE_CAP_PER_KIND);
+```
+
+배경: Phase 4까지 단일 `slice(0, 5)`였으나, 조합 풀이 352→4,686(13배) 늘면서 통계가 강한 saju 후보가 cap을 점유해 life_signal이 carbon-copy 가려지는 위험이 있었음. 종류별 cap으로 두 카테고리 모두 가시성 보장.
+
+신규 후보 섹션 헤더에 종류별 카운트 표기:
+
+```
+*신규 후보 (사주 3 / 생활 1)* — 등록할 거 골라
+```
+
+#### DISCOVERY 임계치 유지 결정 근거
+
+`q<0.2`·`p<0.1`·`ratio≥1.3`·`n≥5` 그대로. BH-FDR 보정 산식 `q_i = (p_i × N) / rank_i`에서 조합 수 N이 13배 늘면 q도 자동으로 그만큼 보수적으로 보정됨. 본 마스터 자체 헌장 5번 "임의값 박지 않기" 준수 — 운영 1\~3개월 누적 후 데이터 기반 재조정 후보 (마스터 close 시 follow-up 부록 E에 합류).
+
+#### 운영 검증
+
+머지 후 첫 월요일 08:00 KST 자동 발사 시점에 `#insight` 채널 카드 관측:
+
+- 두 카테고리(`[사주]` / `[생활]`) prefix가 카드 header에 모두 노출되는지
+- 신규 후보 섹션 헤더에 `사주 N / 생활 M` 카운트가 정확히 표기되는지
+- life_signal 후보가 종류별 cap 분리 덕분에 카드에 살아남는지 (Phase 4까지 단일 cap에서는 saju 강 후보에 가려졌던 케이스)
+
+운영 검증 결과는 design-notebook Phase 5 "회고" 섹션에 추가.
 
 ### 20. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
 
