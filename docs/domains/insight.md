@@ -269,14 +269,14 @@ LLM 응답을 `validateLlmInsightResponse(text)` 가 순서대로 검사 — 하
 - `stem_relations` — 천간 관계
 
 **운영 테이블** (마이그레이션 051~053):
-- `saju_signal_catalog` — 시드 정의 (name / sipsin / trigger_type / trigger_target / active / hit_count / miss_count / inconclusive_count / source='seed'|'llm_promoted')
-- `saju_signal_metrics` — 시드 1:N 메트릭 (metric_key / direction / threshold / sql_template)
-- `saju_daily_matches` — 일일 매칭 결과 (signal_id / date / trigger_activated / matched / metric_values JSONB / verify_status='pending'|'hit'|'miss'|'inconclusive')
+- `pattern_catalog` — 시드 정의 (name / sipsin / trigger_type / trigger_target / active / hit_count / miss_count / inconclusive_count / source='seed'|'llm_promoted')
+- `pattern_metrics` — 시드 1:N 메트릭 (metric_key / expected_direction / threshold / sql_template)
+- `pattern_matches` — 일일 매칭 결과 (pattern_id / date / trigger_activated / matched / metric_values JSONB / verify_status='pending'|'hit'|'miss'|'inconclusive')
 - `diary_meta_tags` — 일기 LLM enum 태그 (date / tag / source='llm')
 
 #### Polymorphic Trigger 6종
 
-시드의 발현 조건은 다음 6가지 중 하나로 정의 (`saju_signal_catalog.trigger_type`):
+시드의 발현 조건은 다음 6가지 중 하나로 정의 (`pattern_catalog.trigger_target_type`):
 
 | trigger_type | 의미 | 예시 |
 |--------------|------|------|
@@ -289,7 +289,7 @@ LLM 응답을 `validateLlmInsightResponse(text)` 가 순서대로 검사 — 하
 
 #### 메트릭 5방향
 
-시드 trigger 활성 일에 metric을 평가, baseline과 비교 (`saju_signal_metrics.direction`):
+시드 trigger 활성 일에 metric을 평가, baseline과 비교 (`pattern_metrics.expected_direction`):
 
 | direction | 의미 | hit 조건 |
 |-----------|------|----------|
@@ -306,10 +306,10 @@ Baseline 윈도우는 `BASELINE_WINDOW_DAYS = 28`. SQL 템플릿은 `$user_id`, 
 매일 09:00 매칭 cron 실행 시:
 
 1. **어제 pending 매칭 검증** — 시드 메트릭 SQL 실행 → outcome 결정
-   - 메트릭 조건 충족 → `hit`, `signal_catalog.hit_count++`
-   - 메트릭 조건 미충족 → `miss`, `signal_catalog.miss_count++`
-   - 메트릭 SQL 데이터 부족 (null/0건) → `inconclusive`, `signal_catalog.inconclusive_count++`
-2. **오늘 활성 시드 평가** — 6가지 trigger 평가 → `saju_daily_matches` UPSERT (`verify_status='pending'`)
+   - 메트릭 조건 충족 → `hit`, `pattern_catalog.hit_count++`
+   - 메트릭 조건 미충족 → `miss`, `pattern_catalog.miss_count++`
+   - 메트릭 SQL 데이터 부족 (null/0건) → `inconclusive`, `pattern_catalog.inconclusive_count++`
+2. **오늘 활성 시드 평가** — 6가지 trigger 평가 → `pattern_matches` UPSERT (`verify_status='pending'`)
 3. **`matched=true` 시드 압축** — `#life` 채널에 잔소리 끝 한 줄 추가 (priority sort, cap 3개)
 
 #### 약한 시드 처리
@@ -347,13 +347,13 @@ Baseline 윈도우는 `BASELINE_WINDOW_DAYS = 28`. SQL 템플릿은 `$user_id`, 
 ```
 [일간 경금 사주]
   ↓
-[09:00 cron] ──→ [evaluateTrigger 6종] ──→ saju_daily_matches (verify_status=pending)
+[09:00 cron] ──→ [evaluateTrigger 6종] ──→ pattern_matches (verify_status=pending)
                                               ↓
                                        [매칭된 시드 → #life 한 줄]
                                               ↓ (다음날)
                                        [메트릭 SQL 실행] ──→ hit/miss/inconclusive
                                               ↓
-                                       [signal_catalog 카운터 증가]
+                                       [pattern_catalog 카운터 증가]
                                               ↓ (주간)
                                        [약한 시드 알림 → #insight]
 ```
@@ -372,8 +372,8 @@ Phase 3까지는 11종 결정론 패턴 + 60갑자 일일 매칭으로 "기록"�
 
 | 테이블 | 역할 | 키 컬럼 |
 |--------|------|---------|
-| `saju_hypotheses` | 가설 정의 + 현재 상태 | `trigger_spec` JSONB, `enum_target`, `status`, `source` |
-| `saju_stats` | 주간 통계 시계열 (`UNIQUE(hypothesis_id, week_start)`) | `n_trigger_days`, `n_total_days`, `rate_trigger`, `rate_baseline`, `rate_ratio`, `raw_p`, `fdr_q` |
+| `pattern_hypotheses` | 가설 정의 + 현재 상태 | `trigger_spec` JSONB, `enum_target`, `status`, `source` |
+| `pattern_stats` | 주간 통계 시계열 (`UNIQUE(hypothesis_id, week_start)`) | `n_trigger_days`, `n_total_days`, `rate_trigger`, `rate_baseline`, `rate_ratio`, `raw_p`, `fdr_q` |
 
 `trigger_spec`은 polymorphic 구조 — 현재는 `{type:'seed', signalId}` (Phase 3 시드 ID 재사용). 향후 합성 트리거(`{type:'and', specs:[...]}` 등) 확장 여지.
 
@@ -429,7 +429,7 @@ LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack
 - **`buildWeeklyReviewBlocks`**: active 가설 표 (전주 대비 rate_ratio 변화 ▲▼─ 10% 임계) + 신규 후보 묶음.
 
 액션 핸들러 (`src/agents/insight/actions.ts`):
-- `hypothesis_register`: `INSERT INTO saju_hypotheses (status=active, source=auto_discovered)`
+- `hypothesis_register`: `INSERT INTO pattern_hypotheses (status=active, source=auto_discovered)`
 - `hypothesis_dismiss`: 카드 메시지 update (DB 변경 X — 거부 기록만)
 
 #### Cron 시각
@@ -450,7 +450,7 @@ LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack
 *<signal_name>* 패턴 켜졌어 → `<enum_target>` 주의 (평균 1.5x).
 ```
 
-`pickConfirmedHypothesisLines`는 `saju_hypotheses` confirmed × 오늘 `saju_daily_matches.trigger_activated = true` JOIN. Phase 1 11패턴 코드는 **무수정** — confirmed 가설이 11패턴 옆에 자동 합류하는 것은 별도 함수로 분리해 dedupe 로직과 격리.
+`pickConfirmedHypothesisLines`는 `pattern_hypotheses` confirmed × 오늘 `pattern_matches.trigger_activated = true` JOIN. Phase 1 11패턴 코드는 **무수정** — confirmed 가설이 11패턴 옆에 자동 합류하는 것은 별도 함수로 분리해 dedupe 로직과 격리.
 
 #### 가설 lifecycle
 
@@ -483,7 +483,7 @@ Phase 4는 신규 fast path 명령어 없음. 카드 액션 버튼(`hypothesis_r
 
 #### 작업 (예정)
 
-- **Phase 5-A** 월운 매칭: saju_daily_matches → period 컬럼 추가, saju_signal_catalog → period_scope 컬럼 추가, 월운 매칭 cron(매월 1일), 월 단위 baseline 윈도우 별도 설계
+- **Phase 5-A** 월운 매칭: pattern_matches → period 컬럼 추가, pattern_catalog → period_scope 컬럼 추가, 월운 매칭 cron(매월 1일), 월 단위 baseline 윈도우 별도 설계
 - **Phase 5-B** 4층 영향력 데이터 expose: 일운·월운 누적 영향력을 마스터 A view(`saju_influence_summary`)로 통합 노출 (마스터 A A3에서 소비)
 
 #### 헌장 cross-check (마스터 #393)

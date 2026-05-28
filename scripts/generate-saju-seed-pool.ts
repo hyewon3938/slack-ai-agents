@@ -139,7 +139,6 @@ const ganjiList = (): Array<{ stem: string; branch: string }> => {
 // 기존 시드 이름 (충돌 방지 + 제외 처리)
 const EXISTING_STEMS = new Set(['갑', '계', '기', '경', '무', '임', '정', '병']);
 const EXISTING_BRANCHES = new Set(['해', '술', '오']);
-const EXISTING_RELATIONS = new Set(['branch_relations|진|술|충', 'branch_relations|사|술|원진']);
 
 // SQL 출력
 const out: string[] = [];
