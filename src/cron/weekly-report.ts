@@ -391,10 +391,14 @@ export const aggregateSajuOutcome = async (
 ): Promise<SajuOutcomeData> => {
   try {
     const result = await query<SajuSeedRow>(
-      `SELECT name, sipsin, description, hit_count, miss_count, inconclusive_count
-       FROM pattern_catalog
-       WHERE user_id = $1 AND active = true
-       ORDER BY (hit_count + miss_count) DESC, name`,
+      `SELECT s.name, s.sipsin, s.description,
+              COALESCE(v.total_hits, 0)::int        AS hit_count,
+              COALESCE(v.total_misses, 0)::int      AS miss_count,
+              COALESCE(v.total_inconclusive, 0)::int AS inconclusive_count
+       FROM pattern_catalog s
+       LEFT JOIN pattern_summary v ON v.pattern_id = s.id
+       WHERE s.user_id = $1 AND s.active = true
+       ORDER BY (COALESCE(v.total_hits, 0) + COALESCE(v.total_misses, 0)) DESC, s.name`,
       [userId],
     );
     const seeds: SajuSeedOutcome[] = result.rows.map((row) => {
