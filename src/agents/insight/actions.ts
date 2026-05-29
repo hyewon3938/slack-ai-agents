@@ -80,7 +80,7 @@ export const registerInsightActions = (app: App): void => {
       const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
       if (channelId && messageTs) {
         const label = payload?.enumTarget ?? '후보';
-        await updateMessage(client, channelId, messageTs, `_${label} 후보 패스함._`, []);
+        await updateMessage(client, channelId, messageTs, `_${label} 후보 반려함._`, []);
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -150,7 +150,7 @@ export const registerInsightActions = (app: App): void => {
       const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
       const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
       if (channelId && messageTs) {
-        await updateMessage(client, channelId, messageTs, `_매트릭 후보 거절._`, []);
+        await updateMessage(client, channelId, messageTs, `_매트릭 후보 반려._`, []);
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);

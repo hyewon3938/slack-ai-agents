@@ -77,7 +77,7 @@ export const buildMetricCandidateCard = (input: MetricCandidateCardInput): Known
         },
         {
           type: 'button',
-          text: { type: 'plain_text', text: '거절' },
+          text: { type: 'plain_text', text: '반려' },
           action_id: METRIC_REJECT_ACTION_ID,
           value: payload,
         },

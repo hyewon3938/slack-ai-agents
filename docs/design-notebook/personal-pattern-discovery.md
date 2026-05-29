@@ -660,7 +660,126 @@ evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개�
 
 ---
 
-## Phase 7\~8 (TODO: 각 Phase 진입 시 섹션 누적)
+## Phase 7 — Bayesian posterior 헬퍼·카드 병기 + 시드 영향력 섹션 (2026-05-29 ~)
+
+> 이슈 [#460](https://github.com/hyewon3938/slack-ai-agents/issues/460) · 브랜치 `feature/460-phase-7-bayesian-display`
+>
+> ADR-0024 (Beta-Binomial Bayesian posterior) 실행 마무리. Phase 4가 매트릭 단위 posterior UPDATE를 흡수했으므로 본 phase는 **가설 단위 posterior 추가 + UI 표현 + 헬퍼 추출 + 시드 영향력 리포트**에 집중.
+
+### 핵심 원칙 cross-check (v2 + #434 헌장)
+
+- **v2 ①** "LLM 텍스트 의존 최소화" — posterior 산식은 결정론 SQL/TS. LLM 텍스트 X
+- **v2 ②** "결정론과 자율 영역의 역할 분리" — 본 phase는 결정론 (Phase 6의 LLM 자율과 무관)
+- **v2 ④** "신뢰 비용 분리" — Frequentist (p/q) + Bayesian (사후/CI) 병기로 누적 단계별 신뢰도 표현
+- **#434 ⑤** "임의값 박지 않기" — 사후·CI 정렬은 lower bound 자연 정렬. 사용자 노출용 임계치 없음 (`50%=우연, 80%↑=강함` 안내는 가이드 텍스트로만)
+
+→ 충돌 없음. 본 phase는 ADR-0024 실행 마무리.
+
+### 결정 요약
+
+1. **헬퍼 추출** — `src/shared/bayesian-posterior.ts`에 `updatePosterior` / `posteriorMean` / `credibleInterval` 추출. 매칭 cron SQL inline UPDATE는 atomicity 위해 유지, 헬퍼는 표시·테스트 전용
+2. **가설 stats Bayesian 갱신** — Migration 074로 `pattern_stats`에 `posterior_alpha`/`posterior_beta`/`posterior_p` 추가. `computeAndPersistWeeklyStats`에서 가설 단위 (seed × enum_target) Bayesian update
+3. **라이브러리 선택** — `@stdlib/stats-base-dists-beta-quantile` (Beta inverse CDF). scipy-like project의 단일 함수 패키지
+4. **가설 카드 표현** — 한 줄 병기: `… p=0.08 q=0.21 / 사후 0.62 [0.41, 0.81]`
+5. **시드 영향력 섹션 신설** — 주간 카드 상단에 `이번주 영향력 시드 top 5` 섹션. 사주/생활 혼합 정렬. credible interval lower bound 내림차순. **리포트 전용 (버튼 없음)**. 데이터 소스는 `pattern_summary.aggregate_posterior_p` + α/β
+6. **버튼 라벨 정리** — 가설 카드 `등록`→`승인`, `패스`→`반려`. 매트릭 카드 `거절`→`반려`. 동작은 그대로, 라벨만 통일
+
+### 의사결정 분기점
+
+#### A. 헬퍼 추출 vs SQL only
+
+- A1. SQL only 유지 (현행) — atomicity 좋으나 단위 테스트 약함. 사후 0.62 같은 표시도 다른 곳에서 다시 SQL 호출 필요
+- A2. **SQL inline 유지 + TS 헬퍼는 표시·테스트 전용 (선택)** — cron의 동시성 안정성 유지하면서 표시·검증은 헬퍼로 일원화. Phase 4 회고에서 식별한 "SQL 문자열 매칭 테스트 한계" 직접 해결
+- A3. SQL 다 들어내고 TS만 — atomicity 깨질 위험. cron 동시 실행 시 race 가능
+
+→ A2 채택. 매칭 cron은 SQL만 (cron 자체 락이 보장), 표시·통계 산출은 헬퍼로.
+
+#### B. 가설 단위 posterior 저장 위치
+
+- B1. **`pattern_stats`에 컬럼 추가 (선택)** — 가설 = (seed × enum_target) 단위. 매트릭 posterior(`pattern_metrics`)와 결이 같지만 의미가 다름. 가설 카드/시드 영향력 리포트가 직접 참조
+- B2. view 계산으로 산출 — SQL 표현식 복잡, 매번 재계산 비용
+- B3. pattern_metrics posterior만 사용 — 가설 단위와 매트릭 단위는 의미가 다름 (가설 = "갑일 → 수면 7h 미만"이라는 명제 자체, 매트릭 = 그 명제를 검증하는 SQL 인스턴스)
+
+→ B1. ADR-0024 후속 작업 체크박스 그대로 따름.
+
+#### C. 시드 영향력 표현 단위
+
+- C1. 가설 카드(매트릭 단위)에만 표현 — 시드 단위 인지 어려움
+- C2. **카드 위 별도 섹션 (선택)** — 시드 단위 영향력은 사용자 의사결정의 다른 축. 카드는 매트릭 승인, 섹션은 영향력 리포트
+- C3. 시드 카드도 만들기 — 가설은 매트릭 단위라는 헌장(가설 = seed × enum)이 흔들림. 시드 = 트리거이지 가설 아님
+
+→ C2. 사용자 멘탈 모델: "사술원진이 나한테 영향 크네"(리포트) vs "사술원진 → 수면 부족 가설 등록하자"(액션)
+
+#### D. 시드 영향력 정렬 기준
+
+- D1. 사후 평균 내림차순 — 단순. 그러나 N 적은 시드가 prior 영향으로 평균 높을 수 있음 → 표시상 노이즈
+- D2. **credible interval lower bound 내림차순 (선택)** — N 적으면 CI 넓어져 lower bound 자동 페널티. **헌장 ⑤ "임의값 박지 않기" 정합** (`검증 ≥ 5` 같은 컷오프 불필요)
+- D3. N≥5 컷오프 후 평균 정렬 — 임의값 박기
+
+→ D2.
+
+#### E. 시드 영향력 정렬 분리 vs 통합
+
+- E1. 사주 top 5 + 생활 top 5 분리
+- E2. **통합 top 5 (선택)** — 본인에게 강한 패턴이 무엇이든 한눈에. 데이터 누적 후 영역별 비교 필요해지면 분리 follow-up
+- E3. top 10 통합 — 카드 길어짐
+
+→ E2.
+
+#### F. 시드 영향력 항목 형식
+
+- F1. 시드 이름 + 통계만
+- F2. **시드 이름 + description 첫 N자 + 통계 (선택)** — 사용자가 "사화 편관 사술원진"만 봐선 의미 모름. description 한 줄로 맥락 부여
+- F3. 시드 이름 + description 전체 + 통계 — 카드 길어짐
+
+→ F2. description은 잘라서 표시 (기존 `metric-approval-cards`의 description 표시 패턴 차용)
+
+#### G. 안내문(범례) 위치
+
+- G1. **시드 영향력 섹션 아래에만 (선택)** — 처음 보는 사용자에게 사후·CI 의미 부여. 카드마다 반복 없이
+- G2. 카드마다 — 매주 같은 텍스트 노출 피로
+- G3. 안 넣기 — 사용자가 사후 0.62의 의미 추측해야 함
+
+→ G1. `_사후 = 본인 패턴일 확률 추정 (50%=우연, 80%↑=강함) · [] = 95% 신뢰 구간 (좁을수록 정확)_`
+
+#### H. dismiss(반려) 정책
+
+- H1. **현행 유지 (DB write 없음, 자동 재발현) (선택)** — `actions.ts:73-89` 그대로. 일주일 차에 반려해도 한 달 뒤 데이터 누적되면 다시 후보로 — 사용자 요청 그대로
+- H2. dismissed 기록 + cool down — 임의값 박기 (헌장 ⑤ 위배)
+
+→ H1.
+
+### 포기한 안
+
+- **`pattern_metrics.posterior_p`를 그대로 가설 카드에 표시** — 매트릭 단위 사후이지 가설 단위 사후 아님. 가설 = (seed × enum)이라 매트릭 7개의 hit/miss를 가설 단위로 누적해야 의미 있음
+- **시드 영향력 임계치(예: 검증 ≥ 5)** — 헌장 ⑤ "임의값 박지 않기" 위배. CI lower bound 정렬로 대체
+- **사주/생활 분리 top 5** — 1차는 통합. 데이터 누적 후 영역별 비교 필요해지면 follow-up
+- **credible interval 90% / 99% 옵션** — 1차는 95% 표준. confidence 노출 X (사용자 혼동 방지)
+- **카드마다 안내문 반복** — top 시드 섹션 아래 1회
+
+### 미해결 / 가설
+
+- **첫 운영 시 시드 영향력 top 5 품질** — 검증 누적이 약 1주~1개월 사이일 때 N 적은 시드들이 prior에 묶여 CI lower bound가 비슷할 가능성. CI 자체가 자연 페널티이지만 운영 첫 회 결과로 검증
+- **사주/생활 통합 정렬에서 영역 편향** — 한쪽이 항상 상위 점령할 가능성. 운영 1~3개월 후 영역별 비교 필요해지면 분리 follow-up
+- **Migration 074의 backfill** — 기존 pattern_stats row의 posterior_alpha/beta를 hit/miss로 backfill할지, NULL로 두고 다음 주 stats 계산부터 채울지 → 기존 row 적음 (Phase 4 머지 후 1주분만 누적). 다음 주 stats부터 채우는 게 단순
+
+### 회고 (구현 — 2026-05-29, 운영 첫 발사 회고는 2026-06-08 후 보강)
+
+- **헬퍼 추출 효과** — `bayesian-posterior.ts`(~60줄) + 단위 테스트 16개로 산식 검증이 코드 레벨에서 명료해졌다. Phase 4 회고에서 식별한 "SQL 문자열 매칭 테스트 한계" 해결. 매트릭 단위 inline SQL UPDATE는 그대로 보존해 atomicity 손해 0
+- **누적 hit/miss derive 선택** — `SUM((rate_trigger × n_trigger_days)::NUMERIC)`로 derive하니 별도 hit/miss 컬럼 추가 없이 누적 산식이 한 줄로 정리됨. 다만 `rate_trigger`가 부동소수점이라 `Math.round`로 정수 변환 — 첫 운영 시 round 오차 누적 여부 점검 필요
+- **`@stdlib/stats-base-dists-beta-quantile`** — npm install 28초, 의존성 ~20개. 단일 함수 사용이지만 stdlib 프로젝트의 numerical stability(scipy 등급)를 받음. 자체 Beta inverse CDF 구현(~50줄)보다 신뢰도 ↑
+- **버튼 라벨 정리 동기화** — 라벨 변경은 사용자 노출 텍스트만이라 action_id/value/handler 동작 그대로 — in-flight 카드 호환 유지. dismiss 정책 변경 없음 + DB write 없음 보존
+- **Migration 074 backfill 정책 검증** — 기존 pattern_stats row(Phase 4 머지 후 약 1주)가 NULL로 들어가지만, 다음 weekly cron이 자연 재계산. 사용자에게 노출되는 건 다음 발사부터라 backfill SQL 생략 결정 정합. 첫 발사 시 NULL 비율 확인
+- **시드 영향력 데이터 소스 분기** — `pattern_summary` view에 α/β sum 노출되어 있지 않아 별도 SELECT 추가. view 시그니처 보존 우선 결정이 정합. view 확장은 외부 의존도가 생긴 후에 별도 PR로
+- **Follow-up (운영 1\~3개월 후)**
+  - 시드 영향력 top 5의 첫 운영 결과 — N 적은 시드들의 CI lower bound 분포가 prior(50%) 근방에 몰리는지
+  - 사주/생활 통합 정렬에서 영역 편향 발생 여부
+  - `Math.round(rate_trigger × n_trigger_days)` round 오차 누적 점검 (수 주 누적 후 raw hit과 derived hit 비교)
+  - `aggregate_posterior_p` view 컬럼이 카드에 직접 노출되지 않는 사실 자체 — Phase 8 카드 UI에서 어떻게 활용할지
+
+---
+
+## Phase 8 (TODO: 진입 시 섹션 추가)
 
 > 각 Phase 진입 시 `/design`이 본 문서에 해당 Phase 섹션을 추가한다. 템플릿: 결정 요약 / 의사결정 분기점 / 포기한 안 / 회고.
 
