@@ -200,8 +200,8 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 
 ### Phase 6 LLM 매트릭 routine 운영
 
-- **2026-07-01 첫 발사 결과 회고** — 트리거: 첫 발사 후 1주
-- **거절 재제안 LLM 자율 판단 일관성** — 트리거: 첫 발사 3개월 + 재제안 케이스 10건 이상
+- **2026-07-01 첫 가동 결과 회고** — 트리거: 첫 가동 후 1주
+- **거절 재제안 LLM 자율 판단 일관성** — 트리거: 첫 가동 3개월 + 재제안 케이스 10건 이상
 - **routine 입력 토큰 길이** — 트리거: 시드 161개 + 메트릭 표 30일 + evidence 60일이 토큰 한계 도달
 - **active 가설 상태 입력 추가** — 트리거: 1차 3 결합 안정화 + active 가설 5건 이상 누적
 - **evidence 임계치 자동 트리거** — 트리거: 운영 3개월 + 후보 품질 분산 분석
@@ -209,7 +209,7 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 
 ### Phase 7 Bayesian + 시드 영향력
 
-- **2026-06-08 첫 발사 결과 회고** — 트리거: 첫 발사 후 1주
+- **2026-06-08 첫 가동 결과 회고** — 트리거: 첫 가동 후 1주
 - **N 적은 시드 CI lower bound 분포** — 트리거: 운영 1개월 + prior 근방 몰림 검증
 - **사주/생활 통합 정렬 영역 편향** — 트리거: 한쪽 영역이 top 5 점령 1개월 지속
 - **Math.round 오차 누적** — 트리거: 가설 stats 누적 4주 이상 + raw hit vs derived hit 비교
@@ -642,7 +642,7 @@ ADR-0025가 골격(`status='pending'→'active'` 게이트, 월 cap 5, Slack inl
 4. **거절 재제안**: rejected 목록 LLM에 노출 + LLM 자율 판단 (새 근거 명시 시만 재제안)
 5. **cap**: 월 최대 5개 (ADR-0025 계승)
 
-evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개월)에서도 시드 description hint(사용자 임상 단서) + 라이프 메트릭 표로 의미있는 후보 1\~3개 제안 가능 여부 운영 첫 회로 확인.
+evidence 누적 부족 단계(첫 가동 2026-07-01 ≈ Phase 2 머지 후 1개월)에서도 시드 description hint(사용자 임상 단서) + 라이프 메트릭 표로 의미있는 후보 1\~3개 제안 가능 여부 운영 첫 회로 확인.
 
 ### 핵심 변경
 
@@ -678,11 +678,11 @@ evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개�
 
 ### 미해결 / 가설
 
-- **첫 routine 발사 후보 품질** — 2026-07-01 첫 발사 시점에 evidence 누적이 약 30일. description + 메트릭 표만으로 1\~3개 의미있는 후보 생성 가능 여부 운영 첫 회로 검증. 0건이어도 routine 정상 작동 여부도 점검
+- **첫 routine 가동 후보 품질** — 2026-07-01 첫 가동 시점에 evidence 누적이 약 30일. description + 메트릭 표만으로 1\~3개 의미있는 후보 생성 가능 여부 운영 첫 회로 검증. 0건이어도 routine 정상 작동 여부도 점검
 - **rejected 재제안 LLM 자율 판단 일관성** — "새 근거" 기준이 모델별·실행별 변동 가능. 운영 1\~3개월 후 일관성 평가 follow-up
 - **input 토큰 길이** — 시드 161개 description + 메트릭 표 30일 + evidence 60일. 토큰 한계 도달 가능성. routine SKILL.md 작성 시 토큰 관측치 누적 + 한계 도달 시 입력 압축 전략 필요
 
-### 회고 (구현 — 2026-05-29, 운영 첫 발사 회고는 2026-07-01 후 보강)
+### 회고 (구현 — 2026-05-29, 운영 첫 가동 회고는 2026-07-01 후 보강)
 
 **인프라 골격 완성**:
 - `metric-approval-cards.ts` Block Kit 후보 카드 빌더 + payload encode/decode (12 단위 테스트)
@@ -692,14 +692,14 @@ evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개�
 
 **routine 자동화 슬롯 완성**:
 - Claude 앱 routines 등록 (`monthly-metric-suggest`, `0 30 9 1 * *`, Opus 권장)
-- SKILL.md 본문에 v2 헌장 ① · 자체 헌장 ④ · ADR-0025 cap · ADR-0030 거절 재제안을 명시적으로 박아 routine 발사 시점에 헌장 cross-check 가능
+- SKILL.md 본문에 v2 헌장 ① · 자체 헌장 ④ · ADR-0025 cap · ADR-0030 거절 재제안을 명시적으로 박아 routine 가동 시점에 헌장 cross-check 가능
 
-**첫 발사 운영 검증 대기 (2026-07-01)**:
+**첫 가동 운영 검증 대기 (2026-07-01)**:
 - 후보 품질 — evidence 누적 30일 + 시드 description 161개로 의미있는 후보 1\~3개 생성 가능한지
 - LLM 거절 재제안 자율 판단 일관성 — 같은 (seed_id, outcome) 조합에 새 근거 없을 때 LLM이 실제로 보류하는지
 - routine 토큰 비용 — 입력 풀 3 결합이 토큰 한계 도달하는지
 
-운영 첫 발사 후 본 섹션에 결과 추가 예정.
+운영 첫 가동 후 본 섹션에 결과 추가 예정.
 
 ---
 
@@ -806,13 +806,13 @@ evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개�
 - **사주/생활 통합 정렬에서 영역 편향** — 한쪽이 항상 상위 점령할 가능성. 운영 1~3개월 후 영역별 비교 필요해지면 분리 follow-up
 - **Migration 074의 backfill** — 기존 pattern_stats row의 posterior_alpha/beta를 hit/miss로 backfill할지, NULL로 두고 다음 주 stats 계산부터 채울지 → 기존 row 적음 (Phase 4 머지 후 1주분만 누적). 다음 주 stats부터 채우는 게 단순
 
-### 회고 (구현 — 2026-05-29, 운영 첫 발사 회고는 2026-06-08 후 보강)
+### 회고 (구현 — 2026-05-29, 운영 첫 가동 회고는 2026-06-08 후 보강)
 
 - **헬퍼 추출 효과** — `bayesian-posterior.ts`(~60줄) + 단위 테스트 16개로 산식 검증이 코드 레벨에서 명료해졌다. Phase 4 회고에서 식별한 "SQL 문자열 매칭 테스트 한계" 해결. 매트릭 단위 inline SQL UPDATE는 그대로 보존해 atomicity 손해 0
 - **누적 hit/miss derive 선택** — `SUM((rate_trigger × n_trigger_days)::NUMERIC)`로 derive하니 별도 hit/miss 컬럼 추가 없이 누적 산식이 한 줄로 정리됨. 다만 `rate_trigger`가 부동소수점이라 `Math.round`로 정수 변환 — 첫 운영 시 round 오차 누적 여부 점검 필요
 - **`@stdlib/stats-base-dists-beta-quantile`** — npm install 28초, 의존성 ~20개. 단일 함수 사용이지만 stdlib 프로젝트의 numerical stability(scipy 등급)를 받음. 자체 Beta inverse CDF 구현(~50줄)보다 신뢰도 ↑
 - **버튼 라벨 정리 동기화** — 라벨 변경은 사용자 노출 텍스트만이라 action_id/value/handler 동작 그대로 — in-flight 카드 호환 유지. dismiss 정책 변경 없음 + DB write 없음 보존
-- **Migration 074 backfill 정책 검증** — 기존 pattern_stats row(Phase 4 머지 후 약 1주)가 NULL로 들어가지만, 다음 weekly cron이 자연 재계산. 사용자에게 노출되는 건 다음 발사부터라 backfill SQL 생략 결정 정합. 첫 발사 시 NULL 비율 확인
+- **Migration 074 backfill 정책 검증** — 기존 pattern_stats row(Phase 4 머지 후 약 1주)가 NULL로 들어가지만, 다음 weekly cron이 자연 재계산. 사용자에게 노출되는 건 다음 가동부터라 backfill SQL 생략 결정 정합. 첫 가동 시 NULL 비율 확인
 - **시드 영향력 데이터 소스 분기** — `pattern_summary` view에 α/β sum 노출되어 있지 않아 별도 SELECT 추가. view 시그니처 보존 우선 결정이 정합. view 확장은 외부 의존도가 생긴 후에 별도 PR로
 - **Follow-up (운영 1\~3개월 후)**
   - 시드 영향력 top 5의 첫 운영 결과 — N 적은 시드들의 CI lower bound 분포가 prior(50%) 근방에 몰리는지
@@ -902,8 +902,8 @@ ALTER TABLE pattern_matches
 개별 7\~8건이 아닌 카테고리별 묶음으로 등록해 추후 작업 진입 시 묶음 단위로 처리. 묶음 후보:
 
 1. **통계 도구 도입 검토** — SPRT(early stopping) / CPD(change point detection) / dispersion ratio / pattern_summary view α/β 직접 노출 / aggregate_posterior_p 컬럼 카드 활용 등 운영 누적 후 검토할 통계 도구
-2. **Phase 6 LLM 매트릭 routine 운영 회고** — 2026-07-01 첫 발사 결과 회고 + 거절 재제안 일관성 + 입력 토큰 길이 + 후보 품질
-3. **Phase 7 Bayesian + 시드 영향력 운영 회고** — 2026-06-08 첫 발사 결과 회고 + N 적은 시드 CI 분포 + 사주/생활 통합 정렬 영역 편향 + round 오차 누적
+2. **Phase 6 LLM 매트릭 routine 운영 회고** — 2026-07-01 첫 가동 결과 회고 + 거절 재제안 일관성 + 입력 토큰 길이 + 후보 품질
+3. **Phase 7 Bayesian + 시드 영향력 운영 회고** — 2026-06-08 첫 가동 결과 회고 + N 적은 시드 CI 분포 + 사주/생활 통합 정렬 영역 편향 + round 오차 누적
 4. **Phase 2.5 운 레벨 분포 분석 cron 회고** — 운영 60\~90일 후 임계치 자동 추출 + 운 레벨 가중치 도입 + signal 신호 강도 판단
 5. **잔소리 일원화** (C 이관) — Slack 메시지 톤 일원화 (Insight 도메인 외 분리)
 6. **기타 미해결 잔여** — 카테고리 가중치 자동 튜닝 / Phase 4 회고에서 식별한 SQL 문자열 매칭 테스트 한계 (Phase 7 헬퍼 추출로 일부 해소) / pattern_matches 에러 row 누적 시 retention 정책 등
@@ -1084,8 +1084,8 @@ ALTER TABLE pattern_matches
 phase별 회고에서 식별된 follow-up은 본 phase에서 카테고리별 묶음 이슈 6건으로 등록:
 
 - [#465](https://github.com/hyewon3938/slack-ai-agents/issues/465) — 통계 도구 도입 검토 (SPRT/CPD/dispersion/view α/β/aggregate_posterior_p)
-- [#466](https://github.com/hyewon3938/slack-ai-agents/issues/466) — Phase 6 LLM 매트릭 routine 운영 회고 (첫 발사 2026-07-01 후)
-- [#467](https://github.com/hyewon3938/slack-ai-agents/issues/467) — Phase 7 Bayesian + 시드 영향력 운영 회고 (첫 발사 2026-06-08 후)
+- [#466](https://github.com/hyewon3938/slack-ai-agents/issues/466) — Phase 6 LLM 매트릭 routine 운영 회고 (첫 가동 2026-07-01 후)
+- [#467](https://github.com/hyewon3938/slack-ai-agents/issues/467) — Phase 7 Bayesian + 시드 영향력 운영 회고 (첫 가동 2026-06-08 후)
 - [#468](https://github.com/hyewon3938/slack-ai-agents/issues/468) — Phase 2.5 운 레벨 분포 분석 cron 회고 (운영 60\~90일 후)
 - [#469](https://github.com/hyewon3938/slack-ai-agents/issues/469) — 잔소리 일원화 (Slack 메시지 톤, Insight 도메인 외 분리)
 - [#470](https://github.com/hyewon3938/slack-ai-agents/issues/470) — 기타 잔여 (카테고리 가중치·에러 row retention·SQL 문자열 매칭 테스트 한계·시드 description 단서)

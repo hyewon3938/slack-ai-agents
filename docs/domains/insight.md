@@ -1175,7 +1175,7 @@ const lifeCands = candidates
 
 #### 운영 검증
 
-머지 후 첫 월요일 08:00 KST 자동 발사 시점에 `#insight` 채널 카드 관측:
+머지 후 첫 월요일 08:00 KST 자동 가동 시점에 `#insight` 채널 카드 관측:
 
 - 두 카테고리(`[사주]` / `[생활]`) prefix가 카드 header에 모두 노출되는지
 - 신규 후보 섹션 헤더에 `사주 N / 생활 M` 카운트가 정확히 표기되는지
@@ -1195,7 +1195,7 @@ Phase 1\~5에서 결정론 매트릭만 평가되던 구조 위에 **LLM이 매�
 | cron 시각 | 매월 1일 09:30 KST (`30 9 1 * *`) |
 | 모델 | Opus 권장 (사용자가 Claude 앱 model selector에서 지정) |
 | 후보 cap | 월 최대 5개 ([ADR-0025](../adr/0025-llm-metric-approval-gate.md)) |
-| 발사 채널 | `#insight` |
+| 가동 채널 | `#insight` |
 | idempotency | 같은 달에 `source='llm_autonomous'` INSERT 이력 있으면 즉시 종료 |
 
 #### LLM 입력 풀 (3 결합, [ADR-0030](../adr/0030-llm-metric-suggest-input-and-cadence.md))
