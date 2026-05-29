@@ -1,7 +1,7 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
 import { sendMessage } from '../../shared/slack.js';
-import { queryOne } from '../../shared/db.js';
+import { query, queryOne } from '../../shared/db.js';
 import { getTodayISO, getEffectiveTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import { saveDiaryEntry, pickDiaryConfirmation, naturalDelay } from './diary-fast-path.js';
@@ -22,6 +22,8 @@ const TOMORROW_FORTUNE_RE = /^내일\s*일운(\s*(보여줘|보여|알려줘|뭐
 const MAJOR_FORTUNE_RE = /^(내\s*)?대운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
 /** 오늘 일기 조회 */
 const TODAY_DIARY_RE = /^오늘\s*일기/;
+/** LLM 매트릭 pending 목록 조회 (ADR-0030 디버깅·놓친 카드 재확인용) */
+const METRIC_LIST_RE = /^\/?insight\s+metric-list[.?!]?$/;
 
 interface FortuneRow {
   date: string;
@@ -94,6 +96,42 @@ const tryFortuneFastPath = async (
   return true;
 };
 
+/** pending 매트릭 목록 조회 fast path (ADR-0030) */
+const showPendingMetrics = async (
+  say: Parameters<AgentHandler>[1],
+  userId: number,
+): Promise<void> => {
+  try {
+    const res = await query<{
+      id: number;
+      description: string;
+      proposed_at: string;
+      seed_name: string | null;
+    }>(
+      `SELECT pm.id, pm.description, pm.proposed_at,
+              (SELECT name FROM pattern_catalog WHERE id = pm.pattern_id) AS seed_name
+         FROM pattern_metrics pm
+        WHERE pm.user_id = $1 AND pm.status = 'pending'
+        ORDER BY pm.proposed_at DESC
+        LIMIT 20`,
+      [userId],
+    );
+    if (res.rows.length === 0) {
+      await sendMessage(say, '대기 중인 매트릭 후보가 없어.');
+      return;
+    }
+    const lines = res.rows.map((r) => {
+      const dateStr = r.proposed_at.slice(0, 10);
+      const seedPart = r.seed_name ? ` · ${r.seed_name}` : '';
+      return `#${r.id} ${r.description}${seedPart} (${dateStr})`;
+    });
+    await sendMessage(say, ['*pending 매트릭 후보*', ...lines].join('\n'));
+  } catch (error: unknown) {
+    console.error('[Insight Agent] metric-list 조회 오류:', error);
+    await sendMessage(say, '매트릭 목록 조회 중 오류가 발생했어.');
+  }
+};
+
 /** 오늘 일기 조회 fast path */
 const showTodayDiary = async (say: Parameters<AgentHandler>[1], userId: number): Promise<void> => {
   const today = getEffectiveTodayISO();
@@ -147,6 +185,12 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
     // ── fast path: 오늘 일기 조회 ──
     if (TODAY_DIARY_RE.test(trimmed)) {
       await showTodayDiary(say, userId);
+      return;
+    }
+
+    // ── fast path: LLM 매트릭 pending 목록 (ADR-0030) ──
+    if (METRIC_LIST_RE.test(trimmed)) {
+      await showPendingMetrics(say, userId);
       return;
     }
 

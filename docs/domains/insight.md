@@ -1185,7 +1185,90 @@ const lifeCands = candidates
 
 ### 20. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
 
-> TODO(`/build`): 구현 후 본문 채우기. 월간 LLM 슬롯이 매트릭 후보 생성, 월 cap 5개. **운영은 Claude 앱 routines 기반** ([ADR-0027](../adr/0027-llm-async-routine-unification.md)) — Phase 2에서 누적된 60+일 evidence JSONB(`pattern_matches.evidence`, `verify_status='no_metric'` 행)를 가설 후보 풀로 사용. Slack `/insight metric-approve` 명령어 + Block Kit 승인 카드 (`metric-approval-cards.ts`). 승인 시 `pattern_metrics.status = 'active'` 전환. 거절 시 `'rejected'`.
+Phase 1\~5에서 결정론 매트릭만 평가되던 구조 위에 **LLM이 매트릭 후보를 자율 제안하는 슬롯**을 도입. 새 매트릭은 `status='pending'`으로 INSERT되고 사용자가 Slack 승인/거절 버튼을 눌러야 매칭 cron이 평가에 반영. v2 헌장 ④ (승인 게이트) 진입점.
+
+#### 운영 형태
+
+| 항목 | 값 |
+|------|-----|
+| routine 위치 | `~/.claude/scheduled-tasks/monthly-metric-suggest/SKILL.md` (repo 외부, Claude 앱 routines 기반 — [ADR-0027](../adr/0027-llm-async-routine-unification.md)) |
+| cron 시각 | 매월 1일 09:30 KST (`30 9 1 * *`) |
+| 모델 | Opus 권장 (사용자가 Claude 앱 model selector에서 지정) |
+| 후보 cap | 월 최대 5개 ([ADR-0025](../adr/0025-llm-metric-approval-gate.md)) |
+| 발사 채널 | `#insight` |
+| idempotency | 같은 달에 `source='llm_autonomous'` INSERT 이력 있으면 즉시 종료 |
+
+#### LLM 입력 풀 (3 결합, [ADR-0030](../adr/0030-llm-metric-suggest-input-and-cadence.md))
+
+| 입력 | 출처 | 의도 |
+|------|------|------|
+| ① evidence JSONB 누적 | `pattern_matches`의 `verify_status='no_metric'` 행, 최근 60일 | Phase 2 evidence-only 시드에서 누적된 사용자 임상 단서 후보 |
+| ② 시드 description | `pattern_catalog.description IS NOT NULL` 행 | Phase 2에서 박힌 사용자 임상 가설 hint |
+| ③ 라이프 메트릭 표 | schedules / routine_records / sleeps / diary_meta_tags 30일 메타데이터 | 사용자 텍스트 원문 노출 없이 컨텍스트 제공 (헌장 ① 위 — 카운트·태그 enum·평균값만) |
+
+추가 입력: ④ rejected 매트릭 30건 + ⑤ active 매트릭 — LLM이 중복 제안 회피 + 거절 재제안 자율 판단에 활용.
+
+#### 거절 재제안 정책 (ADR-0030)
+
+- `status='rejected'` 매트릭 목록을 LLM 입력에 노출
+- LLM은 **새 근거**(누적 evidence 변화·다른 outcome·다른 window) 있을 때만 재제안
+- 재제안 시 `rejection_diff` 필드에 이전 거절 대비 차이점 명시 의무 — 카드 detail에 "재제안 사유: ..." 줄로 노출
+- 임의 N일 cool-down은 마스터 #434 헌장 "임의값 박지 않기" 위배라 채택 거부
+
+#### 데이터 모델
+
+`pattern_metrics` 테이블에 추가된 컬럼 (Phase 1 migration 065 + 본 phase migration 073):
+
+| 컬럼 | 타입 | 의도 |
+|------|------|------|
+| `status` | `TEXT CHECK(active/pending/rejected)` | LLM 자율 매트릭은 `pending`으로 시작 |
+| `source` | `TEXT CHECK(deterministic/llm_autonomous)` | 결정론 시드 vs LLM 자율 |
+| `description` | `TEXT NOT NULL` | 사용자가 SQL 본문 검토 없이 의도 파악 가능한 자연어 |
+| `proposed_at` | `TIMESTAMPTZ` | LLM 제안 시각 |
+| `approved_at` | `TIMESTAMPTZ` | 사용자 승인 시각 |
+| `rejected_at` | `TIMESTAMPTZ` | 사용자 거절 시각 (migration 073, 본 phase) |
+
+#### 인터랙션 흐름
+
+```
+[매월 1일 09:30 KST]
+        │
+        ▼
+[monthly-metric-suggest routine (Claude 앱)]
+        │ ① idempotency 체크 → ② 입력 풀 수집 → ③ Opus 호출 → ④ INSERT pending
+        ▼
+[#insight 채널에 후보별 1메시지 (Block Kit 승인 카드)]
+        │
+        ▼
+[사용자 클릭]
+        │
+        ├─ [승인] ─→ actions.ts:METRIC_APPROVE_ACTION_ID
+        │             → UPDATE status='active', approved_at=NOW()
+        │             → 매칭 cron 다음 회부터 평가 반영
+        │
+        └─ [거절] ─→ actions.ts:METRIC_REJECT_ACTION_ID
+                      → UPDATE status='rejected', rejected_at=NOW()
+                      → 다음 달 routine 입력 풀의 rejected 목록에 노출
+```
+
+#### fast path 명령어
+
+| 명령어 | 정규식 | 동작 |
+|--------|--------|------|
+| `insight metric-list` | `/^\/?insight\s+metric-list[.?!]?$/` | `status='pending'` 매트릭 후보 20건 목록 조회 (디버깅·놓친 카드 재확인) |
+
+자유 문장 부분추출 금지 헌장(`feedback_no_freeform_regex_extraction`) 준수 — 약속된 단일 명령어 매칭만.
+
+#### 보안
+
+- LLM `metric_sql`은 SELECT 단일 쿼리만 허용. INSERT/UPDATE/DELETE/DDL 키워드 발견 시 후보 폐기. 매칭 cron 실행 전에도 `verifyDailyMatches` 정규식 차단 (Phase 4).
+- 액션 핸들러는 `resolveBodyUserId(body)` 통해 Slack user ID → DB user_id 매핑. 다른 user의 매트릭은 UPDATE 안 됨 (`WHERE user_id = $2`).
+- routine은 DB Proxy API 경유 (Vercel→VM 직결 없음, [ADR-0004](../adr/0004-db-proxy-api.md))
+- 사용자 텍스트 원문(diary content, schedule title, routine name)은 LLM 입력에 미포함 — 메타데이터만 (v2 헌장 ①).
+
+#### 다음 phase 연결
+
+Phase 7 (Bayesian update)에서 active 매트릭의 `posterior_alpha/beta/p`가 매칭 cron 평가 결과로 갱신. Phase 8 (인사이트 카드 UI)에서 active 매트릭의 verified 결과를 사용자에게 노출하는 카드 통합.
 
 ### 21. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian update)
 
@@ -1208,7 +1291,8 @@ src/agents/insight/
 ├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
 ├── saju-seed-fast-path.ts         # 사주 시드 보기/끄기/켜기 (Phase 3)
 ├── hypothesis-discovery.ts        # Phase 4 자동 패턴 발견 (setup/recurring)
-└── hypothesis-cards.ts            # Phase 4 카드 빌더 + 액션 payload
+├── hypothesis-cards.ts            # Phase 4 카드 빌더 + 액션 payload
+└── metric-approval-cards.ts       # Phase 6 LLM 매트릭 후보 카드 + 승인/거절 payload
 
 src/shared/
 ├── saju-match.ts                  # Phase 3 매칭 엔진 (evaluateTrigger 6종 + evaluateMetric)
@@ -1243,4 +1327,10 @@ db/migrations/  (마스터 #434 Phase 2.5 — 2026-05-28)
 └── 071_pattern_signals_pillar_level.sql         # pillar_level 컬럼 + cumulative_pillar_count trigger
                                                  # + expense_category_present 메트릭 + 14 신규 시드
                                                  # + pillarLevelDistributionReview 슬롯
+
+db/migrations/  (마스터 #434 Phase 6 — 2026-05-29)
+└── 073_pattern_metrics_rejected_at.sql          # rejected_at TIMESTAMPTZ (ADR-0030 거절 재제안 입력)
+
+~/.claude/scheduled-tasks/  (Claude 앱 routines, repo 외부)
+└── monthly-metric-suggest/SKILL.md              # Phase 6 매월 1일 09:30 LLM 매트릭 후보 제안
 ```
