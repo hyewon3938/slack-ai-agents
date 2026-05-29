@@ -9,6 +9,11 @@
 
 import { query } from '../../shared/db.js';
 import { fisherExact, bhFdr, type TriggerSpec } from '../../shared/pattern-hypothesis.js';
+import {
+  cumulativePosteriorFromHitMiss,
+  posteriorMean,
+  credibleInterval,
+} from '../../shared/bayesian-posterior.js';
 import { DIARY_META_TAGS, type DiaryMetaTag } from '../../cron/diary-meta-extract.js';
 
 export type DiscoveryMode =
@@ -27,6 +32,10 @@ export interface CandidateHypothesis {
   rateRatio: number;
   rawP: number;
   fdrQ: number;
+  // Phase 7 — discovery 윈도우 hit/miss 기반 posterior (prior Beta(1,1))
+  posteriorP: number;
+  ciLower: number;
+  ciUpper: number;
 }
 
 const DISCOVERY_MIN_N = 5;
@@ -219,6 +228,11 @@ export const discoverCandidates = async (
     const rateRatio = rateBaseline > 0 ? rateTrigger / rateBaseline : 0;
     if (rateRatio < DISCOVERY_MIN_RATE_RATIO) continue;
 
+    const windowMisses = raw.triggerDays - raw.triggerHits;
+    const { alpha, beta } = cumulativePosteriorFromHitMiss(raw.triggerHits, windowMisses);
+    const posteriorP = posteriorMean(alpha, beta);
+    const { lower: ciLower, upper: ciUpper } = credibleInterval(alpha, beta);
+
     candidates.push({
       triggerSpec: { type: 'seed', signalId: raw.signal.id },
       signalName: raw.signal.name,
@@ -231,6 +245,9 @@ export const discoverCandidates = async (
       rateRatio,
       rawP: p,
       fdrQ: q,
+      posteriorP,
+      ciLower,
+      ciUpper,
     });
   }
 

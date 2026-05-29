@@ -8,6 +8,11 @@
  */
 
 import { query } from './db.js';
+import {
+  cumulativePosteriorFromHitMiss,
+  posteriorMean,
+  credibleInterval,
+} from './bayesian-posterior.js';
 
 // ─── 타입 정의 ───────────────────────────────────────────
 
@@ -39,6 +44,12 @@ export interface HypothesisStat {
   rateRatio: number;
   rawP: number;
   fdrQ: number;
+  // Phase 7 — Beta-Binomial 가설 단위 posterior (누적 hit/miss 기반, prior Beta(1,1))
+  posteriorAlpha: number;
+  posteriorBeta: number;
+  posteriorP: number;
+  ciLower: number;
+  ciUpper: number;
 }
 
 // ─── 통계 알고리즘 (pure 함수) ─────────────────────────
@@ -172,7 +183,12 @@ export const computeHypothesisStat = async (
   userId: number,
   hypothesis: Pick<Hypothesis, 'id' | 'triggerSpec' | 'enumTarget'>,
   weekStart: string,
-): Promise<Omit<HypothesisStat, 'fdrQ'>> => {
+): Promise<
+  Omit<
+    HypothesisStat,
+    'fdrQ' | 'posteriorAlpha' | 'posteriorBeta' | 'posteriorP' | 'ciLower' | 'ciUpper'
+  >
+> => {
   const baselineStart = shiftDate(weekStart, -BASELINE_LOOKBACK_DAYS + 7);
   const weekEnd = shiftDate(weekStart, 6);
   const window = await loadTriggerWindow(
@@ -236,26 +252,60 @@ export const computeAndPersistWeeklyStats = async (
   );
   const qValues = bhFdr(rawStats.map((s) => s.rawP));
 
-  const finalStats: HypothesisStat[] = rawStats.map((s, i) => ({
-    ...s,
-    fdrQ: qValues[i] ?? NaN,
-  }));
+  const finalStats: HypothesisStat[] = [];
+  for (let i = 0; i < rawStats.length; i++) {
+    const stat = rawStats[i];
+    if (!stat) continue;
+    const fdrQ = qValues[i] ?? NaN;
 
-  for (const stat of finalStats) {
+    // 가설 단위 누적 hit/miss: 이전 주들의 누적을 SELECT + 이번 주 derive 합산
+    const cumulativeRes = await query<{ total_hits: string; total_misses: string }>(
+      `SELECT
+         COALESCE(SUM((rate_trigger * n_trigger_days)::NUMERIC), 0)::TEXT AS total_hits,
+         COALESCE(SUM(n_trigger_days - (rate_trigger * n_trigger_days)::NUMERIC), 0)::TEXT AS total_misses
+       FROM pattern_stats
+       WHERE hypothesis_id = $1 AND week_start < $2`,
+      [stat.hypothesisId, stat.weekStart],
+    );
+    const priorHits = Math.max(0, Math.round(Number(cumulativeRes.rows[0]?.total_hits ?? 0)));
+    const priorMisses = Math.max(0, Math.round(Number(cumulativeRes.rows[0]?.total_misses ?? 0)));
+    const weekHits = Math.max(0, Math.round(stat.rateTrigger * stat.nTriggerDays));
+    const weekMisses = Math.max(0, stat.nTriggerDays - weekHits);
+    const { alpha, beta } = cumulativePosteriorFromHitMiss(
+      priorHits + weekHits,
+      priorMisses + weekMisses,
+    );
+    const posteriorP = posteriorMean(alpha, beta);
+    const { lower: ciLower, upper: ciUpper } = credibleInterval(alpha, beta);
+
+    finalStats.push({
+      ...stat,
+      fdrQ,
+      posteriorAlpha: alpha,
+      posteriorBeta: beta,
+      posteriorP,
+      ciLower,
+      ciUpper,
+    });
+
     await query(
       `INSERT INTO pattern_stats
          (hypothesis_id, week_start, n_trigger_days, n_total_days,
-          rate_trigger, rate_baseline, rate_ratio, raw_p, fdr_q)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          rate_trigger, rate_baseline, rate_ratio, raw_p, fdr_q,
+          posterior_alpha, posterior_beta, posterior_p)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (hypothesis_id, week_start) DO UPDATE SET
-         n_trigger_days = EXCLUDED.n_trigger_days,
-         n_total_days   = EXCLUDED.n_total_days,
-         rate_trigger   = EXCLUDED.rate_trigger,
-         rate_baseline  = EXCLUDED.rate_baseline,
-         rate_ratio     = EXCLUDED.rate_ratio,
-         raw_p          = EXCLUDED.raw_p,
-         fdr_q          = EXCLUDED.fdr_q,
-         computed_at    = NOW()`,
+         n_trigger_days  = EXCLUDED.n_trigger_days,
+         n_total_days    = EXCLUDED.n_total_days,
+         rate_trigger    = EXCLUDED.rate_trigger,
+         rate_baseline   = EXCLUDED.rate_baseline,
+         rate_ratio      = EXCLUDED.rate_ratio,
+         raw_p           = EXCLUDED.raw_p,
+         fdr_q           = EXCLUDED.fdr_q,
+         posterior_alpha = EXCLUDED.posterior_alpha,
+         posterior_beta  = EXCLUDED.posterior_beta,
+         posterior_p     = EXCLUDED.posterior_p,
+         computed_at     = NOW()`,
       [
         stat.hypothesisId,
         stat.weekStart,
@@ -265,7 +315,10 @@ export const computeAndPersistWeeklyStats = async (
         stat.rateBaseline,
         Number.isNaN(stat.rateRatio) ? 'NaN' : stat.rateRatio,
         Number.isNaN(stat.rawP) ? 'NaN' : stat.rawP,
-        Number.isNaN(stat.fdrQ) ? 'NaN' : stat.fdrQ,
+        Number.isNaN(fdrQ) ? 'NaN' : fdrQ,
+        alpha,
+        beta,
+        Number.isNaN(posteriorP) ? 'NaN' : posteriorP,
       ],
     );
   }

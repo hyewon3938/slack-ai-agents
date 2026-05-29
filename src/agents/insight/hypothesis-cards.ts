@@ -1,8 +1,8 @@
 /**
- * 가설 Block Kit 카드 빌더 — ADR-0019 Phase 4.
+ * 가설 Block Kit 카드 빌더 — ADR-0019 Phase 4 + Phase 7 Bayesian 병기.
  *
- * - 후보 카드 (discovery → 등록/패스 액션)
- * - 주간 리뷰 묶음 (active 가설 stat 변화 + 신규 후보)
+ * - 후보 카드 (discovery → 승인/반려 액션)
+ * - 주간 리뷰 묶음 (시드 영향력 top 5 + active 가설 stat 변화 + 신규 후보)
  */
 
 import type { KnownBlock } from '@slack/types';
@@ -63,7 +63,10 @@ const formatRatio = (v: number): string => (Number.isFinite(v) ? v.toFixed(2) : 
 
 const formatPValue = (v: number): string => (Number.isFinite(v) ? v.toFixed(3) : '—');
 
-/** 단일 후보 카드 — 등록/패스 버튼 포함 */
+const formatPosterior = (v: number): string =>
+  Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—';
+
+/** 단일 후보 카드 — 승인/반려 버튼 포함 */
 export const buildCandidateCard = (cand: CandidateHypothesis): KnownBlock[] => {
   const payload = encodeActionPayload({
     triggerSpec: cand.triggerSpec,
@@ -71,30 +74,33 @@ export const buildCandidateCard = (cand: CandidateHypothesis): KnownBlock[] => {
   });
   const kindLabel = KIND_LABEL[cand.patternKind];
   const header = `${kindLabel} *${cand.signalName}* → \`${cand.enumTarget}\``;
-  const detail =
+  const freqLine =
     `발현일 n=${cand.nTriggerDays} · trigger ${formatPercent(cand.rateTrigger)} ` +
     `vs baseline ${formatPercent(cand.rateBaseline)} ` +
-    `· ratio ${formatRatio(cand.rateRatio)}x ` +
-    `· p=${formatPValue(cand.rawP)} q=${formatPValue(cand.fdrQ)}`;
+    `· ratio ${formatRatio(cand.rateRatio)}x`;
+  const bayesLine =
+    `p=${formatPValue(cand.rawP)} q=${formatPValue(cand.fdrQ)} · ` +
+    `사후 ${formatPosterior(cand.posteriorP)} ` +
+    `[${formatPosterior(cand.ciLower)}, ${formatPosterior(cand.ciUpper)}]`;
 
   return [
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: `${header}\n${detail}` },
+      text: { type: 'mrkdwn', text: `${header}\n${freqLine}\n${bayesLine}` },
     },
     {
       type: 'actions',
       elements: [
         {
           type: 'button',
-          text: { type: 'plain_text', text: '가설 등록' },
+          text: { type: 'plain_text', text: '가설 승인' },
           style: 'primary',
           action_id: HYPOTHESIS_REGISTER_ACTION_ID,
           value: payload,
         },
         {
           type: 'button',
-          text: { type: 'plain_text', text: '이번엔 패스' },
+          text: { type: 'plain_text', text: '가설 반려' },
           action_id: HYPOTHESIS_DISMISS_ACTION_ID,
           value: payload,
         },
@@ -111,11 +117,57 @@ export interface ActiveHypothesisRow {
   prev: HypothesisStat | null;
 }
 
-/** 주간 리뷰 묶음 — active 가설 표 + 신규 후보 카드 */
+/** 시드 영향력 섹션 — 주간 리뷰 상단. credible interval lower bound 정렬. */
+export interface SeedInfluenceRow {
+  patternId: number;
+  patternKind: 'saju' | 'life_signal';
+  signalName: string;
+  description: string | null;
+  totalHits: number;
+  totalMisses: number;
+  posteriorP: number;
+  ciLower: number;
+  ciUpper: number;
+}
+
+const POSTERIOR_LEGEND =
+  '_사후 = 본인 패턴일 확률 추정 (50%=우연, 80%↑=강함) · [] = 95% 신뢰 구간 (좁을수록 정확)_';
+
+export const buildSeedInfluenceSection = (rows: SeedInfluenceRow[]): KnownBlock[] => {
+  if (rows.length === 0) return [];
+  const lines = rows.map((r) => {
+    const kindLabel = KIND_LABEL[r.patternKind];
+    const desc = (r.description ?? '').slice(0, 40);
+    const verifyCount = r.totalHits + r.totalMisses;
+    return (
+      `• ${kindLabel} *${r.signalName}* (검증 ${verifyCount}개)` +
+      (desc ? ` — ${desc}` : '') +
+      ` — 사후 ${formatPosterior(r.posteriorP)} ` +
+      `[${formatPosterior(r.ciLower)}, ${formatPosterior(r.ciUpper)}]`
+    );
+  });
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*이번 주 영향력 시드 top ${rows.length}*\n${lines.join('\n')}`,
+      },
+    },
+    {
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: POSTERIOR_LEGEND }],
+    },
+    { type: 'divider' },
+  ];
+};
+
+/** 주간 리뷰 묶음 — 시드 영향력 + active 가설 표 + 신규 후보 카드 */
 export const buildWeeklyReviewBlocks = (
   active: ActiveHypothesisRow[],
   candidates: CandidateHypothesis[],
   weekStart: string,
+  seedInfluence: SeedInfluenceRow[],
 ): KnownBlock[] => {
   const blocks: KnownBlock[] = [
     {
@@ -124,11 +176,13 @@ export const buildWeeklyReviewBlocks = (
     },
   ];
 
+  blocks.push(...buildSeedInfluenceSection(seedInfluence));
+
   if (active.length === 0) {
     const noActiveText =
       candidates.length === 0
         ? '_active 가설 없음 — 신규 후보도 아직 없어. 데이터 더 쌓이면 자동으로 떠올거야._'
-        : '_active 가설 없음 — 아래 후보에서 골라 등록해._';
+        : '_active 가설 없음 — 아래 후보에서 골라 승인해._';
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: noActiveText },
@@ -139,13 +193,16 @@ export const buildWeeklyReviewBlocks = (
       const trigArrow = arrow(row.latest.rateTrigger, prev?.rateTrigger ?? null);
       const qArrow = arrow(row.latest.fdrQ, prev?.fdrQ ?? null);
       const kindLabel = KIND_LABEL[row.patternKind];
-      return (
+      const head =
         `• ${kindLabel} *${row.signalName}* → \`${row.hypothesis.enumTarget}\` — ` +
         `n=${row.latest.nTriggerDays} ` +
         `trig ${formatPercent(row.latest.rateTrigger)} ${trigArrow} ` +
         `ratio ${formatRatio(row.latest.rateRatio)}x ` +
-        `q=${formatPValue(row.latest.fdrQ)} ${qArrow}`
-      );
+        `q=${formatPValue(row.latest.fdrQ)} ${qArrow}`;
+      const post =
+        `   사후 ${formatPosterior(row.latest.posteriorP)} ` +
+        `[${formatPosterior(row.latest.ciLower)}, ${formatPosterior(row.latest.ciUpper)}]`;
+      return `${head}\n${post}`;
     });
     blocks.push({
       type: 'section',
@@ -166,7 +223,7 @@ export const buildWeeklyReviewBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*신규 후보 (사주 ${sajuCands.length} / 생활 ${lifeCands.length})* — 등록할 거 골라`,
+        text: `*신규 후보 (사주 ${sajuCands.length} / 생활 ${lifeCands.length})* — 승인할 거 골라`,
       },
     });
     for (const cand of sajuCands) blocks.push(...buildCandidateCard(cand));

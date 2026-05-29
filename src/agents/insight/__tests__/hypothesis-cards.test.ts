@@ -24,6 +24,9 @@ const makeCandidate = (
   rateRatio: 2.5,
   rawP: 0.04,
   fdrQ: 0.15,
+  posteriorP: 0.5,
+  ciLower: 0.21,
+  ciUpper: 0.79,
 });
 
 const makeStat = (hypothesisId: number): HypothesisStat => ({
@@ -36,6 +39,11 @@ const makeStat = (hypothesisId: number): HypothesisStat => ({
   rateRatio: 2.5,
   rawP: 0.04,
   fdrQ: 0.15,
+  posteriorAlpha: 3,
+  posteriorBeta: 3,
+  posteriorP: 0.5,
+  ciLower: 0.18,
+  ciUpper: 0.82,
 });
 
 const makeHypothesis = (id: number, signalId: number): Hypothesis => ({
@@ -82,7 +90,7 @@ describe('buildWeeklyReviewBlocks — cap per kind', () => {
       ...Array.from({ length: 6 }, (_, i) => makeCandidate(100 + i, `사주${i}`, 'saju')),
       ...Array.from({ length: 7 }, (_, i) => makeCandidate(200 + i, `생활${i}`, 'life_signal')),
     ];
-    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25');
+    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25', []);
     const texts = sectionTexts(blocks);
 
     const sajuCards = texts.filter((t) => /^\[사주\]/.test(t));
@@ -97,7 +105,7 @@ describe('buildWeeklyReviewBlocks — cap per kind', () => {
       makeCandidate(2, '사주B', 'saju'),
       makeCandidate(3, '생활A', 'life_signal'),
     ];
-    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25');
+    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25', []);
     const headerSection = sectionTexts(blocks).find((t) => /^\*신규 후보/.test(t));
     expect(headerSection).toBeDefined();
     expect(headerSection).toContain('사주 2');
@@ -109,14 +117,14 @@ describe('buildWeeklyReviewBlocks — cap per kind', () => {
       makeCandidate(1, '사주A', 'saju'),
       makeCandidate(2, '사주B', 'saju'),
     ];
-    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25');
+    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25', []);
     const headerSection = sectionTexts(blocks).find((t) => /^\*신규 후보/.test(t));
     expect(headerSection).toContain('사주 2');
     expect(headerSection).toContain('생활 0');
   });
 
   it('candidates가 0건이면 신규 후보 섹션 자체가 추가되지 않음', () => {
-    const blocks = buildWeeklyReviewBlocks([], [], '2026-05-25');
+    const blocks = buildWeeklyReviewBlocks([], [], '2026-05-25', []);
     const headerSection = sectionTexts(blocks).find((t) => /^\*신규 후보/.test(t));
     expect(headerSection).toBeUndefined();
   });
@@ -140,7 +148,7 @@ describe('buildWeeklyReviewBlocks — active 가설 prefix', () => {
         prev: null,
       },
     ];
-    const blocks = buildWeeklyReviewBlocks(active, [], '2026-05-25');
+    const blocks = buildWeeklyReviewBlocks(active, [], '2026-05-25', []);
     const activeSection = sectionTexts(blocks).find((t) => t.includes('active 가설'));
     expect(activeSection).toBeDefined();
     expect(activeSection).toMatch(/\[사주\] \*사주가설\*/);

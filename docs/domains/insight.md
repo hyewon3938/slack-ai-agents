@@ -1270,9 +1270,69 @@ Phase 1\~5에서 결정론 매트릭만 평가되던 구조 위에 **LLM이 매�
 
 Phase 7 (Bayesian update)에서 active 매트릭의 `posterior_alpha/beta/p`가 매칭 cron 평가 결과로 갱신. Phase 8 (인사이트 카드 UI)에서 active 매트릭의 verified 결과를 사용자에게 노출하는 카드 통합.
 
-### 21. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian update)
+### 21. 본인 1명 패턴 발견 시스템 — Phase 7 (Bayesian posterior 헬퍼·카드 병기 + 시드 영향력 섹션)
 
-> TODO(`/build`): 구현 후 본문 채우기. `src/shared/bayesian-posterior.ts` 헬퍼(\~100줄), Beta-Binomial 사후 갱신, `pattern_metrics.posterior_p` UPDATE. 가설 카드에 frequentist p값 + Bayesian posterior 병기. beta inverse CDF 라이브러리 선택.
+**데이터 모델 (Migration 074)** — `pattern_stats`에 가설 단위 Beta-Binomial posterior 3컬럼 추가:
+
+| 컬럼 | 타입 | 의미 |
+|------|------|------|
+| `posterior_alpha` | NUMERIC(8,2) | prior Beta(1,1) + 누적 hit |
+| `posterior_beta`  | NUMERIC(8,2) | prior Beta(1,1) + 누적 miss |
+| `posterior_p`     | NUMERIC(6,4) | α / (α + β) |
+
+기존 row(Phase 4 이후 1주분만 누적)는 NULL. 다음 weekly cron이 자연스럽게 채움 — 별도 backfill SQL 생략.
+
+매트릭 단위 posterior(`pattern_metrics.posterior_alpha/beta/p`, Phase 4 도입)는 매칭 cron의 SQL inline UPDATE 그대로 유지(atomicity 보호). 가설 단위는 weekly UPSERT 흐름이 메모리 합산 → UPSERT 한 번이라 헬퍼로 산출.
+
+**헬퍼 (`src/shared/bayesian-posterior.ts`)**:
+
+| 함수 | 시그니처 | 용도 |
+|------|---------|------|
+| `updatePosterior(prior, 'hit'\|'miss')` | `BetaPosterior → BetaPosterior` | 단발 갱신(테스트·유닛 케이스) |
+| `posteriorMean(α, β)` | `→ number` | 사후 평균 |
+| `credibleInterval(α, β, conf=0.95)` | `→ {lower, upper}` | Beta inverse CDF로 신뢰구간 |
+| `cumulativePosteriorFromHitMiss(h, m)` | `→ {alpha:1+h, beta:1+m}` | 누적 hit/miss → posterior |
+
+라이브러리: `@stdlib/stats-base-dists-beta-quantile` (Beta inverse CDF 단일 함수).
+
+**누적 산식 (`computeAndPersistWeeklyStats`)** — 가설별:
+
+1. 이전 주들의 누적 hit/miss를 `pattern_stats`에서 SELECT (`SUM(rate_trigger × n_trigger_days)`로 derive)
+2. 이번 주 hit/miss는 메모리에서 derive
+3. `cumulativePosteriorFromHitMiss(priorHits + weekHits, priorMisses + weekMisses)` → α/β
+4. `posteriorMean` + `credibleInterval` → mean + CI
+5. UPSERT는 9컬럼 → 12컬럼 (α/β/p 추가)
+
+> hit를 별도 컬럼으로 추가하지 않고 `rate_trigger × n_trigger_days`로 derive하는 이유: 기존 row만으로 충분, 스키마 변경 최소.
+
+**UI 흐름**
+
+가설 카드(`buildCandidateCard`)는 frequentist(p/q)와 Bayesian(사후/CI)를 한 줄에 병기:
+
+```
+[사주] *갑목일주* → `mood_high`
+발현일 n=8 · trigger 50.0% vs baseline 20.0% · ratio 2.50x
+p=0.040 q=0.150 · 사후 50% [21%, 79%]
+```
+
+주간 리뷰 카드 상단에 **시드 영향력 top 5** 섹션 신설(사주·생활 통합, `pattern_summary` view + 매트릭 α/β 합산 query). 정렬 기준은 **95% credible interval lower bound 내림차순** — N 적으면 CI가 자동으로 넓어져 lower 페널티 발생(임의 컷오프 회피, #434 헌장 ⑤ 준수). 안내문: `_사후 = 본인 패턴일 확률 추정 (50%=우연, 80%↑=강함) · [] = 95% 신뢰 구간 (좁을수록 정확)_`
+
+**시드 영향력 데이터 소스**
+
+`pattern_summary` view에는 `aggregate_posterior_p`(평균)만 노출되어 있고 α/β는 view contract에 없다. credible interval은 α/β 모두 필요하므로 별도 query로 `SUM(posterior_alpha), SUM(posterior_beta)` 추가 SELECT — view 시그니처는 보존(외부 의존 자산 보호).
+
+**버튼 라벨 정리**
+
+| Phase | Before | After |
+|-------|--------|-------|
+| Phase 4 가설 카드 | `가설 등록` / `이번엔 패스` | `가설 승인` / `가설 반려` |
+| Phase 6 매트릭 카드 | `승인` / `거절` | `승인` / `반려` |
+
+action_id, value, handler 동작, DB SQL은 그대로 — 사용자 노출 텍스트만 변경. dismiss 시 DB write 없음(자동 재발현 정책 유지).
+
+**관련 결정**: [ADR-0024](../adr/0024-bayesian-posterior-update.md) (Beta-Binomial posterior 도입).
+
+이슈 [#460](https://github.com/hyewon3938/slack-ai-agents/issues/460) · ADR-0024 실행 마무리 (신규 ADR 없음).
 
 ### 22. 본인 1명 패턴 발견 시스템 — Phase 8 (인사이트 카드 UI + 마스터 close)
 
