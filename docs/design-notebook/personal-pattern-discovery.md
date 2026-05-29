@@ -186,6 +186,49 @@ LLM 매트릭은 월 최대 N개 cap(예: 5개)으로 슬롯 폭주 방지. 매�
 
 ---
 
+## 부록 E — 운영 1\~3개월 후 도입 검토 항목
+
+> 마스터 #434 close (2026-05-29) 후 운영 누적되면 진입 검토. 항목당 한 줄 + 트리거 조건. 본문 확장은 follow-up 이슈에서.
+
+### 통계 도구
+
+- **SPRT (early stopping)** — 트리거: 검증 cron 누적 90일 + 가설 100건 이상 → 조기 종료 도구 평가
+- **CPD (change point detection)** — 트리거: pattern_matches 누적 6개월 + 사용자 "최근 들어 변한 것 같다" 진술
+- **dispersion ratio** — 트리거: confirmed 가설 10건 이상 + 분산 단조 패턴
+- **pattern_summary view α/β 직접 노출** — 트리거: 외부 의존 생긴 후 별도 PR (Phase 7 회고)
+- **aggregate_posterior_p 카드 직접 활용** — 트리거: Phase 8 카드 UI 진화 진입 시
+
+### Phase 6 LLM 매트릭 routine 운영
+
+- **2026-07-01 첫 발사 결과 회고** — 트리거: 첫 발사 후 1주
+- **거절 재제안 LLM 자율 판단 일관성** — 트리거: 첫 발사 3개월 + 재제안 케이스 10건 이상
+- **routine 입력 토큰 길이** — 트리거: 시드 161개 + 메트릭 표 30일 + evidence 60일이 토큰 한계 도달
+- **active 가설 상태 입력 추가** — 트리거: 1차 3 결합 안정화 + active 가설 5건 이상 누적
+- **evidence 임계치 자동 트리거** — 트리거: 운영 3개월 + 후보 품질 분산 분석
+- **routine 실패 fallback 경로** — 트리거: routine 실패 1회 이상 발생
+
+### Phase 7 Bayesian + 시드 영향력
+
+- **2026-06-08 첫 발사 결과 회고** — 트리거: 첫 발사 후 1주
+- **N 적은 시드 CI lower bound 분포** — 트리거: 운영 1개월 + prior 근방 몰림 검증
+- **사주/생활 통합 정렬 영역 편향** — 트리거: 한쪽 영역이 top 5 점령 1개월 지속
+- **Math.round 오차 누적** — 트리거: 가설 stats 누적 4주 이상 + raw hit vs derived hit 비교
+
+### Phase 2.5 운 레벨 분포 분석
+
+- **임계치 자동 추출** — 트리거: 운영 60\~90일 후 분포 안정화
+- **운 레벨 가중치 도입** — 트리거: pillar_level별 hit-rate 분포 차이 60일 이상 지속
+- **signal 신호 강도 판단** — 트리거: pillar_level별 가설 confirmed 누적 비교 가능
+
+### 기타 잔여
+
+- **카테고리 가중치 자동 튜닝** — 트리거: 가설 검증 누적 3개월 + 카테고리별 편향 분포 분석 가능
+- **pattern_matches 에러 row retention** — 트리거: error row 누적 1개월 + row 폭증 여부 확인
+- **SQL 문자열 매칭 테스트 한계** — 트리거: 매칭 cron inline SQL 검증 필요한 신규 결정 발생 시
+- **시드 description 임상 단서 누적 경로** — 트리거: 사용자 새 임상 단서 진술 3건 이상 누적
+
+---
+
 ## Phase 1: 스키마 일반화 (예정)
 
 - 이슈: TBD (Phase 1 진입 시 생성)
@@ -933,10 +976,133 @@ ALTER TABLE pattern_matches
 **8b 진입 타이밍**:
 - 8a 머지 직후 진입 vs 운영 1주 검증 후 진입. 운영 검증이 사실상 익일 09:00 매칭 cron이라 24시간 안에 결과 확인 가능 → 8a 머지 + 익일 cron 정상 작동 확인 후 8b 진입 결정
 
+### Phase 8b — 마스터 close docs + follow-up 일괄 등록 (2026-05-29)
+
+> 이슈 [#464](https://github.com/hyewon3938/slack-ai-agents/issues/464) · 브랜치 `feature/464-phase-8b-master-close`
+>
+> 코드 변경 0. docs (README/project-history/design-notebook/features/domains) + GitHub Issues follow-up 등록. 마스터 #434 close.
+
+#### 결정 요약
+
+1. **Phase 8b 진입 타이밍** — 8a 머지 직후 진입. 익일 09:00 매칭 cron 정상 작동 확인 + per-seed 격리 정상 동작 확인 후 close 작업 자연 진입
+2. **follow-up 묶음 단위** — 카테고리별 5\~6건 묶음 이슈 (Phase 8a Q3-1 채택 그대로). 개별 7\~10건 세분화 X, 단일 마스터 follow-up 이슈 X
+3. **부록 E 깊이** — 항목당 한 줄 + 트리거 조건 (간단). 운영 1\~3개월 동안 자주 안 들춰볼 것 + 가독성 우선
+4. **README 강조 범위** — 개발 히스토리 표에 W12 행 추가만. 차별점 카드·badge 갱신 X (마스터 #434는 기존 v2 헌장 위에서의 확장이므로 README 차별점 구조는 그대로 보존)
+
+#### 의사결정 분기점
+
+##### A. follow-up 묶음 단위 (Phase 8a Q3 재진술)
+
+- A1. **카테고리별 묶음 5\~6건 (선택)** — 묶음 단위 design 진입이 자연 (예: Phase 7 회고 항목 4건은 같은 운영 누적으로 검증)
+- A2. 개별 이슈 7\~10건 — 항목별 추적성 ↑, 그러나 묶음 단위 작업이 자연스러운 항목은 묶음이 효율
+- A3. 단일 마스터 follow-up + 체크리스트 — 추적성 ↓
+
+→ A1. 인터뷰 결정.
+
+##### B. 부록 E 깊이
+
+- B1. **항목당 한 줄 + 트리거 조건 (선택)** — 운영 1\~3개월 동안 자주 안 들춰볼 거라 가독성 우선
+- B2. 항목별 짧은 단락 (배경 + 트리거 + outcome) — 시간 지나서 다시 볼 때 컨텍스트 회복
+- B3. 표 형식 (항목/트리거/예상 outcome/우선순위) — 비교용, 작성·유지 비용 큼
+
+→ B1. 인터뷰 결정. 검토 진입 시 follow-up 이슈에서 본문을 확장.
+
+##### C. 마스터 마무리 회고 위치
+
+- C1. **design-notebook 끝 (Phase 8 섹션 뒤 + 기술적 의의 앞) (선택)** — 마스터 단위 진화 + 8 phase 총평 → "기술적 의의" 추상화 직전에 풀어 쓰는 게 자연
+- C2. README/project-history에 분산 — 청중·목적이 다른 문서에 같은 회고 반복 노출
+- C3. portfolio-candidates 비공개로만 — 마스터 진화 자체는 공개 가치, 비공개는 어필 표현만
+
+→ C1. design-notebook은 마스터 단위 서사 owner.
+
+##### D. README 마스터 #434 표현 범위
+
+- D1. **개발 히스토리 표 W12 행 추가 (선택)** — 다른 마스터(예: #393)도 W9\~W11에 행으로만 표현, 차별점 구조 보존
+- D2. 차별점 섹션 카드 추가 — 마스터 #434는 v2 헌장 위에서의 확장이라 새 차별점 추출 어려움
+- D3. badge 추가 — 핵심 메시지 희석
+
+→ D1. README는 차별점 구조 보존 + 히스토리 표에서 진화 표현.
+
+#### 포기한 안 / 미룬 항목
+
+- **마스터 #434 동시 follow-up 카테고리별 세분화 (예: 통계 도구 안에서 SPRT/CPD/dispersion 각 별도 이슈)** — 운영 누적 후 design 단계에서 세분화 진입이 자연. 본 phase는 묶음 단위로 트래킹
+- **마스터 #434 명시적 close 안내 잔소리/Slack 알림** — 사용자 본인 진행이라 외부 공지 불필요
+- **README badge 갱신** — 마스터 #434는 v2 헌장 위에서의 확장. 차별점 구조 그대로 보존이 정합
+
+#### 미해결 / 가설
+
+- **follow-up 묶음 단위가 진입 시 작업 단위와 맞는가** — 운영 누적 후 design 단계에서 묶음을 펼치면 항목 일부만 작업하고 나머지는 다음 묶음 cycle로 보낼 수 있음. 묶음 이슈 본문 체크리스트로 단위 추적
+- **마스터 #434 close 후 신규 마스터 진입 시점** — Phase 8 정체성 진화에서 흡수된 카드 UI 고도화는 신규 마스터 후보. 운영 1\~3개월 후 사용자 데이터·진술 누적되면 진입 판단
+
+#### 회고 (구현 — 2026-05-29)
+
+- **close docs의 실제 산출 패턴** — 코드 변경 0 + docs 5개 파일 + GitHub Issues 5\~6건. 마스터 진화의 산출 중심점이 코드 → 서사·핸드오프로 이동
+- **design-notebook 마무리 회고 vs project-history.md** — 같은 마스터 close가 두 문서에 다른 청중(내부 서사 vs 포트폴리오 timeline)으로 분기. 5문서 아키텍처의 owner 분리가 close 단계에서 효력 발휘
+- **follow-up 묶음 단위의 후속 design 효율** — 묶음 단위로 작업하면 design 단계에서 묶음 하위 항목이 같은 운영 데이터를 공유하므로 cross-check 비용 절감. 개별 이슈였다면 같은 데이터를 5번 검증할 위험
+- **부록 E의 정체성** — 회고 아닌 "검토 항목 캘린더". 운영 1\~3개월 후 진입 트리거가 명시되어 있어 close 후 잊지 않게 하는 장치
+
 ---
 
-## 기술적 의의
+## 마무리 회고 (2026-05-29 close)
+
+마스터 #434 (본인 1명 패턴 발견 시스템) Phase 1\~8 완료 후 close. 총 \~13일(2026-05-27 \~ 2026-05-29 + Phase 1\~4는 마스터 #393 시기 누적분 일부 흡수). 본 섹션은 8 phase 전반에 걸친 마스터 단위 진화·헌장 작동·후속 핸드오프 정리.
+
+### 8 phase 총평
+
+| Phase | 산출 | 핵심 결정·진화 |
+|------|------|---------------|
+| 1 (스키마 일반화) | `target_type` 일반화 + `pattern_*` rename + Beta-Binomial 컬럼 골격 | ADR-0022 → 0026 (target-type 확장 후 더 일반적 이름 채택) |
+| 2 (사주 시드 풀셋 + 빈 매트릭 evidence-only) | 사주 시드 161개 + 풀셋 임계치 trigger 6종 + evidence-only 누적 | 사용자 임상 단서를 description에 박아 LLM 후보 공간 좁힘 |
+| 2.5 (운 레벨 차원) | `pillar_level` 컬럼 + `cumulative_pillar_count` trigger + 14 신규 시드 + 자동 분포 분석 cron | ADR-0028. 운 레벨 가중치 도입 임의값 박지 않고 분포로 노출 |
+| 3 (life_signal 시드 풀셋 + 매칭 cron 일반화) | 요일·계절·월말월초 시드 14\~20개 + 매칭 cron polymorphic 일반화 | target-type 확장 + 사주 외 통념 동일 파이프라인 |
+| 4 (카운터 source of truth 전환 + rename) | `pattern_metrics` 단위 카운터 + `pattern_summary` view derive + `pattern-match` rename | catalog 카운터 deprecated 마킹 (Phase 8a에서 DROP) |
+| 5 (가설 발견·검증 파이프라인 target-type 확장) | hypothesis 발견·검증이 사주·생활 통합 처리 | Fisher's exact + BH-FDR을 target-type 통합 |
+| 6 (LLM 자율 매트릭 + 승인 게이트) | `metric-approval-cards` + monthly routine + ADR-0030 거절 재제안 자율 | 매월 cap 5 + 거절 재제안 LLM 자율 판단 (임의 cool down 배제) |
+| 7 (Bayesian posterior 헬퍼 + 시드 영향력) | `bayesian-posterior.ts` + 가설 단위 posterior + 시드 영향력 top 5 섹션 | CI lower bound 정렬로 임계치 박지 않음 |
+| 8a (잔여 정리) | catalog deprecated DROP + per-seed try/catch 격리 + `verify_status='error'` | 마스터 헌장 정합성 마무리 |
+| 8b (close docs + follow-up) | 마스터 close + follow-up 묶음 5\~6건 등록 | 본 phase |
+
+### 마스터 단위 진화 — 헌장 작동 회고
+
+**v2 헌장 4개 계승**
+- ① "LLM 텍스트 의존 최소화" — 가설 evidence/매트릭 산식은 결정론 SQL. LLM은 매트릭 description 후보·거절 재제안 판단 영역만
+- ② "결정론과 자율 역할 분리" — 시드(결정론)·매트릭(결정론+LLM 자율 인 후보)·매칭(결정론)·가설(결정론+LLM 인 후보)·검증(결정론). 자율 영역은 모두 사용자 승인 게이트
+- ③ "outcome 검증" — Fisher's exact + BH-FDR 통계 → 누적 부족 단계는 Bayesian posterior로 보완
+- ④ "신뢰 비용 분리" — Frequentist(p/q) + Bayesian(사후/CI) 병기로 누적 단계별 신뢰도 표현. catalog hit rate(누적) → verified(통계) → recent(7일)로 신뢰 단계 라벨링
+
+**#434 자체 헌장 5개 작동**
+- ① n=1 single-case design — 모든 통계가 본인 1명 누적용. 베이지안 prior가 informed 아닌 uniform Beta(1,1) — 모집단 가정 거부
+- ② 5어휘 분리 — 시드(trigger)·매트릭(SQL 인스턴스)·매칭(평가 결과 row)·가설(인과 명제)·검증(주간 시계열) 각 1테이블 + view. Phase 1 스키마에서 분리 후 일관 유지
+- ③ target-type 일반화 — saju + life_signal 통합 처리. Phase 5에서 가설 파이프라인까지 확장
+- ④ 결정론↔LLM 자율 + 승인 게이트 — Phase 6 매트릭 자율 후보가 단일 진입점. cap 5 + 카드 승인 + 거절 재제안 자율 판단
+- ⑤ 임의값 박지 않기 — CI lower bound 정렬·운 레벨 분포 노출·routine cron 빈도(월 자연) 등 임의 임계치 회피. 사용자 안내용 텍스트(50%=우연, 80%↑=강함)만 가이드
+
+→ 8 phase 전반에 걸쳐 모든 핵심 결정이 헌장 위에서 정합. cross-check 단계가 옵션 제안 단계에서 충돌 조기 발견 (Phase 6 거절 재제안 cool down 안 거부, Phase 7 시드 영향력 임계치 거부)
+
+### 포기·미룬 항목 핸드오프
+
+phase별 회고에서 식별된 follow-up은 본 phase에서 카테고리별 묶음 이슈 6건으로 등록:
+
+- [#465](https://github.com/hyewon3938/slack-ai-agents/issues/465) — 통계 도구 도입 검토 (SPRT/CPD/dispersion/view α/β/aggregate_posterior_p)
+- [#466](https://github.com/hyewon3938/slack-ai-agents/issues/466) — Phase 6 LLM 매트릭 routine 운영 회고 (첫 발사 2026-07-01 후)
+- [#467](https://github.com/hyewon3938/slack-ai-agents/issues/467) — Phase 7 Bayesian + 시드 영향력 운영 회고 (첫 발사 2026-06-08 후)
+- [#468](https://github.com/hyewon3938/slack-ai-agents/issues/468) — Phase 2.5 운 레벨 분포 분석 cron 회고 (운영 60\~90일 후)
+- [#469](https://github.com/hyewon3938/slack-ai-agents/issues/469) — 잔소리 일원화 (Slack 메시지 톤, Insight 도메인 외 분리)
+- [#470](https://github.com/hyewon3938/slack-ai-agents/issues/470) — 기타 잔여 (카테고리 가중치·에러 row retention·SQL 문자열 매칭 테스트 한계·시드 description 단서)
+
+→ 운영 누적 후 design 단계에서 묶음 단위로 진입 (한 묶음을 펼치면 같은 운영 데이터를 공유하는 항목들이 자연 cross-check)
+
+### 후속 마스터 후보
+
+- **카드 인터랙션 고도화 / 사용자 노출 UX 최적화** — Phase 8 정체성 진화에서 흡수된 영역. 운영 1\~3개월 후 사용자 진술 누적되면 진입 판단
+- **#408 월운 매칭** — 검증 사이클 길이 차이로 본격 진입 보류 정책 계승 (마스터 #393 시절 결정). Phase 4 운영 1\~3개월 후 인터뷰
+- **잔소리 합성 일원화 / 사용자 피드백 누적** — 본 마스터 follow-up 묶음 F5에서 별도 트랙으로 분리
+
+부록 E 검토 항목이 운영 1\~3개월 동안 누적되면 후속 마스터 진입 또는 단발 phase 진입 결정.
+
+### 기술적 의의
 
 - target-type 일반화로 사주 검증 시스템을 본인 1명 패턴 발견 시스템으로 확장. 사주 갑자와 라이프 통념(요일·계절 등)을 동일 통계 파이프라인에서 처리
 - Frequentist(Fisher + BH-FDR)와 Bayesian(Beta-Binomial posterior)을 병기해 n=1 환경의 누적 단계별 신뢰도 추정 강화
 - LLM 자율 매트릭 + 사용자 승인 게이트로 결정론과 자율 영역의 신뢰 비용 분리 유지
+- 5어휘 데이터 모델 분리(시드·매트릭·매칭·가설·검증)로 source of truth 통합 + view derive로 외부 의존 보존
