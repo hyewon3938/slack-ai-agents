@@ -395,6 +395,7 @@ web/                       # 웹 대시보드 (Vercel 자동 배포)
 | W9 (05-11\~17)        | **프로액티브 인사이트 v2 마스터 진입** — Phase 1 (인사이트 엔진 통합·임계치 외부화) · **Phase 2** (LLM 자율 발견 슬롯 + Outcome 검증, ADR 0016) · **Phase 3** (60갑자 정규화 + 일일 매칭, ADR 0017) · 일정 카테고리 FK 전환 · 결제주기 종료 자산 자동 차감 |
 | W10 (05-20\~24)       | **할부 자산 차감 범위 토글** · **인사이트 Phase 4 — 가설-검증 정량 파이프라인** (Fisher's exact + BH-FDR + lifecycle 자동 관리, ADR 0019)                              |
 | W11 (05-25\~26)       | **사주 풀이 책임 분리 + view 매개 마스터 통합** (`saju_influence_summary` 신뢰도 라벨링 + idempotency DB 제약, ADR 0020·0021) · 5문서 아키텍처 + portfolio-candidates 워크플로우 정착 |
+| W12 (05-28\~29)       | **마스터 #434 close — 본인 1명 패턴 발견 시스템** (5어휘 데이터 모델 + LLM 자율 매트릭 승인 게이트 + Bayesian posterior 시드 영향력 리포트) — Phase 1\~8 머지 완료, ADR 0022\~0030(9개) |
 
 상세 → [docs/project-history.md](docs/project-history.md)
 

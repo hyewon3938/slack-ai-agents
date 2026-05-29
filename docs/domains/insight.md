@@ -1388,13 +1388,15 @@ ALTER TABLE pattern_matches
 - `recordDailyMatches`에서 `triggerError` truthy → `verify_status='error'`, `error_message=JSONB({reason})`로 INSERT. ON CONFLICT 업데이트에 `error_message` 포함 → 다음날 같은 시드가 정상이면 자동 NULL 회복 (멱등)
 - `verifyDailyMatches`는 `WHERE verify_status='pending'`만 잡으므로 `'error'` row는 자연 SKIP — 카운터 갱신 영향 0 (no_metric과 동일 처리)
 
-#### Phase 8b (8a 머지 후 신규 이슈) — 마스터 close docs + follow-up 이슈 일괄 등록
+#### Phase 8b (이슈 [#464](https://github.com/hyewon3938/slack-ai-agents/issues/464)) — 마스터 close docs + follow-up 이슈 일괄 등록
 
-- `README.md` 마스터 #434 closed badge + Phase 1\~8 요약 한 줄씩
-- design-notebook 마무리 회고 섹션 (마스터 단위 진화 + 8 phase 총평) + 부록 E 본문 본격 작성
+코드 변경 없음. docs (README/project-history/design-notebook/features/domains) + GitHub Issues follow-up 등록. 마스터 #434 **close 2026-05-29**.
+
+- design-notebook 마무리 회고 섹션(8 phase 총평 + 헌장 작동 + 포기·핸드오프 + 후속 마스터 후보) + 부록 E(운영 1\~3개월 후 도입 검토 5 카테고리)
+- features.md 마스터 라인 갱신(Phase 8a/8b close), project-history.md 마일스톤 추가, README.md W12 행 추가
 - follow-up 이슈 카테고리별 5\~6건 묶음 등록: 통계 도구(SPRT/CPD/dispersion) / Phase 6 LLM 매트릭 routine 운영 회고 / Phase 7 Bayesian + 시드 영향력 운영 회고 / Phase 2.5 운 레벨 분포 분석 회고 / 잔소리 일원화 / 기타 미해결 잔여(카테고리 가중치 자동 튜닝 · 에러 row retention 등)
 
-설계 결정 배경: [design-notebook personal-pattern-discovery](../design-notebook/personal-pattern-discovery.md) Phase 8 섹션
+설계 결정 배경: [design-notebook personal-pattern-discovery](../design-notebook/personal-pattern-discovery.md) Phase 8 섹션 + 마무리 회고
 
 ## 파일 구조
 
