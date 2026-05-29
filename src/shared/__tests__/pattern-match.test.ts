@@ -32,6 +32,7 @@ import {
   evaluateMetric,
   compactMatchedLine,
   verifyDailyMatches,
+  recordDailyMatches,
   __resetCacheForTest,
   type SajuSeedWithMetrics,
   type DailyContext,
@@ -523,6 +524,7 @@ describe('compactMatchedLine', () => {
     })),
     matched,
     isEvidenceOnly: false,
+    triggerError: null,
   });
 
   /** pattern_summary view에서 pattern_id → total_hits 반환을 mock. */
@@ -964,5 +966,65 @@ describe('verifyDailyMatches (Phase 4)', () => {
         (sql.includes('UPDATE pattern_matches') || sql.includes('UPDATE pattern_metrics')),
     );
     expect(updates.length).toBe(0);
+  });
+});
+
+// ─── recordDailyMatches (Phase 8a) ───────────────────────
+
+describe('recordDailyMatches (Phase 8a)', () => {
+  const makeResult = (overrides: Partial<SeedMatchResult>): SeedMatchResult => ({
+    seed: baseSeed({ id: 42 }),
+    triggerActivated: false,
+    metricEvaluations: [],
+    matched: null,
+    isEvidenceOnly: false,
+    triggerError: null,
+    ...overrides,
+  });
+
+  /** INSERT INTO pattern_matches 호출 1건의 params 추출. */
+  const findInsertParams = (): unknown[] | null => {
+    const call = mockQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO pattern_matches'),
+    );
+    return call ? (call[1] as unknown[]) : null;
+  };
+
+  it('triggerError truthy → verify_status=error + error_message JSONB INSERT', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    const r = makeResult({ triggerError: 'column "wake_at" does not exist' });
+    await recordDailyMatches(1, '2026-05-29', [r]);
+
+    const params = findInsertParams();
+    expect(params).not.toBeNull();
+    expect(params?.[6]).toBe('error');
+    const errorJson = params?.[7] as string;
+    expect(errorJson).not.toBeNull();
+    expect(JSON.parse(errorJson)).toEqual({ reason: 'column "wake_at" does not exist' });
+  });
+
+  it('triggerError null + isEvidenceOnly → verify_status=no_metric + error_message=null', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    const r = makeResult({ triggerActivated: true, isEvidenceOnly: true, triggerError: null });
+    await recordDailyMatches(1, '2026-05-29', [r]);
+
+    const params = findInsertParams();
+    expect(params?.[6]).toBe('no_metric');
+    expect(params?.[7]).toBeNull();
+  });
+
+  it('triggerError null + metric 있음 → verify_status=pending + error_message=null', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    const r = makeResult({
+      triggerActivated: true,
+      isEvidenceOnly: false,
+      matched: false,
+      triggerError: null,
+    });
+    await recordDailyMatches(1, '2026-05-29', [r]);
+
+    const params = findInsertParams();
+    expect(params?.[6]).toBe('pending');
+    expect(params?.[7]).toBeNull();
   });
 });

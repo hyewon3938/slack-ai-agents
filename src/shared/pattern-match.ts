@@ -256,6 +256,8 @@ export interface SeedMatchResult {
   matched: boolean | null;
   /** 풀셋 evidence-only 시드 여부. true면 verify_status='no_metric'로 INSERT. */
   isEvidenceOnly: boolean;
+  /** 시드 평가 중 SQL/시스템 오류 발생 시 message. truthy면 verify_status='error'로 INSERT. */
+  triggerError: string | null;
 }
 
 // ─── 본명 / 일운 컨텍스트 ────────────────────────────────
@@ -740,30 +742,52 @@ export const matchAllSeedsForDay = async (
 
   const results: SeedMatchResult[] = [];
   for (const seed of seeds) {
-    const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap);
+    // Phase 8a: per-seed try/catch — 한 시드 trigger SQL 실패가 cron 전체를 죽이지 않게 격리.
+    // 내부 metric try/catch는 trigger 통과 후 일부 metric만 fail하는 케이스 보호 → 보존.
+    try {
+      const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap);
 
-    const metricEvaluations: MetricEvaluation[] = [];
-    if (triggerActivated) {
-      for (const m of seed.metrics) {
-        try {
-          const ev = await evaluateMetric(m, userId, date);
-          metricEvaluations.push(ev);
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          console.error(
-            `[pattern-match] metric 평가 실패 seed=${seed.name} metric=${m.metric_name}: ${errMsg}`,
-          );
+      const metricEvaluations: MetricEvaluation[] = [];
+      if (triggerActivated) {
+        for (const m of seed.metrics) {
+          try {
+            const ev = await evaluateMetric(m, userId, date);
+            metricEvaluations.push(ev);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.error(
+              `[pattern-match] metric 평가 실패 seed=${seed.name} metric=${m.metric_name}: ${errMsg}`,
+            );
+          }
         }
       }
-    }
 
-    // 풀셋 evidence-only 시드(매트릭 없음)는 채점 스킵 — matched=null
-    // 마스터 #434 Phase 2: 60+일 evidence 누적 후 Phase 6 LLM 매트릭 제안 슬롯이 활용
-    const isEvidenceOnly = seed.metrics.length === 0;
-    const matched = isEvidenceOnly
-      ? null
-      : triggerActivated && metricEvaluations.some((e) => e.passed);
-    results.push({ seed, triggerActivated, metricEvaluations, matched, isEvidenceOnly });
+      // 풀셋 evidence-only 시드(매트릭 없음)는 채점 스킵 — matched=null
+      // 마스터 #434 Phase 2: 60+일 evidence 누적 후 Phase 6 LLM 매트릭 제안 슬롯이 활용
+      const isEvidenceOnly = seed.metrics.length === 0;
+      const matched = isEvidenceOnly
+        ? null
+        : triggerActivated && metricEvaluations.some((e) => e.passed);
+      results.push({
+        seed,
+        triggerActivated,
+        metricEvaluations,
+        matched,
+        isEvidenceOnly,
+        triggerError: null,
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[pattern-match] seed 평가 실패 seed=${seed.name} id=${seed.id}: ${errMsg}`);
+      results.push({
+        seed,
+        triggerActivated: false,
+        metricEvaluations: [],
+        matched: null,
+        isEvidenceOnly: seed.metrics.length === 0,
+        triggerError: errMsg,
+      });
+    }
   }
 
   const elapsedMs = Date.now() - t0;
@@ -789,16 +813,20 @@ export const recordDailyMatches = async (
         },
       ]),
     );
-    const verifyStatus = r.isEvidenceOnly ? 'no_metric' : 'pending';
+    // Phase 8a: 시드 평가 실패 시 verify_status='error' + error_message JSONB로 INSERT (멱등 + 디버깅).
+    // ON CONFLICT에 error_message도 포함 → 다음 cron 재실행 시 성공하면 자동 NULL로 회복.
+    const verifyStatus = r.triggerError ? 'error' : r.isEvidenceOnly ? 'no_metric' : 'pending';
+    const errorMessage = r.triggerError ? JSON.stringify({ reason: r.triggerError }) : null;
     await query(
       `INSERT INTO pattern_matches
-         (user_id, date, pattern_id, trigger_activated, metric_values, matched, verify_status)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+         (user_id, date, pattern_id, trigger_activated, metric_values, matched, verify_status, error_message)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb)
        ON CONFLICT (user_id, date, pattern_id) DO UPDATE
          SET trigger_activated = EXCLUDED.trigger_activated,
-             metric_values = EXCLUDED.metric_values,
-             matched = EXCLUDED.matched,
-             verify_status = EXCLUDED.verify_status`,
+             metric_values     = EXCLUDED.metric_values,
+             matched           = EXCLUDED.matched,
+             verify_status     = EXCLUDED.verify_status,
+             error_message     = EXCLUDED.error_message`,
       [
         userId,
         date,
@@ -807,6 +835,7 @@ export const recordDailyMatches = async (
         JSON.stringify(metricValues),
         r.matched,
         verifyStatus,
+        errorMessage,
       ],
     );
   }

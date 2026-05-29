@@ -1334,11 +1334,67 @@ action_id, value, handler 동작, DB SQL은 그대로 — 사용자 노출 텍�
 
 이슈 [#460](https://github.com/hyewon3938/slack-ai-agents/issues/460) · ADR-0024 실행 마무리 (신규 ADR 없음).
 
-### 22. 본인 1명 패턴 발견 시스템 — Phase 8 (인사이트 카드 UI + 마스터 close)
+### 22. 본인 1명 패턴 발견 시스템 — Phase 8 (잔여 정리 + 마스터 close)
 
-> TODO(`/build`): 구현 후 본문 채우기. `#insight` 채널 패턴 발견 카드 (Block Kit). `life_signal` 패턴(요일 효과 등)도 같은 카드에서 출력. 마스터 회고 + 운영 1\~3개월 후 follow-up 이슈 7건 일괄 등록 (SPRT, Change Point Detection, informed prior, 카테고리 가중치 자동 튜닝, 가설 자동 제거, 매트릭 자동 비활성화, 웹 대시보드 승인 페이지).
+Phase 8 정체성 진화: 당초 "인사이트 카드 UI + 마스터 close"였으나 카드 UI는 Phase 5(가설 카드 일반화) / 6(LLM 매트릭 승인 카드) / 7(시드 영향력 섹션 + Bayesian 병기)에서 모두 흡수됨. 남은 작업은 **이전 phase가 미룬 정리 + 마스터 close 문서화 + follow-up 일괄 등록**. PR은 cleanup(8a) → close docs(8b) 2분할 (close docs가 cleanup 사실을 포함해야 정합).
 
-설계 결정 배경: [design-notebook personal-pattern-discovery](../design-notebook/personal-pattern-discovery.md)
+#### Phase 8a (이슈 [#462](https://github.com/hyewon3938/slack-ai-agents/issues/462), 본 phase) — 코드 cleanup
+
+##### A. `pattern_catalog` deprecated 카운터 컬럼 DROP
+
+Phase 4가 매트릭 카운터를 `pattern_metrics`로 이전한 뒤 `pattern_catalog`의 4개 컬럼이 deprecated 잔존. 코드 전수 조사에서 직접 참조 없음을 확인 (`pattern-seed-fast-path.ts`의 `hit_count`/`miss_count` 변수는 `pattern_summary` view 별칭).
+
+**마이그레이션 075 (전반부)** — `db/migrations/075_pattern_cleanup.sql`:
+
+```sql
+ALTER TABLE pattern_catalog
+  DROP COLUMN IF EXISTS hit_count,
+  DROP COLUMN IF EXISTS miss_count,
+  DROP COLUMN IF EXISTS inconclusive_count,
+  DROP COLUMN IF EXISTS last_matched_at;
+```
+
+시드 단위 합계는 Phase 4 이후 이미 `pattern_summary` view에서 derive (ADR-0023).
+
+##### B. `matchAllSeedsForDay` per-seed try/catch 격리 + 에러 DB 기록
+
+Phase 3 회고에서 식별된 위험: `matchAllSeedsForDay` 내 for 루프가 `evaluateTrigger`를 try/catch 없이 호출 → 한 시드 SQL 오류가 그날 cron 전체를 fail시킬 수 있음. Phase 4 follow-up [#456](https://github.com/hyewon3938/slack-ai-agents/issues/456) (`threshold sleep_minutes` hotfix)에서 실제 노출.
+
+격리 + 에러 DB 기록 두 축:
+
+- **격리**: 각 시드별 try/catch로 감싸 한 시드 실패가 다른 시드에 전파되지 않게. 기존 metric 단위 try/catch는 trigger 통과 후 일부 metric만 fail하는 케이스 보호 → 보존
+- **DB 기록**: `pattern_matches.verify_status`에 `'error'` enum 추가 + `error_message JSONB` 컬럼 추가. trigger SQL 실패 시 row를 남겨 멱등성(같은 cron 재실행 시 자동 회복) + 후속 디버깅 자료 보장
+
+**마이그레이션 075 (후반부)**:
+
+```sql
+ALTER TABLE pattern_matches
+  ADD COLUMN IF NOT EXISTS error_message JSONB;
+
+ALTER TABLE pattern_matches
+  DROP CONSTRAINT IF EXISTS pattern_matches_verify_status_check;
+
+ALTER TABLE pattern_matches
+  ADD CONSTRAINT pattern_matches_verify_status_check
+    CHECK (verify_status IN ('pending','hit','miss','inconclusive','no_metric','error'));
+```
+
+`verify_status` enum은 4종 검증 결과(`hit`/`miss`/`inconclusive`/`pending`) + 1종 데이터 부재(`no_metric`) + 1종 시스템 오류(`error`)로 정합 (#434 헌장 ⑤ "임의값 박지 않기"에 부합).
+
+##### 코드 변경 — `src/shared/pattern-match.ts`
+
+- `SeedMatchResult` interface에 `triggerError: string | null` 필드 추가
+- `matchAllSeedsForDay` for 루프 outer try/catch로 `evaluateTrigger` 격리 — 실패 시 `triggerActivated: false`, `triggerError: error.message`로 push
+- `recordDailyMatches`에서 `triggerError` truthy → `verify_status='error'`, `error_message=JSONB({reason})`로 INSERT. ON CONFLICT 업데이트에 `error_message` 포함 → 다음날 같은 시드가 정상이면 자동 NULL 회복 (멱등)
+- `verifyDailyMatches`는 `WHERE verify_status='pending'`만 잡으므로 `'error'` row는 자연 SKIP — 카운터 갱신 영향 0 (no_metric과 동일 처리)
+
+#### Phase 8b (8a 머지 후 신규 이슈) — 마스터 close docs + follow-up 이슈 일괄 등록
+
+- `README.md` 마스터 #434 closed badge + Phase 1\~8 요약 한 줄씩
+- design-notebook 마무리 회고 섹션 (마스터 단위 진화 + 8 phase 총평) + 부록 E 본문 본격 작성
+- follow-up 이슈 카테고리별 5\~6건 묶음 등록: 통계 도구(SPRT/CPD/dispersion) / Phase 6 LLM 매트릭 routine 운영 회고 / Phase 7 Bayesian + 시드 영향력 운영 회고 / Phase 2.5 운 레벨 분포 분석 회고 / 잔소리 일원화 / 기타 미해결 잔여(카테고리 가중치 자동 튜닝 · 에러 row retention 등)
+
+설계 결정 배경: [design-notebook personal-pattern-discovery](../design-notebook/personal-pattern-discovery.md) Phase 8 섹션
 
 ## 파일 구조
 
@@ -1390,6 +1446,12 @@ db/migrations/  (마스터 #434 Phase 2.5 — 2026-05-28)
 
 db/migrations/  (마스터 #434 Phase 6 — 2026-05-29)
 └── 073_pattern_metrics_rejected_at.sql          # rejected_at TIMESTAMPTZ (ADR-0030 거절 재제안 입력)
+
+db/migrations/  (마스터 #434 Phase 7 — 2026-05-29)
+└── 074_pattern_stats_posterior.sql              # posterior_alpha/beta/p (가설 단위 Beta-Binomial, ADR-0024 실행)
+
+db/migrations/  (마스터 #434 Phase 8a — 2026-05-29)
+└── 075_pattern_cleanup.sql                      # catalog deprecated 카운터 DROP + pattern_matches.error_message + verify_status='error' enum
 
 ~/.claude/scheduled-tasks/  (Claude 앱 routines, repo 외부)
 └── monthly-metric-suggest/SKILL.md              # Phase 6 매월 1일 09:30 LLM 매트릭 후보 제안
