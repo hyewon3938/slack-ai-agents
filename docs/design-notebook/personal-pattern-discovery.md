@@ -639,9 +639,24 @@ evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개�
 - **rejected 재제안 LLM 자율 판단 일관성** — "새 근거" 기준이 모델별·실행별 변동 가능. 운영 1\~3개월 후 일관성 평가 follow-up
 - **input 토큰 길이** — 시드 161개 description + 메트릭 표 30일 + evidence 60일. 토큰 한계 도달 가능성. routine SKILL.md 작성 시 토큰 관측치 누적 + 한계 도달 시 입력 압축 전략 필요
 
-### 회고 (TODO: `/build` 구현 후 보강 + 2026-07-01 첫 발사 후 보강)
+### 회고 (구현 — 2026-05-29, 운영 첫 발사 회고는 2026-07-01 후 보강)
 
-> 회고는 PR 머지 후 추가. 첫 발사 후 후보 품질·LLM 거절 재제안 일관성·routine 토큰 비용 관측도 같이 보강.
+**인프라 골격 완성**:
+- `metric-approval-cards.ts` Block Kit 후보 카드 빌더 + payload encode/decode (12 단위 테스트)
+- `actions.ts` METRIC_APPROVE/REJECT 핸들러 — hypothesis 패턴 그대로 차용해서 일관성 유지. `WHERE user_id` 격리 + `WHERE status = 'pending'`로 이중 클릭/타 사용자 매트릭 접근 차단
+- `index.ts` `insight metric-list` fast path — 디버깅·놓친 카드 재확인 통로 (자유언어 추출 금지 헌장 준수)
+- Migration 073 `rejected_at` 컬럼 — `routine 거절 재제안 입력 풀의 4번째 결합 요소
+
+**routine 자동화 슬롯 완성**:
+- Claude 앱 routines 등록 (`monthly-metric-suggest`, `0 30 9 1 * *`, Opus 권장)
+- SKILL.md 본문에 v2 헌장 ① · 자체 헌장 ④ · ADR-0025 cap · ADR-0030 거절 재제안을 명시적으로 박아 routine 발사 시점에 헌장 cross-check 가능
+
+**첫 발사 운영 검증 대기 (2026-07-01)**:
+- 후보 품질 — evidence 누적 30일 + 시드 description 161개로 의미있는 후보 1\~3개 생성 가능한지
+- LLM 거절 재제안 자율 판단 일관성 — 같은 (seed_id, outcome) 조합에 새 근거 없을 때 LLM이 실제로 보류하는지
+- routine 토큰 비용 — 입력 풀 3 결합이 토큰 한계 도달하는지
+
+운영 첫 발사 후 본 섹션에 결과 추가 예정.
 
 ---
 
