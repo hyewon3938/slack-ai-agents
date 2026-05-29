@@ -580,7 +580,72 @@ Phase 4까지 매칭 cron이 saju 175 + life_signal 38 = 213개 시드의 `trigg
 
 ---
 
-## Phase 6\~8 (TODO: 각 Phase 진입 시 섹션 누적)
+## Phase 6: LLM 자율 매트릭 + 승인 게이트 (2026-05-28)
+
+- 이슈: [#458](https://github.com/hyewon3938/slack-ai-agents/issues/458)
+- 관련 ADR: [ADR-0025](../adr/0025-llm-metric-approval-gate.md) (승인 게이트 골격), [ADR-0027](../adr/0027-llm-async-routine-unification.md) (routine 통일), **[ADR-0030](../adr/0030-llm-metric-suggest-input-and-cadence.md) 신설** (LLM 입력 풀 + 거절 정책 + 월간 cron)
+- 관련 계획서: `.claude/plans/458-phase-6-llm-metric-gate.md`
+- 상태: 설계 완료, 구현 대기
+
+### 결정 요약
+
+ADR-0025가 골격(`status='pending'→'active'` 게이트, 월 cap 5, Slack inline button, `description NOT NULL`)을 결정했고 ADR-0027이 운영 패턴(Claude 앱 routines)을 결정한 상태. 본 phase는 잔여 운영 결정 3건을 ADR-0030으로 묶고 인프라 구현.
+
+5개 결정:
+
+1. **routine 빈도**: 매월 1일 09:30 KST, Claude 앱 routine 운영
+2. **LLM 입력 풀**: evidence-only 시드 evidence JSONB(60일) + 시드 description + 라이프 메트릭 표(30일 메타데이터, 금액 X) **3 결합**
+3. **카드 디자인**: 후보별 1메시지 (N개 메시지 연속 발송, hypothesis-card 패턴 계승)
+4. **거절 재제안**: rejected 목록 LLM에 노출 + LLM 자율 판단 (새 근거 명시 시만 재제안)
+5. **cap**: 월 최대 5개 (ADR-0025 계승)
+
+evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개월)에서도 시드 description hint(사용자 임상 단서) + 라이프 메트릭 표로 의미있는 후보 1\~3개 제안 가능 여부 운영 첫 회로 확인.
+
+### 핵심 변경
+
+- `src/agents/insight/metric-approval-cards.ts` 신설 — Block Kit 승인 카드 빌더 + action payload encode/decode (hypothesis-cards 패턴)
+- `src/agents/insight/actions.ts` — `METRIC_APPROVE_ACTION_ID`·`METRIC_REJECT_ACTION_ID` 핸들러 추가 (hypothesis register/dismiss 패턴 계승)
+- `src/agents/insight/index.ts` — `/insight metric-list` fast path 정규식 추가 (pending 목록 보기)
+- `~/.claude/scheduled-tasks/monthly-metric-suggest/SKILL.md` 신설 (repo 외부, weekly-saju-review-v2 패턴) — 입력 데이터 SELECT + Opus 호출 + INSERT + Slack 발송
+- ADR-0030 신설
+- domain `docs/domains/insight.md` Section 20 본문 채움
+
+### 의사결정 분기점
+
+1. **Phase 6 진입 범위** — A 인프라만 구현·routine 첫 실행 보류 / B Phase 7 먼저 / **C 입력 풀 보강 + 즉시 활성 (선택)** / D 마스터 close 1차. 사용자 명시: "보류하거나 나중에 하는 거 없이 완성하고 싶어. 그 다음부터는 운영하면서 자동으로". cap + 사용자 승인 게이트가 마지막 거름망 + 시드 description hint가 LLM 가설 공간 좁힘 → 즉시 활성 위험 작음
+2. **LLM 입력 풀** — **A 3 결합 (evidence + description + 메트릭 표) 선택** / B evidence + description만 / C A + active 가설 상태. evidence 누적 0일 단계에서도 후보 생성 가능 + 누적될수록 자동 향상. 토큰 비용은 routine(구독료 잠금)이라 부담 없음
+3. **카드 디자인** — **A 후보별 1메시지 (선택)** / B 한 메시지에 N 섹션. hypothesis-card 패턴 계승 + 후보별 독립 인터랙션 + 0건이면 "X월 제안 없음" 메시지 1건
+4. **routine 빈도** — **A 매월 1일 09:30 KST (선택)** / B 매주 월요일 / C evidence 임계치 기반. ADR-0025 월 cap 5와 자연 호환 + monthly-llm-insight 운영 패턴 계승. 임계치 기반은 임의값 박기 (헌장 위배)
+5. **거절 재제안 정책** — **α rejected 목록 LLM 노출 + 자율 판단 (선택)** / β 90일 cool down / γ 영구 거절 / δ 비노출. 사용자 명시: "거절해도 유의미한 데이터가 발견되면 계속 제안해도 되는 거 아니야?" — 영구 차단·임의 cool down 둘 다 피함. LLM 프롬프트에 "이전 거절 사유와 다른 점" 명시 의무 부과
+6. **새 ADR 작성 필요성** — **ADR-0030 신설 (선택)**. ADR-0025·0027은 골격, 본 phase 운영 결정 3건(입력 풀·거절·cron 빈도)은 영속 결정이라 ADR로 박는 게 후속 phase에서 변경 시 추적 가능
+
+### 사용자 임상 데이터
+
+본 phase는 LLM이 시드 description(Phase 2에서 박힌 임상 단서)을 입력으로 받는 구조. 신규 사용자 임상 단서 박지 않음. Phase 2의 사화·갑목·진술충·화 과다 등 description hint가 그대로 LLM 후보 생성에 활용됨.
+
+### 포기한 안 / 미룬 항목
+
+- **evidence 누적 충분(60+일) 후 진입** — 사용자 명시 보류 안 함. 누적 부족 단계에서도 description + 메트릭 표로 안전 장치 + 자율 판단으로 빈 cron 처리
+- **Phase 7 먼저 진입** — 헌장 위배는 아니나 사용자가 phase 순서 그대로 6→7→8 진행 선호
+- **90일 cool down** — 임의값 박기 (헌장 "임의값 배제" 위배)
+- **active 가설 상태 입력 추가** — 운영 누적 후 follow-up. 1차는 3 결합 표준화에 집중
+- **evidence 임계치 자동 트리거** — 1차 도입 이른 가능성. 운영 1\~3개월 후 follow-up
+- **LLM 매트릭 SQL 본문 사용자 검토** — ADR-0025 결정 계승. description만 노출, SQL 본문은 4안전장치(SELECT-only 등)로 통제
+- **routine 실패 fallback** — 본 phase scope 외. routine 실행 실패 알림 경로는 별도 follow-up
+
+### 미해결 / 가설
+
+- **첫 routine 발사 후보 품질** — 2026-07-01 첫 발사 시점에 evidence 누적이 약 30일. description + 메트릭 표만으로 1\~3개 의미있는 후보 생성 가능 여부 운영 첫 회로 검증. 0건이어도 routine 정상 작동 여부도 점검
+- **rejected 재제안 LLM 자율 판단 일관성** — "새 근거" 기준이 모델별·실행별 변동 가능. 운영 1\~3개월 후 일관성 평가 follow-up
+- **input 토큰 길이** — 시드 161개 description + 메트릭 표 30일 + evidence 60일. 토큰 한계 도달 가능성. routine SKILL.md 작성 시 토큰 관측치 누적 + 한계 도달 시 입력 압축 전략 필요
+
+### 회고 (TODO: `/build` 구현 후 보강 + 2026-07-01 첫 발사 후 보강)
+
+> 회고는 PR 머지 후 추가. 첫 발사 후 후보 품질·LLM 거절 재제안 일관성·routine 토큰 비용 관측도 같이 보강.
+
+---
+
+## Phase 7\~8 (TODO: 각 Phase 진입 시 섹션 누적)
 
 > 각 Phase 진입 시 `/design`이 본 문서에 해당 Phase 섹션을 추가한다. 템플릿: 결정 요약 / 의사결정 분기점 / 포기한 안 / 회고.
 

@@ -136,6 +136,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0027](0027-llm-async-routine-unification.md) | LLM 비동기 작업 Claude 앱 routines 기반 통일 | Accepted | 2026-05-28 | process, llm, infra, ops |
 | [0028](0028-pillar-level-and-threshold-pool.md) | 사주 시드 운 레벨 차원 도입 + 풀셋 임계치 철학 + 임의값 배제 | Accepted | 2026-05-28 | data, insight, architecture, process |
 | [0029](0029-life-signal-trigger-aux-standard.md) | `life_signal` 단일 type 통합 + `trigger_aux.kind` 평가 명세 표준 | Accepted | 2026-05-28 | data, insight, architecture, schema |
+| [0030](0030-llm-metric-suggest-input-and-cadence.md) | LLM 매트릭 제안 슬롯 — 입력 풀 구성 + 거절 재제안 + 월간 cron | Accepted | 2026-05-28 | llm, insight, ops |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
