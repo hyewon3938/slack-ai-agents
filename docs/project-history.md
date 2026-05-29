@@ -17,7 +17,7 @@
 
 - **Phase 1\~2.5**: 스키마 일반화(`pattern_*` rename) + 사주 시드 풀셋 161개 + 운 레벨 차원(`pillar_level`) + 자동 분포 분석 cron
 - **Phase 3\~4**: `life_signal` target-type 추가로 사주/생활 통념 통합 + 매트릭 단위 카운터 source 전환 + `pattern_summary` view derive
-- **Phase 5\~6**: 가설 발견·검증 파이프라인 target-type 확장 + LLM 자율 매트릭 routine + 승인 게이트(첫 발사 2026-07-01)
+- **Phase 5\~6**: 가설 발견·검증 파이프라인 target-type 확장 + LLM 자율 매트릭 routine + 승인 게이트(첫 가동 2026-07-01)
 - **Phase 7\~8**: 가설 단위 Beta-Binomial posterior 헬퍼 + 카드 한 줄 병기 + 시드 영향력 top 5 섹션 + per-seed try/catch 격리 + `verify_status='error'` enum + close docs
 - **헌장 누적**: v2 헌장 4개(LLM 텍스트 의존 최소화 / 결정론↔자율 분리 / outcome 검증 / 신뢰 비용 분리) + 마스터 #434 자체 헌장 5개(n=1 single-case / 5어휘 분리 / target-type 일반화 / 승인 게이트 / Bayesian + frequentist 병기) — 모두 8 phase 전반에서 작동
 - **운영 1\~3개월 후 도입 검토** → [design-notebook 부록 E](design-notebook/personal-pattern-discovery.md). follow-up 5\~6건은 GitHub Issues 카테고리 묶음
