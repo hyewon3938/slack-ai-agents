@@ -779,9 +779,161 @@ evidence 누적 부족 단계(첫 발사 2026-07-01 ≈ Phase 2 머지 후 1개�
 
 ---
 
-## Phase 8 (TODO: 진입 시 섹션 추가)
+## Phase 8 — 잔여 정리 + 마스터 close (2026-05-29 ~)
 
-> 각 Phase 진입 시 `/design`이 본 문서에 해당 Phase 섹션을 추가한다. 템플릿: 결정 요약 / 의사결정 분기점 / 포기한 안 / 회고.
+> 이슈 [#462](https://github.com/hyewon3938/slack-ai-agents/issues/462) (Phase 8a) · 브랜치 `feature/462-phase-8a-cron-stability`
+>
+> Phase 8 정체성 진화: 당초 "인사이트 카드 UI + 마스터 close"였으나, 카드 UI는 Phase 5(가설 카드 일반화) / Phase 6(LLM 매트릭 승인 카드) / Phase 7(시드 영향력 섹션 + Bayesian 병기)에서 모두 흡수됨. 남은 작업은 **이전 phase가 미룬 정리 항목 + 마스터 close 문서화 + follow-up 이슈 일괄 등록**.
+
+### 핵심 원칙 cross-check (v2 + #434 헌장)
+
+- **v2 ②** "결정론과 자율 영역의 역할 분리" — A·B는 결정론 cron 안정성, LLM 자율 영역 무관
+- **#434 ②** "5어휘 분리" — A는 시드·매트릭·매칭 어휘 분리의 마지막 청소(시드 카탈로그에서 매트릭 단위 카운터 잔존 컬럼 제거)
+- **#434 ⑤** "임의값 박지 않기" — B의 verify_status `'error'` 추가는 도메인 enum이라 임의값 아님 (4종 검증 결과 + 1종 데이터 부재 + 1종 시스템 오류)
+
+→ 충돌 없음. Phase 8은 마스터 헌장 정합성 마무리 작업.
+
+### Phase 8 분할 정책
+
+- **Phase 8a (이슈 #462, PR1)**: 코드 cleanup (A + B). 마이그레이션 075 포함
+- **Phase 8b (8a 머지 후 신규 이슈, PR2)**: 마스터 close docs (D) + follow-up 이슈 일괄 등록 (E)
+
+분할 이유는 cleanup PR이 머지된 후에 close docs(features/project-history/README badge)가 작성되어야 사실 정합성이 맞기 때문 (close docs가 cleanup 사실을 포함).
+
+### 결정 요약
+
+#### A. `pattern_catalog` deprecated 카운터 컬럼 DROP — Phase 4 마무리 청소
+
+Phase 4가 매트릭 카운터를 `pattern_metrics`로 이전하면서 `pattern_catalog`의 `hit_count`/`miss_count`/`inconclusive_count`/`last_matched_at` 4개 컬럼이 deprecated 상태로 유지됨 (Migration 066 line 57-62 코멘트). 코드 전수 조사 결과 직접 참조 없음 — `pattern-seed-fast-path.ts`의 `hit_count`/`miss_count` 변수도 `pattern_summary` view 별칭이라 안전.
+
+**마이그레이션 075 (전반부)**:
+
+```sql
+ALTER TABLE pattern_catalog
+  DROP COLUMN hit_count,
+  DROP COLUMN miss_count,
+  DROP COLUMN inconclusive_count,
+  DROP COLUMN last_matched_at;
+```
+
+#### B. `matchAllSeedsForDay` per-seed try/catch 격리 + 에러 DB 기록
+
+Phase 3 회고에서 식별한 위험: `matchAllSeedsForDay` 내 for 루프가 `evaluateTrigger`를 try/catch 없이 호출 → 한 시드 SQL 오류가 그날 전체 cron을 fail시킬 수 있음 (cron-self-healing 분리 트랜잭션은 있지만 같은 cron run 안의 다른 시드는 같이 죽음).
+
+격리 방식 + 에러 DB 기록 두 축 결정:
+
+- **격리**: 각 시드별 try/catch로 감싸 한 시드 실패가 다른 시드에 전파되지 않게
+- **에러 DB 기록**: `pattern_matches.verify_status`에 `'error'` enum 추가 + `error_message JSONB` 컬럼 추가. 매칭이 발생할 trigger였으나 SQL 실패한 경우 row를 남겨 다음 cron이 재시도하지 않게 (멱등) + 후속 디버깅 자료 제공
+
+**마이그레이션 075 (후반부)**:
+
+```sql
+ALTER TABLE pattern_matches
+  ADD COLUMN error_message JSONB,
+  DROP CONSTRAINT IF EXISTS pattern_matches_verify_status_check,
+  ADD CONSTRAINT pattern_matches_verify_status_check
+    CHECK (verify_status IN ('pending','hit','miss','inconclusive','no_metric','error'));
+```
+
+**코드 변경**:
+
+- `SeedMatchResult` interface에 `triggerError: string | null` 필드 추가
+- `matchAllSeedsForDay`의 for 루프에 try/catch로 evaluateTrigger 호출 격리 → 실패 시 `triggerActivated: false, triggerError: error.message`로 result push
+- `recordDailyMatches`에서 `triggerError`가 truthy면 `verify_status='error'`, `error_message=JSONB({reason, stack})`로 INSERT
+- `verifyDailyMatches`는 `verify_status='error'` row 카운터 갱신 SKIP (no_metric과 동일 처리)
+
+#### C. (포기 → Phase 8 scope 외) 잔소리 일원화
+
+원래 후보였으나 마스터 #434의 데이터 모델/가설 검증 시스템 scope와 무관 (Slack 메시지 톤 일원화) → 별도 follow-up 이슈로 분리.
+
+#### D. 마스터 close docs (Phase 8b)
+
+- `README.md` 마스터 #434 closed badge + Phase 1\~8 요약 한 줄씩
+- `docs/project-history.md` 마일스톤급 항목 추가 (`/build` 책임)
+- design-notebook 마무리 회고 섹션 (마스터 단위 진화 + 8 phase 총평)
+- 부록 E 본문 본격 작성 (운영 1\~3개월 후 도입 검토 항목 카테고리 분류)
+- domains `insight.md`에 §22 Phase 8 본문 채우기 (`/build` 책임)
+
+#### E. follow-up 이슈 일괄 등록 (Phase 8b) — 카테고리별 5\~6건 묶음
+
+개별 7\~8건이 아닌 카테고리별 묶음으로 등록해 추후 작업 진입 시 묶음 단위로 처리. 묶음 후보:
+
+1. **통계 도구 도입 검토** — SPRT(early stopping) / CPD(change point detection) / dispersion ratio / pattern_summary view α/β 직접 노출 / aggregate_posterior_p 컬럼 카드 활용 등 운영 누적 후 검토할 통계 도구
+2. **Phase 6 LLM 매트릭 routine 운영 회고** — 2026-07-01 첫 발사 결과 회고 + 거절 재제안 일관성 + 입력 토큰 길이 + 후보 품질
+3. **Phase 7 Bayesian + 시드 영향력 운영 회고** — 2026-06-08 첫 발사 결과 회고 + N 적은 시드 CI 분포 + 사주/생활 통합 정렬 영역 편향 + round 오차 누적
+4. **Phase 2.5 운 레벨 분포 분석 cron 회고** — 운영 60\~90일 후 임계치 자동 추출 + 운 레벨 가중치 도입 + signal 신호 강도 판단
+5. **잔소리 일원화** (C 이관) — Slack 메시지 톤 일원화 (Insight 도메인 외 분리)
+6. **기타 미해결 잔여** — 카테고리 가중치 자동 튜닝 / Phase 4 회고에서 식별한 SQL 문자열 매칭 테스트 한계 (Phase 7 헬퍼 추출로 일부 해소) / pattern_matches 에러 row 누적 시 retention 정책 등
+
+### 의사결정 분기점
+
+#### Q1. Phase 8 정체성 — 원래 카드 UI 작업이 모두 흡수됨
+
+- Q1-1. **잔여 정리 + 마스터 close (선택)** — 카드 UI는 Phase 5/6/7에서 모두 흡수됨. 남은 정리 + close docs가 Phase 8의 자연스러운 결말
+- Q1-2. Phase 9 분리 + 추가 기능 진행 — 마스터 헌장이 의도한 범위(시드/매트릭/매칭/가설/검증 파이프라인)가 이미 충족. 추가 기능은 정체성 진화이므로 신규 마스터가 자연
+- Q1-3. 카드 UI 재정의 후 진행 — 이미 흡수된 작업을 재정의하는 명목상 작업
+
+→ Q1-1 채택. 마스터는 의도된 데이터 모델/검증 파이프라인을 모두 채웠고, 추가 기능 욕구가 생기면 신규 마스터(예: 카드 인터랙션 고도화, 사용자 노출 UX 최적화 등)로 분기하는 게 헌장 정합.
+
+#### Q2. 시드 SQL 오류 처리 정책
+
+- Q2-1. 로그만 출력 + 격리 — 단순. 그러나 같은 trigger가 매일 fail해도 흔적 없음
+- Q2-2. **로그 + verify_status='error' DB 기록 (선택)** — 멱등성 + 디버깅 자료. error_message JSONB로 reason/stack 보존. verify_status enum 1종 추가는 도메인 enum이라 임의값 아님
+- Q2-3. 격리 없이 cron 전체 죽이기 (현행) — 안정성 ↓. Phase 3 회고에서 이미 risk 식별됨
+
+→ Q2-2. 격리 + DB 기록 둘 다 채택. verifyDailyMatches는 error row를 카운터 갱신 SKIP(no_metric과 동일 처리).
+
+#### Q3. follow-up 이슈 단위 — 개별 vs 묶음
+
+- Q3-1. **카테고리별 묶음 5\~6개 (선택)** — 추후 작업 진입 시 카테고리 단위로 design → 묶음의 항목들이 같은 운영 데이터로 검증되는 경향 (예: Phase 7 회고 항목 4건은 같은 운영 누적으로 검증)
+- Q3-2. 개별 이슈 7\~8건 — 항목별 추적성 ↑. 그러나 묶음 단위 design이 자연스러운 작업은 묶음이 더 효율
+- Q3-3. 단일 "마스터 #434 follow-up" 이슈 + 본문 체크리스트 — 추적성 ↓
+
+→ Q3-1. 묶음 단위는 phase 진입 시 design이 묶음 하위 항목을 다 펼쳐 작업 계획 수립 가능.
+
+#### Q4. PR 분할 — 단일 vs 8a/8b 분할
+
+- Q4-1. **PR1 (A+B cleanup) → merge → PR2 (D close docs + E 이슈 등록) (선택)** — close docs는 cleanup 사실을 포함해야 정합. 머지 후에 작성하는 게 자연스럽고 안전
+- Q4-2. 단일 PR — close docs와 cleanup의 충돌 영역(README badge, project-history, design-notebook 마무리 회고)이 한 번에 결정 필요. 마이그레이션 + 코드 + 문서까지 한 PR이면 리뷰 범위 ↑
+- Q4-3. 3분할 (A / B / D+E) — 마이그레이션 075를 A·B에 쪼개야 → 두 마이그레이션 번호 사용 (075, 076). 운영 SQL 적용 횟수 ↑
+
+→ Q4-1. 2분할이 close docs 정합성 + 리뷰 범위 + 마이그레이션 번호 효율의 균형점.
+
+### 포기한 안
+
+- **잔소리 일원화 Phase 8 포함** — 마스터 헌장(데이터 모델/검증 파이프라인)과 무관. 별도 follow-up 이슈로 분리
+- **Phase 9 분리해서 추가 카드 UI 기능 진행** — 마스터 의도 범위는 이미 충족. 신규 기능은 신규 마스터
+- **마이그레이션 075 분할 (catalog DROP / pattern_matches enum 따로)** — 두 변경 다 Phase 8a scope. 한 마이그레이션이 자연
+- **catalog 카운터 DROP을 marker 컬럼(rename to `_deprecated_*`)으로 보존** — Phase 4 머지 후 1개월 가까이 무사용 검증됨. rollback 가능성 낮음
+- **per-seed try/catch만 추가하고 verify_status='error' 생략** — 같은 trigger가 매일 fail해도 흔적 없음. 멱등성 + 디버깅 자료 손실
+
+### 미해결 / 가설
+
+- **마이그레이션 075의 rollback 시나리오** — DROP 후 운영 1\~2주 내 catalog 카운터 참조 누락 발견 시 backfill 필요. catalog 카운터 source가 derive 가능(pattern_summary view)하므로 view → catalog 재backfill SQL은 작성 가능, 단 본 phase에서 사전 작성하지 않음 (rollback 필요 가능성 낮음 + 작성 시 사용 안 할 가능성 ↑)
+- **error_message JSONB 누적 retention** — 같은 시드 SQL 오류가 매일 누적되면 row 폭증. 1차는 retention 정책 없이 시작하고, 운영 1\~3개월 후 retention 정책 필요성 검토 (follow-up E-6)
+- **8b 마스터 close docs 진입 타이밍** — 8a 머지 직후 진입 vs 운영 1주 검증 후 진입. 후자가 cleanup 안정성 확인 후 close에 자연스럽지만 마스터 close 지연 단점. 8a 머지 후 결정
+
+### 회고 (구현 — 2026-05-29, Phase 8a)
+
+**구현 규모와 신호**:
+- 마이그레이션 075(25줄) + `pattern-match.ts`(interface 1줄 + `matchAllSeedsForDay` outer try/catch 30줄 + `recordDailyMatches` error_message INSERT 10줄) + 단위 테스트 3건 — 100줄 미만 cleanup. 마스터 #434의 코드 phase가 끝났다는 신호 자체
+- Phase 5~7에서 카드 UI 작업이 모두 흡수되어 Phase 8에 남은 게 "정리 + close"뿐인 사실 — 마스터 헌장이 의도한 시드/매트릭/매칭/가설/검증 파이프라인이 수렴했다는 시그널
+
+**`ON CONFLICT` 업데이트에 `error_message` 포함의 의미**:
+- 첫 작성 시 누락 가능 함정. 빠뜨리면 한 번 error 찍힌 row가 다음날 trigger 정상화돼도 계속 error로 남음. 멱등성·자동 회복이 깨짐
+- 같은 cron 재실행으로 자연 회복하는 게 [#456](https://github.com/hyewon3938/slack-ai-agents/issues/456) (Phase 4 follow-up)에서 hotfix를 처음 실행한 패턴이라, 이 패턴을 코드에 박는 효과도 같이
+
+**단위 테스트 ROI 판단**:
+- `matchAllSeedsForDay` per-seed 격리 단위 테스트는 saju_profiles + 마스터 테이블(stems_master/branches_master) + pattern_catalog + pattern_metrics 모두 setup해야 호출 가능. setup 비용이 크고 검증 포인트는 한 줄(try/catch 격리)이라 ROI 낮음 → `recordDailyMatches` 3건만 단위 테스트로 추가하고 per-seed 격리는 코드 리뷰 + 통합 검증(가짜 fail 시드 삽입 후 cron 트리거)으로 위임
+- 비슷한 결정이 Phase 4 회고에서도 발생 (SQL 문자열 매칭 테스트 한계) — 한 번 박힌 비용/효과 트레이드오프 판단을 반복
+
+**도메인 문서 파일 구조 누락 발견**:
+- §22 갱신 중 Phase 7 마이그레이션 074(`pattern_stats_posterior.sql`)가 도메인 문서 파일 구조에 빠져 있던 사실 발견. 본 PR에서 같이 보강 (`/build` 단계의 폐기·잔존 흔적 점검 패턴이 의도하지 않은 누락도 잡음)
+
+**8b 진입 타이밍**:
+- 8a 머지 직후 진입 vs 운영 1주 검증 후 진입. 운영 검증이 사실상 익일 09:00 매칭 cron이라 24시간 안에 결과 확인 가능 → 8a 머지 + 익일 cron 정상 작동 확인 후 8b 진입 결정
+
+---
 
 ## 기술적 의의
 
