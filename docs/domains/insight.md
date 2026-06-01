@@ -1,5 +1,7 @@
 # 명리학 인사이트 (Insight)
 
+> **처음 보는 사람을 위한 설명서**: [docs/explainers/insight-v2.md](../explainers/insight-v2.md) (사주 부록: [insight-v2-saju.md](../explainers/insight-v2-saju.md))
+
 ## DB 스키마
 
 ```sql
