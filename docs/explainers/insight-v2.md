@@ -112,8 +112,8 @@ flowchart LR
   REC -. 다음 날 .-> DAILY
   DAILY -. "pattern_matches 행 누적 (매트릭마다 1행)" .-> WEEKLY
 
-  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
-  classDef flowBox fill:#fafafa,stroke:#757575,color:#212121
+  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
+  classDef flowBox fill:#fff8e1,stroke:#f9a825,color:#5d4037
   class REC,D1,D2,D3,W1,W2,W3 flowNode
   class DAILY,WEEKLY flowBox
 ```
@@ -141,7 +141,7 @@ flowchart TB
 
   classDef seedBox fill:#e8f5e9,stroke:#43a047,color:#1b5e20
   classDef metricBox fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
-  classDef matchNode fill:#fff8e1,stroke:#f9a825,color:#e65100
+  classDef matchNode fill:#e0f2f1,stroke:#00897b,color:#004d40
   classDef hypothesisNode fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
   classDef verifyNode fill:#fce4ec,stroke:#c2185b,color:#880e4f
   class SEED seedBox
@@ -229,7 +229,7 @@ flowchart LR
   D -->|true| E["매트릭 평가 단계로"]
   D -->|false| F["오늘은 그냥 스킵<br/>(매칭 행 안 남김)"]
 
-  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
+  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
   class A,B,C,D,E,F flowNode
 ```
 
@@ -303,7 +303,7 @@ flowchart TD
   F -->|no| H["다음 주로"]
   G --> I["#insight 카드로 노출<br/>사용자 승인 대기"]
 
-  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
+  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
   classDef hypothesisNode fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
   class A,B,C,D,E,F,H,I flowNode
   class G hypothesisNode
@@ -478,7 +478,7 @@ flowchart LR
   G --> H["사용자 신뢰 ↑"]
   H --> A
 
-  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
+  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
   class A,B,C,D,E,F,G,H flowNode
 ```
 
