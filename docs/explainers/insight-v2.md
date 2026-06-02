@@ -140,11 +140,11 @@ flowchart TB
   SEED -. 시드 × outcome 조합을 통계가 발굴 .-> HYP
   HYP -- 주간 누적 --> VER
 
-  classDef seedBox fill:#C5CEF0,stroke:#3949ab,color:#1a237e
-  classDef metricBox fill:#B3E5FC,stroke:#0288d1,color:#01579b
-  classDef matchNode fill:#6CE6DD,stroke:#00897b,color:#004d40
-  classDef hypothesisNode fill:#CE93D8,stroke:#7b1fa2,color:#4a148c
-  classDef verifyNode fill:#F48FB1,stroke:#c2185b,color:#880e4f
+  classDef seedBox fill:#E0F2F1,stroke:#80CBC4,color:#00695C
+  classDef metricBox fill:#E3F2FD,stroke:#90CAF9,color:#1565C0
+  classDef matchNode fill:#E8F5E9,stroke:#A5D6A7,color:#2E7D32
+  classDef hypothesisNode fill:#F3E5F5,stroke:#CE93D8,color:#6A1B9A
+  classDef verifyNode fill:#FCE4EC,stroke:#F48FB1,color:#AD1457
   class SEED seedBox
   class METRIC metricBox
   class MATCH matchNode
@@ -173,8 +173,8 @@ flowchart TB
     SAJU["pattern_kind = saju · ~175개<br/><br/>천간 · 지지 · 60갑자<br/>오행 · 12운성 · 관계<br/>(자세한 건 부록)"]
   end
 
-  classDef seedBox fill:#C5CEF0,stroke:#3949ab,color:#1a237e
-  classDef seedNode fill:#8E9FE6,stroke:#3949ab,color:#1a237e
+  classDef seedBox fill:#E0F2F1,stroke:#80CBC4,color:#00695C
+  classDef seedNode fill:#B2DFDB,stroke:#4DB6AC,color:#00695C
   class PC seedBox
   class LIFE,SAJU seedNode
 ```
@@ -305,7 +305,7 @@ flowchart TD
   G --> I["#insight 카드로 노출<br/>사용자 승인 대기"]
 
   classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
-  classDef hypothesisNode fill:#CE93D8,stroke:#7b1fa2,color:#4a148c
+  classDef hypothesisNode fill:#F3E5F5,stroke:#CE93D8,color:#6A1B9A
   class A,B,C,D,E,F,H,I flowBox
   class G hypothesisNode
 ```
@@ -396,8 +396,8 @@ flowchart TB
     L2 -- 승인 시 --> L3
   end
 
-  classDef metricBox fill:#B3E5FC,stroke:#0288d1,color:#01579b
-  classDef metricNode fill:#6ACAFC,stroke:#0288d1,color:#01579b
+  classDef metricBox fill:#E3F2FD,stroke:#90CAF9,color:#1565C0
+  classDef metricNode fill:#BBDEFB,stroke:#64B5F6,color:#1565C0
   class DET,LLM metricBox
   class DET1,L1,L2,L3 metricNode
 ```
