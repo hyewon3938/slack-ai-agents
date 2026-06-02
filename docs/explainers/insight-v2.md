@@ -90,7 +90,7 @@
 위에서 정의한 다섯 개념이 매일·매주 어떤 흐름으로 돌아가는지 도식으로 본다. **매일 사이클**과 **매주 사이클**이 따로 돌아간다.
 
 ```mermaid
-flowchart TB
+flowchart LR
   REC["매일 기록<br/>(일기 · 일정 · 수면 · 루틴 · 지출)"]
 
   subgraph DAILY["매일 — 매칭 cron"]
