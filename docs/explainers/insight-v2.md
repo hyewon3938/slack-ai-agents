@@ -113,7 +113,7 @@ flowchart LR
   DAILY -. "pattern_matches 행 누적 (매트릭마다 1행)" .-> WEEKLY
 
   classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
-  classDef flowInner fill:#F5F5F5,stroke:#9E9E9E,color:#212121
+  classDef flowInner fill:#FFFFDE,stroke:#aaaa33,color:#5d4037
   class REC flowBox
   class DAILY,WEEKLY flowBox
   class D1,D2,D3,W1,W2,W3 flowInner
