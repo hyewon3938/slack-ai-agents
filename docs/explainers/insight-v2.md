@@ -95,27 +95,26 @@ flowchart TB
 
   subgraph DAILY["매일 — 매칭 cron"]
     direction TB
-    D1["① 어제 시드 매칭 채점<br/>verify_status 확정 (hit / miss / inconclusive)"]
-    D2["② 오늘 시드 트리거 평가<br/>오늘 켜진 시드를 pattern_matches에 기록"]
-    D3["③ #life 잔소리 한 줄<br/>오늘 켜진 시드 + confirmed 가설"]
+    D1["① 어제 켜진 시드 채점<br/>어제 매트릭을 평가해서 hit / miss / inconclusive / no_metric 확정<br/>→ pattern_matches에 매트릭당 한 행씩 쌓임"]
+    D2["② 오늘 시드 트리거 평가<br/>오늘 어떤 시드가 켜지는지만 먼저 확인<br/>(매트릭 채점은 종일치 데이터가 필요해서 내일 cron에서)"]
+    D3["③ #life 슬랙 채널에 잔소리 한 줄<br/>오늘 켜진 시드 중 confirmed 가설이 걸려 있으면<br/>그 가설에 맞춘 잔소리 (예: '오늘 ㅇㅇ 들어오는 날, 지출 한 번 더 확인해')"]
     D1 --> D2 --> D3
   end
 
   subgraph WEEKLY["매주 — 가설 검증 cron"]
     direction TB
-    W1["① 누적된 pattern_matches → 통계"]
-    W2["② Fisher's exact + BH-FDR + Bayesian"]
-    W3["③ #insight 카드 (active 가설 / 신규 후보)"]
+    W1["① 일주일치 매칭 통계 계산<br/>지난 일주일 pattern_matches로<br/>시드 × outcome 분포 산출"]
+    W2["② 가설 발굴 + 채점<br/>Fisher's exact + BH-FDR (신규 가설 발견)<br/>Bayesian posterior (검증 중인 가설 사후 확률 갱신)"]
+    W3["③ #insight 슬랙 채널에 카드 발송<br/>검증 중인 가설 채점 표 + 새 후보 가설 제안<br/>(사용자가 카드에서 승인하면 검증 시작)"]
     W1 --> W2 --> W3
   end
 
   REC -. 다음 날 .-> DAILY
-  DAILY -. pattern_matches 행 누적 .-> WEEKLY
+  DAILY -. "pattern_matches 행 누적 (매트릭마다 1행)" .-> WEEKLY
 ```
 
-- 매일 cron 한 번에 **어제 채점 + 오늘 평가 + 잔소리** 세 일이 같이 일어난다.
-- "오늘 시드 트리거 평가"의 결과(어떤 시드가 켜졌는지)는 그날엔 채점되지 않고, **다음 날 매칭 cron이 어제 데이터로 채점**한다. 시드가 켜진 날의 매트릭 평가에는 그날 종일 누적된 데이터가 필요하기 때문.
-- 매일 사이클은 pattern_matches에 행을 쌓는다. 매주 사이클은 그 누적을 보고 가설을 발견·평가한다 — **둘은 다른 박스에서 따로 돈다**.
+- 매일 박스는 cron 한 번에 **어제 채점 + 오늘 평가 + 잔소리** 세 일을 같이 한다.
+- 매일 박스와 매주 박스는 **다른 시간대에 따로 돈다** — 매일이 pattern_matches에 행을 쌓고, 매주가 그 누적을 채점한다.
 
 같은 흐름을 **다섯 개념이 서로 어떻게 포개지는지** 관점으로 다시 본다.
 
