@@ -112,10 +112,11 @@ flowchart LR
   REC -. 다음 날 .-> DAILY
   DAILY -. "pattern_matches 행 누적 (매트릭마다 1행)" .-> WEEKLY
 
-  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
-  classDef flowBox fill:#fff8e1,stroke:#f9a825,color:#5d4037
-  class REC,D1,D2,D3,W1,W2,W3 flowNode
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
+  classDef flowInner fill:#F5F5F5,stroke:#9E9E9E,color:#212121
+  class REC flowBox
   class DAILY,WEEKLY flowBox
+  class D1,D2,D3,W1,W2,W3 flowInner
 ```
 
 - 매일 박스는 cron 한 번에 **어제 채점 + 오늘 평가 + 잔소리** 세 일을 같이 한다.
@@ -139,11 +140,11 @@ flowchart TB
   SEED -. 시드 × outcome 조합을 통계가 발굴 .-> HYP
   HYP -- 주간 누적 --> VER
 
-  classDef seedBox fill:#e8f5e9,stroke:#43a047,color:#1b5e20
-  classDef metricBox fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
-  classDef matchNode fill:#e0f2f1,stroke:#00897b,color:#004d40
-  classDef hypothesisNode fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
-  classDef verifyNode fill:#fce4ec,stroke:#c2185b,color:#880e4f
+  classDef seedBox fill:#C5CEF0,stroke:#3949ab,color:#1a237e
+  classDef metricBox fill:#B3E5FC,stroke:#0288d1,color:#01579b
+  classDef matchNode fill:#6CE6DD,stroke:#00897b,color:#004d40
+  classDef hypothesisNode fill:#CE93D8,stroke:#7b1fa2,color:#4a148c
+  classDef verifyNode fill:#F48FB1,stroke:#c2185b,color:#880e4f
   class SEED seedBox
   class METRIC metricBox
   class MATCH matchNode
@@ -172,8 +173,8 @@ flowchart TB
     SAJU["pattern_kind = saju · ~175개<br/><br/>천간 · 지지 · 60갑자<br/>오행 · 12운성 · 관계<br/>(자세한 건 부록)"]
   end
 
-  classDef seedBox fill:#e8f5e9,stroke:#43a047,color:#1b5e20
-  classDef seedNode fill:#c8e6c9,stroke:#43a047,color:#1b5e20
+  classDef seedBox fill:#C5CEF0,stroke:#3949ab,color:#1a237e
+  classDef seedNode fill:#8E9FE6,stroke:#3949ab,color:#1a237e
   class PC seedBox
   class LIFE,SAJU seedNode
 ```
@@ -229,8 +230,8 @@ flowchart LR
   D -->|true| E["매트릭 평가 단계로"]
   D -->|false| F["오늘은 그냥 스킵<br/>(매칭 행 안 남김)"]
 
-  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
-  class A,B,C,D,E,F flowNode
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
+  class A,B,C,D,E,F flowBox
 ```
 
 평가 방식은 시드의 `trigger_target_type`에 따라 다르다. 라이프 시드라면 "오늘이 토요일인가" 같은 단순 조건, 사주 시드라면 "오늘 일운 천간이 본인 사주의 갑목과 일치하는가" 같은 결정론적 조건. 어느 쪽이든 SQL 한 줄로 결정.
@@ -303,9 +304,9 @@ flowchart TD
   F -->|no| H["다음 주로"]
   G --> I["#insight 카드로 노출<br/>사용자 승인 대기"]
 
-  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
-  classDef hypothesisNode fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
-  class A,B,C,D,E,F,H,I flowNode
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
+  classDef hypothesisNode fill:#CE93D8,stroke:#7b1fa2,color:#4a148c
+  class A,B,C,D,E,F,H,I flowBox
   class G hypothesisNode
 ```
 
@@ -395,8 +396,8 @@ flowchart TB
     L2 -- 승인 시 --> L3
   end
 
-  classDef metricBox fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
-  classDef metricNode fill:#bbdefb,stroke:#1976d2,color:#0d47a1
+  classDef metricBox fill:#B3E5FC,stroke:#0288d1,color:#01579b
+  classDef metricNode fill:#6ACAFC,stroke:#0288d1,color:#01579b
   class DET,LLM metricBox
   class DET1,L1,L2,L3 metricNode
 ```
@@ -478,8 +479,8 @@ flowchart LR
   G --> H["사용자 신뢰 ↑"]
   H --> A
 
-  classDef flowNode fill:#fffbf0,stroke:#fbc02d,color:#5d4037
-  class A,B,C,D,E,F,G,H flowNode
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
+  class A,B,C,D,E,F,G,H flowBox
 ```
 
 핵심 문장:
