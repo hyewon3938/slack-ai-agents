@@ -111,6 +111,11 @@ flowchart LR
 
   REC -. 다음 날 .-> DAILY
   DAILY -. "pattern_matches 행 누적 (매트릭마다 1행)" .-> WEEKLY
+
+  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
+  classDef flowBox fill:#fafafa,stroke:#757575,color:#212121
+  class REC,D1,D2,D3,W1,W2,W3 flowNode
+  class DAILY,WEEKLY flowBox
 ```
 
 - 매일 박스는 cron 한 번에 **어제 채점 + 오늘 평가 + 잔소리** 세 일을 같이 한다.
@@ -133,6 +138,17 @@ flowchart TB
 
   SEED -. 시드 × outcome 조합을 통계가 발굴 .-> HYP
   HYP -- 주간 누적 --> VER
+
+  classDef seedBox fill:#e8f5e9,stroke:#43a047,color:#1b5e20
+  classDef metricBox fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
+  classDef matchNode fill:#fff8e1,stroke:#f9a825,color:#e65100
+  classDef hypothesisNode fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
+  classDef verifyNode fill:#fce4ec,stroke:#c2185b,color:#880e4f
+  class SEED seedBox
+  class METRIC metricBox
+  class MATCH matchNode
+  class HYP hypothesisNode
+  class VER verifyNode
 ```
 
 **읽는 법**
@@ -155,6 +171,11 @@ flowchart TB
     LIFE["pattern_kind = life_signal · ~38개<br/><br/>요일 · 주말 · 월말 · 계절<br/>공휴일 · 수면 임계<br/>루틴 streak 등"]
     SAJU["pattern_kind = saju · ~175개<br/><br/>천간 · 지지 · 60갑자<br/>오행 · 12운성 · 관계<br/>(자세한 건 부록)"]
   end
+
+  classDef seedBox fill:#e8f5e9,stroke:#43a047,color:#1b5e20
+  classDef seedNode fill:#c8e6c9,stroke:#43a047,color:#1b5e20
+  class PC seedBox
+  class LIFE,SAJU seedNode
 ```
 
 **핵심**: 두 출처 모두 **같은 핵심 구성 개념 위에서 같은 흐름**을 통과한다. 사주만의 특수 처리 없음. 이게 이 시스템이 **사주 검증기**가 아닌 이유다.
@@ -207,6 +228,9 @@ flowchart LR
   C --> D{"trigger_activated"}
   D -->|true| E["매트릭 평가 단계로"]
   D -->|false| F["오늘은 그냥 스킵<br/>(매칭 행 안 남김)"]
+
+  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
+  class A,B,C,D,E,F flowNode
 ```
 
 평가 방식은 시드의 `trigger_target_type`에 따라 다르다. 라이프 시드라면 "오늘이 토요일인가" 같은 단순 조건, 사주 시드라면 "오늘 일운 천간이 본인 사주의 갑목과 일치하는가" 같은 결정론적 조건. 어느 쪽이든 SQL 한 줄로 결정.
@@ -278,6 +302,11 @@ flowchart TD
   F -->|yes| G["pattern_hypotheses INSERT<br/>status='candidate'"]
   F -->|no| H["다음 주로"]
   G --> I["#insight 카드로 노출<br/>사용자 승인 대기"]
+
+  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
+  classDef hypothesisNode fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
+  class A,B,C,D,E,F,H,I flowNode
+  class G hypothesisNode
 ```
 
 - 시드가 켜진 날의 outcome 분포와 시드가 안 켜진 날의 outcome 분포를 Fisher's exact로 비교한다.
@@ -365,6 +394,11 @@ flowchart TB
     L1 --> L2
     L2 -- 승인 시 --> L3
   end
+
+  classDef metricBox fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
+  classDef metricNode fill:#bbdefb,stroke:#1976d2,color:#0d47a1
+  class DET,LLM metricBox
+  class DET1,L1,L2,L3 metricNode
 ```
 
 핵심 원칙:
@@ -443,6 +477,9 @@ flowchart LR
   F --> G["잔소리 신호 정확도 ↑"]
   G --> H["사용자 신뢰 ↑"]
   H --> A
+
+  classDef flowNode fill:#f5f5f5,stroke:#757575,color:#212121
+  class A,B,C,D,E,F,G,H flowNode
 ```
 
 핵심 문장:
