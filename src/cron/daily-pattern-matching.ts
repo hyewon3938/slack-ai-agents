@@ -1,8 +1,9 @@
 /**
- * Phase 3+4 — 매일 09시 패턴 일일 매칭 cron.
- * ADR-0017 + ADR-0026(pattern_* rename) 참조.
+ * Phase 3+4 — 매일 07시 패턴 일일 매칭 cron (08:00 일일 종합 인사이트 선행, #475).
+ * ADR-0017 + ADR-0026(pattern_* rename) + ADR-0031(매칭 선행) 참조.
  *
  * 흐름:
+ *   0) 마지막 매칭일~오늘 갭 자동 백필 (봇 다운 복귀 시 누락일 복구, 기록만)
  *   1) 어제 pending 매칭 verify_status 확정 (hit/miss/inconclusive)
  *   2) 오늘 활성 시드 평가 → pattern_matches UPSERT
  *   3) matched=true 시드를 #life 잔소리 끝 한 줄로 압축 전송
