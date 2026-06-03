@@ -2,7 +2,7 @@
 
 > 마스터 이슈: [#421](https://github.com/hyewon3938/slack-ai-agents/issues/421)
 > 시작: 2026-05-26
-> 상태: Phase A1·A2 완료 (2026-05-26 머지), Phase A3는 #408 머지 대기
+> 상태: Phase A1·A2 완료 (2026-05-26 머지), Phase A3 일운 종합 인사이트 (2026-06-03, #475)
 > 출처: [insight-engine-v2.md](./insight-engine-v2.md) Phase 5 진입 시도 중 분리됨
 
 ## 개요
@@ -18,7 +18,7 @@
 
 - [x] **Phase A1**: 책임 분리 + 형태 재설계 + Opus 이관 + 중복 발송 fix (PR #423 머지)
 - [x] **Phase A2**: v2 데이터 expose 경로 — `saju_influence_summary` view + idempotency 테이블 (PR #422 머지)
-- [ ] **Phase A3**: 4층 레이어 데이터 주입 (의존: [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408) Phase 5 머지)
+- [x] **Phase A3**: 일운 발송 재설계 — 일일 종합 인사이트 routine (개인화 주입 지점 생성→발송 이동, #475). 월/세/대운 종합 확장은 후속 ([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408) 이후)
 
 ---
 
@@ -108,3 +108,66 @@
 - 다음 월요일(2026-06-01) 08:00 KST 첫 발송 — Block Kit 카드 가독성·idempotency 동작·Opus prose 톤 운영 검증
 - Phase A3 (4층 레이어 expose) — #408 Phase 5-B 머지 후 view에 월운 layer 추가 (컬럼 contract 유지)
 - A1 첫 주 운영 후 임계치 조정 여부 판단: accumulating tier hit rate > 55% / 5건 임계가 카드에 너무 많이/적게 잡으면 외부화 검토 (ADR-0020 후속 작업 항목)
+
+---
+
+## Phase A3: 일운 종합 인사이트 (2026-06-03, #475)
+
+- 이슈: [#475](https://github.com/hyewon3938/slack-ai-agents/issues/475)
+- 관련 plan: `.claude/plans/475-daily-insight-synthesis.md` (gitignored, 휘발)
+- ADR: [ADR-0031](../adr/0031-daily-insight-synthesis.md) — 개인화 주입 지점을 생성에서 발송으로 이동
+- 상태: design + build 완료
+
+### 개요
+
+원래 A3는 "weekly-fortune이 생성 시점에 view를 주입(4층 레이어, #408 월운 의존)"이었으나, 인터뷰 중 두 구조적 제약이 드러나며 **"일운 발송 재설계"로 확장**됐다. A2에서 view(`saju_influence_summary`)를 깔고 weekly-saju-review-v2가 첫 소비자가 됐지만, **매일 발송되는 일운에는 학습이 전혀 주입되지 않는** 공백이 남아 있었다. 이 공백을 메우는 게 A3.
+
+매일 08:00 KST 일일 종합 인사이트 routine(`daily-insight`, Opus)을 신설 — 오늘 사주 일운(베이스) + 오늘 발현 시드를 신뢰도 tier별로 종합. 개인화 지점을 "주1회 생성(weekly-fortune)"에서 "매일 발송"으로 이동.
+
+### 의사결정 분기점
+
+> 사용자 인터뷰 다수 턴 + 헌장 cross-check.
+
+- **접근 방향 (단일 선택)**: (1) 연결 인프라 먼저 / (2) 검증 재료부터 / (3) 구패턴 이관. → **(1) 연결 먼저**. 이유: 작은 작업 + 후퇴 없음 + 미래 데이터 성장을 전제로 깔면 검증 누적이 자동으로 품질을 올림
+- **개인화 주입 지점 (핵심 전환)**: weekly-fortune 생성 시점 주입 → **매일 발송 시점 종합으로 전환**. 이유: ① 생성은 주1회라 7일 스냅샷 지연 ② life_signal은 "오늘 기준" 누적이라 미래 7일치를 미리 생성 불가. 발송 시점 종합이 두 제약을 동시 해소 + weekly-fortune은 미래 예보로 불변 유지
+- **일운을 "오늘의 총 종합"으로 격상 (단일 선택)**: 일운 따로 + 종합 따로 / **일운 자체를 종합 인사이트로**. 이유: 인사이트 채널에서 사주+라이프 패턴을 한 메시지로 커버. 라이프 채널 잔소리(매칭 한 줄)는 별도 유지 — 채널 역할 분리
+- **미래 종합 여부 (단일 선택)**: 미래 7일 종합 / **오늘만**. 이유: life_signal의 시간성상 미래 미리 생성 불가 + 사용자도 "미래는 사주 예보(weekly-fortune)로 충분, 종합 미래는 불필요"
+- **recent 처리 (핵심)**: 검증된 것만 / **현황 포함(인과는 검증분만)**. 이유: 현재 verified∩발현 = 0이라 검증만으로는 메시지가 빈손. recent를 "오늘 이런 기운·신호가 활성"이라는 **현황 맥락**으로 포함하되 인과 주장은 금지. 검증 누적되면 시드가 recent→accumulating→verified로 자동 격상되며 인과 레이어가 성장
+- **매칭 순서 (단일 선택)**: **A. 매칭 07:00로 당기기** / B. 종합을 매칭 후로 미루기. 이유: 08:00 종합이 그날 발현 시드를 읽으려면 매칭이 선행해야 함. 09:00→07:00이 가장 단순. + 갭 자동 백필로 누락 재발 방지
+
+### 포기한 안 / 미룬 항목
+
+- **weekly-fortune view 주입 (원래 1단계)**: 7일 지연 + 사주 시드만 가능 → 매일 발송 종합으로 흡수
+- **구 `saju_patterns` 26개 신 시스템 이관**: 큰 작업 + 통계 검증 약함 → A3 후속(별도 트랙). weekly-fortune 관점 5 정리와 묶어서
+- **recent 검증된 것만**: verified∩발현 0 → 빈손 → 현황 포함으로
+- **종합 미래 확장**: life_signal 시간성 → 오늘만. 월·세·대운 종합은 #408 이후 (일운 종합을 템플릿으로)
+
+### 미해결·가설
+
+- **현황 데이터(2026-06-02 확인)**: 주 928건 매칭, 활성 시드 229개. view tier verified **0** / accumulating **1** / recent 65. 하루 발현 사주 16 + 라이프 14 (풍부)지만 verified/accumulating과 교집합 0 → 당분간 현황 레이어 + 사주 베이스가 주력. 인과 레이어는 매트릭 승인 누적되며 성장 (운영 1\~3개월 후 품질 점검)
+- **6/1 매칭 누락 의심 → 실제 정상**: 진단 결과 5/26\~6/3 매일 데이터 존재(누락 0). 6/1도 229건. 단 cron이 "오늘만" 매칭이라 봇 다운 시 구조적 누락 가능 → 갭 백필 추가 (현재 백필 불필요, 재발 방지)
+- **prose vs Block Kit**: 1차안 prose (기존 일운 톤 연속성). 검증/현황 섹션 구분 가독성은 운영 후 판단
+- **매일 Opus 비용 vs 가치**: 운영하며 체감 점검
+
+### 회고 (인터뷰 + 구현)
+
+- **액면 요청 → 진짜 가치 분기 (누적 패턴)**: "일운에 사주 데이터 주입" 요청이 인터뷰 중 기술 제약(7일 스냅샷 지연 · life_signal 시간성) 제시로 "매일 종합 인사이트"로 진화. A1에서 "Phase 5 진입 → 주간 리뷰 개편" 분기에 이어 fortune-rework 마스터의 두 번째 동일 패턴. 첫 진입 인터뷰에서 액면 키워드와 진짜 동기가 어긋나는 건 단골
+- **DB 사실 확인이 설계를 전환**: verified 0 / 검증∩발현 0을 raw count로 확인 → "검증된 것만" 안을 기각하고 "recent 현황 포함 + 미래 성장" 구조 채택. 설계 판단을 추측이 아니라 운영 데이터로 내린 사례
+- **매칭 백필 부재 발견**: 6/1 누락 의심 조사 과정에서 cron이 `getEffectiveTodayISO()`로 "오늘만" 매칭함을 발견 → 실제 누락은 아니었으나 구조적 누락 가능성을 선제 차단(갭 백필). 사고 조사가 잠재 결함 발견으로 이어진 사례
+
+### 기술적 의의
+
+- **개인화 주입 지점 이동(생성→발송)**: 신선도(스냅샷 지연 제거)와 시간성(life_signal "오늘 기준")을 한 번에 해소. view tier 승급이 메시지 강도에 자동 반영돼 코드 변경 없이 품질이 성장하는 구조
+- **신뢰도 tier 기반 표현 강도 차등 + 할루시네이션 차단**: verified=단언 / accumulating=경향 / recent=현황. view·매칭에 **있는 시드만** 사용하고 LLM이 새 패턴 생성 금지 (헌장 ④ + 기각안 일관). A2의 신뢰도 라벨링 view 패턴을 일일 발송에 적용
+- **갭 자동 백필이 UPSERT 멱등성에 기댐**: `recordDailyMatches`의 ON CONFLICT DO UPDATE 덕분에 "마지막 매칭일+1~오늘" 재실행이 안전. 봇 다운 복귀 시 자동 복구. 14일 상한 + truncation 로그로 백필 폭주 방지
+
+## Phase A3: 결과 (2026-06-03)
+
+- PR #475 (예정): 마이그레이션 076 (`daily_insight_log` + 매칭 07:00 + insightMorning 비활성) + 매칭 갭 백필 + insightMorning cron 제거 + ADR-0031 + 도메인 §23
+- routine SKILL.md (`~/.claude/scheduled-tasks/daily-insight/`)는 repo 외부 — 변경 이력은 ADR-0031 + 도메인 §23로 추적
+
+### 구현 단계에서 확인된 것
+
+- **CronScheduler가 미매핑/비활성 슬롯 안전 스킵**: `loadAndSchedule`이 `!setting.active` + `!SLOT_TASKS[slot_name]` 둘 다 `continue`. insightMorning을 코드(SLOT_TASKS)와 DB(active=false) 양쪽에서 제거 — belt-and-suspenders
+- **formatFortuneText 이중 사용처**: life-cron(insightMorning, 제거)과 agents/insight(유저 트리거 /일운 조회, 유지). insightMorning 제거 후 life-cron import만 정리, fortune-format.ts·유저 트리거 경로는 불변
+- **verifyDailyMatches는 이미 갭 안전**: `date <= CURRENT_DATE - 1` 전체 pending을 처리 → 백필분이 pending으로 기록되면 같은 cron 실행 내 verify가 자동으로 hit/miss 확정. 백필 설계가 기존 검증 사이클에 무손실로 얹힘

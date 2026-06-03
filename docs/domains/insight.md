@@ -104,7 +104,7 @@ saju_patterns:
 - `세운` / `올해 세운` -> period='yearly', date=해당 년 1월 1일
 - `대운` -> period='major', ORDER BY date DESC LIMIT 1
 
-표시 포맷: 공유 헬퍼 `src/shared/fortune-format.ts`의 `formatFortuneText` — `summary` *볼드* + `analysis` 본문 + `advice` _기울임_ 결합. insightMorningTask(아침 일운 푸시)도 동일 헬퍼 사용.
+표시 포맷: 공유 헬퍼 `src/shared/fortune-format.ts`의 `formatFortuneText` — `summary` *볼드* + `analysis` 본문 + `advice` _기울임_ 결합. (유저 트리거 /일운 조회 전용. 아침 일운 자동 발송은 2026-06-03부터 일일 종합 인사이트 routine으로 이관 — §23)
 
 ### 1-1. 운세 분석 생성 정책 (weekly-fortune)
 weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyses 필드 활용:
@@ -122,6 +122,8 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 **period별 길이**: daily 350\~500자 / monthly 600\~800자 / yearly·major 800\~1200자. advice는 모든 period에서 1\~2문장.
 
 **톤**: 명리학자가 애정을 담아 풀어주는 / 사실 숨기지 않는 / 권유형. 상세는 [ADR 0012](../adr/0012-fortune-personalization.md) 참조.
+
+**발송 분리 (2026-06-03, #475)**: weekly-fortune은 미래 7일 일운 생성 + /일운 조회 베이스로 **불변**. 매일 아침 발송은 일일 종합 인사이트 routine(§23)이 이 생성물(오늘치)을 베이스로 학습 데이터(`saju_influence_summary` view)와 종합해 발송. 상세 [ADR-0031](../adr/0031-daily-insight-synthesis.md).
 
 ### 2. 일기 자동 저장
 - 사용자 메시지가 일기/감정/이벤트 성격이면 `diary_entries`에 자동 저장
@@ -143,6 +145,7 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 - 같은 trigger_element가 여러 도메인에 발현하면 분리하지 않고 같은 row의 evidence에 누적
 - 감지 횟수 추적 (detection_count), 신뢰도 평가 (confidence)
 - 비활성화 시 `active = false`, `deactivated_at = NOW()`
+- **일일 종합 인사이트(§23)는 `saju_patterns`를 쓰지 않는다** — `saju_influence_summary` view(verified/accumulating/recent, #393/#434 학습 결과)를 사용. `saju_patterns`는 시스템 프롬프트 조회 + weekly-fortune 관점 5 용으로만 잔존 (정리는 마스터 A A3 후속)
 
 ### 5. 시스템 프롬프트 구성
 `buildInsightSystemPrompt()`가 실시간으로 아래 데이터를 로드하여 프롬프트에 주입:
@@ -1398,6 +1401,35 @@ ALTER TABLE pattern_matches
 
 설계 결정 배경: [design-notebook personal-pattern-discovery](../design-notebook/personal-pattern-discovery.md) Phase 8 섹션 + 마무리 회고
 
+### 23. 일일 종합 인사이트 (마스터 A — Phase A3, #475)
+
+매일 아침 사주 일운 + 학습된 개인 패턴을 신뢰도 강도별로 종합해 인사이트 채널에 단일 메시지로 발송. 개인화 주입 지점을 weekly-fortune **생성**에서 매일 **발송** 시점으로 이동 (상세 [ADR-0031](../adr/0031-daily-insight-synthesis.md)).
+
+**routine**: `~/.claude/scheduled-tasks/daily-insight/SKILL.md` (Claude 앱 routine, repo 외부). 매일 08:00 KST, Opus, 인사이트 채널. DB Proxy API로 접근 (ADR-0027).
+
+**3층 종합 구조**:
+
+| 레이어 | 소스 | 표현 강도 |
+|--------|------|----------|
+| 베이스 — 오늘 사주 일운 | `fortune_analyses` (weekly-fortune 생성물 오늘치) | 만세력 교과서 해석 |
+| 검증 — 인과 단언 | 오늘 발현 시드 ∩ `saju_influence_summary` verified/accumulating | "너는 X일 때 실제로 Y하더라" |
+| 현황 — 배경 맥락 | 오늘 발현 시드 중 미검증(recent) | "오늘 이런 기운·신호 활성" — **인과 주장 금지** |
+
+**데이터 수집** (메트릭/카운트만, diary 원문 입력 금지):
+- 오늘 일운: `fortune_analyses WHERE period='daily' AND date=CURRENT_DATE`
+- 오늘 발현 시드: `pattern_matches (date=CURRENT_DATE, trigger_activated=true)` JOIN `pattern_catalog` + `saju_influence_summary`(tier 판정). 사주 시드(stem/branch/ganji/relation/sibiunsung/element_density/cumulative_pillar_count)와 `life_signal`을 레이어로 분리 표시
+- `life_themes` active
+
+**멱등**: `daily_insight_log (user_id, date) UNIQUE` (마이그레이션 076). `INSERT ... ON CONFLICT DO NOTHING RETURNING` — 비면 "이미 발송, 종료".
+
+**파이프라인 순서**: 매칭(`dailySajuMatching`) **07:00** → 종합 **08:00**. 매칭 선행으로 그날 발현 시드를 종합이 읽음 (구 09:00에서 당김, 마이그레이션 076). 매칭 cron은 누락일 자동 백필 포함 — `daily-pattern-matching.ts`의 "마지막 매칭일+1~오늘" 루프 (14일 상한).
+
+**종료 조건**: ① 오늘 일운 미생성(weekly-fortune 누락) → "사주 일운 미생성, 종료" ② 이미 발송(멱등) → 종료.
+
+**헌장 준수**: ① diary 원문 미입력 (view description·시드명·카운트만) / ④ tier별 강도 차등. view·매칭에 **있는 시드만** 사용 — 새 패턴 생성 금지 (할루시네이션 차단).
+
+**구 insightMorningTask 폐기**: 아침 일운 포맷 알림(Node.js cron, LLM 없음)은 이 routine으로 이관. `SLOT_TASKS`·DB 슬롯(`insightMorning` active=false)에서 제거 (ADR-0027 — LLM 비동기는 routine으로).
+
 ## 파일 구조
 
 ```
@@ -1420,7 +1452,7 @@ src/shared/
 └── saju-hypothesis.ts             # Phase 4 통계 (Fisher + BH-FDR + lifecycle)
 
 src/cron/
-├── daily-saju-matching.ts                 # 09:00 사주 일일 매칭 + confirmed 가설 슬롯 (Phase 3/4)
+├── daily-pattern-matching.ts              # 07:00 사주 일일 매칭 + 갭 자동 백필 + confirmed 가설 슬롯 (Phase 3/4, #475)
 ├── diary-meta-extract.ts                  # 일기 → enum 태그 추출 cron (Phase 3, Opus)
 ├── weekly-hypothesis-review.ts            # 월 08:00 주간 가설 리포트 (Phase 4)
 └── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5)
@@ -1455,6 +1487,10 @@ db/migrations/  (마스터 #434 Phase 7 — 2026-05-29)
 db/migrations/  (마스터 #434 Phase 8a — 2026-05-29)
 └── 075_pattern_cleanup.sql                      # catalog deprecated 카운터 DROP + pattern_matches.error_message + verify_status='error' enum
 
+db/migrations/  (마스터 A Phase A3 — 2026-06-03)
+└── 076_daily_insight.sql                        # daily_insight_log + 매칭 07:00 + insightMorning 비활성
+
 ~/.claude/scheduled-tasks/  (Claude 앱 routines, repo 외부)
-└── monthly-metric-suggest/SKILL.md              # Phase 6 매월 1일 09:30 LLM 매트릭 후보 제안
+├── monthly-metric-suggest/SKILL.md              # Phase 6 매월 1일 09:30 LLM 매트릭 후보 제안
+└── daily-insight/SKILL.md                       # 일일 종합 인사이트 매일 08:00 (마스터 A A3, #475)
 ```
