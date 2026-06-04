@@ -73,6 +73,44 @@ v2 헌장 4개 + 마스터 #434 헌장 5개를 계승한다 (본문 복제하지
 - **전면 다변량 회귀 / 풀 MCMC** — n=1 과적합 + 순수 TS 제약. 교란 분리는 데이터 게이트 후 elastic net 제한 도입.
 - **SCED randomization test** — 시드가 결정론이라 무작위 배정 전제 없음. 기각.
 
+## 데이터 모델 + 사주 feature substrate (2026-06-04 인터뷰)
+
+> 결정 정본은 [ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) + [ADR-0032](../adr/0032-metric-first-verification-statistics.md). 여기는 골격 스케치 + 분기.
+
+### 스키마 골격 (Model A — 신호 전역 측정 + 주간 재계산)
+
+- **pattern_catalog** (시드, 기존) — saju + life_signal (+ 운레벨 맥락). 교란 covariate도 전부 시드(수면부족 등 이미 존재).
+- **signal_defs** (신규, 전역 신호 정의) — kind: sql|tag / (sql) sql_body·value_type(binary|continuous)·direction·threshold / (tag) tag_name / description·source(seed|llm)·status(active|pending|rejected). 시드 무관.
+- **pattern_links** (신규, 매트릭=가설=시드×신호) — seed_id·signal_id·source(manual|discovery|llm)·status(active|weak|confirmed|rejected|archived) / test_type(fisher_2x2|mann_whitney) + 공통(effect·p·q·posterior·evalue) + test_detail JSONB + confound JSONB.
+- **pattern_stats** (기존 유지) — link당 주 1행 스냅샷(트렌드·e-value 추이·감사).
+- **raw** (기존) — expenses/sleep/routine/schedule/diary_meta_tags. 주간 재계산 소스.
+- ❌ daily_signals·seed_activation 안 만듦. 옛 pattern_matches 일별 행 폐기(transient 계산 + 마이그레이션).
+
+### 주간 검증 job 흐름
+
+1. window 재계산(raw + 결정론 규칙) → 일자별 시드활성 + 신호값/pass + 사주 feature.
+2. 각 link: 2×2(이진)/분포(연속) → Fisher+block permutation / Mann-Whitney+효과크기 → posterior·e-value 갱신 → 교란(공존 시드 충분하면 다변량 분리, 아니면 플래그) → status 갱신 → pattern_stats 스냅샷.
+3. 발굴: 미등록 (시드×태그) 전수 Fisher+FDR(discovery) + LLM 신호 제안(llm) → pending → 승인 카드.
+4. 알림: confirmed link → #life/#insight (교란 플래그 동반).
+
+### 결정론 사주 feature 엔진 (substrate)
+
+운 레벨 modulation을 통계 상호작용이 아니라 결정론 feature로 환원(원국+대운+세운+월운+일운). 대표 규칙: 오행 비율 / 생·극 가중 실효 강도 / 활성 합충형해파(원진·귀문 포함) / 기본 합화(천간합+통근, 지지 육합/삼합 + 십성 재매핑). 규칙은 파라미터화(사용자 명리학 프레임 정본), 확장형. feature 불완전해도 통계가 거름. 상세 ADR-0033 §3.
+
+### 분기/결정 (이번 인터뷰)
+
+- **A 채택 — 운 레벨 substrate 지금 포함** (vs #408로 전부 미룸). 시드가 일운-only로 굳는 것 방지. 완전한 modulation *검증*은 데이터 게이트 후속(#408 합류).
+- **상호작용 → 결정론 feature 환원** (vs 통계 상호작용 항). n=1 데이터 부담 회피, 주효과로.
+- **비단조(inverted-U) → graded ordinal 레벨 + 레벨별 검정** (vs 이진/단조). 적정→+ / 과다→− 부호 반전 포착. cumulative_pillar_count가 원형.
+- **객관 outcome 우선** (vs 주관 태그 동격). 기대편향 오염 회피.
+- **e-value 게이트는 이진**(연속은 baseline 이진화), 연속 효과는 Mann-Whitney+효과크기 보고용.
+- **source enum 유지**(manual/discovery/llm). discovery=통계 스캔(태그), llm=LLM 제안(열린 SQL).
+- **사주 규칙 파라미터화** (vs 하드코딩). 학파 의존 + 명리학 권위 아님.
+
+### 확증편향 방어 (인터뷰 중 사용자 제기)
+
+디테일한 사주 규칙 인코딩이 확증편향 아니냐는 우려: 규칙은 feature를 *계산*할 뿐 효과를 *단언*하지 않음 + 독립 객관 outcome에 off-day 대조 검정 → 틀린 규칙 feature는 상관 안 나와 걸러짐. 위험 셋(주관 태그 오염→객관 우선 / feature 과다→FDR·절제 / 결과 보고 튜닝→사전 고정)만 지키면 디테일이 목적에 봉사. 단 데이터 검증 전 무한 정밀화는 비효율 → 대표 규칙부터, 데이터가 어떤 feature 사는지 보고 확장.
+
 ## 회고 (TODO: `/build` 구현 후 보강)
 
 > 빌드 후 추가. e-value 시뮬레이션 검증 결과, 첫 운영 신호 품질도 같이.
