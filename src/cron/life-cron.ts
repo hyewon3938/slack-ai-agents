@@ -24,7 +24,6 @@ import {
   decrementReminderCount,
 } from '../shared/life-queries.js';
 import { postBlockMessage, postToChannel } from '../shared/slack.js';
-import { formatFortuneText } from '../shared/fortune-format.js';
 import {
   getTodayISO,
   getYesterdayISO,
@@ -527,38 +526,7 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
 };
 
 // ─── Insight 크론 태스크 ─────────────────────────────────
-
-/** 아침 일운 분석 알림 → insight 채널 (유저별) */
-const insightMorningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
-  const today = getTodayISO();
-
-  await forEachUser(config, 'insight', '일운 분석 알림', async (userId, channelId) => {
-    const result = await query(
-      `SELECT analysis, summary, advice FROM fortune_analyses
-       WHERE user_id = $1 AND date = $2 AND period = 'daily'
-       ORDER BY created_at DESC LIMIT 1`,
-      [userId, today],
-    );
-
-    if (result.rows.length > 0) {
-      const fortune = result.rows[0] as {
-        analysis: string;
-        summary: string | null;
-        advice: string | null;
-      };
-      const text = formatFortuneText(fortune);
-      await postToChannel(app.client, channelId, text);
-      console.warn(`[Life Cron] 일운 분석 알림 전송 완료 (유저=${userId})`);
-    } else {
-      await postToChannel(
-        app.client,
-        channelId,
-        '오늘의 일운 분석이 아직 준비되지 않았어. 곧 업데이트될 거야.',
-      );
-      console.warn(`[Life Cron] 일운 분석 없음 — 대기 메시지 전송 (유저=${userId})`);
-    }
-  });
-};
+// (아침 일운 알림 insightMorningTask는 daily-insight routine으로 이관 — ADR-0031)
 
 /** 밤 일기 리뷰 → insight 채널.
  * 오늘 일기가 있으면 LLM 1회로 하루 코멘트, 없으면 간단 리마인더 전송. */
@@ -651,7 +619,6 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   morning: morningTask,
   night: nightTask,
   weeklyReport: weeklyReportTask,
-  insightMorning: insightMorningTask,
   insightNight: insightNightTask,
   weeklyLlmInsight: weeklyLlmInsightTask,
   monthlyLlmInsight: monthlyLlmInsightTask,
