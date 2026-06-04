@@ -46,15 +46,27 @@ v2 헌장 4개 + 마스터 #434 헌장 5개를 계승한다 (본문 복제하지
 
 결정·기각 대안·출처 14개 전부 [ADR-0032](../adr/0032-metric-first-verification-statistics.md)에 정본 보관. explainer §8(통계)은 빌드 후 ADR-0032를 요약·링크한다.
 
-## Phase 윤곽 (데이터 모델 설계 후 확정)
+## Phase 구획 (2026-06-04 확정 — 각 phase = 독립 세션 + 1 PR)
 
-> 아직 확정 전. 데이터 모델 인터뷰 결과에 따라 조정.
+> 마스터 설계(헌장 + [ADR-0032](../adr/0032-metric-first-verification-statistics.md)·[ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) + 아래 데이터 모델 섹션)가 정본. **각 phase 세션은 휘발 컨텍스트(브랜치·머지 상태)만 들고 시작하고 본문은 이 문서·ADR 링크로 참조 — 문서/헌장 복제 금지.** 순서는 의존 기준.
 
-1. **데이터 모델** — 신호 매일 측정 + baseline, SQL·태그 매트릭 통합, pattern_matches 구조 변경, 라이프사이클(활성/후순위/비활성)
-2. **통계 엔진** — e-value·block permutation·Mann-Whitney·empirical-Bayes 추가 + null 시뮬레이션 검증
-3. **발굴** — LLM 제안(열린 공간: 새 SQL·태그 매트릭) + 통계 전수 스캔(고정 어휘 태그), 승인 게이트
-4. **큐레이션·알림** — 확신도 기반 매트릭 관리, 초개인화 잔소리(고-확신 매트릭 우선)
-5. **교란 분리·수축** — 데이터 게이트 자동 활성
+| Phase | 범위 | 의존 | 출구 |
+|---|---|---|---|
+| **P1 스키마 + 신호 전역화** | `signal_defs`·`pattern_links` 신설, `pattern_metrics`·기존 매트릭 이관, 22 태그→tag signal, `pattern_matches` 일별행 폐기, 일별 cron은 오늘 시드활성 transient 계산으로 잔소리 유지 | — | 새 스키마 + 데이터 이관 + 기존 알림 무탈 |
+| **P2 주간 검증 엔진** | 주간 job: window 재계산(raw+규칙)→2×2→Fisher+BH-FDR+Beta-Binomial, status 전이 기본, graded 레벨 신호 지원, off-day 대조 | P1 | (시드×신호) 가설이 trigger vs baseline으로 confirmed/rejected |
+| **P3 통계 엔진 보강** | block permutation, e-value(이진 게이트)+**null 시뮬레이션 검증**, Mann-Whitney+효과크기(연속), empirical-Bayes, 발견/확정 q 분리 (ADR-0032 풀스택) | P2 | ADR-0032 완비 + 검증 테스트 통과 |
+| **P4 결정론 사주 feature 엔진** | 오행비율·생극 실효강도·합충형해파(원진·귀문)·기본 합화(천간합+통근, 지지합)+십성 remap·graded 레벨, 규칙 파라미터화, feature→시드/신호/covariate (ADR-0033 §3) | P1·2 (P3 권장) | 운레벨 맥락 feature 검정 진입, 일운-only 해제 |
+| **P5 발굴 + 승인 게이트** | discovery(시드×태그 전수 Fisher+FDR) + LLM 신호 제안(열린 SQL)→pending→#insight 승인 카드 | P2·3 | 자동 발견 + 승인 흐름 |
+| **P6 알림 + 큐레이션 + 교란 플래그** | confirmed→#life 잔소리+#insight 카드, 교란 플래그(공존 시드 표시), weak 후순위, status 관리 명령 | P2(+5) | 사용자 도달 + 정직 플래그 |
+| **P7 교란 다변량 분리 (데이터 게이트)** | 공존 시드 충분 시 elastic-net/층화로 독립 기여 분리, 아니면 플래그 유지, 데이터 임계 자동 on | P2·3+누적 | "어부지리" 차단(데이터 차면) |
+
+> 옵션: P2+P3 합치면 "통계 완비 엔진" 한 번에 (세션 크기 vs 완결성 트레이드오프, 기본은 분리). P4가 가장 큼 — 필요시 P4a(오행·생극)/P4b(합충·합화·remap)로 분할.
+
+### 각 phase 세션 시작법
+
+1. 새 세션 열기 → 프롬프트는 **휘발 컨텍스트만**: "마스터 #477 Phase N 시작. `docs/design-notebook/metric-first-verification.md` + ADR-0032·0033 참조. 현재 main 머지 상태/브랜치 [...]." (헌장·ADR 본문 복제 금지 — drift 방지)
+2. 그 세션: `/design`(해당 phase 계획서 `.claude/plans/477-pN-*.md`) → `/compact` → `/build`
+3. phase = 1 이슈(#477 하위) + 1 PR. 도메인 문서(`docs/domains/insight.md`) phase 골격은 `/design`이 작성, `/build`가 채움
 
 ## 의사결정 분기점 — 마스터 setup 단계
 
