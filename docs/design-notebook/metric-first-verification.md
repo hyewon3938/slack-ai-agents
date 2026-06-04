@@ -2,7 +2,7 @@
 
 > 마스터 이슈: [#477](https://github.com/hyewon3938/slack-ai-agents/issues/477)
 > 시작: 2026-06-04
-> 상태: 설계 중 (데이터 모델 인터뷰 단계)
+> 상태: 마스터 설계 확정 (헌장 + ADR-0032·0033 + Phase 구획 P1\~P7) → P1 구현 진입
 > Successor of: 마스터 [#434](https://github.com/hyewon3938/slack-ai-agents/issues/434) (본인 1명 패턴 발견 시스템) — 검증 축 재정의
 
 ## 개요
