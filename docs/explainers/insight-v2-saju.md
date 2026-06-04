@@ -1,6 +1,6 @@
-# 사주 부록 — 시드 출처로서의 사주 6종
+# 사주 부록 — 시드 출처로서의 사주 7종
 
-> 이 문서는 [프로액티브 인사이트 v2 메인 explainer](insight-v2.md)의 부록이다. 메인은 "개인 라이프 패턴 발견 시스템"을 다섯 개의 핵심 개념(시드·매트릭·매칭·가설·검증)으로 설명한다. 이 부록은 그 안에서 **시드 출처 중 하나인 사주 6종**이 어떻게 정의되는지 깊게 풀어 쓴다.
+> 이 문서는 [프로액티브 인사이트 v2 메인 explainer](insight-v2.md)의 부록이다. 메인은 "개인 라이프 패턴 발견 시스템"을 다섯 개의 핵심 개념(시드·매트릭·매칭·가설·검증)으로 설명한다. 이 부록은 그 안에서 **시드 출처 중 하나인 사주 7종**이 어떻게 정의되는지 깊게 풀어 쓴다.
 
 ---
 
@@ -163,7 +163,7 @@
             │
 ┌───────────┴─────────────────────────────────────┐
 │  일운 (1일) — 천간 1 + 지지 1                    │
-│   ★ 매일 09:00 매칭 cron의 주된 평가 대상         │
+│   ★ 매일 07:00 매칭 cron의 주된 평가 대상         │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -174,22 +174,23 @@
 
 ---
 
-## 3. 시드 7종 중 사주 6종 상세
+## 3. 시드 8종 중 사주 일운 6종 상세
 
-`pattern_catalog.trigger_target_type`이 7종 enum:
+`pattern_catalog.trigger_target_type`은 8종 enum:
 
 ```
-stem · branch · ganji · element_density · sibiunsung · relation · life_signal
-└────────────────── 사주 6종 ──────────────────┘   └ 라이프 1종 ┘
+stem · branch · ganji · element_density · sibiunsung · relation   ← 사주 일운 6종 (이 부록 §3)
+cumulative_pillar_count                                           ← 사주 누적 1종 (§4)
+life_signal                                                       ← 라이프 1종 (메인 §5)
 ```
 
-라이프 1종(`life_signal`)은 메인 explainer §5에서 설명. 이 부록은 나머지 6종을 다룬다.
+사주 계열은 7종(일운 6종 + 누적 1종), 라이프가 1종이다. 이 부록은 일운 6종을 §3에서, 누적 1종을 §4에서 다룬다. `life_signal`은 메인 explainer §5에서 설명.
 
 ### 3-1. stem (천간)
 
 - **의미**: 일운의 천간이 본인 사주의 특정 글자
 - **trigger 예시**: 일운 천간 = 갑(甲)인 날
-- **시드 수**: 10
+- **시드 수**: 12
 - **trigger 평가**: 오늘 일운 천간 SQL 추출 → `trigger_target` 문자열과 비교
 - **trigger_aux**: 없음
 
@@ -202,7 +203,7 @@ SELECT day_pillar_stem(today)  =  pattern_catalog.trigger_target
 
 - **의미**: 일운의 지지가 본인 사주의 특정 글자
 - **trigger 예시**: 일운 지지 = 오(午)인 날
-- **시드 수**: 13 (단일 지지 12 + 통합 시드 1개)
+- **시드 수**: 15
 - **통합 시드**: 본인 일지와 같은 지지가 일운에 들어오는 날을 통째로 묶은 시드 1개 — 본인 일지 종류에 무관하게 evaluation 가능
 - **trigger_aux**: 단일은 없음, 통합은 `{"mode": "match_day_branch"}`
 
@@ -260,7 +261,7 @@ SELECT day_pillar_stem(today)  =  pattern_catalog.trigger_target
 | 해(害) | 방해 |
 | 원진 | 미묘한 갈등 |
 
-`branch_relations` 테이블에 약 46개 매핑이 보관됨. 본인 지지 4개 × 일운 지지에 대해 모든 가능한 관계가 사전 계산되어 있다.
+`branch_relations` 테이블에 약 61개 매핑이 보관됨. 본인 지지 × 일운 지지에 대해 모든 가능한 관계가 사전 계산되어 있다.
 
 > 모든 관계의 "통념적 의미"는 그대로 검증 대상이 아니다. 이 시스템은 각 관계가 들어오는 날 사용자 outcome 분포를 측정해 통계로 가설을 잡을 뿐.
 
@@ -294,16 +295,16 @@ SELECT day_pillar_stem(today)  =  pattern_catalog.trigger_target
 
 | pattern_kind | trigger_target_type | 시드 수 |
 |---|---|---|
-| saju | stem | 10 |
-| saju | branch | 13 |
+| saju | stem | 12 |
+| saju | branch | 15 |
 | saju | ganji | 60 |
 | saju | element_density | 10 |
 | saju | sibiunsung | 12 |
 | saju | relation | 72 |
-| saju | (cumulative pool) | \~8 |
-| **소계 (saju)** | | **\~175** |
-| life_signal | life_signal | \~38 |
-| **합계** | | **\~213** |
+| saju | cumulative_pillar_count | 10 |
+| **소계 (saju)** | | **191** |
+| life_signal | life_signal | 38 |
+| **합계** | | **229** |
 
 > 실제 카운트는 `pattern_kind`·`active` 상태에 따라 변할 수 있다. 도메인 문서의 §14 이후 phase 섹션이 시드 카탈로그 변경 이력의 최신본을 보관한다.
 

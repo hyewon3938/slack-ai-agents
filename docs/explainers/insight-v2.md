@@ -54,29 +54,35 @@
 | 용어 | 한 줄 정의 | 직관 예시 |
 |------|-----------|----------|
 | **시드** (seed) | 관찰하고 싶은 환경/조건의 단위 | "월말이라는 환경", "본인 일지에 충이 들어오는 날" |
-| **매트릭** (metric) | 그 시드가 켜진 날 어떤 데이터를 관찰할지 정의한 단위 | "그날 지출 합계", "그날 수면 시간" |
-| **매칭** (match) | 오늘 시드가 켜졌는지와 매트릭 채점 결과를 매일 한 행으로 남긴 기록 | "2026-06-01 시드 #42 활성, hit" |
-| **가설** (hypothesis) | 시드와 outcome(매칭 결과의 유형) 끼리의 조합이 평소(시드가 안 켜진 날)보다 자주 일어나는가를 등록한 후보 | "시드 #42가 켜진 날 outcome=지출초과가 더 자주" |
-| **검증** (verification) | 누적된 매칭 결과를 주 단위 통계로 정리해 가설을 채점한 주별 기록 | "주차 22, p=0.04, q=0.15, posterior=0.62" |
+| **매트릭** (metric) | 그 시드가 켜진 날 어떤 데이터를 잴지 정의한 SQL 단위 | "그날 지출 합계", "그날 수면 시간" |
+| **매칭** (match) | 활성 시드마다 하루 한 행 — 오늘 그 시드가 켜졌는지(trigger)와 매트릭 채점 결과를 묶어 남긴 기록 | "2026-06-01 시드 #42 켜짐, hit" |
+| **가설** (hypothesis) | "이 시드가 켜진 날 이 **outcome**(아래 정의)이 평소보다 자주 나타나는가"를 묻는 시드 × outcome 한 쌍 | "시드 #42가 켜진 날 `짜증` 태그가 더 자주" |
+| **검증** (verification) | 가설을 주 단위 통계로 채점해 쌓은 주별 기록 | "주차 22, p=0.04, q=0.15, 사후=0.62" |
 
-이 다섯 개념은 **한 단위 안에 다음 단위가 들어가는** 구조다. 시드 안에 매트릭이 들어가고, 매트릭이 매일 평가될 때마다 매칭이 한 행씩 쌓인다. 매칭이 누적되면 그 위에 가설이 새로 떠오르고, 가설은 주마다 검증으로 채점받는다.
+시드 안에 매트릭이 들어가고(시드당 0\~N개), 매일 매칭이 시드마다 한 행씩 쌓인다(그날 평가한 매트릭 결과는 그 한 행 안에 묶인다). 가설은 이 위에 따로 떠오르는 별개의 자료다 — 시드(켜진 날)와 outcome(일기 태그)의 조합을 통계가 찾아내고, 가설은 주마다 검증으로 채점받는다.
+
+> **헷갈리기 쉬운 갈래 — 트랙이 둘이다.** 같은 "시드가 켜진 날"에서 출발하지만 오른쪽에 두는 변수가 다르다.
+> - **채점 트랙** (시드 × **매트릭** → hit/miss): 시드에 붙은 SQL을 그날 평가해 통과/미통과를 가린다. → 시드별 적중률·사후 확률.
+> - **가설 트랙** (시드 × **outcome 일기 태그** → 통계): 시드 켜진 날과 그 일기 태그가 같이 나타나는지 비교한다. → confirmed 가설·잔소리.
+>
+> 매트릭(SQL 채점)과 outcome(일기 태그)은 출처도 테이블도 다르다. 가설 트랙은 둘을 **날짜로 이어 붙일 뿐**, 매트릭 hit/miss를 입력으로 쓰지 않는다.
 
 ### 3-2. 부속 용어
 
 | 용어 | 한 줄 정의 |
 |------|-----------|
 | **트리거** (trigger) | 매일 시드가 켜졌는지 결정하는 조건 |
-| **outcome** | 매칭 한 행을 어떤 종류의 결과로 분류한 값 (지출초과 / 수면부족 / 루틴미수 등). hit/miss는 채점 충족 여부, outcome은 결과의 유형 — 서로 다른 차원 |
-| **hit** | 시드 켜진 날 + 매트릭 조건 충족 |
-| **miss** | 시드 켜진 날 + 매트릭 조건 미충족 |
-| **inconclusive** | 시드 켜진 날 + 매트릭은 있지만 측정할 데이터가 없어 채점 불가 (예: 매트릭이 "그날 지출 합계"인데 그날 지출 기록이 비어 있음) |
-| **no_metric** | 시드 켜진 날 + 매트릭이 **아직 안 붙어 있는** 시드. 시드가 켜졌다는 사실만 evidence-only로 기록하고 채점은 건너뜀 |
-| **verify_status** | 매칭 한 행의 상태. `hit` / `miss` / `inconclusive` / `no_metric` + `pending`(평가 진행 중) + `error`(평가 중 예외) |
+| **outcome** | 그날 일기에서 뽑아낸 상태·행동 태그. `diary_meta_tags`의 22종 enum 중 하나(짜증·불안·기력저하·평온·돈인식·실수 등). 시드와 무관하게 매일 일기 분석이 붙인다. 매칭의 hit/miss와는 **다른 축이자 다른 테이블** — hit/miss는 시드 매트릭 채점 결과, outcome은 그날 일기 상태 |
+| **hit** | 트리거됨 + 그 시드 매트릭 중 하나 이상 통과 |
+| **miss** | 트리거됨 + 매트릭 모두 미통과 |
+| **inconclusive** | hit/miss로 확정하지 못한 매칭 행 — 매트릭이 붙은 시드인데 그날 트리거가 안 켜진 경우. 시드는 대부분의 날 안 켜지므로 매칭 행 중 가장 흔하다 |
+| **no_metric** | 매트릭이 **아직 안 붙은** 시드(evidence-only). 켜졌다는 사실만 기록하고 채점은 건너뛴다 |
+| **verify_status** | 매칭 한 행의 상태. `hit` / `miss` / `inconclusive` / `no_metric` + `pending`(확정 대기) + `error`(평가 중 예외) |
 | **pattern_kind** | 시드의 출처가 생활 통념인지 사주인지 — `life_signal` / `saju` |
-| **posterior** | Bayesian Beta-Binomial 사후 확률 (지금까지 누적 hit/miss로 본 실제 패턴일 확률) |
+| **posterior** | Bayesian Beta-Binomial 사후 확률 (지금까지 누적으로 본 실제 패턴일 확률) |
 | **CI lower bound** | 사후 확률 95% 신뢰 구간의 하한값. 사후 평균만 보면 운 좋게 높게 나온 경우를 거를 수 없으니, "최소 이만큼은 확실하다"는 보수적 기준으로 함께 본다 |
 | **결정론** (deterministic) | 매트릭 종류 ① — 시드를 만들 때 사람이 SQL을 직접 박아둔 매트릭. 즉시 매일 매칭 cron의 평가 대상이 된다 |
-| **LLM 자율** (LLM autonomous) | 매트릭 종류 ② — LLM이 시드 description을 보고 매트릭 후보를 제안한 매트릭. 사용자가 Slack 카드에서 승인해야 활성화 |
+| **LLM 자율** (LLM autonomous) | 매트릭 종류 ② — LLM이 시드 description을 보고 제안한 매트릭. 사용자가 Slack 카드에서 승인해야 활성화 |
 | **승인 게이트** | LLM이 만든 모든 매트릭 후보는 Slack 카드에서 사용자가 통과시켜야만 활성 |
 
 > 사주 용어(천간·지지·십성·12운성·합/충/형 등)는 이 문서에 등장하지 않는다. 사주 시드가 어떻게 정의되는지 자세히 보려면 [사주 부록](insight-v2-saju.md)으로.
@@ -91,24 +97,25 @@
 flowchart LR
   REC["매일 기록<br/>(일기 · 일정 · 수면 · 루틴 · 지출)"]
 
-  subgraph DAILY["매일 — 매칭 cron"]
+  subgraph DAILY["매일 07:00 — 매칭 cron"]
     direction TB
-    D1["① 어제 켜진 시드 채점<br/>어제 매트릭을 평가해서 hit / miss / inconclusive / no_metric 확정<br/>→ pattern_matches에 매트릭당 한 행씩 쌓임"]
-    D2["② 오늘 시드 트리거 평가<br/>오늘 어떤 시드가 켜지는지만 먼저 확인<br/>(매트릭 채점은 종일치 데이터가 필요해서 내일 cron에서)"]
-    D3["③ #life 슬랙 채널에 잔소리 한 줄<br/>오늘 켜진 시드 중 confirmed 가설이 걸려 있으면<br/>그 가설에 맞춘 잔소리 (예: '오늘 ㅇㅇ 들어오는 날, 지출 한 번 더 확인해')"]
+    D1["① 어제 pending 매칭 확정<br/>어제 행을 hit / miss / inconclusive 로 굳히고<br/>시드별 hit/miss 카운터 + 사후 확률 갱신"]
+    D2["② 오늘 활성 시드 전부 평가<br/>트리거 + 매트릭 채점 → pattern_matches에<br/>시드마다 한 행 기록 (pending, 내일 확정)"]
+    D3["③ #life 슬랙 채널에 한 줄<br/>오늘 matched된 시드 요약 + confirmed 가설이 걸린 시드는<br/>'○○ 패턴 켜졌어 → 짜증 주의 (평균 2.5x)' 형태 잔소리"]
     D1 --> D2 --> D3
   end
 
-  subgraph WEEKLY["매주 — 가설 검증 cron"]
+  subgraph WEEKLY["매주 월 08:00 — 가설 검증 cron"]
     direction TB
-    W1["① 일주일치 매칭 통계 계산<br/>지난 일주일 pattern_matches로<br/>시드 × outcome 분포 산출"]
-    W2["② 가설 발굴 + 채점<br/>Fisher's exact + BH-FDR (신규 가설 발견)<br/>Bayesian posterior (검증 중인 가설 사후 확률 갱신)"]
-    W3["③ #insight 슬랙 채널에 카드 발송<br/>검증 중인 가설 채점 표 + 새 후보 가설 제안<br/>(사용자가 카드에서 승인하면 검증 시작)"]
+    W1["① 시드 × outcome 통계 계산<br/>시드 켜진 날과 그 일기 태그가 같이 나타난 빈도를<br/>90일 창으로 집계 (pattern_matches + diary_meta_tags)"]
+    W2["② 가설 발굴 + 채점<br/>Fisher's exact + BH-FDR (신규 가설 발견)<br/>Bayesian posterior (검증 중 가설 사후 확률 갱신)"]
+    W3["③ #insight 슬랙 채널에 카드 발송<br/>시드 영향력 top 5 + active 가설 채점 표 + 새 후보 제안<br/>(사용자가 카드에서 승인하면 검증 시작)"]
     W1 --> W2 --> W3
   end
 
+  REC -. 매일 일기 분석이 outcome 태그 부착 .-> WEEKLY
   REC -. 다음 날 .-> DAILY
-  DAILY -. "pattern_matches 행 누적 (매트릭마다 1행)" .-> WEEKLY
+  DAILY -. "pattern_matches 행 누적 (시드마다 하루 1행)" .-> WEEKLY
 
   classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
   classDef flowInner fill:#FFFFDE,stroke:#aaaa33,color:#5d4037
@@ -117,8 +124,8 @@ flowchart LR
   class D1,D2,D3,W1,W2,W3 flowInner
 ```
 
-- 매일 박스는 cron 한 번에 **어제 채점 + 오늘 평가 + 잔소리** 세 일을 같이 한다.
-- 매일 박스와 매주 박스는 **다른 시간대에 따로 돈다** — 매일이 pattern_matches에 행을 쌓고, 매주가 그 누적을 채점한다.
+- 매일 박스는 cron 한 번에 **어제 확정 + 오늘 평가 + 잔소리**를 같이 한다. (봇이 며칠 죽어 있었으면 맨 앞에 누락일 자동 백필이 한 단계 더 붙는다.)
+- 매일 박스와 매주 박스는 **다른 시간대에 따로 돈다**. 매일이 pattern_matches에 행을 쌓고, 매주가 그 누적(+ 일기 태그)을 통계로 채점한다.
 
 같은 흐름을 **다섯 개념이 서로 어떻게 포개지는지** 관점으로 다시 본다.
 
@@ -126,13 +133,13 @@ flowchart LR
 flowchart TB
   subgraph SEED["시드 (pattern_catalog) — 관찰하고 싶은 환경/조건"]
     direction TB
-    subgraph METRIC["매트릭 (pattern_metrics) · 시드당 1~N개 — 시드가 켜진 날 어떤 데이터를 관찰할까"]
+    subgraph METRIC["매트릭 (pattern_metrics) · 시드당 0~N개 — 시드가 켜진 날 어떤 데이터를 잴까"]
       direction TB
-      MATCH["매칭 (pattern_matches) · 매트릭 1개 × 하루 1행<br/>오늘 시드 켜졌는가, 결과는?<br/>hit / miss / inconclusive"]
+      MATCH["매칭 (pattern_matches) · 시드 1개 × 하루 1행<br/>오늘 이 시드 켜졌는가 + 매트릭 채점<br/>hit / miss / inconclusive / no_metric"]
     end
   end
 
-  HYP["가설 (pattern_hypotheses)<br/>이 시드가 켜지면 이 outcome이 자주 일어남"]
+  HYP["가설 (pattern_hypotheses)<br/>시드 켜진 날 + outcome(일기 태그)이<br/>평소보다 자주 같이 나타남"]
   VER["검증 (pattern_stats) · 가설당 주 1행<br/>Fisher's exact · BH-FDR · Bayesian posterior"]
 
   SEED -. 시드 × outcome 조합을 통계가 발굴 .-> HYP
@@ -152,9 +159,9 @@ flowchart TB
 
 **읽는 법**
 
-- 시드 박스가 가장 크고, 그 안에 매트릭이, 매트릭 안에 매칭이 들어간다 — **포함 관계**.
-- 매트릭은 시드 1개에 1\~N개 붙는다. 매칭은 매트릭 1개가 하루 평가될 때마다 한 행씩 쌓인다.
-- 가설은 시드와 매칭 위에 **새로 떠오르는 별개의 자료**다. 시드가 가설을 직접 만들어내는 게 아니라, 시드와 outcome의 조합을 통계가 발견해서 가설이 떠오른다. 그래서 점선 화살표다.
+- 시드 박스가 가장 크고, 그 안에 매트릭이, 매트릭 안에 매칭이 들어간다(**포함 관계**).
+- 매트릭은 시드 1개에 0\~N개 붙는다(없으면 evidence-only). 매칭은 시드 1개가 하루 한 행 — 그날 평가한 매트릭 결과는 그 행 안에 묶인다.
+- 가설은 시드와 매칭 위에 **새로 떠오르는 별개의 자료**다. 시드가 가설을 직접 만들어내는 게 아니라, 시드(켜진 날)와 outcome(일기 태그)의 조합을 통계가 발견해서 가설이 떠오른다. 그래서 점선 화살표다.
 - 검증은 가설 1개당 주 1행씩 시간 순서대로 쌓이며, 누적이 충분해진 가설만 confirmed 상태로 승급한다.
 
 ---
@@ -165,10 +172,10 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-  subgraph PC["pattern_catalog — 시드 전체 ~213개"]
+  subgraph PC["pattern_catalog — 시드 풀 (마이그레이션 기준 ~229개)"]
     direction LR
-    LIFE["pattern_kind = life_signal · ~38개<br/><br/>요일 · 주말 · 월말 · 계절<br/>공휴일 · 수면 임계<br/>루틴 streak 등"]
-    SAJU["pattern_kind = saju · ~175개<br/><br/>천간 · 지지 · 60갑자<br/>오행 · 12운성 · 관계<br/>(자세한 건 부록)"]
+    LIFE["pattern_kind = life_signal · 38개<br/><br/>요일 · 주말/평일 · 월초/중/말<br/>계절 · 공휴일 · 수면 임계<br/>루틴 streak · 행동 베이스라인"]
+    SAJU["pattern_kind = saju · 191개<br/><br/>천간 · 지지 · 60갑자 · 오행<br/>12운성 · 관계 · 운 레벨 누적<br/>(자세한 건 부록)"]
   end
 
   classDef seedBox fill:#E8EAF6,stroke:#9FA8DA,color:#283593
@@ -177,34 +184,40 @@ flowchart TB
   class LIFE,SAJU seedNode
 ```
 
+> 위 개수는 마이그레이션에 시드(seed)로 박힌 수다. 실제 활성 개수는 운영 중 승급/비활성에 따라 달라질 수 있다.
+
 **핵심**: 두 출처 모두 **같은 핵심 구성 개념 위에서 같은 흐름**을 통과한다. 사주만의 특수 처리 없음. 이게 이 시스템이 **사주 검증기**가 아닌 이유다.
 
 ### 5-1. life_signal (라이프 통념 시드)
 
-본인 데이터 외에 누가 봐도 흔히 거론되는 환경 변수. 예시:
+본인 데이터 외에 누가 봐도 흔히 거론되는 환경 변수. 38개 구성:
 
-- 요일 시드 7개 (월\~일)
-- 주말 1개 / 평일 1개
-- 월말 1개 / 월초 1개
+- 요일 7개 (월\~일)
+- 주말 / 평일 2개
+- 월초 / 월중 / 월말 3개
 - 계절 4개
-- 공휴일 1개
-- 수면 임계 (`전일 수면 < 6시간` 등)
-- 루틴 streak 임계 (`아침 루틴 3일 연속 달성` 등)
+- 공휴일 / 공휴일 다음날 2개
+- 수면 임계 4개 (`전일 수면 ≤ 6시간` 등)
+- 루틴 streak 임계 5개 (`아침 루틴 3일 연속` 등)
+- 행동 베이스라인 11개 (결정론 패턴에서 승격)
 
-`trigger_target_type = 'life_signal'`. trigger 평가 SQL이 시드 description에 일반화 가능한 패턴으로 정의되어 있다.
+모두 `trigger_target_type = 'life_signal'`. 트리거는 `trigger_aux`의 kind(요일·계절·임계·행동 베이스라인 등)로 평가된다. 대부분 매트릭 없이 evidence-only로 출발한다.
 
 ### 5-2. 사주 시드 (saju)
 
-본인 사주 원국 8글자에서 파생되는 결정론적 글자 집합. 7종의 `trigger_target_type` 중 6종이 사주 시드:
+본인 사주 원국에서 파생되는 결정론적 글자 집합. `trigger_target_type` 8종 중 사주 계열이 7종이다:
 
 | trigger_target_type | 의미 (한 줄) | 시드 수 |
 |---|---|---|
-| `stem` | 일운 천간이 본인 사주의 특정 글자 | 10 |
-| `branch` | 일운 지지가 본인 사주의 특정 글자 | 13 |
+| `stem` | 일운 천간이 본인 사주의 특정 글자 | 12 |
+| `branch` | 일운 지지가 본인 사주의 특정 글자 | 15 |
 | `ganji` | 일운 60갑자가 특정 조합 | 60 |
-| `element_density` | 본인 8자 + 일운 2자 중 특정 오행 N개 이상/이하 | 10 |
+| `element_density` | 본인 8자 + 일운 2자 중 특정 오행이 N개 이상/이하 | 10 |
 | `sibiunsung` | 본인 일간 기준 일운 지지의 12운성 | 12 |
-| `relation` | 본인 지지와 일운 지지의 관계 (합/충/형 등) | 72 |
+| `relation` | 본인 지지·천간과 일운의 관계 (합/충/형/원진 등) | 72 |
+| `cumulative_pillar_count` | 원국+대운+세운+월운+일운 누적에서 특정 오행/십성 빈도 | 10 |
+
+합계 191개. (나머지 1종 `life_signal` 38개를 더하면 \~229개.)
 
 > 위 표의 용어가 낯설다면 그게 정상이다. 이 문서는 사주 용어 사전이 아니라서 자세한 설명을 의도적으로 피했다. 깊이 들어가고 싶다면 [사주 부록](insight-v2-saju.md)으로.
 
@@ -218,57 +231,56 @@ flowchart TB
 
 ### 6-1. 시드가 트리거되는 순간
 
-매일 **09:00** 매칭 cron이 활성 시드 전체(\~213개)를 평가한다.
+매일 **07:00** 매칭 cron이 활성 시드 전체(\~229개)를 평가한다. (08:00 일일 종합 인사이트가 그날 발현 시드를 읽을 수 있도록 그보다 앞서 돈다.)
 
 ```mermaid
 flowchart LR
-  A["09:00 매칭 cron"] --> B["활성 시드 전부 로드"]
-  B --> C["시드별 trigger SQL 평가"]
+  A["07:00 매칭 cron"] --> B["활성 시드 전부 로드"]
+  B --> C["시드별 trigger 평가"]
   C --> D{"trigger_activated"}
-  D -->|true| E["매트릭 평가 단계로"]
-  D -->|false| F["오늘은 그냥 스킵<br/>(매칭 행 안 남김)"]
+  D -->|true| E["매트릭 평가 + 행 기록 (pending)"]
+  D -->|false| F["매트릭은 스킵, 행만 기록<br/>다음날 inconclusive로 확정"]
 
   classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
   class A,B,C,D,E,F flowBox
 ```
 
-평가 방식은 시드의 `trigger_target_type`에 따라 다르다. 라이프 시드라면 "오늘이 토요일인가" 같은 단순 조건, 사주 시드라면 "오늘 일운 천간이 본인 사주의 갑목과 일치하는가" 같은 결정론적 조건. 어느 쪽이든 SQL 한 줄로 결정.
+평가 방식은 시드의 `trigger_target_type`에 따라 다르다. 라이프 시드라면 "오늘이 토요일인가" 같은 단순 조건, 사주 시드라면 "오늘 일운 천간이 본인 사주의 갑목과 일치하는가" 같은 결정론적 조건. 어느 쪽이든 그날 켜짐 여부가 결정론적으로 정해진다(난수·추측 없음).
+
+활성 시드는 트리거되든 안 되든 그날 한 행씩 기록된다. 트리거 안 된 행은 다음날 inconclusive로 확정될 뿐이다.
 
 **시드 description**에는 사람이 읽을 수 있는 문장 하나가 들어 있다. 이게 나중에 LLM 매트릭 자율 제안 단계에서 "이 시드가 켜진 날 무엇을 측정해야 하는지" 힌트로 쓰인다.
 
 ### 6-2. 매트릭이 평가되는 순간
 
-시드 trigger가 활성된 날에만 그 시드에 붙은 **매트릭 1\~N개**를 평가한다.
+시드 트리거가 켜진 날에만 그 시드에 붙은 매트릭(0\~N개)을 평가한다. 매트릭이 없으면(evidence-only) 평가 없이 켜졌다는 사실만 남는다.
 
 ```
-시드 #42 (trigger 활성)
+시드 #42 (오늘 트리거 켜짐)
   │
-  ├─ 매트릭 a: SELECT SUM(amount) FROM expenses WHERE date = today
-  │            → 결과 86,000  vs  threshold 50,000  →  hit
-  │
-  ├─ 매트릭 b: SELECT sleep_hours FROM sleep_logs WHERE date = today
-  │            → 결과 5.2  vs  threshold 7.0  →  miss
-  │
-  └─ 매트릭 c: (status='proposed', 사용자 승인 대기)
-               → 평가 스킵
+  ├─ 매트릭 a (지출): SUM(amount) = 86,000  vs  임계 50,000  →  통과
+  ├─ 매트릭 b (수면): sleep = 5.2h          vs  평균 6.8h    →  미통과
+  └─ 매트릭 c: status=pending (사용자 승인 대기)            →  평가 스킵
+        │
+        └─ 하나라도 통과 → 이 시드의 오늘 매칭 = hit (내일 확정)
 ```
 
-- 매트릭이 **하나도 없는 시드**는 `verify_status='no_metric'`만 박고 카운터 SKIP. `evidence-only`라고 부른다. trigger 활성 기록만 남는다.
-- 매트릭의 `expected_direction`(over/under/equal)이 매칭 결과를 hit/miss로 갈라낸다.
-- 매트릭의 SQL이 데이터를 못 찾으면(`null/0건`) `inconclusive`. "오늘 시드는 켜졌는데 잴 데이터가 없었다"는 의미.
+- 매트릭이 **하나도 없는 시드**는 `verify_status='no_metric'`만 박고 카운터 SKIP. `evidence-only`라고 부른다. 켜졌다는 기록만 남는다.
+- 매트릭의 `expected_direction`(`above_avg`/`below_avg`/`above_abs`/`below_abs`/`flag_present` 5종)이 그날 값을 평균 또는 임계값과 비교해 통과/미통과를 가른다.
+- 매트릭 SQL이 데이터를 못 찾으면 값 0으로 보고 미통과 처리된다(별도 inconclusive 아님). 시드의 매트릭 중 하나라도 통과하면 그날 매칭은 hit, 모두 미통과면 miss다.
 
 ### 6-3. 매칭이 채점되는 순간
 
-매트릭 평가 결과는 `pattern_matches`에 한 행씩 쌓인다. 동시에 시드 카운터가 갱신된다.
+매칭은 시드마다 하루 한 행으로 `pattern_matches`에 쌓인다. 다음날 cron이 어제 행을 hit/miss로 확정하면서 매트릭 카운터를 갱신한다.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> pending: 09:00 trigger 평가
-  pending --> hit: 매트릭 조건 충족
-  pending --> miss: 매트릭 조건 미충족
-  pending --> inconclusive: 매트릭 데이터 없음
-  pending --> no_metric: 매트릭 미부착 시드
-  pending --> error: 평가 중 예외
+  [*] --> pending: 07:00 트리거+매트릭 평가 (매트릭 있는 시드)
+  [*] --> no_metric: 매트릭 없는 시드 (evidence-only)
+  [*] --> error: 평가 중 예외
+  pending --> hit: 다음날 — 트리거됨 + 매트릭 통과
+  pending --> miss: 다음날 — 트리거됨 + 매트릭 미통과
+  pending --> inconclusive: 다음날 — 그날 트리거 안 됨
   hit --> [*]
   miss --> [*]
   inconclusive --> [*]
@@ -278,14 +290,14 @@ stateDiagram-v2
 
 | verify_status | 의미 | 카운터 영향 |
 |---|---|---|
-| `hit` | 매트릭 조건 충족 | `hit_count++` + Bayesian α++ |
-| `miss` | 매트릭 조건 미충족 | `miss_count++` + Bayesian β++ |
-| `inconclusive` | 매트릭 데이터 부족 | `inconclusive_count++` |
+| `hit` | 트리거됨 + 매트릭 통과 | `hit_count++` + 사후 α++ |
+| `miss` | 트리거됨 + 매트릭 미통과 | `miss_count++` + 사후 β++ |
+| `inconclusive` | 그날 트리거 안 켜짐 (매트릭은 붙어 있음) | `inconclusive_count++` |
 | `no_metric` | 매트릭 자체가 없음 (evidence-only) | 카운터 SKIP |
 | `error` | 평가 중 예외 (per-seed try/catch) | 카운터 SKIP |
-| `pending` | 평가 진행 중 (정상 상태에선 잠깐만 머문다) | — |
+| `pending` | 확정 대기 (다음날 cron이 위 상태로) | — |
 
-**왜 시드 카운터 + Bayesian α/β를 같이 갱신하는가**: counter source가 한 위치에서 갱신되면 정합성이 보장된다. 그래서 매트릭 단위 hit/miss 카운터와 Bayesian posterior 갱신을 동일 cron, 동일 함수에서 처리한다.
+**카운터를 한곳에 모으는 이유**: hit/miss/inconclusive 카운터와 Bayesian α/β를 모두 `pattern_metrics` 한 위치에서 갱신한다(ADR-0023). counter source가 한 곳이면 정합성이 보장되고, 동일 cron·동일 함수에서 처리해 흩어지지 않는다.
 
 ### 6-4. 가설이 발견되는 순간
 
@@ -293,54 +305,53 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-  A["월 08:00 cron"] --> B["pattern_matches 누적 로드"]
+  A["월 08:00 cron"] --> B["pattern_matches(트리거 날)<br/>+ diary_meta_tags(outcome) 로드"]
   B --> C["시드 × outcome 조합 전수 평가"]
   C --> D["Fisher's exact 1차 필터<br/>(p<0.1, ratio≥1.3, n≥5)"]
   D --> E["BH-FDR 다중 비교 보정<br/>(q<0.2)"]
   E --> F{"기준 통과?"}
-  F -->|yes| G["pattern_hypotheses INSERT<br/>status='candidate'"]
+  F -->|yes| G["#insight 카드에 후보로 노출"]
   F -->|no| H["다음 주로"]
-  G --> I["#insight 카드로 노출<br/>사용자 승인 대기"]
+  G --> I["사용자 승인 시<br/>pattern_hypotheses에 active로 INSERT"]
 
   classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
   classDef hypothesisNode fill:#F3E5F5,stroke:#CE93D8,color:#6A1B9A
-  class A,B,C,D,E,F,H,I flowBox
-  class G hypothesisNode
+  class A,B,C,D,E,F,G,H flowBox
+  class I hypothesisNode
 ```
 
-- 시드가 켜진 날의 outcome 분포와 시드가 안 켜진 날의 outcome 분포를 Fisher's exact로 비교한다.
-- 통과한 가설은 **다중 비교 보정**(BH-FDR)을 한 번 더 거친다. 가설 후보가 늘어날수록 우연히 통과할 확률이 늘어나므로, 검증 가설 수에 따라 q값이 자동 조정된다.
-- 살아남은 가설만 #insight 카드에 노출된다. 사용자가 카드에서 승인하면 `status='active'`로 변경되어 매주 검증 누적 대상에 들어간다.
+- 시드가 켜진 날 outcome이 나타난 빈도와, 시드가 안 켜진 날 outcome이 나타난 빈도를 Fisher's exact로 비교한다(90일 창).
+- 통과한 후보는 **다중 비교 보정**(BH-FDR)을 한 번 더 거친다. 후보가 늘어날수록 우연히 통과할 확률이 늘어나므로, 후보 수에 따라 q값이 자동으로 더 엄격해진다.
+- 살아남은 후보만 #insight 카드에 노출된다. 사용자가 승인하면 `pattern_hypotheses`에 active로 등록되어 매주 검증 누적 대상에 들어간다. 반려하면 DB에 남지 않는다.
 
 ### 6-5. 검증이 confirmed/rejected로 정해지는 순간
 
 active 가설은 매주 월요일 08:00 cron에서 한 행씩 `pattern_stats`에 시간 순서대로 쌓인다.
 
 ```
-pattern_stats (가설 #88)
-  week_start | n_trigger | n_total | rate_trigger | rate_baseline | rate_ratio | raw_p | fdr_q | posterior
-  2026-04-06 |      4    |   28    |    0.500     |     0.200     |   2.50     | 0.12  | 0.21  |   0.55
-  2026-04-13 |      6    |   28    |    0.500     |     0.200     |   2.50     | 0.08  | 0.18  |   0.58
-  2026-04-20 |      8    |   28    |    0.625     |     0.200     |   3.13     | 0.03  | 0.12  |   0.62
-  2026-04-27 |     10    |   28    |    0.700     |     0.200     |   3.50     | 0.02  | 0.08  |   0.66
-                                                                          ▲
-                                                                 누적 4주 + 효과량 + q
-                                                                 임계 통과 → confirmed
+pattern_stats (가설 #88) — 주마다 한 행
+  week_start | n_trigger | rate_trigger | rate_baseline | rate_ratio | raw_p | fdr_q | 사후
+  2026-04-06 |    21     |    0.48      |     0.20      |   2.40     | 0.09  | 0.18  | 0.62
+  2026-04-13 |    26     |    0.52      |     0.20      |   2.60     | 0.04  | 0.10  | 0.66
+  2026-04-20 |    31     |    0.55      |     0.19      |   2.90     | 0.02  | 0.05  | 0.70
+  2026-04-27 |    34     |    0.58      |     0.19      |   3.05     | 0.01  | 0.03  | 0.73
+                                                                       ▲
+              누적 트리거 ≥ 30 · 최근 4주 평균 q < 0.05 · 평균 rate_ratio ≥ 1.3  →  confirmed
 ```
 
-- **confirmed**: 4주 누적 + 효과량(`rate_ratio`)과 q값(`fdr_q`)이 임계 통과
-- **rejected**: 4주 내내 effect=1 근처에서 머무름 (시드가 켜지든 안 켜지든 outcome 분포가 동일)
+- **confirmed**: 누적 트리거 ≥ 30 + 최근 4주 평균 `fdr_q` < 0.05 + 최근 4주 평균 `rate_ratio` ≥ 1.3
+- **rejected**: 누적 트리거 ≥ 30 + 최근 4주 `rate_ratio`가 내내 0.95\~1.05 (시드가 켜지든 안 켜지든 outcome 빈도가 같음)
 - **archived**: 사용자가 카드에서 명시적으로 끄거나, 데이터 폐기 정책으로 묻힌 경우
 
 가설 lifecycle 전체 상태도:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> candidate: 자동 발견
-  candidate --> active: 사용자 승인
-  candidate --> archived: 사용자 거절
-  active --> confirmed: 4주 누적 + 임계 통과
-  active --> rejected: 4주 내내 effect ≈ 1
+  [*] --> candidate: 자동 발굴 (카드에 노출, DB 미저장)
+  candidate --> active: 사용자 승인 → INSERT
+  candidate --> [*]: 사용자 반려 (DB에 안 남음)
+  active --> confirmed: 누적 트리거 ≥ 30 + 임계 통과
+  active --> rejected: 4주 내내 효과 없음 (ratio ≈ 1)
   active --> archived: 사용자 폐기
   confirmed --> [*]
   rejected --> [*]
@@ -349,22 +360,23 @@ stateDiagram-v2
 
 ### 6-6. 잔소리·카드로 노출되는 순간
 
-확정된 정보가 사용자에게 도달하는 두 채널:
+확정된 정보가 사용자에게 도달하는 통로:
 
 | 시각 | 채널 | 내용 |
 |---|---|---|
-| 매일 09:00 | `#life` | 오늘 켜진 시드 1\~3개 + confirmed 가설 잔소리 1줄 |
+| 매일 07:00 | `#life` | 오늘 matched된 시드 1\~3줄 + confirmed 가설 잔소리 |
+| 매일 08:00 | `#insight` | 오늘 일운 + 검증된/최근 발현 시드 종합 (Opus routine) |
+| 매주 월 08:00 | `#insight` | 가설 주간 리포트 — 시드 영향력 top 5 + active 가설 표 + 신규 후보 카드 |
+| 매주 월 09:00 | `#life` | 지난주 한눈에 (수면·루틴·일정) + 사주 시드 hit/miss 누적 |
 | 매주 월 09:15 | `#insight` | 시드 운 레벨 분포 (어느 운 차원이 패턴 신호를 더 많이 내는가) |
-| 매주 월 카드 | `#insight` | active 가설 표 + 신규 후보 리스트 + 시드 영향력 top 5 |
 
-`#life` 09:00 잔소리 예시 (사주 시드는 한 줄로 자연스럽게):
+`#life` 07:00 잔소리 예시 (confirmed 가설이 걸린 시드):
 
 ```
-오늘 일운에 ㅇㅇ 들어오는 날. 비슷한 환경에서 지출이 평균보다 자주 늘었으니
-오늘 지출 한 번 더 확인해.
+*○○ 패턴* 켜졌어 → `짜증` 주의 (평균 2.5x).
 ```
 
-`#insight` 월요일 카드의 가설 표 한 줄 예시:
+`#insight` 월요일 가설 카드의 후보 한 줄 예시:
 
 ```
 발현일 n=8 · trigger 50.0% vs baseline 20.0% · ratio 2.50x
@@ -387,8 +399,8 @@ flowchart TB
 
   subgraph LLM["LLM 자율 (LLM autonomous) — 매트릭 종류 ②"]
     direction TB
-    L1["월 1일 09:30 Claude 앱 routine<br/>evidence + 시드 description + 라이프 메트릭 표 보고<br/>매트릭 후보 최대 5개 제안"]
-    L2["#insight 슬랙 카드 (status=proposed)<br/>사용자 승인 / 반려"]
+    L1["매월 1일 09:30 Claude 앱 routine<br/>evidence + 시드 description + 라이프 메트릭 표 보고<br/>매트릭 후보 최대 5개 제안"]
+    L2["#insight 슬랙 카드 (status=pending)<br/>사용자 승인 / 반려"]
     L3["status=active<br/>다음 매일 매칭 cron부터 평가 진입"]
     L1 --> L2
     L2 -- 승인 시 --> L3
@@ -404,7 +416,7 @@ flowchart TB
 
 > **자율 영역은 모두 사용자 승인 게이트를 통과해야 한다.** LLM이 매트릭을 만들고, 사람이 그것을 통과시킨다.
 
-이 게이트가 LLM의 false discovery를 마지막으로 거른다. 시드 description이 LLM의 가설 공간을 좁히고, cap(최대 5개)이 한 번에 들어오는 양을 제한하고, 사용자 승인이 최종 거름망 역할을 한다.
+이 게이트가 LLM의 false discovery를 마지막으로 거른다. 시드 description이 LLM의 가설 공간을 좁히고, cap(월 최대 5개)이 한 번에 들어오는 양을 제한하고, 사용자 승인이 최종 거름망 역할을 한다.
 
 운영 인프라는 봇 cron이 아니라 [Claude 앱 routines](https://docs.claude.com)로 통일되어 있다 (ADR-0027). 봇 서버에 LLM 호출 부하를 얹지 않고, async LLM 작업은 외부 routine에서 처리하는 책임 분리.
 
@@ -417,7 +429,7 @@ flowchart TB
 | 측 | 도구 | 묻는 질문 | 강점 / 약점 |
 |---|---|---|---|
 | Frequentist | Fisher's exact + BH-FDR | "이 차이가 통계적으로 우연이 아닌가" | 가설 양 늘어날수록 자동 보정 / 누적 적으면 검정력 부족 |
-| Bayesian | Beta-Binomial posterior | "지금까지 누적 hit/miss로 실제 패턴일 확률은 얼마" | 누적 적은 단계에서도 안정 / prior 가정 의존 |
+| Bayesian | Beta-Binomial posterior | "시드 켜진 날 outcome 빈도로 본 실제 패턴일 확률은 얼마" | 누적 적은 단계에서도 안정 / prior 가정 의존 |
 
 ### 8-1. Frequentist (Fisher's exact + BH-FDR)
 
@@ -431,7 +443,7 @@ q_i = p_i × N / rank_i
 
 (N=전체 가설 수, rank=p값 오름차순 순위). q<0.2가 1차 통과 기준.
 
-**자동 보정 효과**: target-type을 사주 6종에서 life_signal 추가로 7종으로 확장했을 때, 가설 후보 총량이 13배 가까이 늘었지만 BH-FDR이 같은 p값에 대해 q값을 13배 더 엄격하게 매기므로 임계치를 손볼 필요가 없었다.
+**자동 보정 효과**: target-type에 life_signal을 추가해 가설 후보 총량이 크게 늘었을 때도, BH-FDR이 후보 수에 비례해 같은 p값을 더 엄격한 q로 매기므로 임계치를 손볼 필요가 없었다.
 
 ### 8-2. Bayesian (Beta-Binomial posterior)
 
@@ -439,13 +451,15 @@ hit/miss 누적이 적은 단계에서는 Frequentist 검정력이 부족하다.
 
 ```
 prior: Beta(1, 1)  — uniform (운영 누적 후 informed prior 검토)
-update: α = 1 + hit_count,  β = 1 + miss_count
-posterior: Beta(α, β)
+가설 사후에서
+  hit  = 시드 켜진 날 중 outcome이 나타난 날
+  miss = 시드 켜진 날 중 outcome이 안 나타난 날
+posterior: Beta(1 + hit, 1 + miss)
 posterior_p = α / (α + β)
 CI 95%: [Beta(α, β).ppf(0.025), Beta(α, β).ppf(0.975)]
 ```
 
-카드 표시 한 줄에서 "사후 50% [21%, 79%]"라고 보이는 게 바로 이 값. 사후 평균과 95% 신뢰 구간.
+카드 한 줄의 "사후 50% [21%, 79%]"가 바로 이 값(사후 평균 + 95% 신뢰 구간). 같은 Beta-Binomial은 채점 트랙에서도 한 벌 더 돌아간다 — 거기선 hit/miss가 매트릭 통과/미통과이고, 그 사후가 **시드 영향력** 순위를 만든다.
 
 ### 8-3. 두 측이 같이 있는 이유
 
@@ -458,8 +472,8 @@ n=1(본인 한 사람) 환경에서 누적이 적은 단계는 Frequentist가 �
 p=0.040 q=0.150 · 사후 50% [21%, 79%]
 ```
 
-- 왼쪽 줄: Frequentist 관점 (효과량 + 우연 가능성)
-- 오른쪽 줄: Bayesian 관점 (사후 확신도 + 95% CI)
+- 윗줄: Frequentist 관점 (효과량 + 우연 가능성)
+- 아랫줄: Bayesian 관점 (사후 확신도 + 95% CI)
 
 ---
 
@@ -485,17 +499,16 @@ flowchart LR
 
 > **사용자의 손은 데이터 입력에만 닿는다. 패턴 발견·검증·노출 결정은 모두 시스템이 한다.**
 
-사용자가 일기를 쓰고, 일정을 기록하고, 수면을 찍는 동안 시스템은 매일 09:00, 매주 월 08:00에 자동으로 매칭과 검증을 누적한다. 사용자는 "오늘 새로 발견된 패턴이 있는가"를 카드 한 장으로 확인하면 된다.
+사용자가 일기를 쓰고, 일정을 기록하고, 수면을 찍는 동안 시스템은 매일 07:00, 매주 월 08:00에 자동으로 매칭과 검증을 누적한다. 사용자는 "오늘 새로 발견된 패턴이 있는가"를 카드 한 장으로 확인하면 된다.
 
 가설 lifecycle을 시간으로 한 번 더 보면:
 
 ```
-1주차 ──→ 2주차 ──→ 3주차 ──→ 4주차 ──→ 4주차 이후
-candidate    candidate    active       active       confirmed
-                          (사용자       (누적+        (4주+임계)
-                           승인)        검증)
+1주차 ──→ 2주차 ──→ 3주차 ──→ 4주차 ──→ 임계 도달
+candidate    active      active       active       confirmed
+(카드)       (승인)       (검증 누적)   (검증 누적)   (누적 트리거 ≥ 30 + q·ratio)
                                                     rejected
-                                                    (4주 effect≈1)
+                                                    (4주 내내 효과 ≈ 1)
 ```
 
 ---
@@ -507,7 +520,7 @@ candidate    candidate    active       active       confirmed
 | **n=1 single-case** | 본인 한 사람의 데이터만 다룬다. 다른 사람에게는 그대로 적용 불가 | 의도된 제약. 개인 baseline에 충실 |
 | **BH-FDR 정확도 한계** | 가설 풀이 너무 작으면 다중 비교 보정이 부정확해진다 | 풀 충분히 커진 후 임계치 재조정 검토 (운영 1\~3개월 후) |
 | **LLM 자율 매트릭의 false discovery** | LLM이 우연 패턴을 매트릭으로 제안할 수 있음 | 사용자 승인 게이트 + 시드 description 힌트 + cap=5로 완화 |
-| **일기 텍스트 LLM 분석 제외** | v2 헌장 ①에 따라 텍스트 의존 LLM 분석은 컨텍스트에서 배제 | 정량 메트릭(지출·수면·루틴·일정)만으로 충분한 시드에 한정 |
+| **일기 텍스트 LLM 분석 제외** | v2 헌장 ①에 따라 텍스트 의존 LLM 분석은 컨텍스트에서 배제 | outcome은 일기에서 추출한 정량 enum 태그만 쓰고, 검증은 정량 메트릭에 한정 |
 | **사주의 통계적 검증 불가능성** | 사주 자체가 맞다·틀리다 식으로 검증 가능한 대상이 아님 | 이 시스템은 사주를 **시드 풀의 한 출처**로만 다룸. 사주 자체 진위는 이 문서 범위 밖 |
 | **prior 가정 의존** | Bayesian이 Beta(1,1) uniform prior로 시작 — 누적 적은 단계의 사후가 prior에 흔들림 | 누적 충분해진 후 informed prior 검토 (운영 1\~3개월 후) |
 | **카드 노출 cap** | 한 카드에 가설 표·후보·시드 영향력을 다 띄우면 가독성 ↓ — cap으로 잘라냄 | cap이 발견을 가리는 가능성 있음, follow-up 이슈로 추적 |
@@ -520,7 +533,7 @@ candidate    candidate    active       active       confirmed
 |------|------|
 | [docs/domains/insight.md](../domains/insight.md) | 도메인 상세 (스키마·API·로직·SQL 본문) |
 | [docs/design-notebook/personal-pattern-discovery.md](../design-notebook/personal-pattern-discovery.md) | 마스터 #434 서사 (자체 헌장 5개 + Phase 1\~8 결정 흐름 + 회고) |
-| [사주 부록](insight-v2-saju.md) | 사주 시드 6종이 어떻게 정의되는지 (사주 모르는 사람도 따라올 수 있는 미니 101 포함) |
+| [사주 부록](insight-v2-saju.md) | 사주 시드 7종이 어떻게 정의되는지 (사주 모르는 사람도 따라올 수 있는 미니 101 포함) |
 
 ### 11-1. 핵심 설계 결정 (ADR)
 
@@ -539,6 +552,7 @@ candidate    candidate    active       active       confirmed
 | [ADR-0028](../adr/0028-pillar-level-and-threshold-pool.md) | 운 레벨 + 임계치 풀 도입 |
 | [ADR-0029](../adr/0029-life-signal-trigger-aux-standard.md) | life_signal trigger / aux 표준 |
 | [ADR-0030](../adr/0030-llm-metric-suggest-input-and-cadence.md) | LLM 매트릭 제안 input + 월간 cadence |
+| [ADR-0031](../adr/0031-daily-insight-synthesis.md) | 일일 종합 인사이트 — 개인화 주입 지점을 생성에서 발송으로 |
 
 ---
 
@@ -564,6 +578,9 @@ candidate    candidate    active       active       confirmed
                 Phase 7: Bayesian 카드 병기 + 시드 영향력 top 5
                 Phase 8: 마스터 close + follow-up 이슈 일괄 등록
 2026-05-29      마스터 #434 close
+                ▼
+2026-06-03      마스터 #421 A3 — 일일 종합 인사이트 (ADR-0031)
+                매칭 07:00 선행 + 08:00 #insight 종합 발송 routine
 ```
 
 핵심 진화: **사주 검증** → **개인 라이프 패턴 발견 (사주는 시드 출처 중 하나)**
@@ -578,8 +595,8 @@ candidate    candidate    active       active       confirmed
 
 이 한 문장이 전부다. 사주가 시드 풀의 큰 부분을 차지하지만, 사주를 증명하지는 않는다. 사주든 라이프 통념이든 같은 다섯 개념 위에서 같은 흐름을 거치고, 같은 통계 두 측의 채점을 받는다.
 
-이 문서를 다 읽었다면 다음 두 흐름으로 들어가 볼 수 있다.
+이 문서를 다 읽었다면 다음 흐름으로 들어가 볼 수 있다.
 
 - **구현 깊이로**: [docs/domains/insight.md](../domains/insight.md) (스키마·API·로직)
 - **결정 흐름으로**: [docs/design-notebook/personal-pattern-discovery.md](../design-notebook/personal-pattern-discovery.md) (자체 헌장 5개 + Phase 1\~8 서사)
-- **사주 깊이로**: [사주 부록](insight-v2-saju.md) (사주 시드 6종 + 미니 101)
+- **사주 깊이로**: [사주 부록](insight-v2-saju.md) (사주 시드 7종 + 미니 101)
