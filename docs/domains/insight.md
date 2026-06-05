@@ -1605,6 +1605,47 @@ persist: pattern_links SET + link_weekly_stats UPSERT
 - **pattern_summary `confirmed` 포함**(P2 보수화 후속): confirm 승격이 시드를 active 집계에서 빼 노출에서 사라지는 트랩을 verified tier에 그대로 두면 안 됨 → 080에서 join을 `IN ('active','confirmed')`로.
 - **마이그레이션 080 prod 스키마 사전 대조**: 로컬 PG 부재 → 읽기전용 introspection으로 컬럼/CHECK 검증 후 작성(배포 시 트랜잭션 롤백 안전).
 
+### 27. 매트릭 중심 패턴 검증 — Phase 4a (결정론 사주 강도 feature 엔진, #485)
+
+결정론 사주 계산(`saju-calendar.ts`) 위에 **오행/일간의 실효 강도**를 graded feature로 올려, 상대 분위수 밴드로 잘라 기존 off-day 검증 엔진(P2·P3)에 태운다. **새 통계 코어 없음** — graded·비단조(inverted-U)는 밴드별 독립 binary 시드로 실현([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) §4 "레벨별 main effect, 상호작용 항 불요").
+
+**실효강도 모델** (`saju-strength.ts`, 전부 파라미터 — `saju-strength-params.ts`):
+
+```
+strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보너스(X)
+  부호:  비겁·인성(생조) → +saengjo  /  식상·재·관(극설) → −geukseol
+  위치:  천간 W_STEM / 지지본기 W_BRANCH_MAIN / 지장간 중기 W_JANGGAN_MID / 여기 W_JANGGAN_YEOGI
+  월령(간결판): 원국 월지 본기 오행과 같은 글자 ×W_WOLLYEONG (득령)
+  통근(게이트): X가 천간 투출 + 지장간 뿌리 동시 보유 시 +W_TONGGEUN (이진)
+```
+
+- 부호는 글자 오행과 대상 X의 상생상극 관계로 결정(비겁·인성만 +). 운 풀셋(원국 4 + 대운·세운·월운·일운)에서 계산 → 일운이 매일 바뀌어 강도가 매일 변동.
+- **병행 산출**: `computeAbsoluteStrengthState`(절대 신강/중화/신약 — 생조 비율, **검정 비사용**, 맥락·미래용), `computeElementRatios`(노출·covariate용, 별도 시드 없음 — 강도에 흡수).
+- 명리학 정밀도는 간결판 선택(월령=월지 본기, 분일 사령 무시 / 통근=지장간 뿌리 이진). 정밀 분일 사령은 calibration 노브로 유보([ADR-0036](../adr/0036-relative-quantile-strength-bands.md) 회고).
+
+**상대 분위수 밴드** ([ADR-0036](../adr/0036-relative-quantile-strength-bands.md), `quantile.ts`): 윈도우 강도값을 tertile 3등분 → 약/적정/강. 일별 cron은 윈도우가 없어 분위수를 못 내므로 **컷을 주간 산출 → 저장 → 일별 적용**(value-vs-cut 규칙 공통, rank 금지). 결정론 정합 — 같은 윈도우 → 같은 분위수 → 같은 밴드(SET 리플레이·e-value 불변, [ADR-0034](../adr/0034-evalue-confirmation-gate.md)).
+
+**데이터 모델** (마이그레이션 081):
+
+| 객체 | 내용 |
+|------|------|
+| `trigger_target_type='strength_band'` | aux `{target, band}` — target ∈ {day_master, 목, 화, 토, 금, 수}, band ∈ {low, mid, high} |
+| `strength_band_cutpoints` | (user_id, target) UNIQUE — low_cut·high_cut·n_samples. 주간 UPSERT → 일별 판정 |
+| 18 강도 시드 | 일간 + 5오행 × 3밴드. 전부 즉시 활성 로그 누적 |
+| 큐레이트 스타터 링크 13 | 일간 약/강 × 행동신호 + 화 강 × 건강(071 선례) + 목 강 × 지출(재성 앵커). 전부 양의 연관 |
+
+**trigger 평가 경로** (`pattern-verification.ts`):
+
+| 경로 | 동작 |
+|------|------|
+| 주간 엔진 (`computeSeedActivationSeries`) | strength_band 2-pass: pass1 target 강도 시리즈(18 시드가 6 target 공유·캐시) → pass2 tertile 컷 → 각 날 밴드 매핑 → seed.band 일치. 2×2/통계 코어 불변 |
+| 일별 cron (`evaluateTrigger`) | 저장 컷(`strength_band_cutpoints`) 로드 → 오늘 강도 → 밴드 판정. 컷 없으면(첫 주간 실행 전) false(정직) |
+| 컷 저장 (`weekly-verification`) | `computeStrengthCutpoints`(읽기전용) → `strength_band_cutpoints` UPSERT. 검증과 독립(실패해도 검증 진행) |
+
+**FDR 가족 분리** ([ADR-0037](../adr/0037-verification-fdr-family-split.md)): `verifyUserLinks`가 BH-FDR을 `bhFdrByFamily`로 가족별 적용 — 강도 밴드(`saju_strength`)와 baseline 격리. 자주 발현하는 밴드(유한 p)가 baseline 가족 m을 키워 `life_signal` 확정을 늦추는 것을 차단. EB 공통 prior는 전 링크 유지(가족 무관).
+
+**P5 연결**: 오행 밴드 다수(토·금·수 전체, 목/화 약·적정)는 링크 없이 활성만 누적 → **P5 discovery를 시드×태그에서 시드×sql신호까지 확장**해야 데이터 기반으로 채워진다(P4a는 큐레이트 앵커만, 십성 전체 손박기 회피 — discovery가 off-day 대조로 발견하는 게 헌장 ② 정신).
+
 ## 파일 구조
 
 ```
@@ -1621,7 +1662,10 @@ src/agents/insight/
 
 src/shared/
 ├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반
-├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status)
+├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass·FDR 가족
+├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율)
+├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수 — 통계 노브와 분리)
+├── quantile.ts                    # #477 P4a tertile 컷 + 밴드 분류 (주간 산출 → 일별 적용 공통 규칙)
 ├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann)
 ├── bayesian-posterior.ts          # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
 ├── saju-mappings.ts               # 십성 알고리즘 계산 (LLM 프롬프트용)
