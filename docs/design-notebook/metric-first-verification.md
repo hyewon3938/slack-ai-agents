@@ -206,6 +206,68 @@ v2 헌장 4개 + 마스터 #434 헌장 5개를 계승한다 (본문 복제하지
 
 > TODO(`/build`): 첫 주간 엔진 run 결과(확정/기각 분포, 재계산 시간) 확인 후 보강.
 
+## Phase 3: 통계 엔진 보강 — e-value 확정 게이트 + 등급별 노출 (2026-06-05)
+
+- 이슈: [#483](https://github.com/hyewon3938/slack-ai-agents/issues/483)
+- 관련 계획서: `.claude/plans/483-p3-statistics.md`
+- 상태: 설계 완료 (구현 대기)
+
+### 결정 요약
+
+ADR-0032 통계 스택을 완비한다. 핵심 둘 — (1) 주간 반복 점검의 거짓양성 누적(optional stopping)을 **누적 e-value**로 막아 "확정"을 통계적으로 안전하게 만들고([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md)), (2) 검증 결과를 **검증됨 / 검증중 / 오늘발현 3-tier**로 등급화해 노출한다([ADR-0035](../adr/0035-graded-confidence-exposure.md)). 풀스택 1 PR — block permutation·Mann-Whitney·empirical-Bayes·발견/확정 q 분리까지 같은 함수 위에서 함께.
+
+### 목표 정합 점검 (설계 진입 시 사용자와 cross-check)
+
+> 이 phase는 통계 정교함이 *목표에 봉사하는지*를 사용자가 직접 되물어 검증한 대화에서 나왔다. 그 판단을 남긴다.
+
+- **목표(한 문장)**: n=1 누적 데이터로 "사주(saju)·생활통념(life_signal)이 내 실제 삶에 *측정 가능하게* 연관되나"를 기분탓·확증편향 없이 데이터로만 가린다. 검증된 것만 노출.
+- **정교함은 데이터 양이 아니라 자기기만 위험에 비례**한다. 약한 n=1 신호를 잡으며 안 속으려는 거라, 통계 스택 각 조각은 군더더기가 아니라 *특정 자기기만 하나씩에 대한 방어*다:
+
+  | 조각 | 막는 자기기만 |
+  |------|--------------|
+  | off-day 대조 (P2) | "원래 자주 그럼"을 패턴으로 착각 |
+  | **e-value** | **"매주 보다 우연히 유의해진 주"(peeking)** — 주간 리포트 구조의 핵심 위험 |
+  | block permutation | 일별 자기상관이 만드는 가짜 유의 |
+  | empirical-Bayes 수축 | 소표본 쌍의 과신 |
+  | FDR / 발견·확정 q 분리 | 다중 신호 중 우연 유의 |
+  | Mann-Whitney | 연속값 이진화로 버린 정보 회수 |
+
+- **"느린 수율 = 정직"**: \~90일에선 거의 다 insufficient + 일부 reject, confirm 거의 0 — 실패가 아니라 *정답*이다. 강한 진짜 패턴만 e-value가 시간 들여 20을 넘는다. 검출 가능한 강한 연관이 별로 없으면 시스템은 "증거 불충분"이라 정직히 답한다(빈손이 아니라 결론).
+- **생활통념이 단기 수율의 핵심**: `life_signal` 시드(주말·월말)는 발현일이 빨리 쌓여 드문 사주 트리거보다 먼저 판정 구간에 든다. 첫 confirm/ emerging 후보는 십중팔구 여기.
+- **목표 재정의**: "패턴 많이 찾기"가 아니라 **"패턴을 믿을 자격을 얻기"**. 회의적인 친구가 "데이터상 아직 몰라"라고 말해주는 시스템. → 이 목표에 통계 스택이 정합.
+
+### 의사결정 분기점
+
+1. **e-value 구성 — 결정론 리플레이 betting martingale** (→ [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md)). ADR-0032가 미검증으로 남긴 e-variable을 per-day predictable betting factor 곱(test martingale)으로 핀. 매주 전체 윈도우 리플레이 → P2의 SET 재계산과 정합(마틴게일이 순서 있는 데이터의 순수 함수라 드리프트 0). 정확 factor·nuisance는 **null 시뮬 빌드 게이트**가 심판. 1차 = 순차 조건부 betting(nuisance-free), fallback = Turner-Grünwald GRO 2×2(ADR-0032 지명 출처). ADR-0032 본문 deviation이라 새 ADR.
+
+2. **emerging "검증중" 중간 tier 도입** (→ [ADR-0035](../adr/0035-graded-confidence-exposure.md)). 원안은 strict verified tier 복원에 중심 → "너무 엄격해 몇 달 침묵 아니냐"를 사용자가 제기. 깨달음: **단일 임계를 medium에 두는 게 최악, 라벨 다른 두 층이 정답.** verified(`e≥20`, "검증됨")는 *진실 주장*, emerging(느슨·hedged, "요새 이런 경향—검증중")은 *가시성* 담당. 엄격함은 확정 주장에만 걸고 가시성은 별도 층이 나르니 → 침묵도 거짓말도 안 한다. emerging에 e-value 진행바(`e=4.2/20`) 동반 → 반복 노출이 오히려 "아직 멀었다"를 상기(peeking 심리 방어).
+
+3. **풀스택 1 PR** (vs P3a/P3b 분할). 사용자가 "남은 phase 다 지체없이"라 deferral 이득 0 + 꼬리(block perm·EB·q분리)가 핵심과 *같은 함수*(`verifyUserLinks`·`verifyContingency`·`stats.ts`)라 분할 시 같은 표면을 두 번 연다 → 1 PR. e-value 빌드 게이트는 PR 내 커밋 마일스톤으로 관리(PR 경계 불요).
+
+4. **타이밍 — 지금 진행, 06-08 첫 run은 머지 게이트**. P3 통계는 ADR-0032 정본이라 첫 run 데이터에 의존 안 함. 단 미리 빌드(헌장 ④)는 휴면 후 *무인 자동 활성*이라 검증이 *더* 중요 → null 시뮬(통계 정합·빌드 게이트) + P2 첫 주간 검증 운영 점검(2026-06-08, 운영 정합·머지 게이트) 둘 다 필수.
+
+### 미해결·가설 → 빌드에서 해소
+
+- **accumulating tier off-day 누락** (발견): 현행 `saju_influence_summary.accumulating`(발현일 pass율 55%↑)이 off-day 대조를 안 해 헌장 ② 위반 소지 → emerging tier(off-day 효과 기반)가 **대체**하며 동시 수정.
+- **emerging 바 시작값**: `effect≥1.3` + 최소 표본(잠정, verified의 `minActiveDays=30`보다 낮게) → 첫 몇 달 calibration. 임의값 고정 아닌 튜닝 노브(헌장 5).
+- **e-value betting 전략·정확 factor**: null 시뮬 통과가 유일 기준. 1차(순차 조건부 betting) 실패 시 Turner-Grünwald fallback.
+- **주간 스냅샷 형태**: link당 주 1행(e-value trail·2×2·posterior) — 마틴게일 *입력 아님*(그건 늘 리플레이), 감사·트렌드·emerging 진행바 데이터용.
+
+### 포기한 안 / 미룬 항목
+
+- **발견(discovery) 트랙**: q 분리는 confirm q=0.05만 활성, discovery q(0.10\~0.20)는 **P5까지 휴면 파라미터**(헌장 ④ 미리 선언, 활성은 P5). discovery 스캔 자체도 P5.
+- **Turner-Grünwald 1차 채택**: fallback로만(1차는 순차 조건부 betting).
+- **완전 graded / inverted-U 레벨별 baseline**: P4(사주 feature 엔진).
+- **교란 다변량 분리**: P6 플래그 / P7 데이터 게이트(공존 시드 충분 시 자동 on).
+
+### 기술적 의의
+
+순차 검정의 거짓양성 누적(optional stopping)을 누적 e-value(test martingale)로 통제하고, 결정론 리플레이로 SET 재계산과 정합시켰다. 신뢰도를 3-tier로 등급화해 "느린 확정 수율"이 사용자 침묵이 되지 않게 하면서, 미검증 경향을 확정처럼 노출하지 않는 균형을 잡았다.
+
+### 회고
+
+> TODO(`/build`): null 시뮬 거짓양성 실측치, 1차 vs fallback 채택 결과, 첫 emerging/verified 노출 품질 확인 후 보강.
+
 ---
 
 ## 회고 (TODO: `/build` 구현 후 보강)
