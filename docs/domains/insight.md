@@ -1646,6 +1646,46 @@ strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보�
 
 **P5 연결**: 오행 밴드 다수(토·금·수 전체, 목/화 약·적정)는 링크 없이 활성만 누적 → **P5 discovery를 시드×태그에서 시드×sql신호까지 확장**해야 데이터 기반으로 채워진다(P4a는 큐레이트 앵커만, 십성 전체 손박기 회피 — discovery가 off-day 대조로 발견하는 게 헌장 ② 정신).
 
+### 28. 매트릭 중심 패턴 검증 — Phase 4b (결정론 사주 관계·합화 변환 feature 엔진, #487)
+
+P4(결정론 사주 feature 엔진)의 후반. P4a(강도)에 이은 **관계·변환 패밀리**. P4a와 동일하게 **새 통계 코어 0** — 전부 결정론 boolean/밴드 시드로 기존 off-day 엔진(P2·P3)에 태운다([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) §4). 정본 [ADR-0038](../adr/0038-saju-relation-hwa-feature-depth.md).
+
+**합화(合化) 변환 pass** ([saju-hwa.ts](../../src/shared/saju-hwa.ts), 순수 함수):
+
+- 합(천간합/육합/삼합)이 化신 통근 조건을 만족하면 구성 글자의 오행을 化 오행으로 치환한다. 합화오행은 TS 상수(`CHEONGAN_HAP`/`JIJI_YUKHAP`/`JIJI_SAMHAP`, [saju-calendar.ts](../../src/shared/saju-calendar.ts))에 이미 있어 **DB 데이터 추가 0**.
+- `detectHwaTransforms(pillarSet, params)` → `{transforms, stemOverride, branchOverride}`(Pillar 참조 → 化 오행 맵). `saju-strength`가 글자 tally 전에 1회 적용 → **강도·밴드·절대상태·효과적 십성이 전부 변환 글자 기준 일관 계산**.
+- 변환 granularity(v1): 천간합 → 두 천간 element, 지지합 → 지지 본기 element. 지장간 중기/여기는 불변. `computeElementRatios`(composition covariate)는 의도적으로 raw 유지.
+- 결정론(순수 함수) → SET 리플레이·e-value 불변([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md)).
+
+**합충 해소 깊이 = v1a** ([saju-strength-params.ts](../../src/shared/saju-strength-params.ts) `SAJU_HWA_PARAMS`):
+
+| 노브 | 기본 | 의미 |
+|------|------|------|
+| `HWA_REQUIRE_ROOT` | true | 化신 통근 게이트 — 化 오행이 활성 지지(본기/지장간)에 뿌리내려야 성립 |
+| `HWA_CHUNGGAEHAP` | true | 충개합 — 합 멤버 지지가 다른 활성 지지와 충이면 합 무효(동적 운이 정적 합을 깸) |
+| `HWA_DAYMASTER_TRANSFORM` | false | 일간 천간 변질 허용 — v1 보수적 불변(학파 의존) |
+| `HWA_TAMHAP_MANGCHUNG`·`HWA_JAENGHAP`·`HWA_HYUNGPA_BREAK`·`HWA_DISTANCE` | false | 깊은 상호작용 — 헌장 ④ 미리 선언, 활성은 데이터 게이트/후속 |
+
+**효과적 십성 시드** (`hwa_sipsung` trigger, [pattern-match.ts](../../src/shared/pattern-match.ts)):
+
+- 합화 변환 후 化 오행의 일간 대비 5그룹 십성(비겁/식상/재성/관성/인성, polarity 무관)을 검정 시드로. `elementToSipsinGroup(일간오행, 化오행)`.
+- `evaluateTrigger` case `hwa_sipsung`: 오늘 풀셋의 합화 변환 → 化 오행 십성 → `aux.sipsin` 일치 시 발현. 합화 성립일에만 fire(sparse, 정직). 윈도우 비의존 → 2-pass 불요(`computeSeedActivationSeries` 기본 per-day 경로).
+- 082가 5 시드 생성(`pool_합화십성_*`).
+
+**관계 확장** (귀문 + 대표 암합):
+
+- 070 자동생성 관계 풀(합충형해파+원진 72시드) 재사용. 082는 **귀문 6쌍 + 대표 암합 4쌍**(인축·묘신·사유·오해 = 정기-정기 천간합)만 `branch_relations`에 추가 + relation_type CHECK 확장 + 070 LOOP 패턴 auto-gen 시드(evidence-only). 사술은 원진+귀문 동시(사용자 임상 정합, 마이그레이션 055).
+- 원국에 없는 쌍은 휴면(헌장 ④). 관계 큐레이트 링크는 **두지 않음** — 사술귀문은 기존 S2 사술원진과 발현 동일(중복), 나머지는 P5 sql-discovery가 off-day로 발견(헌장 ②, mass-wiring 회피).
+
+**FDR 가족 `saju_relation`** ([ADR-0037](../adr/0037-verification-fdr-family-split.md) 연장, 2→3가족):
+
+- `familyOf`: `strength_band → saju_strength` / `relation`·`hwa_sipsung → saju_relation` / 그 외 → `baseline`. `bhFdrByFamily` families 3개.
+- 자동 생성 관계 batch(070 + 귀문/암합)가 빠른 `life_signal` 트랙 확정을 늦추지 않게 격리. 합화 반영 강도 시드는 `saju_strength` 유지(시드 수 불변, 값만 정밀화).
+
+**검증/해석 분리** ([ADR-0038](../adr/0038-saju-relation-hwa-feature-depth.md) §3): off-day 통계 검증은 v1a 결정론 facts로 얕게. 깊은 명리 해석(학파 의존 상호작용)은 narrative LLM(weekly-fortune)이 facts를 grounding으로 hedged 추론 — 결정론 deep 해석 엔진은 만들지 않음(헌장 ①). narrative raw facts 주입은 별도 follow-up(P4b 범위 외).
+
+**데이터 모델** (마이그레이션 082): relation_type CHECK(+귀문·암합) + trigger_target_type CHECK(+hwa_sipsung) + 귀문 6/암합 4 쌍 + auto-gen 관계 시드 + 효과적 십성 5 시드 + 효과적 십성 × 객관 신호 10 큐레이트 링크(generic 십성→행동, 양의 연관) + RAISE 검증(silent fail 방지).
+
 ## 파일 구조
 
 ```
@@ -1661,10 +1701,11 @@ src/agents/insight/
 └── metric-approval-cards.ts       # Phase 6 LLM 매트릭 후보 카드 + 승인/거절 payload
 
 src/shared/
-├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반
-├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass·FDR 가족
-├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율)
-├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수 — 통계 노브와 분리)
+├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger
+├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
+├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
+├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
+├── saju-hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
 ├── quantile.ts                    # #477 P4a tertile 컷 + 밴드 분류 (주간 산출 → 일별 적용 공통 규칙)
 ├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann)
 ├── bayesian-posterior.ts          # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
@@ -1711,16 +1752,13 @@ db/migrations/  (마스터 #434 Phase 8a — 2026-05-29)
 db/migrations/  (마스터 A Phase A3 — 2026-06-03)
 └── 076_daily_insight.sql                        # daily_insight_log + 매칭 07:00 + insightMorning 비활성
 
-db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — P1~P3)
-├── 077_signal_defs_and_links.sql               # P1: 신호 전역화 (signal_defs + pattern_links), 매트릭→링크 이관, view 재정의
-├── 078_seed_daily_activations.sql              # P2: pattern_matches → seed_daily_activations rename + 검증 컬럼 DROP
-├── 079_weekly_verification_slot.sql            # P2: 주간 검증 slot rename + 시각 06:00
-└── 080_graded_exposure_and_weekly_stats.sql    # P3: 3-tier view(verified/emerging/recent) + link_weekly_stats 스냅샷 + pattern_summary confirmed 포함
-
 db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
-├── 077_signal_defs_and_links.sql               # P1 신호 전역화: signal_defs + pattern_links, pattern_metrics/hypotheses/stats DROP
+├── 077_signal_defs_and_links.sql               # P1 신호 전역화: signal_defs + pattern_links, 매트릭→링크 이관, pattern_metrics/hypotheses/stats DROP, view 재정의
 ├── 078_seed_daily_activations.sql              # P2 pattern_matches → seed_daily_activations rename + 검증 컬럼 DROP
-└── 079_weekly_verification_slot.sql            # P2 slot rename(weeklyVerification) + 06:00 월요일
+├── 079_weekly_verification_slot.sql            # P2 주간 검증 slot rename(weeklyVerification) + 06:00 월요일
+├── 080_graded_exposure_and_weekly_stats.sql    # P3 3-tier view(verified/emerging/recent) + link_weekly_stats 스냅샷 + pattern_summary confirmed 포함
+├── 081_strength_band_seeds.sql                 # P4a strength_band CHECK + strength_band_cutpoints + 18 강도 시드 + 13 큐레이트 링크
+└── 082_relation_hwa_seeds.sql                  # P4b relation_type CHECK(귀문·암합) + hwa_sipsung CHECK + 귀문6/암합4 쌍 + auto-gen 관계 시드 + 효과적 십성 5시드 + 10 큐레이트 링크
 
 ~/.claude/scheduled-tasks/  (Claude 앱 routines, repo 외부)
 ├── monthly-metric-suggest/SKILL.md              # Phase 6 매월 1일 09:30 LLM 매트릭 후보 제안
