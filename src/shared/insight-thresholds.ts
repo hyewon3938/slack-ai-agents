@@ -71,8 +71,14 @@ export const INSIGHT_THRESHOLDS = {
     evalueThreshold: 20, // = 1/evalueAlpha. e_value ≥ 20 → 'confirmed' 승격(verified tier)
     emergingMinEffect: 1.3, // emerging tier 효과크기 하한 (= confirm effect floor)
     emergingMinActive: 15, // emerging tier 최소 발현일 (verified 30보다 낮게, 튜닝 노브 ADR-0035)
-    discoverQ: 0.15, // 발견 트랙 q (P5 자율 발견까지 휴면 — 선언만)
     blockLen: 7, // block permutation 블록 길이 (자기상관 보정, ADR-0032)
     blockPermIters: 2000, // block permutation 반복수 (Monte Carlo p 정밀도)
+    // ── P5a 발굴 트랙 (ADR-0039) — surface 전용. 확정은 위 e-value 트랙이 별도로 잡음 ──
+    // 2층 통제: 느슨한 discoverQ로 후보만 띄우고(가족별 발견 BH-FDR), 믿음은 confirmQ+e-value.
+    discoverQ: 0.15, // 발견 BH-FDR q (확정 confirmQ=0.05보다 느슨 — surface 전용)
+    discoveryMinActive: 12, // 발굴 최소 발현일 (확정 minActiveDays=30보다 낮게 — 일찍 제안)
+    discoveryMinEffect: 1.3, // 발굴 최소 효과크기 (= confirm floor, positive 연관만)
+    discoveryMaxFisherP: 0.1, // block-perm 전 Fisher 사전선별 상한 (Monte Carlo 비용 절감)
+    discoveryTopN: 5, // 주당 surface 상한 (승인 카드 폭주 방지 — 드롭 시 로그)
   },
 } as const;
