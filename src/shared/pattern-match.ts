@@ -1,13 +1,16 @@
 /**
  * 사주 시드 카탈로그 기반 일일 매칭 엔진.
- * ADR-0017 + ADR-0026(pattern_* rename) 참조.
+ * ADR-0017 + ADR-0026(pattern_* rename) + ADR-0033(매트릭=가설 5어휘 재정의, #477 P1) 참조.
  *
  * 흐름:
- *   1) loadActiveSeeds — pattern_catalog + pattern_metrics 조회
+ *   1) loadActiveSeeds — pattern_catalog + pattern_links × signal_defs(전역 신호) 조회
  *   2) getDailyContext — 일운(getDayPillar) + 본명(saju_profiles) 로드
  *   3) evaluateTrigger — trigger_target_type별 분기 평가
- *   4) evaluateMetrics — 메트릭 SQL 실행 + 28일 baseline 비교 → matched 판정
- *   5) recordDailyMatch — pattern_matches UPSERT
+ *   4) evaluateMetric — 신호 평가: kind=sql(SQL + baseline/임계 비교) | kind=tag(그날 태그 존재 여부)
+ *   5) recordDailyMatch — pattern_matches UPSERT (P2 주간 검증 엔진 전까지 raw trigger-log 지속)
+ *
+ * P1(#477): 검증 단위는 (시드 × 신호) = pattern_links. hit/miss 카운터는 링크에 누적(이관 완료),
+ * 주간 재계산은 P2. 일별 verify(카운터 확정)는 P2 엔진으로 이관 — 본 모듈은 매칭·기록만.
  */
 
 import { query, queryWithClient } from './db.js';
@@ -55,13 +58,22 @@ export interface SajuSeed {
   source: 'seed' | 'llm_promoted';
 }
 
+/**
+ * (시드 × 신호) 평가 단위. #477 P1: pattern_links × signal_defs JOIN 결과.
+ * kind=sql이면 expected_metric_sql/expected_direction 보유(CHECK 보장),
+ * kind=tag이면 tag_name 보유 + 그날 태그 존재 여부를 binary로 평가.
+ */
 export interface SajuMetric {
-  id: number;
+  link_id: number;
+  signal_id: number;
   pattern_id: number;
   metric_name: string;
-  expected_metric_sql: string;
-  expected_direction: 'above_avg' | 'below_avg' | 'above_abs' | 'below_abs' | 'flag_present';
+  kind: 'sql' | 'tag';
+  expected_metric_sql: string | null;
+  expected_direction: 'above_avg' | 'below_avg' | 'above_abs' | 'below_abs' | 'flag_present' | null;
   expected_threshold: number | null;
+  value_type: 'binary' | 'continuous' | null;
+  tag_name: string | null;
   domain:
     | 'schedule'
     | 'routine'
@@ -354,13 +366,16 @@ export const loadActiveSeeds = async (userId: number): Promise<SajuSeedWithMetri
   if (seeds.rows.length === 0) return [];
 
   const ids = seeds.rows.map((s) => s.id);
-  // Phase 1: 결정론 시드 매트릭만 활성. LLM 자율 매트릭(status='pending')은 Phase 4에서.
+  // #477 P1: 검증 단위 = (시드 × 신호) 활성 링크 × 활성 신호. pending 링크/신호(LLM 미승인)는 제외.
   const metrics = await query<MetricRow>(
-    `SELECT id, pattern_id, metric_name, expected_metric_sql,
-            expected_direction, expected_threshold, domain
-       FROM pattern_metrics
-      WHERE pattern_id = ANY($1) AND status = 'active'
-      ORDER BY id`,
+    `SELECT l.id AS link_id, l.seed_id AS pattern_id, s.id AS signal_id,
+            s.name AS metric_name, s.kind,
+            s.sql_body AS expected_metric_sql, s.direction AS expected_direction,
+            s.threshold AS expected_threshold, s.value_type, s.tag_name, s.domain
+       FROM pattern_links l
+       JOIN signal_defs s ON s.id = l.signal_id
+      WHERE l.seed_id = ANY($1) AND l.status = 'active' AND s.status = 'active'
+      ORDER BY l.id`,
     [ids],
   );
 
@@ -670,23 +685,61 @@ const baselineAvg = async (sql: string, userId: number, date: string): Promise<n
   return n > 0 ? sum / n : 0;
 };
 
+/** tag 신호 — 그날 해당 일기 메타 태그 존재 여부 (binary). */
+const tagPresent = async (userId: number, date: string, tagName: string): Promise<boolean> => {
+  const result = await query(
+    `SELECT 1 FROM diary_meta_tags WHERE user_id = $1 AND date = $2 AND tag = $3 LIMIT 1`,
+    [userId, date, tagName],
+  );
+  return result.rows.length > 0;
+};
+
 export const evaluateMetric = async (
   metric: SajuMetric,
   userId: number,
   date: string,
 ): Promise<MetricEvaluation> => {
-  const todayValue = await runMetricSql(metric.expected_metric_sql, userId, date);
+  // kind=tag — off-day 대조용 객관 보조 신호. 그날 태그가 찍혔으면 hit(binary).
+  if (metric.kind === 'tag') {
+    const present = metric.tag_name ? await tagPresent(userId, date, metric.tag_name) : false;
+    return {
+      metric_name: metric.metric_name,
+      domain: metric.domain,
+      todayValue: present ? 1 : 0,
+      baselineAvg: null,
+      threshold: 1,
+      direction: 'flag_present',
+      passed: present,
+    };
+  }
+
+  // kind=sql — signal_defs CHECK가 sql_body/direction NOT NULL 보장. 방어적으로 좁힘.
+  const sql = metric.expected_metric_sql;
+  const direction = metric.expected_direction;
+  if (!sql || !direction) {
+    return {
+      metric_name: metric.metric_name,
+      domain: metric.domain,
+      todayValue: 0,
+      baselineAvg: null,
+      threshold: metric.expected_threshold,
+      direction: direction ?? 'flag_present',
+      passed: false,
+    };
+  }
+
+  const todayValue = await runMetricSql(sql, userId, date);
 
   let baseline: number | null = null;
   let passed = false;
 
-  switch (metric.expected_direction) {
+  switch (direction) {
     case 'above_avg':
-      baseline = await baselineAvg(metric.expected_metric_sql, userId, date);
+      baseline = await baselineAvg(sql, userId, date);
       passed = todayValue > baseline;
       break;
     case 'below_avg':
-      baseline = await baselineAvg(metric.expected_metric_sql, userId, date);
+      baseline = await baselineAvg(sql, userId, date);
       passed = todayValue < baseline;
       break;
     case 'above_abs':
@@ -706,7 +759,7 @@ export const evaluateMetric = async (
     todayValue,
     baselineAvg: baseline,
     threshold: metric.expected_threshold,
-    direction: metric.expected_direction,
+    direction,
     passed,
   };
 };
@@ -841,79 +894,10 @@ export const recordDailyMatches = async (
   }
 };
 
-// ─── 검증 사이클 (다음날 verify_status 확정 + outcome 카운트 누적) ─────
-
-export const verifyDailyMatches = async (userId: number): Promise<void> => {
-  // 어제 trigger_activated=true + matched IS NOT NULL인 pending → hit/miss 확정 + pattern_metrics 카운터 UPDATE.
-  // ADR-0023: counter source of truth는 pattern_metrics. ADR-0024: posterior_alpha/beta Beta-Binomial.
-  const pending = await query<{ id: number; pattern_id: number; matched: boolean | null }>(
-    `SELECT id, pattern_id, matched
-       FROM pattern_matches
-      WHERE user_id = $1 AND verify_status = 'pending'
-        AND date <= (CURRENT_DATE - INTERVAL '1 day')
-        AND trigger_activated = true
-        AND matched IS NOT NULL`,
-    [userId],
-  );
-
-  for (const row of pending.rows) {
-    const outcome = row.matched ? 'hit' : 'miss';
-    await query(`UPDATE pattern_matches SET verify_status = $1 WHERE id = $2`, [outcome, row.id]);
-    if (outcome === 'hit') {
-      await query(
-        `UPDATE pattern_metrics
-            SET hit_count       = hit_count + 1,
-                last_matched_at = NOW(),
-                posterior_alpha = posterior_alpha + 1.0,
-                posterior_p     = (posterior_alpha + 1.0) /
-                                  (posterior_alpha + posterior_beta + 1.0)
-          WHERE pattern_id = $1 AND status = 'active'`,
-        [row.pattern_id],
-      );
-    } else {
-      await query(
-        `UPDATE pattern_metrics
-            SET miss_count      = miss_count + 1,
-                last_matched_at = NOW(),
-                posterior_beta  = posterior_beta + 1.0,
-                posterior_p     = posterior_alpha /
-                                  (posterior_alpha + posterior_beta + 1.0)
-          WHERE pattern_id = $1 AND status = 'active'`,
-        [row.pattern_id],
-      );
-    }
-  }
-
-  // trigger_activated=false 또는 matched IS NULL(evidence-only)은 inconclusive 처리.
-  // matched IS NOT NULL이지만 trigger_activated=false인 케이스만 매트릭 inconclusive_count++.
-  const inconclusiveRows = await query<{
-    id: number;
-    pattern_id: number;
-    matched: boolean | null;
-  }>(
-    `SELECT id, pattern_id, matched
-       FROM pattern_matches
-      WHERE user_id = $1 AND verify_status = 'pending'
-        AND date <= (CURRENT_DATE - INTERVAL '1 day')
-        AND (trigger_activated = false OR matched IS NULL)`,
-    [userId],
-  );
-
-  for (const row of inconclusiveRows.rows) {
-    await query(`UPDATE pattern_matches SET verify_status = 'inconclusive' WHERE id = $1`, [
-      row.id,
-    ]);
-    if (row.matched !== null) {
-      await query(
-        `UPDATE pattern_metrics
-            SET inconclusive_count = inconclusive_count + 1,
-                last_matched_at    = NOW()
-          WHERE pattern_id = $1 AND status = 'active'`,
-        [row.pattern_id],
-      );
-    }
-  }
-};
+// ─── 검증 사이클 ─────────────────────────────────────────
+// #477 P1: 일별 verify(verify_status 확정 + 카운터 누적)는 P2 주간 검증 엔진으로 이관.
+// 카운터(hit/miss/posterior)는 pattern_links에 누적(이관 완료) → 주간 재계산이 raw pattern_matches
+// 윈도우를 결정론 재산출(ADR-0033 §2). 본 모듈은 매칭·기록(raw trigger-log)까지만 담당.
 
 // ─── Slack 한 줄 압축 ────────────────────────────────────
 

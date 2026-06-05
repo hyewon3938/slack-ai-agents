@@ -1,19 +1,20 @@
 /**
- * Phase 3+4 — 매일 07시 패턴 일일 매칭 cron (08:00 일일 종합 인사이트 선행, #475).
- * ADR-0017 + ADR-0026(pattern_* rename) + ADR-0031(매칭 선행) 참조.
+ * 매일 07시 패턴 일일 매칭 cron (08:03 일일 종합 인사이트 선행, #475 ADR-0031).
+ * ADR-0017 + ADR-0026(pattern_* rename) + ADR-0033(매트릭=가설 재정의, #477 P1) 참조.
  *
  * 흐름:
  *   0) 마지막 매칭일~오늘 갭 자동 백필 (봇 다운 복귀 시 누락일 복구, 기록만)
- *   1) 어제 pending 매칭 verify_status 확정 (hit/miss/inconclusive)
- *   2) 오늘 활성 시드 평가 → pattern_matches UPSERT
- *   3) matched=true 시드를 #life 잔소리 끝 한 줄로 압축 전송
+ *   1) 오늘 활성 시드 평가 → pattern_matches UPSERT (raw trigger-log; daily-insight recent tier 원천)
+ *   2) matched=true 시드를 #life 잔소리 끝 한 줄로 압축 전송
+ *
+ * #477 P1: 일별 verify(카운터 확정)·confirmed 가설 라인은 P2 주간 검증 엔진까지 제거.
+ * pattern_matches 기록은 유지 — P2가 raw에서 윈도우 재계산하고, recent tier(daily-insight)가 의존.
  */
 
 import type { App } from '@slack/bolt';
 import {
   matchAllSeedsForDay,
   recordDailyMatches,
-  verifyDailyMatches,
   compactMatchedLine,
   getDailyContext,
 } from '../shared/pattern-match.js';
@@ -21,7 +22,6 @@ import { postToChannel } from '../shared/slack.js';
 import { getEffectiveTodayISO, addDays } from '../shared/kst.js';
 import { query } from '../shared/db.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
-import { pickConfirmedHypothesisLines } from '../shared/insights.js';
 import type { LifeCronConfig } from './life-cron.js';
 
 /** 봇 장기 다운/최초 실행 시 백필 폭주를 막는 상한 (일). 초과분은 가장 최근 구간만 백필 + 로그. */
@@ -32,7 +32,6 @@ export interface DailyPatternMatchingResult {
   triggeredCount: number;
   matchedCount: number;
   line: string | null;
-  hypothesisLines: string[];
 }
 
 /**
@@ -44,7 +43,7 @@ export const runDailyPatternMatchingDryRun = async (
 ): Promise<DailyPatternMatchingResult> => {
   const ctx = await getDailyContext(userId, date);
   if (!ctx) {
-    return { date, triggeredCount: 0, matchedCount: 0, line: null, hypothesisLines: [] };
+    return { date, triggeredCount: 0, matchedCount: 0, line: null };
   }
 
   const results = await matchAllSeedsForDay(userId, date);
@@ -53,9 +52,8 @@ export const runDailyPatternMatchingDryRun = async (
   const triggeredCount = results.filter((r) => r.triggerActivated).length;
   const matchedCount = results.filter((r) => r.matched).length;
   const line = await compactMatchedLine(ctx, results);
-  const hypothesisLines = await pickConfirmedHypothesisLines(userId, date);
 
-  return { date, triggeredCount, matchedCount, line, hypothesisLines };
+  return { date, triggeredCount, matchedCount, line };
 };
 
 /**
@@ -67,13 +65,6 @@ export const dailyPatternMatchingForUser = async (
   channelId: string,
   date: string,
 ): Promise<void> => {
-  try {
-    await verifyDailyMatches(userId);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Pattern Match] verify 실패 user=${userId}: ${msg}`);
-  }
-
   let result: DailyPatternMatchingResult;
   try {
     result = await runDailyPatternMatchingDryRun(userId, date);
@@ -93,15 +84,6 @@ export const dailyPatternMatchingForUser = async (
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Pattern Match] Slack 전송 실패 user=${userId}: ${msg}`);
-    }
-  }
-
-  if (result.hypothesisLines.length > 0) {
-    try {
-      await postToChannel(app.client, channelId, result.hypothesisLines.join('\n'));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Pattern Match] 가설 라인 전송 실패 user=${userId}: ${msg}`);
     }
   }
 };
@@ -140,8 +122,8 @@ const findBackfillDays = async (userId: number, today: string): Promise<string[]
 };
 
 /**
- * 누락된 과거 날짜 백필(매칭 기록만, Slack 전송 X) 후 오늘분 정규 처리(verify + match + 전송).
- * 백필분은 다음 verifyDailyMatches(date <= 어제 전체 처리)가 자동으로 hit/miss 확정한다.
+ * 누락된 과거 날짜 백필(매칭 기록만, Slack 전송 X) 후 오늘분 정규 처리(match + 전송).
+ * #477 P1: 백필분의 hit/miss 확정은 P2 주간 엔진이 raw에서 재계산(일별 verify 제거).
  */
 const backfillAndMatchForUser = async (
   app: App,
