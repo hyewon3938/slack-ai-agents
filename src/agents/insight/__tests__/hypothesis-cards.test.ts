@@ -28,10 +28,13 @@ const makeLink = (overrides: Partial<LinkVerification> = {}): LinkVerification =
   rateOff: 0.2,
   effect: 4.0,
   pValue: 0.001,
+  fisherP: 0.001,
   qValue: 0.01,
+  mannWhitney: null,
   posteriorAlpha: 21,
   posteriorBeta: 6,
   posteriorP: 0.78,
+  eValue: 30,
   lastMatchedAt: '2026-06-01',
   verdict: 'confirm',
   nextStatus: 'active',
@@ -71,53 +74,91 @@ describe('buildVerificationBlocks — 빈 링크', () => {
   });
 });
 
-describe('buildVerificationBlocks — provisional confirm', () => {
-  it('confirm 링크는 ★ + 시드/신호 + off-day 대조율 노출', () => {
-    const blocks = buildVerificationBlocks('2026-06-01', [makeLink()], []);
-    const texts = sectionTexts(blocks);
-    const confirmText = texts.find((t) => t.includes('★'));
-    expect(confirmText).toBeDefined();
-    expect(confirmText).toContain('[사주]');
-    expect(confirmText).toContain('수면부족');
-    expect(confirmText).toContain('갑목일주');
-    expect(confirmText).toContain('발현 80.0%');
-    expect(confirmText).toContain('비발현 20.0%');
+describe('buildVerificationBlocks — verified (검증됨)', () => {
+  it('confirmed 링크는 ✅ + 검증됨 + off-day 대조 노출', () => {
+    const blocks = buildVerificationBlocks(
+      '2026-06-01',
+      [makeLink({ nextStatus: 'confirmed' })],
+      [],
+    );
+    const t = sectionTexts(blocks).find((x) => x.includes('✅'));
+    expect(t).toBeDefined();
+    expect(t).toContain('[사주]');
+    expect(t).toContain('수면부족');
+    expect(t).toContain('갑목일주');
+    expect(t).toContain('검증됨');
+    expect(t).toContain('발현 80.0%');
+    expect(t).toContain('비발현 20.0%');
   });
 
-  it('confirm이 있으면 provisional 경고 컨텍스트가 붙는다', () => {
-    const blocks = buildVerificationBlocks('2026-06-01', [makeLink()], []);
+  it('verified가 있으면 tier 범례 컨텍스트가 붙는다', () => {
+    const blocks = buildVerificationBlocks(
+      '2026-06-01',
+      [makeLink({ nextStatus: 'confirmed' })],
+      [],
+    );
     const ctxTexts = blocks
       .filter((b) => b.type === 'context')
       .flatMap((b) => ('elements' in b ? b.elements : []))
       .map((e) => ('text' in e && typeof e.text === 'string' ? e.text : ''));
-    expect(ctxTexts.some((t) => t.includes('provisional') && t.includes('P3'))).toBe(true);
+    expect(ctxTexts.some((t) => t.includes('검증됨') && t.includes('인과는 아님'))).toBe(true);
   });
 });
 
-describe('buildVerificationBlocks — verdict 요약 + reject', () => {
-  it('verdict별 카운트를 요약 라인에 표기', () => {
-    const links: LinkVerification[] = [
-      makeLink({ verdict: 'confirm' }),
-      makeLink({ verdict: 'reject', effect: 1.0 }),
-      makeLink({ verdict: 'insufficient', nActive: 3 }),
-      makeLink({ verdict: 'insufficient', nActive: 1 }),
-    ];
-    const summary = sectionTexts(buildVerificationBlocks('2026-06-01', links, [])).find((t) =>
-      t.includes('off-day 검증'),
-    );
-    expect(summary).toContain('4개 링크');
-    expect(summary).toContain('확정(provisional) 1');
-    expect(summary).toContain('기각 1');
-    expect(summary).toContain('데이터 부족 2');
-  });
-
-  it('reject 링크는 ✗로 별도 표기', () => {
+describe('buildVerificationBlocks — emerging (검증중)', () => {
+  it('active + effect leaning + n충분 → 🌱 + 진행바 + e/20', () => {
     const blocks = buildVerificationBlocks(
       '2026-06-01',
-      [makeLink({ verdict: 'reject', signalName: '지출과다', effect: 1.0 })],
+      [makeLink({ nextStatus: 'active', eValue: 7 })],
       [],
     );
-    const rejectText = sectionTexts(blocks).find((t) => t.includes('✗'));
+    const t = sectionTexts(blocks).find((x) => x.includes('🌱'));
+    expect(t).toBeDefined();
+    expect(t).toContain('검증중');
+    expect(t).toContain('e 7.0/20');
+  });
+
+  it('prevEValues 있으면 주간대비 delta 표기', () => {
+    const prev = new Map<number, number>([[1, 3.1]]);
+    const blocks = buildVerificationBlocks(
+      '2026-06-01',
+      [makeLink({ nextStatus: 'active', eValue: 7 })],
+      [],
+      prev,
+    );
+    const t = sectionTexts(blocks).find((x) => x.includes('🌱'));
+    expect(t).toContain('지난주 3.1 → 이번주 7.0');
+  });
+
+  it('effect 약하면(emerging 미달) 🌱 안 뜸', () => {
+    const blocks = buildVerificationBlocks(
+      '2026-06-01',
+      [makeLink({ nextStatus: 'active', effect: 1.0, verdict: 'inconclusive' })],
+      [],
+    );
+    expect(sectionTexts(blocks).some((x) => x.includes('🌱'))).toBe(false);
+  });
+});
+
+describe('buildVerificationBlocks — 요약 + reject', () => {
+  it('tier별 카운트 요약 + reject ✗', () => {
+    const links: LinkVerification[] = [
+      makeLink({ nextStatus: 'confirmed' }), // verified
+      makeLink({ nextStatus: 'active', effect: 2.0, nActive: 20, verdict: 'inconclusive' }), // emerging
+      makeLink({
+        verdict: 'reject',
+        nextStatus: 'rejected',
+        effect: 1.0,
+        signalName: '지출과다',
+      }), // reject
+    ];
+    const texts = sectionTexts(buildVerificationBlocks('2026-06-01', links, []));
+    const summary = texts.find((t) => t.includes('off-day 검증'));
+    expect(summary).toContain('3개 링크');
+    expect(summary).toContain('검증됨 1');
+    expect(summary).toContain('검증중 1');
+    expect(summary).toContain('기각 1');
+    const rejectText = texts.find((t) => t.includes('✗'));
     expect(rejectText).toContain('지출과다');
   });
 });

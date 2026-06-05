@@ -56,15 +56,23 @@ export const INSIGHT_THRESHOLDS = {
     minPriority: 5,
     maxItems: 3,
   },
-  // #477 P2 주간 off-day 검증 엔진 임계치 (ADR-0032).
-  // ⚠️ confirm은 provisional — 진짜 확정 게이트는 P3 e-value(1/α). 주간 반복 q는 optional stopping.
+  // #477 P2/P3 주간 off-day 검증 엔진 임계치 (ADR-0032·0034·0035).
+  // q는 screening, 확정 게이트는 e-value(1/α, optional stopping 통제). emerging은 hedged 가시성 tier.
   patternVerification: {
     windowCapDays: 365, // 윈도우 상한(전체 이력 재계산, 캡)
     baselineWindowDays: 28, // above_avg/below_avg rolling baseline 일수 (signal.window_days 미지정 시 기본)
     minActiveDays: 30, // confirm/reject 최소 발현일 수
-    confirmQ: 0.05, // BH-FDR q 임계 (provisional confirm)
+    confirmQ: 0.05, // BH-FDR q 임계 (confirm screening — 통과 후 e-value가 최종 확정)
     minRateRatio: 1.3, // confirm 최소 효과크기 (발현일 pass율 / 비발현일 pass율)
     rejectRatioLow: 0.95, // reject 효과크기 하한 (연관 없음 판정 밴드)
     rejectRatioHigh: 1.05, // reject 효과크기 상한
+    // ── P3 통계 증강 (ADR-0034 e-value, ADR-0035 등급별 노출) ──
+    evalueAlpha: 0.05, // e-value 확정 게이트 유의수준
+    evalueThreshold: 20, // = 1/evalueAlpha. e_value ≥ 20 → 'confirmed' 승격(verified tier)
+    emergingMinEffect: 1.3, // emerging tier 효과크기 하한 (= confirm effect floor)
+    emergingMinActive: 15, // emerging tier 최소 발현일 (verified 30보다 낮게, 튜닝 노브 ADR-0035)
+    discoverQ: 0.15, // 발견 트랙 q (P5 자율 발견까지 휴면 — 선언만)
+    blockLen: 7, // block permutation 블록 길이 (자기상관 보정, ADR-0032)
+    blockPermIters: 2000, // block permutation 반복수 (Monte Carlo p 정밀도)
   },
 } as const;

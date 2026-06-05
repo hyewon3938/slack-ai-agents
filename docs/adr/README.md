@@ -140,6 +140,8 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0031](0031-daily-insight-synthesis.md) | 일일 종합 인사이트 — 개인화 주입 지점을 생성에서 발송으로 이동 + 신뢰도 tier 종합 | Accepted | 2026-06-03 | data, insight, llm, architecture |
 | [0032](0032-metric-first-verification-statistics.md) | n=1 패턴 검증 통계 스택 — Fisher+permutation / BH-FDR / Beta-Binomial+e-value / Mann-Whitney / empirical-Bayes | Accepted | 2026-06-04 | insight, statistics, architecture |
 | [0033](0033-metric-as-hypothesis-and-saju-feature-substrate.md) | 매트릭=가설 5어휘 재정의 + 결정론 사주 feature substrate (생극·합충·합화 → feature, graded 레벨 비단조) | Accepted | 2026-06-04 | insight, schema, architecture, statistics |
+| [0034](0034-evalue-construction-replay-test-martingale.md) | e-value 구성 — 결정론 리플레이 betting test martingale (SET 정합 + null 시뮬 빌드 게이트) | Accepted | 2026-06-05 | insight, statistics |
+| [0035](0035-graded-confidence-exposure.md) | 등급별 노출 정책 — 검증됨/검증중/오늘발현 3-tier (엄격 게이트는 확정 주장에만) | Accepted | 2026-06-05 | insight, ux, architecture |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 

@@ -6,8 +6,9 @@
  */
 
 import type { KnownBlock } from '@slack/types';
-import type { LinkVerification, Verdict } from '../../shared/pattern-verification.js';
+import type { LinkVerification } from '../../shared/pattern-verification.js';
 import type { TriggerSpec } from './hypothesis-discovery.js';
+import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 
 export const HYPOTHESIS_REGISTER_ACTION_ID = 'hypothesis_register';
 export const HYPOTHESIS_DISMISS_ACTION_ID = 'hypothesis_dismiss';
@@ -104,51 +105,64 @@ export const buildSeedInfluenceSection = (rows: SeedInfluenceRow[]): KnownBlock[
   ];
 };
 
-// ─── off-day 검증 현황 섹션 ──────────────────────────────
+// ─── off-day 검증 현황 섹션 (P3 3-tier: 검증됨 / 검증중 / 기각) ──
 
-const VERDICT_LABEL: Record<Verdict, string> = {
-  confirm: '확정(provisional)',
-  reject: '기각',
-  inconclusive: '판정 보류',
-  insufficient: '데이터 부족',
+const V = INSIGHT_THRESHOLDS.patternVerification;
+
+/** verified = e≥20 확정 승격(nextStatus='confirmed'). */
+export const isVerified = (l: LinkVerification): boolean => l.nextStatus === 'confirmed';
+
+/** emerging = active 유지 + off-day effect leaning + 최소 발현일(검증중). view 술어와 일치. */
+export const isEmerging = (l: LinkVerification): boolean =>
+  l.nextStatus === 'active' &&
+  Number.isFinite(l.effect) &&
+  l.effect >= V.emergingMinEffect &&
+  l.nActive >= V.emergingMinActive;
+
+/** e-value 진행바 (0 → threshold). */
+const evalueBar = (e: number, threshold: number): string => {
+  const ratio = Number.isFinite(e) ? Math.max(0, Math.min(1, e / threshold)) : 0;
+  const filled = Math.round(ratio * 7);
+  return '█'.repeat(filled) + '░'.repeat(7 - filled);
 };
 
-const countByVerdict = (links: LinkVerification[]): Record<Verdict, number> => {
-  const counts: Record<Verdict, number> = {
-    confirm: 0,
-    reject: 0,
-    inconclusive: 0,
-    insufficient: 0,
-  };
-  for (const l of links) counts[l.verdict] += 1;
-  return counts;
-};
+/** verified(검증됨) 한 줄 — 통계 확정 + off-day 대조. */
+const verifiedLine = (l: LinkVerification): string =>
+  `• ✅ ${KIND_LABEL[l.patternKind]} *${l.signalName}* → \`${l.seedName}\` — ` +
+  `발현 ${formatPercent(l.rateActive)} vs 비발현 ${formatPercent(l.rateOff)} ` +
+  `(effect ${formatRatio(l.effect)}, q=${formatPValue(l.qValue)}, n=${l.nActive}) · ` +
+  `e ${l.eValue.toFixed(1)} 검증됨`;
 
-/** provisional confirm 한 줄 — off-day 대조 결과 + 사후. */
-const confirmLine = (l: LinkVerification): string => {
-  const kindLabel = KIND_LABEL[l.patternKind];
+/** emerging(검증중) 한 줄 — hedged + e-value 진행바 + 주간대비 delta. */
+const emergingLine = (l: LinkVerification, prevE: number | undefined): string => {
+  const bar = evalueBar(l.eValue, V.evalueThreshold);
+  const delta =
+    prevE !== undefined && Number.isFinite(prevE)
+      ? ` (지난주 ${prevE.toFixed(1)} → 이번주 ${l.eValue.toFixed(1)})`
+      : '';
   return (
-    `• ★ ${kindLabel} *${l.signalName}* → \`${l.seedName}\` — ` +
+    `• 🌱 ${KIND_LABEL[l.patternKind]} *${l.signalName}* → \`${l.seedName}\` — ` +
     `발현 ${formatPercent(l.rateActive)} vs 비발현 ${formatPercent(l.rateOff)} ` +
-    `(effect ${formatRatio(l.effect)}, q=${formatPValue(l.qValue)}, n=${l.nActive}) · ` +
-    `사후 ${formatPosterior(l.posteriorP)}`
+    `(effect ${formatRatio(l.effect)}, n=${l.nActive}) · ` +
+    `검증중 ${bar} e ${l.eValue.toFixed(1)}/${V.evalueThreshold}${delta}`
   );
 };
 
 const rejectLine = (l: LinkVerification): string =>
   `• ✗ ${KIND_LABEL[l.patternKind]} ${l.signalName} × \`${l.seedName}\` — 연관 약함(effect ${formatRatio(l.effect)})`;
 
-const PROVISIONAL_LEGEND =
-  '_★ provisional — 주간 q는 optional stopping이라 통계 확정 게이트(e-value)는 P3. 지금은 경향 모니터링용._';
+const TIER_LEGEND =
+  '_✅ 검증됨 = e-value≥20 통계 확정(우연 아님, 단 연관이지 인과는 아님) · 🌱 검증중 = off-day 경향은 보이나 아직 확정 전 · ✗ 기각 = 연관 약함._';
 
 /**
- * 주간 검증 리포트 — 시드 영향력 + off-day 검증 현황(confirm/reject 목록 + 요약).
- * discovery 후보·주간 delta는 없음(P5/P3). provisional confirm은 노출 단언 아님(카드 모니터링용).
+ * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
+ * 검증중(emerging)은 e-value 진행바로 "쌓이는 중"을 정직하게 프레이밍(ADR-0035). discovery는 P5.
  */
 export const buildVerificationBlocks = (
   weekStart: string,
   links: LinkVerification[],
   seedInfluence: SeedInfluenceRow[],
+  prevEValues: Map<number, number> = new Map(),
 ): KnownBlock[] => {
   const blocks: KnownBlock[] = [
     {
@@ -170,30 +184,51 @@ export const buildVerificationBlocks = (
     return blocks;
   }
 
-  const counts = countByVerdict(links);
-  const summary =
-    `*이번 주 off-day 검증 (${links.length}개 링크)*\n` +
-    Object.entries(counts)
-      .filter(([, n]) => n > 0)
-      .map(([verdict, n]) => `${VERDICT_LABEL[verdict as Verdict]} ${n}`)
-      .join(' · ');
-  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: summary } });
+  const verified = links.filter(isVerified);
+  const emerging = links.filter(isEmerging);
+  const rejects = links.filter((l) => l.verdict === 'reject');
+  const others = links.length - verified.length - emerging.length - rejects.length;
 
-  const confirms = links.filter((l) => l.verdict === 'confirm');
-  if (confirms.length > 0) {
+  const summaryParts = [
+    `검증됨 ${verified.length}`,
+    `검증중 ${emerging.length}`,
+    `기각 ${rejects.length}`,
+  ];
+  if (others > 0) summaryParts.push(`판정 보류 ${others}`);
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: `*이번 주 off-day 검증 (${links.length}개 링크)*\n${summaryParts.join(' · ')}`,
+    },
+  });
+
+  if (verified.length > 0) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: confirms.map(confirmLine).join('\n') },
+      text: { type: 'mrkdwn', text: verified.map(verifiedLine).join('\n') },
     });
-    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: PROVISIONAL_LEGEND }] });
   }
 
-  const rejects = links.filter((l) => l.verdict === 'reject');
+  if (emerging.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: emerging.map((l) => emergingLine(l, prevEValues.get(l.linkId))).join('\n'),
+      },
+    });
+  }
+
   if (rejects.length > 0) {
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: rejects.map(rejectLine).join('\n') },
     });
+  }
+
+  if (verified.length > 0 || emerging.length > 0) {
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: TIER_LEGEND }] });
   }
 
   return blocks;

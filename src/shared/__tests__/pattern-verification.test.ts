@@ -3,6 +3,7 @@ import {
   buildWindowDates,
   binarizeSqlSeries,
   buildContingency,
+  buildDaySequence,
   verifyContingency,
   classifyVerdict,
   statusForVerdict,
@@ -181,24 +182,58 @@ describe('classifyVerdict', () => {
   });
 });
 
-// ─── statusForVerdict (provisional 정책) ─────────────────
+// ─── buildDaySequence ────────────────────────────────────
+
+describe('buildDaySequence', () => {
+  it('windowDates 순서로 (active, pass), 측정불가(null)는 제외', () => {
+    const activation = new Map<string, boolean>([
+      ['d0', true],
+      ['d1', false],
+      ['d2', true],
+      ['d3', true],
+    ]);
+    const signal: DaySeries = new Map([
+      ['d0', true],
+      ['d1', false],
+      ['d2', null], // 측정불가 → 제외
+      ['d3', true],
+    ]);
+    expect(buildDaySequence(activation, signal, ['d0', 'd1', 'd2', 'd3'])).toEqual([
+      { active: true, pass: true },
+      { active: false, pass: false },
+      { active: true, pass: true },
+    ]);
+  });
+
+  it('activation 없는 날은 active=false', () => {
+    const signal: DaySeries = new Map([['d0', true]]);
+    expect(buildDaySequence(new Map(), signal, ['d0'])).toEqual([{ active: false, pass: true }]);
+  });
+});
+
+// ─── statusForVerdict (P3 e-value 게이트) ────────────────
 
 describe('statusForVerdict', () => {
-  it('active + reject → rejected (정당한 제거)', () => {
-    expect(statusForVerdict('reject', 'active')).toBe('rejected');
+  it('active + reject → rejected (e 무관, 정당한 제거)', () => {
+    expect(statusForVerdict('reject', 'active', 1)).toBe('rejected');
   });
 
-  it('active + confirm → active (provisional, P3 전까지 승격 안 함)', () => {
-    expect(statusForVerdict('confirm', 'active')).toBe('active');
+  it('active + confirm & e≥20 → confirmed (verified 승격)', () => {
+    expect(statusForVerdict('confirm', 'active', 25)).toBe('confirmed');
   });
 
-  it('active + inconclusive/insufficient → active 유지', () => {
-    expect(statusForVerdict('inconclusive', 'active')).toBe('active');
-    expect(statusForVerdict('insufficient', 'active')).toBe('active');
+  it('active + confirm & e<20 → active (아직 확정 아님, emerging 후보)', () => {
+    expect(statusForVerdict('confirm', 'active', 8)).toBe('active');
   });
 
-  it('non-active(pending/archived)는 엔진이 건드리지 않음', () => {
-    expect(statusForVerdict('reject', 'pending')).toBe('pending');
-    expect(statusForVerdict('confirm', 'archived')).toBe('archived');
+  it('active + inconclusive/insufficient → active 유지 (e 무관)', () => {
+    expect(statusForVerdict('inconclusive', 'active', 50)).toBe('active');
+    expect(statusForVerdict('insufficient', 'active', 50)).toBe('active');
+  });
+
+  it('non-active(pending/archived/confirmed)는 엔진이 건드리지 않음 (confirmed sticky)', () => {
+    expect(statusForVerdict('reject', 'pending', 1)).toBe('pending');
+    expect(statusForVerdict('confirm', 'archived', 99)).toBe('archived');
+    expect(statusForVerdict('reject', 'confirmed', 1)).toBe('confirmed');
   });
 });

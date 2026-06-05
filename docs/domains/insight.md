@@ -145,7 +145,7 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 - 같은 trigger_element가 여러 도메인에 발현하면 분리하지 않고 같은 row의 evidence에 누적
 - 감지 횟수 추적 (detection_count), 신뢰도 평가 (confidence)
 - 비활성화 시 `active = false`, `deactivated_at = NOW()`
-- **일일 종합 인사이트(§23)는 `saju_patterns`를 쓰지 않는다** — `saju_influence_summary` view(verified/accumulating/recent, #393/#434 학습 결과)를 사용. `saju_patterns`는 시스템 프롬프트 조회 + weekly-fortune 관점 5 용으로만 잔존 (정리는 마스터 A A3 후속)
+- **일일 종합 인사이트(§23)는 `saju_patterns`를 쓰지 않는다** — `saju_influence_summary` view(#477 P3: verified/emerging/recent 3-tier, ### 26)를 사용. `saju_patterns`는 시스템 프롬프트 조회 + weekly-fortune 관점 5 용으로만 잔존 (정리는 마스터 A A3 후속)
 
 ### 5. 시스템 프롬프트 구성
 `buildInsightSystemPrompt()`가 실시간으로 아래 데이터를 로드하여 프롬프트에 주입:
@@ -508,7 +508,7 @@ Phase 4는 신규 fast path 명령어 없음. 카드 액션 버튼(`hypothesis_r
 
 #### Phase A2 — `saju_influence_summary` view + idempotency 테이블
 
-> ⚠️ **#477 P1(### 24)에서 view 재정의**: verified tier(가설×통계) 제거 → accumulating·recent 2층. recent는 `pattern_matches` 유지로 daily-insight 무탈. 아래 verified tier 서술은 P1 이전.
+> ⚠️ **이후 재정의됨 — 아래 서술은 Phase A2 시점 기록**: #477 P1(### 24)이 2층(accumulating·recent)으로, **#477 P3(### 26)이 3층(verified/emerging/recent)으로 재정의**. 현재 운영 tier 정의는 ### 26 기준. verified=status confirmed(e≥20), emerging=off-day effect leaning(naive accumulating 대체), recent=발현.
 
 마이그레이션:
 - `db/migrations/061_saju_influence_summary_view.sql` — view 정의
@@ -689,6 +689,8 @@ GROUP BY c.id;
 ```
 
 #### `saju_influence_summary` view body 재정의 (운영 자산 보존)
+
+> ⚠️ *아래는 마스터 A(068) 시점 기록. 이후 #477 P1(2층)·**P3(3층 verified/emerging/recent, ### 26)**으로 재정의 — 현재 tier 정의는 ### 26 기준.*
 
 | 항목 | 결정 |
 |------|------|
@@ -1418,7 +1420,8 @@ ALTER TABLE pattern_matches
 | 레이어 | 소스 | 표현 강도 |
 |--------|------|----------|
 | 베이스 — 오늘 사주 일운 | `fortune_analyses` (weekly-fortune 생성물 오늘치) | 만세력 교과서 해석 |
-| 검증 — 인과 단언 | 오늘 발현 시드 ∩ `saju_influence_summary` verified/accumulating | "너는 X일 때 실제로 Y하더라" |
+| 검증 — 인과 단언 | 오늘 발현 시드 ∩ `saju_influence_summary` verified(검증됨, e≥20) | "너는 X일 때 실제로 Y하더라" |
+| 경향 — hedged | 오늘 발현 시드 ∩ emerging(검증중, #477 P3) | "요새 X일에 Y 경향, 검증중" — 단언 금지 |
 | 현황 — 배경 맥락 | 오늘 발현 시드 중 미검증(recent) | "오늘 이런 기운·신호 활성" — **인과 주장 금지** |
 
 **데이터 수집** (메트릭/카운트만, diary 원문 입력 금지):
@@ -1510,7 +1513,7 @@ P1이 만든 (시드 × 신호) `pattern_links`를 **off-day 대조**로 검증�
 
 **주간 cron** (`weekly-verification.ts`, `weekly-hypothesis-review.ts` 대체): 월요일 **06:00 KST**(마이그레이션 079 — 08:00→06:00, daily-insight 08:03과 `pattern_links` 읽기 레이스 제거). `verifyUserLinks` → 링크별 `pattern_links` UPDATE(counters SET + `p_value`·`q_value`·`effect`·`test_type='fisher_2x2'`·`posterior_*`·`test_detail` JSONB + status) → 검증 현황 카드 → #insight. per-link try/catch 격리(#434 Phase 8a).
 
-**status 전이 정책 (provisional, 보수적)**: `pattern_summary`/`saju_influence_summary.accumulating`이 `status='active'` 링크만 집계 → 'active' 외 status는 daily-insight 노출에서 사라진다. 따라서:
+**status 전이 정책 (provisional, 보수적)** — ⚠️ *#477 P3(### 26)에서 해제: confirm은 e≥20에서 `confirmed` 실제 승격(verified tier), pattern_summary가 confirmed 포함하도록 보정. 아래는 P2 시점 기록*: `pattern_summary`/`saju_influence_summary.accumulating`이 `status='active'` 링크만 집계 → 'active' 외 status는 daily-insight 노출에서 사라진다. 따라서:
 
 | verdict | DB status | 이유 |
 |---------|-----------|------|
@@ -1545,6 +1548,63 @@ P1이 만든 (시드 × 신호) `pattern_links`를 **off-day 대조**로 검증�
 
 > 계획서 `.claude/plans/481-p2-weekly-verification.md`, 서사 [design-notebook](../design-notebook/metric-first-verification.md) Phase 2 섹션.
 
+### 26. 매트릭 중심 패턴 검증 — Phase 3 (통계 엔진 보강: e-value 게이트 + 등급별 노출, #483)
+
+P2(주간 off-day 검증 엔진)에 ADR-0032 통계 풀스택을 얹는다. 핵심: **확정의 안전성**(e-value)과 **느린 수율을 침묵으로 만들지 않는 노출**(3-tier)을 동시에.
+
+#### e-value 확정 게이트 ([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md))
+
+매주 들여다보는 구조(optional stopping)에서 q를 반복 보는 건 거짓양성을 부풀린다. 누적 **e-value**(test martingale)는 anytime-valid라 언제 멈춰 봐도 `P(sup_t e_t ≥ 1/α) ≤ α`(Ville). 판정 `e ≥ 20`(α=0.05).
+
+- **구성**(`stats.ts` `evalueTestMartingale`): 매 발현일에 "귀무 기준율 r 대비 pass율 상승"에 예측가능 베팅. r = 직전까지 **전체 일** running pass율(풀링 → Jensen 편향 억제), φ = active-day running pass율. 희석 대안 φ'=r+λ(φ−r), λ=0.5, one-sided(φ>r일 때만). off-day는 r만 갱신.
+- **결정론 리플레이**: prequential 추정이라 매주 전체 윈도우를 처음부터 재계산해도 prefix factor 동일 → sup 단조 증가. SET(전체 재계산) 아키텍처와 정합(ADR-0033 §2 긴장 해소). confirmed는 sticky(`verifyUserLinks`가 active만 재검증).
+- **빌드 게이트**(`stats.test.ts`): 무관 데이터 null 시뮬(p×activeProb 그리드 + AR(1) ρ=0.8 자기상관 케이스, 각 1500 trial)에서 거짓 확정율 ≤ α 실측. **통과 못 하면 머지 금지.** 자기상관에도 강건(ρ=0.8에서 \~0.026).
+
+#### 3-tier 등급 노출 ([ADR-0035](../adr/0035-graded-confidence-exposure.md))
+
+엄격한 게이트는 "검증됨" 주장에만, 가시성은 별도 hedged tier가 나른다. `saju_influence_summary` 재정의(마이그레이션 080):
+
+| tier | 게이트 | metric_value | 노출 |
+|------|--------|-------------|------|
+| **verified** "검증됨" | `status='confirmed'` (e≥20) | posterior_p | 인과 단언 가능(단 연관, 인과 아님) |
+| **emerging** "검증중" | active + `effect≥1.3` + 발현일≥15 | 발현일 pass율 | hedged + e-value 진행바. naive accumulating **대체** |
+| **recent** "오늘 발현" | 최근 7일 발현 | match_count | 현황만 |
+
+- **emerging이 핵심 수정**: 옛 accumulating은 발현일 pass율 55%↑만 봐서 off-day 대조를 안 했다(헌장 ② "기분탓" 노출 위험). emerging은 off-day 효과(`effect = 발현/비발현 rate ratio`)로 게이트 → 헌장 ② 정합 회복.
+- **e_value 진행바**: 주간 카드(🌱)가 `검증중 ███░░░░ e 4.2/20 (지난주 3.1 → 이번주 4.2)`로 누적도 노출 → 반복 노출이 "아직 멀었다"를 상기시켜 peeking 심리 방어.
+- 소비: daily-insight(#insight)가 view tier로 분기(`emerging` 라벨 동기화는 배포 직후 SKILL — repo 밖). 주간 카드는 ✅검증됨/🌱검증중/✗기각.
+
+#### 통계 스택 꼬리
+
+- **block permutation**(`blockPermutationP`): active 라벨을 블록(7일) 단위 셔플 → 자기상관 보정 p. **이 p를 BH-FDR 입력으로** 승격(Fisher p는 `test_detail` 참고용). 연속 발현 streak가 만드는 거짓 유의 차단.
+- **연속 신호 Mann-Whitney + Hodges-Lehmann**(`mannWhitneyU`): 보고용 효과크기(`test_detail`). 게이트는 이진 유지(ADR-0033).
+- **empirical-Bayes 수축**(`empiricalBetaPrior`): 전 링크 발현일 pass율 method-of-moments 공통 prior(농도 CAP 50) → posterior 수축. 링크 적으면 약함(헌장 ④ 자동 활성).
+- **발견/확정 q 분리**: `confirmQ=0.05` 활성, `discoverQ=0.15`는 P5 자율 발견까지 휴면(선언만).
+
+#### 데이터 모델
+
+- `pattern_links`: `e_value` 채움(077 선언만 → P3 populate). `status='confirmed'` 실제 승격(`statusForVerdict` e≥20).
+- `link_weekly_stats` 신규(080): 링크당 주 1행 스냅샷(e_value·2×2·posterior·p/q/effect, `UNIQUE(link_id, week_start)` 멱등) — 마틴게일 trail·emerging 진행바·주간대비.
+- view: `saju_influence_summary` 3-tier 재정의 + `e_value` 컬럼 추가(컬럼 계약 앞 11개 보존). `pattern_summary`·시드 영향력 합산에 `confirmed` 포함(verified 시드가 영향력 top에서 사라지는 P2 트랩 방지).
+- 임계 외부화(`insight-thresholds.ts`): `evalueAlpha`·`evalueThreshold`·`emergingMinEffect/Active`·`discoverQ`·`blockLen`·`blockPermIters`. emerging 바는 ADR-0035 튜닝 노브(첫 몇 달 calibration). view의 1.3/15 하드코딩은 TS 상수와 동기화(변경 시 migration).
+
+#### 흐름 (주간 검증 엔진, 월 06:00)
+
+```
+verifyUserLinks(active 링크) → 링크별:
+  raw 윈도우 재계산 → 2×2(Fisher) + block-perm p + e-value(일자 시퀀스) + 연속 MW
+  → EB 공통 prior로 posterior 수축 → block-perm p로 BH-FDR(q)
+  → classifyVerdict(q·effect) + e≥20 → statusForVerdict
+persist: pattern_links SET + link_weekly_stats UPSERT
+카드: 시드 영향력 top5 + 3-tier(검증됨/검증중/기각) → #insight
+```
+
+#### 빌드 결과 (설계 대비 정련)
+
+- **자기상관 robustness 회귀 가드 추가**(설계 미계획): 현실 데이터는 pass가 streak를 갖는다. AR(1) ρ=0.8에서도 e-value 거짓 확정율 ≤ α임을 빌드 중 진단 → 영구 테스트로 박음. 풀링 기준율이 핵심.
+- **pattern_summary `confirmed` 포함**(P2 보수화 후속): confirm 승격이 시드를 active 집계에서 빼 노출에서 사라지는 트랩을 verified tier에 그대로 두면 안 됨 → 080에서 join을 `IN ('active','confirmed')`로.
+- **마이그레이션 080 prod 스키마 사전 대조**: 로컬 PG 부재 → 읽기전용 introspection으로 컬럼/CHECK 검증 후 작성(배포 시 트랜잭션 롤백 안전).
+
 ## 파일 구조
 
 ```
@@ -1556,21 +1616,22 @@ src/agents/insight/
 ├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
 ├── saju-seed-fast-path.ts         # 사주 시드 보기/끄기/켜기 (Phase 3)
 ├── hypothesis-discovery.ts        # Phase 4 자동 패턴 발견 (#477 P2: P5 재설계까지 dormant)
-├── hypothesis-cards.ts            # #477 P2 주간 검증 카드 + 가설 등록 payload(P5 scaffolding)
+├── hypothesis-cards.ts            # #477 P2/P3 주간 검증 카드 (3-tier ✅검증됨/🌱검증중 진행바/✗기각) + 가설 등록 payload(P5 scaffolding)
 └── metric-approval-cards.ts       # Phase 6 LLM 매트릭 후보 카드 + 승인/거절 payload
 
 src/shared/
 ├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반
-├── pattern-verification.ts        # #477 P2 off-day 검증 엔진 (신호/시드 시리즈 → 2×2 → Fisher/posterior → verdict)
-├── stats.ts                       # 순수 통계 (Fisher's exact + BH-FDR). #477 P2: pattern-hypothesis에서 추출
+├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status)
+├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann)
+├── bayesian-posterior.ts          # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
 ├── saju-mappings.ts               # 십성 알고리즘 계산 (LLM 프롬프트용)
-├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification) 임계치 단일 관리
+├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification: P2 q + P3 e-value α·emerging 바·discoverQ·blockLen) 임계 단일 관리
 └── insights.ts                    # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 verified tier=P3까지 미노출)
 
 src/cron/
 ├── daily-pattern-matching.ts              # 07:00 사주 일일 매칭 → seed_daily_activations transient 기록 (#477 P2: 검증·백필·발송 제거)
 ├── diary-meta-extract.ts                  # 일기 → enum 태그 추출 cron (Phase 3, Opus)
-├── weekly-verification.ts                 # 월 06:00 주간 off-day 검증 엔진 (#477 P2, weekly-hypothesis-review 대체)
+├── weekly-verification.ts                 # 월 06:00 주간 off-day 검증 엔진 (#477 P2/P3: e-value persist + 주간 스냅샷 + 3-tier 카드)
 └── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5, #477 P2 seed_daily_activations 재배선)
 
 scripts/
@@ -1605,6 +1666,12 @@ db/migrations/  (마스터 #434 Phase 8a — 2026-05-29)
 
 db/migrations/  (마스터 A Phase A3 — 2026-06-03)
 └── 076_daily_insight.sql                        # daily_insight_log + 매칭 07:00 + insightMorning 비활성
+
+db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — P1~P3)
+├── 077_signal_defs_and_links.sql               # P1: 신호 전역화 (signal_defs + pattern_links), 매트릭→링크 이관, view 재정의
+├── 078_seed_daily_activations.sql              # P2: pattern_matches → seed_daily_activations rename + 검증 컬럼 DROP
+├── 079_weekly_verification_slot.sql            # P2: 주간 검증 slot rename + 시각 06:00
+└── 080_graded_exposure_and_weekly_stats.sql    # P3: 3-tier view(verified/emerging/recent) + link_weekly_stats 스냅샷 + pattern_summary confirmed 포함
 
 db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 ├── 077_signal_defs_and_links.sql               # P1 신호 전역화: signal_defs + pattern_links, pattern_metrics/hypotheses/stats DROP

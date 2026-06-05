@@ -70,7 +70,8 @@
 - 약한 시드(누적 \~10건 + hit rate < 30%) 주간 알림 → 사용자 명령어로 active 토글
 - 슬랙 조회/토글: `사주 시드 보기` / `사주 시드 모두 보기` / `사주 시드 끄기 #N` / `사주 시드 켜기 #N`
 - 풀셋 시드(매트릭 없음, 마스터 #434 Phase 2): trigger만 평가하고 `seed_daily_activations.matched=NULL`로 evidence-only 누적. 60+일 후 LLM 매트릭 제안 슬롯(Phase 6)이 가설 후보 풀로 사용
-- 주간 off-day 검증 엔진(#477 P2, 월 06:00): (시드 × 신호) `pattern_links`를 발현일 vs 비발현일 2×2(Fisher's exact + BH-FDR + Beta-Binomial)로 검증 → `#insight` 주간 카드. "본인 패턴"과 "base rate 높은 신호" 분리. confirm은 provisional(통계 확정 게이트 e-value = P3)
+- 주간 off-day 검증 엔진(#477 P2/P3, 월 06:00): (시드 × 신호) `pattern_links`를 발현일 vs 비발현일 2×2로 검증 → `#insight` 주간 카드. "본인 패턴"과 "base rate 높은 신호" 분리. **P3 통계 스택**(ADR-0032·0034·0035): 누적 e-value(순차 anytime-valid, optional stopping 통제)로 `e≥20` 확정 + block permutation(자기상관 보정)으로 BH-FDR + 연속 Mann-Whitney 효과크기 + empirical-Bayes 수축. **e-value는 null 시뮬 빌드 게이트**(무관 데이터 거짓양성 ≤ α)
+- 신뢰도 3-tier 노출(#477 P3, ADR-0035): `saju_influence_summary` view = verified("검증됨", e≥20) / emerging("검증중", off-day 효과 leaning + e-value 진행바) / recent("오늘 발현"). 느린 확정 수율을 침묵으로 만들지 않으면서 미검증을 확정처럼 노출하지 않음. 주간 카드 ✅검증됨 / 🌱검증중 / ✗기각
 - 운 레벨 차원(마스터 #434 Phase 2.5): 시드별 `pillar_level`(원국/대운/세운/월운/일운/누적) 차원 도입 + `cumulative_pillar_count` trigger(N=1..5 풀셋 임계치) + 화 오행 누적 시드 OR 매칭(`diary_meta` + `expense_category_present`). 월요일 09:15 자동 분포 분석 cron이 hit-rate 분포 노출
 - 결정 기록: [ADR-0017](./adr/0017-saju-ganji-master-normalization.md), [ADR-0028](./adr/0028-pillar-level-and-threshold-pool.md)
 
