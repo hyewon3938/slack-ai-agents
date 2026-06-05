@@ -1,169 +1,52 @@
 /**
  * 매일 07시 패턴 일일 매칭 cron (08:03 일일 종합 인사이트 선행, #475 ADR-0031).
- * ADR-0017 + ADR-0026(pattern_* rename) + ADR-0033(매트릭=가설 재정의, #477 P1) 참조.
+ * ADR-0017 + ADR-0026(pattern_* rename) + ADR-0033(매트릭=가설 재정의, #477 P1/P2) 참조.
  *
- * 흐름:
- *   0) 마지막 매칭일~오늘 갭 자동 백필 (봇 다운 복귀 시 누락일 복구, 기록만)
- *   1) 오늘 활성 시드 평가 → pattern_matches UPSERT (raw trigger-log; daily-insight recent tier 원천)
- *   2) matched=true 시드를 #life 잔소리 끝 한 줄로 압축 전송
+ * 흐름 (#477 P2 — transient 핸드오프):
+ *   오늘 활성 시드 평가 → seed_daily_activations UPSERT ("오늘 발현 시드" 핸드오프 로그)
+ *   → daily-insight(#insight 08:03)·saju_influence_summary recent tier·pillar-level이 소비.
  *
- * #477 P1: 일별 verify(카운터 확정)·confirmed 가설 라인은 P2 주간 검증 엔진까지 제거.
- * pattern_matches 기록은 유지 — P2가 raw에서 윈도우 재계산하고, recent tier(daily-insight)가 의존.
+ * #477 P2: 검증(카운터 확정 + status 전이)은 주간 엔진(pattern-verification)이 raw 재계산.
+ * 일별 백필·#life 한 줄 발송은 제거 — 이 cron은 "오늘"만 조용히 기록(Slack 발송 없음).
  */
 
 import type { App } from '@slack/bolt';
-import {
-  matchAllSeedsForDay,
-  recordDailyMatches,
-  compactMatchedLine,
-  getDailyContext,
-} from '../shared/pattern-match.js';
-import { postToChannel } from '../shared/slack.js';
-import { getEffectiveTodayISO, addDays } from '../shared/kst.js';
-import { query } from '../shared/db.js';
+import { matchAllSeedsForDay, recordDailyMatches } from '../shared/pattern-match.js';
+import { getEffectiveTodayISO } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 import type { LifeCronConfig } from './life-cron.js';
 
-/** 봇 장기 다운/최초 실행 시 백필 폭주를 막는 상한 (일). 초과분은 가장 최근 구간만 백필 + 로그. */
-const MAX_BACKFILL_DAYS = 14;
-
-export interface DailyPatternMatchingResult {
-  date: string;
-  triggeredCount: number;
-  matchedCount: number;
-  line: string | null;
-}
-
-/**
- * 매칭 평가만 수행 (Slack 전송 X). 테스트/디버깅용.
- */
-export const runDailyPatternMatchingDryRun = async (
-  userId: number,
-  date: string,
-): Promise<DailyPatternMatchingResult> => {
-  const ctx = await getDailyContext(userId, date);
-  if (!ctx) {
-    return { date, triggeredCount: 0, matchedCount: 0, line: null };
-  }
-
-  const results = await matchAllSeedsForDay(userId, date);
-  await recordDailyMatches(userId, date, results);
-
-  const triggeredCount = results.filter((r) => r.triggerActivated).length;
-  const matchedCount = results.filter((r) => r.matched).length;
-  const line = await compactMatchedLine(ctx, results);
-
-  return { date, triggeredCount, matchedCount, line };
-};
-
-/**
- * 한 유저 매칭 처리 (Slack 전송 포함).
- */
-export const dailyPatternMatchingForUser = async (
-  app: App,
-  userId: number,
-  channelId: string,
-  date: string,
-): Promise<void> => {
-  let result: DailyPatternMatchingResult;
+/** 한 유저의 오늘 매칭 평가 + seed_daily_activations 기록 (Slack 발송 없음, 유저별 에러 격리). */
+const matchAndRecordForUser = async (userId: number, date: string): Promise<void> => {
   try {
-    result = await runDailyPatternMatchingDryRun(userId, date);
+    const results = await matchAllSeedsForDay(userId, date);
+    await recordDailyMatches(userId, date, results);
+    const triggered = results.filter((r) => r.triggerActivated).length;
+    console.warn(`[Pattern Match] user=${userId} date=${date} triggered=${triggered} (recorded)`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Pattern Match] 매칭 실패 user=${userId}: ${msg}`);
-    return;
+    console.error(`[Pattern Match] 매칭 실패 user=${userId} date=${date}: ${msg}`);
   }
-
-  console.warn(
-    `[Pattern Match] user=${userId} date=${date} triggered=${result.triggeredCount} matched=${result.matchedCount}`,
-  );
-
-  if (result.line) {
-    try {
-      await postToChannel(app.client, channelId, result.line);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Pattern Match] Slack 전송 실패 user=${userId}: ${msg}`);
-    }
-  }
-};
-
-/**
- * 마지막 매칭일+1 ~ 어제까지 누락된 날짜 목록 (오늘 제외).
- * 봇 다운 등으로 매칭이 빠진 날을 자동 복구하기 위함 — cron이 "오늘만" 매칭하면
- * 봇이 멈춘 날은 영구 누락된다. recordDailyMatches가 UPSERT 멱등이라 재실행 안전.
- * 갭이 MAX_BACKFILL_DAYS를 초과하면 가장 최근 구간만 백필하고 truncation을 로그로 남긴다.
- */
-const findBackfillDays = async (userId: number, today: string): Promise<string[]> => {
-  const result = await query<{ last_date: string | null }>(
-    `SELECT MAX(date)::text AS last_date FROM pattern_matches WHERE user_id = $1`,
-    [userId],
-  );
-  const lastDate = result.rows[0]?.last_date;
-  if (!lastDate) return []; // 매칭 이력 없음(최초 실행) → 백필 없이 오늘분만 정규 처리
-
-  const rawStart = addDays(lastDate, 1);
-  const earliest = addDays(today, -MAX_BACKFILL_DAYS);
-  // ISO 날짜 문자열(YYYY-MM-DD)은 사전식 비교가 곧 시간순 비교
-  const truncated = rawStart < earliest;
-  let cursor = truncated ? earliest : rawStart;
-
-  const days: string[] = [];
-  while (cursor < today) {
-    days.push(cursor);
-    cursor = addDays(cursor, 1);
-  }
-  if (truncated) {
-    console.warn(
-      `[Pattern Match] 갭이 ${MAX_BACKFILL_DAYS}일 초과 user=${userId}: ${rawStart}~${addDays(earliest, -1)} 스킵, 최근 ${days.length}일만 백필`,
-    );
-  }
-  return days;
-};
-
-/**
- * 누락된 과거 날짜 백필(매칭 기록만, Slack 전송 X) 후 오늘분 정규 처리(match + 전송).
- * #477 P1: 백필분의 hit/miss 확정은 P2 주간 엔진이 raw에서 재계산(일별 verify 제거).
- */
-const backfillAndMatchForUser = async (
-  app: App,
-  userId: number,
-  channelId: string,
-  today: string,
-): Promise<void> => {
-  const backfillDays = await findBackfillDays(userId, today);
-  for (const day of backfillDays) {
-    try {
-      const r = await runDailyPatternMatchingDryRun(userId, day);
-      console.warn(
-        `[Pattern Match] 갭 백필 user=${userId} date=${day} triggered=${r.triggeredCount} matched=${r.matchedCount}`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Pattern Match] 갭 백필 실패 user=${userId} date=${day}: ${msg}`);
-    }
-  }
-  await dailyPatternMatchingForUser(app, userId, channelId, today);
 };
 
 /**
  * 패턴 일일 매칭 cron 본체. SLOT_TASKS에서 호출.
- * #life 채널로 전송 (life channel mapping 사용).
- * 누락일 자동 백필 포함 (봇 다운 복귀 시 갭 메움).
+ * #477 P2: "오늘 발현 시드"만 seed_daily_activations에 transient 기록 (Slack 발송 없음).
+ * (app/config는 SLOT_TASKS 시그니처 호환용 — 발송 경로 제거로 미사용.)
  */
-export const dailyPatternMatchingTask = async (app: App, config: LifeCronConfig): Promise<void> => {
+export const dailyPatternMatchingTask = async (
+  _app: App,
+  _config: LifeCronConfig,
+): Promise<void> => {
   const today = getEffectiveTodayISO();
   const mappings = await queryAllUserMappings();
 
   if (mappings.length === 0) {
-    if (!config.channelId) return;
-    await backfillAndMatchForUser(app, DEFAULT_USER_ID, config.channelId, today);
+    await matchAndRecordForUser(DEFAULT_USER_ID, today);
     return;
   }
 
   for (const mapping of mappings) {
-    const channelId = mapping.lifeChannelId ?? mapping.slackUserId;
-    if (!channelId) continue;
-    await backfillAndMatchForUser(app, mapping.userId, channelId, today);
+    await matchAndRecordForUser(mapping.userId, today);
   }
 };
