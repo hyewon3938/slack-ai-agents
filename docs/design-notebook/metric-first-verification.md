@@ -386,6 +386,73 @@ P4의 후반 — P4a(강도)에 이은 **관계·변환 패밀리**. P4a와 동�
 >
 > 빌드 회고: 인터뷰가 합화 모델을 X→Y→Z로 끌어올린 데 더해, 빌드 탐색이 설계의 "관계 큐레이트 링크"를 **이 원국에선 중복(사술귀문≡S2)**임을 드러내 효과적 십성으로 무게중심을 옮긴 게 핵심. 도메인 직관(설계)과 데이터 현실(빌드 introspection)이 한 번 더 교차해 스코프를 정련.
 
+## Phase 5a: 패턴 발굴 엔진 — off-day 여집합 스캔 + 승인 게이트 (2026-06-05)
+
+- 이슈: [#489](https://github.com/hyewon3938/slack-ai-agents/issues/489)
+- 관련 계획서: `.claude/plans/489-p5a-discovery-engine.md`
+- 상태: 구현 완료 (4 커밋, 테스트 동봉 — 머지·배포 대기)
+- 정본 결정: [ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md)
+
+### 결정 요약
+
+Phase 표의 "P5 발굴 + 승인 게이트"를 **P5a(통계 발굴 + 승인) / P5b(LLM 신호 제안, 열린 SQL)로 분할**한다. P5a는 P4a·P4b가 evidence-only로 남긴 결정론 feature 시드(강도 밴드·관계·효과적 십성)를 데이터 기반으로 검증 트랙에 연결하는 발굴 엔진. **새 통계 코어 0, 마이그레이션 0**(P1이 `source='discovery'`·`status='pending'` 선언 완료).
+
+- **발굴 = 여집합 그리드 off-day 스캔**: 링크 없는 (active 시드 × active 신호) 쌍을 기존 검증 프리미티브(`computeSeedActivationSeries`·`computeSignalSeries`·`buildContingency`·`blockPermutationP`·`bhFdrByFamily`)로 스캔. 시드 시리즈 시드당 1회·신호 시리즈 신호당 1회(P1 전역화) — 검증이 쓰던 그 시리즈를 active 외 시드/신호까지 넓혀 미등록 쌍에 조인 + 2×2.
+- **신호 = sql(1차) + tag(보조) 둘 다**: Phase 표 초안의 "시드×태그 전수"를 P4a·P4b 위임이 **sql까지 확장**하도록 정정(evidence-only 강도 밴드는 sql 신호로만 잡힌다). 강도 밴드 시드는 2-pass 분위수 활성을 그대로 받음.
+- **2층 통제**: 발견 q 트랙(느슨 `discoverQ`≈0.15, FDR 가족 분리)은 *띄우기만*, 확정은 여전히 엄격 e-value 트랙(P3)의 일. 거짓 발견 = 카드 1장이지 거짓 믿음 아님.
+- **승인 게이트**: 후보 → `pending` 링크 → #insight **맥락 풍부 카드**(off-day 통계 + 시드/신호 의미 평어 설명 + "승인=추적 시작, 통계가 심판") + [추적 시작]/[패스] → `active`. 자동·LLM 심판 아님 → 다음 주간 엔진이 엄격 트랙으로 검정.
+
+### 의사결정 분기점
+
+1. **P5 분할 — P5a(통계 발굴) / P5b(LLM 신호 제안)** (vs 단일 P5). *사용자 위임 → Claude 판단*. 두 트랙이 독립: 통계 발굴은 **기존 신호 스캔(새 SQL 0, 보안 표면 0)** 이고 P5 목적(evidence-only 위임 해소)을 단독 충족 / LLM 제안은 **열린 SQL 생성**(이 마스터 최대 보안 표면)이라 전용 검증 체크포인트가 맞음. 승인 게이트는 공유 인프라(P5a가 깔고 P5b가 재사용) → 깔끔한 의존. P4a/P4b 분할 선례(독립 난이도 둘을 한 체크포인트에 안 얹기). → P5a 먼저.
+2. **발굴 출력 = surface-only(pending), 자동 확정 안 함** (vs 발견 q 통과 시 바로 active/confirmed). ADR-0032 §2 발견/확정 q 분리를 "발견은 제안, 확정은 e-value"로 못박음. active/confirmed가 daily-insight·주간 카드를 먹이므로 느슨한 q 발견의 자동 활성은 미검증 연관의 emerging 조기 노출 → surface-only. → [ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) §2.
+3. **승인 게이트 = 사람 버튼 + 맥락 카드** (vs 자동 / LLM 선별). *사용자 결정*: 둘 다 Slack 승인으로 오되 *왜 이 후보인지 충분한 맥락*과 함께. 명제 충돌("데이터로만 가린다" vs 사람 개입) 해소 = 사람은 **노출·큐레이션**("추적할 가치")을 게이트, **믿음**("진짜")은 끝까지 e-value의 일. LLM 심판 회피 = v2 헌장 ①(LLM은 P5b의 *생성*에만, 데이터 *판정* 아님). → [ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) §3.
+4. **여집합 정의 = 모든 status의 기존 링크 제외** (vs active/confirmed만 제외 — 옛 엔진). rejected/weak/archived/pending도 제외 → rejected 재부상·중복 카드 방지. 발굴은 진짜 새 쌍만.
+5. **마이그레이션 0** (vs 새 컬럼). P1이 `pattern_links`에 `source='discovery'`·`status='pending'`·발굴 통계 컬럼(effect·p·q·posterior·test_detail)을 이미 선언(헌장 ④ "미리 선언") → P5a는 순수 코드.
+
+### 포기한 안 / 미룬 항목
+
+- **LLM 신호 제안(열린 SQL 생성)**: P5b로 분리. 옛 ADR-0025·0030(LLM 매트릭 제안·승인)을 pattern_links + signal_defs(`source='llm'`) 모델로 재정의, P5a 승인 게이트 재사용. 보안 표면(LLM-생성 SQL 실행) 전용 검증.
+- **자동 활성 / LLM 선별 게이트**: 미채택([ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) Alternatives).
+- **손박기 mass-wiring**: 미채택 — 발굴이 off-day로 데이터에서 띄움(헌장 ②).
+- **교란(공존 시드) 분리**: 발굴은 주변(marginal) 연관만. 어부지리 차단은 P6 플래그/P7 데이터 게이트.
+- **알림 큐레이션(#life 잔소리)**: P6.
+- **옛 `discoverCandidates`(폐기 스키마·시리즈 로직 중복)**: 검증 프리미티브 재사용으로 대체(전면 재작성).
+
+### 미해결·가설 → 빌드에서 해소
+
+- **발굴 호스트·주기**: 주간 cron(`weekly-verification`, 월 06:00)에 검증 후 단계로 fold(시리즈 계산 공유). 후보가 pending이면 여집합에서 제외돼 매주 재부상 안 함(승인 대기 안정). 단 첫 setup run(전체 윈도우)은 surface 量이 많을 수 있어 top-N cap.
+- **발굴 노브 외부화**(헌장 ⑤): `insight-thresholds`에 `discoverQ`(이미 있음) + `discoveryMinActive`(< 확정 `minActiveDays`=30) · `discoveryMinEffect`(= 확정 floor 1.3) · `discoveryTopN`(주당 surface 상한). 값은 calibration 노브(첫 몇 주 튜닝), 빌드가 prod introspection으로 초기값 확정.
+- **여집합 시리즈 비용**: 검증은 link에 낀 시드/신호만 시리즈 계산, 발굴은 active 전부(시드 \~80 × 신호 71). 시드 시리즈·신호 시리즈를 한 번 계산해 검증·발굴이 공유(이중 계산 회피). 배칭은 후속 최적화, 정확성 우선.
+- **발견 BH-FDR 풀**: 확정 트랙(`verifyUserLinks`)과 **별도 풀**(발굴 후보 집합만) — 가족별 `bhFdr` 후 `q ≤ discoverQ`. 가족 키는 `familyOf`(P4a/P4b) 재사용.
+- **카드 맥락 데이터**: 시드 description(`pattern_catalog`) + 신호 description(`signal_defs`) + off-day 통계(발현/비발현 pass율·effect·n·발견 q)로 평어 한 줄 생성. 승인 payload는 `{linkId}`(pending 링크 선INSERT → 승인=status UPDATE, `metric_approve`의 `{metricId}` 패턴).
+- **`actions.ts` 재배선**: `PATTERN_INTERACTION_SUSPENDED_P1` 플래그 해제(발굴 경로) → pending→active UPDATE(pattern_links). 옛 `pattern_hypotheses`/`pattern_metrics` INSERT/UPDATE는 제거.
+- **방향**: 발굴은 신호 고정 direction 기준 positive 연관(effect≥`discoveryMinEffect`)만 surface(off-day 엔진이 발현일 pass율↑만 confirm — P4a 정련 1과 정합).
+
+### 도메인 문서 본문 채우기
+
+- [x] `docs/domains/insight.md` ### 29 (Phase 5a) 본문 채움 (스캐너·2층 통제·카드·액션·cron·노브 + 파일 구조 코멘트 갱신).
+
+### 빌드 산출 (설계 대비 정련)
+
+1. **`ON CONFLICT` 키 = `(seed_id, signal_id)`** (계획서는 `(user_id, seed_id, signal_id)` 가정). 077 실제 UNIQUE 제약이 `(seed_id, signal_id)`라 `insertPendingDiscoveryLink`의 충돌 절을 그에 맞춤(시드/신호가 이미 user 종속이라 동치).
+2. **suspended 플래그 분리 + 옛 broken 핸들러 본문 제거**. 계획은 `PATTERN_INTERACTION_SUSPENDED_P1` 해제였으나, 빌드는 발굴 경로를 **핸들러 신설**로 활성화하고 LLM 매트릭만 `METRIC_INTERACTION_SUSPENDED_P5B`로 분리. 옛 `metric_approve`/`reject`의 `pattern_metrics`(DROP) UPDATE 본문은 unreachable이어도 **삭제**(죽은 테이블 참조 잔존 방지) — stale 카드 클릭은 ack+skip graceful no-op.
+3. **액션 UPDATE를 테스트 가능 코어로 추출**. Bolt 핸들러에 inline됐던 SQL을 `approveDiscoveryLink`/`dismissDiscoveryLink`(순수-ish, `WHERE status='pending' AND user_id=$2` 가드)로 분리 → 무테스트였던 `actions.ts`에 단위 테스트 부여.
+4. **ADR 인덱스 0038 누락 보충**. P4b가 `docs/adr/README.md` 인덱스에 0038 행을 안 넣은 걸 발견 → 본 PR에서 0038+0039 둘 다 추가(인덱스 정합).
+5. **prod 사이징 introspection** (읽기전용 COUNT): active 시드 **262** × active 신호 **68** → 여집합 ≈ **17.7k 쌍**. evidence-only(링크 0) 시드 **224** = relation 80 · ganji 57 · life_signal 35 · **strength_band 14** · sibiunsung 11 · element_density 9 · branch 9 · 기타. `hwa_sipsung`은 0(P4b 10 큐레이트 링크로 이미 연결) → P4a 강도밴드·P4b 관계가 evidence-only로 남아 발굴 대상임을 prod로 확인(cross-check 통과).
+
+### 기술적 의의
+
+검증 프리미티브(off-day 2×2 + block-perm + 가족별 FDR)를 **여집합 그리드에 재사용**해 발굴을 새 통계 코어 0·마이그레이션 0으로 실현. surface-q(노출)와 확정-e-value(믿음)를 2층으로 분리하고 사람은 큐레이션만 게이트 → "데이터로만 가린다"를 깨지 않으면서 evidence-only 결정론 feature 시드를 검증 트랙에 연결. (어필 표현은 portfolio-candidates.)
+
+### 회고
+
+빌드는 깔끔하게 떨어졌다 — P1 전역화(시드 시리즈 시드당 1회·신호 시리즈 신호당 1회) + P4a/P4b 가족 인프라(`familyOf`·`bhFdrByFamily`)가 이미 깔려 있어 스캐너는 "여집합 enumerate → 기존 프리미티브 호출 → top-N"의 조립이었다(P4a·P4b에 이어 3연속 "새 통계 코어 0").
+
+prod 사이징에서 드러난 실질 비용: 여집합 17.7k 쌍 자체는 2×2라 싸지만, **시드 활성 시리즈 262개 + 신호 시리즈 68개**(sql 신호는 신호당 \~366일 `runMetricSql`)를 매 주간 run마다 계산하는 게 지배 비용 — 월요일 06:00 단발·n=1이라 수용하되, 배칭은 명시적 후속(ADR-0039 단점). 첫 실행 타이밍이 실측 기준.
+
+첫 주간 발굴 run(다음 월 06:00)에서 확인할 것: surface 후보 수·가족 분포·**strength_band 14개가 실제로 후보로 잡히는지**(\~1/3 일 발현이라 nActive 충분 가능) vs **relation 80개는 대부분 sparse → 사전선별(nActive<12)에서 컷 = insufficient=정직 예상**. 승인 카드 맥락 품질(평어가 시드/신호 description으로 충분히 읽히는지)도 첫 카드로 점검.
+
 ---
 
 ## 회고 (TODO: `/build` 구현 후 보강)

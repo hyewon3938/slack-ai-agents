@@ -1686,18 +1686,61 @@ P4(결정론 사주 feature 엔진)의 후반. P4a(강도)에 이은 **관계·�
 
 **데이터 모델** (마이그레이션 082): relation_type CHECK(+귀문·암합) + trigger_target_type CHECK(+hwa_sipsung) + 귀문 6/암합 4 쌍 + auto-gen 관계 시드 + 효과적 십성 5 시드 + 효과적 십성 × 객관 신호 10 큐레이트 링크(generic 십성→행동, 양의 연관) + RAISE 검증(silent fail 방지).
 
+### 29. 매트릭 중심 패턴 검증 — Phase 5a (패턴 발굴 엔진 + 승인 게이트, #489)
+
+P4a·P4b가 evidence-only로 남긴 결정론 feature 시드(강도 밴드·관계·효과적 십성)를 데이터 기반으로 검증 트랙에 연결. 정본 [ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md). **스키마 변경 0**(P1이 `source='discovery'`·`status='pending'` 선언 완료), 새 통계 코어 0(검증 프리미티브 재사용).
+
+**문제**: 주간 검증 엔진(`verifyUserLinks`)은 `status='active'` 링크만 검정한다. 큐레이트 링크 없이 활성 로그만 누적하는 evidence-only 시드(오행 밴드 토·금·수 전체+목/화 약·적정, 070 자동생성 관계, 효과적 십성)는 영영 검증 안 됨. P4a·P4b가 명시적으로 P5로 위임.
+
+**발굴 스캐너** ([hypothesis-discovery.ts](../../src/agents/insight/hypothesis-discovery.ts) `discoverCandidates`):
+
+- 범위 = **링크 없는 (active 시드 × active 신호) 여집합**. 기존 링크(어떤 status로도)는 제외(rejected 재부상·중복 차단).
+- 신호는 **sql(객관 1차) + tag(주관 보조) 둘 다** — evidence-only 강도 밴드는 sql 신호로만 잡힌다(Phase 표 "시드×태그"를 sql까지 확장).
+- 검증 프리미티브 재사용: `computeSeedActivationSeries`(시드당 1회, strength_band 2-pass 포함)·`computeSignalSeries`(신호당 1회) → `buildContingency` 2×2 → `verifyContingency`(Fisher) → `blockPermutationP`(자기상관 보정) → `bhFdrByFamily`(가족별 발견 BH-FDR). 신호·시드 시리즈를 1회씩만 계산(P1 전역화 payoff).
+- 파이프: Fisher 사전선별(n≥`discoveryMinActive`·effect≥`discoveryMinEffect`·fisherP≤`discoveryMaxFisherP`) → 통과만 block-perm(Monte Carlo 비용 차단) → 발견 q≤`discoverQ` → effect 내림차순 top-`discoveryTopN`(드롭 시 로그, 무음 캡 금지).
+
+**2층 통제** (다중검정·연구자 자유도, [ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) §2):
+
+| 층 | 트랙 | 임계 | 역할 |
+|----|------|------|------|
+| surface | 발견 q | `discoverQ`≈0.15 (느슨) | 후보만 *띄움* |
+| belief | 확정 e-value | `confirmQ`≤0.05 + e≥20 (엄격) | 진짜인지 *판정* |
+
+- 발견 후보 집합에 자체 BH-FDR, **FDR 가족 분리**(`familyOf` 재사용 — 강도 발굴이 baseline 발굴을 과세 안 함). 확정 트랙(`verifyUserLinks`)과 별도 풀.
+- 거짓 발견의 비용 = 승인 카드 1장이지 거짓 믿음이 아니다. 사전 고정 규칙(off-day 대조·신호 direction 고정)이라 사후 노브 없음(헌장 ②).
+
+**pending 링크 선INSERT** (`insertPendingDiscoveryLink`): surface 후보를 `pattern_links`에 `source='discovery'`·`status='pending'`로 INSERT(`ON CONFLICT (seed_id, signal_id) DO NOTHING` — 여집합이 보장하나 방어). 발굴 스냅샷(rate_active·rate_off·effect·fisher_p·block_p·discover_q·family)을 `test_detail` JSONB에 동봉(카드·감사). posterior는 provisional(EB 없이 hit/miss) — 승인 후 첫 주간 검증이 EB prior로 SET 덮어씀.
+
+**승인 카드** (맥락 풍부, [hypothesis-cards.ts](../../src/agents/insight/hypothesis-cards.ts) `buildDiscoveryCandidateCard`): 헤더 `[사주/생활] {시드} × {신호} — 새 패턴 후보` + off-day 통계(발현일 vs 평소 pass율·effect·n) + 시드/신호 의미 평어(description 조합, 없으면 이름 폴백) + caveat("아직 후보야 … 연관이지 인과 아님") + `[추적 시작]`(primary)/`[패스]`. payload = `{linkId}`.
+
+**승인 액션** ([actions.ts](../../src/agents/insight/actions.ts)):
+
+| 버튼 | 전이 | 의미 |
+|------|------|------|
+| 추적 시작 | `pending → active` | 다음 주간 검증부터 off-day 대조 대상 |
+| 패스 | `pending → archived` | 사용자 "추적 안 함" (통계 `rejected`와 구분 — 둘 다 여집합 제외) |
+
+- `approveDiscoveryLink`/`dismissDiscoveryLink`(`WHERE id=$1 AND user_id=$2 AND status='pending'` 가드) 테스트 가능 코어. LLM 매트릭 승인(`METRIC_*`)은 P5b까지 suspended.
+- **노출 vs 믿음 분리**: 사람은 *진실*을 판정하지 않는다 — 게이트하는 건 노출·큐레이션("추적할 가치 있나"), 믿음("진짜인가")은 끝까지 e-value 트랙. 게이트 없이 느슨한 q 발견을 자동 활성하면 미검증 연관이 emerging tier로 조기 노출되므로, 사람 게이트가 그 노출만 막는다.
+
+**주간 cron 통합** ([weekly-verification.ts](../../src/cron/weekly-verification.ts) `surfaceDiscoveries`): 검증·persist·카드 발송 후 발굴 단계(검증과 독립 try-catch 격리 — 발굴 실패가 검증 결과를 막지 않게). 월요일 06:00 KST만 실행(`weeklyVerificationTask` 가드 상속).
+
+**발굴 노브** ([insight-thresholds.ts](../../src/shared/insight-thresholds.ts) `patternVerification`): `discoverQ`(0.15)·`discoveryMinActive`(12)·`discoveryMinEffect`(1.3)·`discoveryMaxFisherP`(0.1)·`discoveryTopN`(5). 헌장 ⑤ 튜닝 노브 — calibration.
+
+**P5b 의존**: LLM 신호 제안(열린 SQL 생성)은 같은 승인 게이트(맥락 카드 + pending→active)를 재사용. 발굴(P5a)은 *기존 신호*를 off-day로 잇고, LLM(P5b)은 *새 신호*를 생성한다(둘 다 사람 게이트, 통계가 심판).
+
 ## 파일 구조
 
 ```
 src/agents/insight/
 ├── index.ts                       # 에이전트 생성, fast path 매칭, LLM 에이전트 루프
 ├── prompt.ts                      # 시스템 프롬프트 빌더 (DB 데이터 실시간 로드)
-├── actions.ts                     # 인터랙티브 버튼 핸들러 (가설 등록·매트릭 승인/거절은 #477 P1 비활성, P2/P5 재설계)
+├── actions.ts                     # 인터랙티브 버튼 핸들러 (#477 P5a 발굴 승인/패스 active, METRIC은 P5b까지 suspended)
 ├── blocks.ts                      # Slack Block Kit 메시지 빌더
 ├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
 ├── saju-seed-fast-path.ts         # 사주 시드 보기/끄기/켜기 (Phase 3)
-├── hypothesis-discovery.ts        # Phase 4 자동 패턴 발견 (#477 P2: P5 재설계까지 dormant)
-├── hypothesis-cards.ts            # #477 P2/P3 주간 검증 카드 (3-tier ✅검증됨/🌱검증중 진행바/✗기각) + 가설 등록 payload(P5 scaffolding)
+├── hypothesis-discovery.ts        # #477 P5a 발굴 엔진 (여집합 off-day 스캔 → discoverCandidates + insertPendingDiscoveryLink)
+├── hypothesis-cards.ts            # #477 P2/P3 주간 검증 카드 (3-tier ✅검증됨/🌱검증중/✗기각) + P5a 발굴 승인 카드(buildDiscoveryCandidateCard)
 └── metric-approval-cards.ts       # Phase 6 LLM 매트릭 후보 카드 + 승인/거절 payload
 
 src/shared/
