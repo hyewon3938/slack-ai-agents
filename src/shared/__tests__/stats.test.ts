@@ -4,6 +4,9 @@ import {
   bhFdr,
   evalueTestMartingale,
   DEFAULT_EVALUE_OPTIONS,
+  mannWhitneyU,
+  hodgesLehmann,
+  blockPermutationP,
   type DayObservation,
 } from '../stats.js';
 
@@ -186,6 +189,27 @@ describe('evalueTestMartingale — null 시뮬 (빌드 게이트)', () => {
       expect(rate).toBeLessThanOrEqual(ALPHA);
     },
   );
+
+  // 자기상관 robustness — 현실 데이터는 pass가 streak(자기상관)을 갖는다. AR(1) ρ=0.8(강한 streak)
+  // pass + active 독립 null에서도 거짓 확정율 ≤ α 유지(편향 방어 회귀 가드). 풀링 r이 핵심.
+  it('AR(1) ρ=0.8 자기상관 pass(active 독립) → 거짓 확정율 ≤ α', () => {
+    const rng = mulberry32(20260605);
+    const rho = 0.8;
+    const base = 0.5;
+    let falseConfirms = 0;
+    for (let t = 0; t < TRIALS; t++) {
+      const seq: DayObservation[] = [];
+      let prev = rng() < base ? 1 : 0;
+      for (let i = 0; i < DAYS; i++) {
+        const pPass = base * (1 - rho) + rho * prev;
+        const pass = rng() < pPass ? 1 : 0;
+        prev = pass;
+        seq.push({ active: rng() < 0.4, pass: pass === 1 });
+      }
+      if (evalueTestMartingale(seq) >= THRESHOLD) falseConfirms++;
+    }
+    expect(falseConfirms / TRIALS).toBeLessThanOrEqual(ALPHA);
+  });
 });
 
 describe('evalueTestMartingale — power / 동작', () => {
@@ -236,5 +260,87 @@ describe('evalueTestMartingale — power / 동작', () => {
     expect(evalueTestMartingale(full, DEFAULT_EVALUE_OPTIONS)).toBeGreaterThanOrEqual(
       evalueTestMartingale(short, DEFAULT_EVALUE_OPTIONS),
     );
+  });
+});
+
+// ─── mannWhitneyU + hodgesLehmann (P3) ───────────────────
+
+describe('mannWhitneyU', () => {
+  it('빈 그룹 → NaN', () => {
+    const r = mannWhitneyU([], [1, 2]);
+    expect(Number.isNaN(r.u)).toBe(true);
+    expect(Number.isNaN(r.p)).toBe(true);
+  });
+
+  it('완전 분리(a 전부 > b 전부) → 작은 p, U=na*nb', () => {
+    const r = mannWhitneyU([10, 11, 12, 13], [1, 2, 3, 4]);
+    expect(r.u).toBe(16); // 4*4
+    expect(r.p).toBeLessThan(0.05);
+    expect(r.z).toBeGreaterThan(0);
+  });
+
+  it('동일 분포 → U≈na*nb/2, p 큼', () => {
+    const r = mannWhitneyU([1, 2, 3, 4, 5], [1, 2, 3, 4, 5]);
+    expect(r.u).toBeCloseTo(12.5, 6); // 25/2
+    expect(r.p).toBeGreaterThan(0.9);
+  });
+
+  it('tie 보정 — 겹치는 값에서 평균 순위', () => {
+    const r = mannWhitneyU([2, 2, 3], [1, 2, 2]);
+    expect(Number.isFinite(r.p)).toBe(true);
+    expect(r.p).toBeGreaterThan(0);
+    expect(r.p).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('hodgesLehmann', () => {
+  it('양 그룹 차이 중앙값', () => {
+    // a-b 쌍별 차: a=[5,7], b=[1,2] → 4,3,6,5 → 정렬 3,4,5,6 → median 4.5
+    expect(hodgesLehmann([5, 7], [1, 2])).toBeCloseTo(4.5, 6);
+  });
+
+  it('동일 그룹 → 0 근방', () => {
+    expect(hodgesLehmann([3, 3, 3], [3, 3, 3])).toBe(0);
+  });
+
+  it('빈 그룹 → NaN', () => {
+    expect(Number.isNaN(hodgesLehmann([], [1]))).toBe(true);
+  });
+});
+
+// ─── blockPermutationP (P3) ──────────────────────────────
+
+describe('blockPermutationP', () => {
+  it('빈/대조불가 시퀀스 → NaN', () => {
+    expect(Number.isNaN(blockPermutationP([], 7, 200))).toBe(true);
+    // off-day 없음 → rateDiff NaN
+    const allActive: DayObservation[] = Array.from({ length: 10 }, () => ({
+      active: true,
+      pass: true,
+    }));
+    expect(Number.isNaN(blockPermutationP(allActive, 7, 200))).toBe(true);
+  });
+
+  it('강한 연관 → 작은 p (발현일 pass율↑이 셔플보다 극단)', () => {
+    const rng = mulberry32(7);
+    const seq: DayObservation[] = [];
+    for (let i = 0; i < 200; i++) {
+      const active = rng() < 0.5;
+      const pass = active ? rng() < 0.85 : rng() < 0.15;
+      seq.push({ active, pass });
+    }
+    expect(blockPermutationP(seq, 7, 1000)).toBeLessThan(0.05);
+  });
+
+  it('무관 → p가 작지 않음(>0.05 기대) + 결정론(같은 seed)', () => {
+    const rng = mulberry32(123);
+    const seq: DayObservation[] = [];
+    for (let i = 0; i < 200; i++) {
+      seq.push({ active: rng() < 0.4, pass: rng() < 0.5 });
+    }
+    const p1 = blockPermutationP(seq, 7, 1000);
+    const p2 = blockPermutationP(seq, 7, 1000);
+    expect(p1).toBe(p2); // 결정론(고정 seed)
+    expect(p1).toBeGreaterThan(0.05);
   });
 });

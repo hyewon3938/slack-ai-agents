@@ -15,8 +15,21 @@
 
 import { query } from './db.js';
 import { addDays } from './kst.js';
-import { fisherExact, bhFdr, evalueTestMartingale, type DayObservation } from './stats.js';
-import { cumulativePosteriorFromHitMiss, posteriorMean } from './bayesian-posterior.js';
+import {
+  fisherExact,
+  bhFdr,
+  evalueTestMartingale,
+  mannWhitneyU,
+  blockPermutationP,
+  type DayObservation,
+  type MannWhitneyResult,
+} from './stats.js';
+import {
+  cumulativePosteriorFromHitMiss,
+  empiricalBetaPrior,
+  posteriorMean,
+  type BetaPosterior,
+} from './bayesian-posterior.js';
 import {
   evaluateTrigger,
   getDailyContext,
@@ -102,8 +115,10 @@ export interface LinkVerification {
   rateActive: number;
   rateOff: number;
   effect: number;
-  pValue: number;
-  qValue: number;
+  pValue: number; // block permutation p (자기상관 보정, BH-FDR 입력) — P3
+  fisherP: number; // Fisher exact p (참고용 → test_detail)
+  qValue: number; // bhFdr(blockP)
+  mannWhitney: MannWhitneyResult | null; // 연속 신호 보고용 효과크기 (test_detail) — P3
   posteriorAlpha: number;
   posteriorBeta: number;
   posteriorP: number;
@@ -297,15 +312,21 @@ export const statusForVerdict = (
 
 // ─── 읽기 (시리즈 계산) ──────────────────────────────────
 
-/** 신호 일자 시리즈 (신호당 1회). tag=태그 존재 여부, sql=raw 시리즈 → binarize. */
+/** 신호 시리즈 결과. raw는 sql continuous 신호일 때만 non-null(Mann-Whitney 보고용). */
+export interface SignalSeriesResult {
+  series: DaySeries;
+  raw: Map<string, number | null> | null;
+}
+
+/** 신호 일자 시리즈 (신호당 1회). tag=태그 존재 여부, sql=raw 시리즈 → binarize(+continuous는 raw 보존). */
 export const computeSignalSeries = async (
   userId: number,
   signal: SignalDef,
   windowDates: string[],
-): Promise<DaySeries> => {
-  if (windowDates.length === 0) return new Map();
+): Promise<SignalSeriesResult> => {
+  if (windowDates.length === 0) return { series: new Map(), raw: null };
   if (signal.kind === 'tag') {
-    if (!signal.tagName) return new Map(windowDates.map((d) => [d, false]));
+    if (!signal.tagName) return { series: new Map(windowDates.map((d) => [d, false])), raw: null };
     const res = await query<{ date: string }>(
       `SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date
          FROM diary_meta_tags
@@ -313,10 +334,12 @@ export const computeSignalSeries = async (
       [userId, signal.tagName, windowDates[0], windowDates[windowDates.length - 1]],
     );
     const present = new Set(res.rows.map((r) => r.date));
-    return new Map(windowDates.map((d) => [d, present.has(d)]));
+    return { series: new Map(windowDates.map((d) => [d, present.has(d)])), raw: null };
   }
   // kind === 'sql'
-  if (!signal.sqlBody || !signal.direction) return new Map(windowDates.map((d) => [d, null]));
+  if (!signal.sqlBody || !signal.direction) {
+    return { series: new Map(windowDates.map((d) => [d, null])), raw: null };
+  }
   const raw = new Map<string, number | null>();
   for (const d of windowDates) {
     try {
@@ -325,13 +348,32 @@ export const computeSignalSeries = async (
       raw.set(d, null);
     }
   }
-  return binarizeSqlSeries(
+  const series = binarizeSqlSeries(
     raw,
     windowDates,
     signal.direction,
     signal.threshold,
     signal.windowDays ?? V.baselineWindowDays,
   );
+  // continuous 신호만 raw 보존(MW). binary(flag_present 등)는 raw 불필요.
+  return { series, raw: signal.valueType === 'continuous' ? raw : null };
+};
+
+/** 연속 신호 raw를 발현/비발현으로 분리 (Mann-Whitney 입력). 측정불가(null)일 제외. */
+export const splitRawByActivation = (
+  activation: Map<string, boolean>,
+  raw: Map<string, number | null>,
+  windowDates: string[],
+): { active: number[]; off: number[] } => {
+  const active: number[] = [];
+  const off: number[] = [];
+  for (const date of windowDates) {
+    const v = raw.get(date);
+    if (v === null || v === undefined) continue;
+    if (activation.get(date)) active.push(v);
+    else off.push(v);
+  }
+  return { active, off };
 };
 
 /** 시드 활성 시리즈 (시드당 1회). 일자별 getDailyContext(캐시) → evaluateTrigger. */
@@ -440,7 +482,7 @@ export const verifyUserLinks = async (
   ]);
 
   // 신호 시리즈(신호당 1회) + 시드 활성 시리즈(시드당 1회) — P1 전역화 payoff.
-  const signalSeriesById = new Map<number, DaySeries>();
+  const signalSeriesById = new Map<number, SignalSeriesResult>();
   for (const [sid, signal] of signalById) {
     signalSeriesById.set(sid, await computeSignalSeries(userId, signal, windowDates));
   }
@@ -455,7 +497,7 @@ export const verifyUserLinks = async (
     );
   }
 
-  // 링크별 2×2 → Fisher (BH-FDR은 전 링크 p 모아 일괄)
+  // 링크별 2×2(Fisher) + block permutation p + e-value + 연속 MW. q는 block-perm p로 일괄 BH-FDR.
   const interim = linkRes.rows
     .map((row) => {
       const signal = signalById.get(row.signal_id);
@@ -463,24 +505,42 @@ export const verifyUserLinks = async (
       const activation = seedSeriesById.get(row.seed_id);
       const signalSeries = signalSeriesById.get(row.signal_id);
       if (!signal || !seed || !activation || !signalSeries) return null;
-      const cont = buildContingency(activation, signalSeries);
+      const series = signalSeries.series;
+      const cont = buildContingency(activation, series);
+      const daySeq = buildDaySequence(activation, series, windowDates);
+      // 연속 신호만 Mann-Whitney(보고용). raw 분리 → U/p/Hodges-Lehmann.
+      let mannWhitney: MannWhitneyResult | null = null;
+      if (signal.valueType === 'continuous' && signalSeries.raw) {
+        const split = splitRawByActivation(activation, signalSeries.raw, windowDates);
+        if (split.active.length > 0 && split.off.length > 0) {
+          mannWhitney = mannWhitneyU(split.active, split.off);
+        }
+      }
       return {
         row,
         signal,
         seed,
         cont,
         v: verifyContingency(cont),
-        eValue: evalueTestMartingale(buildDaySequence(activation, signalSeries, windowDates)),
+        blockP: blockPermutationP(daySeq, V.blockLen, V.blockPermIters),
+        mannWhitney,
+        eValue: evalueTestMartingale(daySeq),
         lastMatchedAt: lastActivationDate(activation),
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  const qValues = bhFdr(interim.map((x) => x.v.p));
+  // empirical-Bayes 공통 prior — 전 링크 발현일 hit/miss로 추정(헌장 ④: 링크 적으면 약함).
+  const ebPrior: BetaPosterior = empiricalBetaPrior(
+    interim.map((x) => ({ hits: x.cont.a, misses: x.cont.b })),
+  );
+  // q는 자기상관 보정된 block-perm p로(Fisher는 test_detail 참고용).
+  const qValues = bhFdr(interim.map((x) => x.blockP));
 
   return interim.map((x, i) => {
     const qValue = qValues[i] ?? NaN;
     const verdict = classifyVerdict(x.v, qValue);
+    const post = cumulativePosteriorFromHitMiss(x.cont.a, x.cont.b, ebPrior);
     return {
       linkId: x.row.link_id,
       seedId: x.row.seed_id,
@@ -501,11 +561,13 @@ export const verifyUserLinks = async (
       rateActive: x.v.rateActive,
       rateOff: x.v.rateOff,
       effect: x.v.effect,
-      pValue: x.v.p,
+      pValue: x.blockP,
+      fisherP: x.v.p,
       qValue,
-      posteriorAlpha: x.v.posteriorAlpha,
-      posteriorBeta: x.v.posteriorBeta,
-      posteriorP: x.v.posteriorP,
+      mannWhitney: x.mannWhitney,
+      posteriorAlpha: post.alpha,
+      posteriorBeta: post.beta,
+      posteriorP: posteriorMean(post.alpha, post.beta),
       eValue: x.eValue,
       lastMatchedAt: x.lastMatchedAt,
       verdict,

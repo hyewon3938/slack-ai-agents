@@ -54,6 +54,18 @@ const persistLinkVerification = async (l: LinkVerification): Promise<void> => {
     signal_kind: l.signalKind,
     value_type: l.valueType,
     verdict: l.verdict,
+    // P3: p_value 컬럼 = block-perm p(자기상관 보정). Fisher·MW·e-value는 참고용 보존.
+    fisher_p: numOrNull(l.fisherP),
+    block_p: numOrNull(l.pValue),
+    e_value: numOrNull(l.eValue),
+    mann_whitney: l.mannWhitney
+      ? {
+          u: numOrNull(l.mannWhitney.u),
+          p: numOrNull(l.mannWhitney.p),
+          z: numOrNull(l.mannWhitney.z),
+          hodges_lehmann: numOrNull(l.mannWhitney.hodgesLehmann),
+        }
+      : null,
   });
   await query(
     `UPDATE pattern_links SET

@@ -4,6 +4,7 @@ import {
   posteriorMean,
   credibleInterval,
   cumulativePosteriorFromHitMiss,
+  empiricalBetaPrior,
 } from '../bayesian-posterior.js';
 
 describe('updatePosterior', () => {
@@ -96,5 +97,63 @@ describe('cumulativePosteriorFromHitMiss', () => {
     expect(p.alpha).toBe(201);
     expect(p.beta).toBe(101);
     expect(posteriorMean(p.alpha, p.beta)).toBeCloseTo(201 / 302, 6);
+  });
+
+  it('EB prior 주입 — Beta(α0,β0) + hit/miss', () => {
+    expect(cumulativePosteriorFromHitMiss(10, 5, { alpha: 3, beta: 2 })).toEqual({
+      alpha: 13,
+      beta: 7,
+    });
+  });
+});
+
+describe('empiricalBetaPrior', () => {
+  it('표본 <2 → uniform (1,1) fallback', () => {
+    expect(empiricalBetaPrior([])).toEqual({ alpha: 1, beta: 1 });
+    expect(empiricalBetaPrior([{ hits: 5, misses: 5 }])).toEqual({ alpha: 1, beta: 1 });
+  });
+
+  it('n=0 표본은 제외 → 유효 <2면 uniform', () => {
+    expect(
+      empiricalBetaPrior([
+        { hits: 0, misses: 0 },
+        { hits: 3, misses: 1 },
+      ]),
+    ).toEqual({
+      alpha: 1,
+      beta: 1,
+    });
+  });
+
+  it('분산 있는 다중 표본 → MoM prior, 평균이 rate 평균 근방', () => {
+    // rates: 0.8, 0.6, 0.4, 0.2 → mean 0.5
+    const prior = empiricalBetaPrior([
+      { hits: 8, misses: 2 },
+      { hits: 6, misses: 4 },
+      { hits: 4, misses: 6 },
+      { hits: 2, misses: 8 },
+    ]);
+    expect(posteriorMean(prior.alpha, prior.beta)).toBeCloseTo(0.5, 1);
+    expect(prior.alpha).toBeGreaterThan(0);
+    expect(prior.beta).toBeGreaterThan(0);
+  });
+
+  it('농도 상한 — 분산 0(모든 rate 동일)이어도 prior가 폭주하지 않음', () => {
+    const prior = empiricalBetaPrior([
+      { hits: 5, misses: 5 },
+      { hits: 5, misses: 5 },
+      { hits: 5, misses: 5 },
+    ]);
+    // 분산 0 → uniform fallback (v<=0)
+    expect(prior).toEqual({ alpha: 1, beta: 1 });
+  });
+
+  it('농도 CAP 적용 — 분산 매우 작아도 α+β ≤ 50', () => {
+    const prior = empiricalBetaPrior([
+      { hits: 50, misses: 50 },
+      { hits: 51, misses: 49 },
+      { hits: 49, misses: 51 },
+    ]);
+    expect(prior.alpha + prior.beta).toBeLessThanOrEqual(50 + 1e-6);
   });
 });
