@@ -26,8 +26,13 @@ import {
 import { posteriorMean, credibleInterval } from '../shared/bayesian-posterior.js';
 import {
   buildVerificationBlocks,
+  buildDiscoveryCandidateCard,
   type SeedInfluenceRow,
 } from '../agents/insight/hypothesis-cards.js';
+import {
+  discoverCandidates,
+  insertPendingDiscoveryLink,
+} from '../agents/insight/hypothesis-discovery.js';
 import type { LifeCronConfig } from './life-cron.js';
 
 const SEED_INFLUENCE_TOP_N = 5;
@@ -245,6 +250,31 @@ const loadSeedInfluence = async (userId: number, topN: number): Promise<SeedInfl
   return rows.slice(0, topN);
 };
 
+/**
+ * 검증 후 발굴 단계 (#477 P5a, ADR-0039) — 링크 없는 (시드×신호) 여집합을 off-day 대조로 스캔 →
+ * pending 링크 선INSERT → 맥락 풍부 승인 카드 발송. 발견 q·top-N(노브)이 후보 폭주를 막는다.
+ * 카드 = 노출·큐레이션 제안일 뿐, 진짜인지는 승인 후 주간 e-value 트랙이 가린다.
+ */
+const surfaceDiscoveries = async (
+  app: App,
+  userId: number,
+  channelId: string,
+  today: string,
+): Promise<void> => {
+  const candidates = await discoverCandidates(userId, today);
+  if (candidates.length === 0) return;
+  let surfaced = 0;
+  for (const c of candidates) {
+    const linkId = await insertPendingDiscoveryLink(userId, c);
+    if (linkId === null) continue; // ON CONFLICT(이미 존재) — 카드 스킵
+    const cardBlocks = buildDiscoveryCandidateCard({ ...c, linkId });
+    const cardFallback = `새 패턴 후보 — ${c.seedName} × ${c.signalName}`;
+    await postBlockMessage(app.client, channelId, cardFallback, cardBlocks);
+    surfaced += 1;
+  }
+  console.warn(`[Discovery] user=${userId} surface ${surfaced}/${candidates.length}`);
+};
+
 const processUser = async (
   app: App,
   userId: number,
@@ -306,6 +336,14 @@ const processUser = async (
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Verification] 카드 전송 실패 user=${userId}: ${msg}`);
+  }
+
+  // 검증 후 발굴 단계 — 검증 결과를 막지 않게 격리(검증은 이미 완료·발송됨).
+  try {
+    await surfaceDiscoveries(app, userId, channelId, today);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Discovery] user=${userId} 발굴 실패: ${msg}`);
   }
 };
 
