@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { fisherExact, bhFdr } from '../stats.js';
+import {
+  fisherExact,
+  bhFdr,
+  evalueTestMartingale,
+  DEFAULT_EVALUE_OPTIONS,
+  type DayObservation,
+} from '../stats.js';
+
+// 결정론 PRNG (mulberry32) — 시뮬 테스트 재현성 보장(고정 seed → flaky 없음).
+const mulberry32 = (seed: number): (() => number) => {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
 
 // ─── fisherExact ─────────────────────────────────────────
 
@@ -123,5 +141,100 @@ describe('bhFdr', () => {
   it('모두 NaN → 모두 NaN', () => {
     const q = bhFdr([NaN, NaN, NaN]);
     expect(q.every((v) => Number.isNaN(v))).toBe(true);
+  });
+});
+
+// ─── evalueTestMartingale (P3 빌드 게이트, ADR-0034) ──────
+
+/** 무관 스트림 생성: 매일 active~Bernoulli(activeProb), pass~Bernoulli(p) (active와 독립). */
+const buildNullStream = (
+  rng: () => number,
+  days: number,
+  p: number,
+  activeProb: number,
+): DayObservation[] => {
+  const seq: DayObservation[] = [];
+  for (let i = 0; i < days; i++) {
+    seq.push({ active: rng() < activeProb, pass: rng() < p });
+  }
+  return seq;
+};
+
+describe('evalueTestMartingale — null 시뮬 (빌드 게이트)', () => {
+  // ★ 통과 못 하면 머지 금지(ADR-0034 §3). 무관 데이터에서 거짓 확정율(P(sup e ≥ 20)) ≤ α(=0.05).
+  // Ville 부등식의 실측 검증 — e-value 정확성의 유일한 보증.
+  const ALPHA = 0.05;
+  const THRESHOLD = 1 / ALPHA; // 20
+  const DAYS = 365;
+  const TRIALS = 1500;
+  const grid: Array<{ p: number; activeProb: number }> = [];
+  for (const p of [0.3, 0.5, 0.7, 0.85]) {
+    for (const activeProb of [0.2, 0.4]) grid.push({ p, activeProb });
+  }
+
+  it.each(grid)(
+    '무관 스트림 p=$p activeProb=$activeProb → 거짓 확정율 ≤ α',
+    ({ p, activeProb }) => {
+      // seed를 셀별로 고정 → 결정론. 같은 셀은 항상 같은 결과(flaky 0).
+      const rng = mulberry32(Math.round((p * 100 + activeProb * 10) * 1000) + 7);
+      let falseConfirms = 0;
+      for (let t = 0; t < TRIALS; t++) {
+        const seq = buildNullStream(rng, DAYS, p, activeProb);
+        if (evalueTestMartingale(seq) >= THRESHOLD) falseConfirms++;
+      }
+      const rate = falseConfirms / TRIALS;
+      expect(rate).toBeLessThanOrEqual(ALPHA);
+    },
+  );
+});
+
+describe('evalueTestMartingale — power / 동작', () => {
+  it('강한 연관(active pass 0.85 vs off 0.2) → sup e가 20 돌파', () => {
+    const rng = mulberry32(42);
+    // 충분한 발현일을 쌓는 시퀀스(활성 40%, 1년)
+    const seq: DayObservation[] = [];
+    for (let i = 0; i < 365; i++) {
+      const active = rng() < 0.4;
+      const pass = active ? rng() < 0.85 : rng() < 0.2;
+      seq.push({ active, pass });
+    }
+    expect(evalueTestMartingale(seq)).toBeGreaterThanOrEqual(20);
+  });
+
+  it('빈 시퀀스 → e=1 (확정 아님)', () => {
+    expect(evalueTestMartingale([])).toBe(1);
+  });
+
+  it('off-day만 있으면 베팅 없음 → e=1', () => {
+    const seq: DayObservation[] = Array.from({ length: 50 }, () => ({
+      active: false,
+      pass: true,
+    }));
+    expect(evalueTestMartingale(seq)).toBe(1);
+  });
+
+  it('결정론 — 같은 시퀀스는 항상 같은 값 (리플레이 불변)', () => {
+    const seq: DayObservation[] = [
+      { active: true, pass: true },
+      { active: false, pass: false },
+      { active: true, pass: true },
+      { active: true, pass: false },
+      { active: false, pass: true },
+    ];
+    expect(evalueTestMartingale(seq)).toBe(evalueTestMartingale(seq));
+  });
+
+  it('prefix 단조성 — 더 긴 prefix의 sup ≥ 짧은 prefix의 sup', () => {
+    const rng = mulberry32(99);
+    const full: DayObservation[] = [];
+    for (let i = 0; i < 120; i++) {
+      const active = rng() < 0.4;
+      const pass = active ? rng() < 0.7 : rng() < 0.3;
+      full.push({ active, pass });
+    }
+    const short = full.slice(0, 60);
+    expect(evalueTestMartingale(full, DEFAULT_EVALUE_OPTIONS)).toBeGreaterThanOrEqual(
+      evalueTestMartingale(short, DEFAULT_EVALUE_OPTIONS),
+    );
   });
 });
