@@ -39,6 +39,13 @@ import {
   type SajuSeedWithMetrics,
   type DailyContext,
 } from './pattern-match.js';
+import {
+  computeStrengthForTarget,
+  isStrengthTarget,
+  type StrengthTarget,
+} from './saju-strength.js';
+import { tertileCuts, classifyBand, isBand, type BandCuts } from './quantile.js';
+import type { PillarSet } from './saju-calendar.js';
 import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
@@ -310,6 +317,33 @@ export const statusForVerdict = (
   return 'active';
 };
 
+// ─── FDR 가족 분리 (#477 P4a, ADR-0037) ──────────────────
+
+export type FdrFamily = 'saju_strength' | 'baseline';
+
+/** 사전등록 가족. 강도 밴드 시드는 saju_strength, 그 외(life_signal·기존 사주)는 baseline. */
+export const familyOf = (seed: { trigger_target_type: string }): FdrFamily =>
+  seed.trigger_target_type === 'strength_band' ? 'saju_strength' : 'baseline';
+
+/**
+ * 가족별로 BH-FDR 독립 적용 (ADR-0037). 입력 순서를 보존해 q 배열 반환.
+ * 자주 발현하는 강도 밴드(유한 p)가 baseline 가족의 m을 키워 life_signal 확정을 늦추는 것을 차단.
+ * 한 가족 추가/제거는 다른 가족 q에 영향 없음(가족 간 격리).
+ */
+export const bhFdrByFamily = (items: ReadonlyArray<{ p: number; family: FdrFamily }>): number[] => {
+  const q = new Array<number>(items.length).fill(NaN);
+  const families: FdrFamily[] = ['saju_strength', 'baseline'];
+  for (const fam of families) {
+    const idxs = items.map((it, i) => (it.family === fam ? i : -1)).filter((i) => i >= 0);
+    if (idxs.length === 0) continue;
+    const qs = bhFdr(idxs.map((i) => items[i]?.p ?? NaN));
+    idxs.forEach((i, k) => {
+      q[i] = qs[k] ?? NaN;
+    });
+  }
+  return q;
+};
+
 // ─── 읽기 (시리즈 계산) ──────────────────────────────────
 
 /** 신호 시리즈 결과. raw는 sql continuous 신호일 때만 non-null(Mann-Whitney 보고용). */
@@ -376,7 +410,75 @@ export const splitRawByActivation = (
   return { active, off };
 };
 
-/** 시드 활성 시리즈 (시드당 1회). 일자별 getDailyContext(캐시) → evaluateTrigger. */
+/** DailyContext → 운 풀셋 PillarSet (강도 계산 입력). */
+const pillarSetOf = (ctx: DailyContext): PillarSet => ({
+  wonguk: ctx.natal.pillars,
+  daeun: ctx.daeun,
+  seun: ctx.seun,
+  wolun: ctx.wolun,
+  ilun: ctx.ilun,
+});
+
+/** target('day_master'|오행)의 윈도우 강도 시리즈 (강도 계산 불가일은 제외). target별 1회. */
+export const computeTargetStrengthSeries = async (
+  target: StrengthTarget,
+  userId: number,
+  windowDates: string[],
+  ctxCache: Map<string, DailyContext | null>,
+): Promise<Map<string, number>> => {
+  const series = new Map<string, number>();
+  for (const d of windowDates) {
+    let ctx = ctxCache.get(d);
+    if (ctx === undefined) {
+      ctx = await getDailyContext(userId, d);
+      ctxCache.set(d, ctx);
+    }
+    if (!ctx) continue;
+    series.set(d, computeStrengthForTarget(target, ctx.natal.dayMaster, pillarSetOf(ctx)));
+  }
+  return series;
+};
+
+/**
+ * 강도 밴드 2-pass 활성 시리즈 (#477 P4a). 분위수가 윈도우 의존이라 per-day 평가 불가:
+ *   pass1: target 강도 시리즈(캐시 — 18 밴드 시드가 6 target 공유) →
+ *   pass2: tertile 컷(캐시) → 각 날 밴드 매핑 → seed.band 일치 여부.
+ * 결정론: 같은 윈도우 → 같은 분위수 → 같은 밴드 시퀀스 (SET 리플레이·e-value 불변, ADR-0034).
+ */
+const computeStrengthBandActivation = async (
+  seed: SajuSeedWithMetrics,
+  userId: number,
+  windowDates: string[],
+  ctxCache: Map<string, DailyContext | null>,
+  strengthCache: Map<string, Map<string, number>>,
+  cutCache: Map<string, BandCuts>,
+): Promise<Map<string, boolean>> => {
+  const series = new Map<string, boolean>();
+  const aux = seed.trigger_aux ?? {};
+  const target = aux['target'];
+  const band = aux['band'];
+  if (!isStrengthTarget(target) || !isBand(band)) {
+    for (const d of windowDates) series.set(d, false);
+    return series;
+  }
+  let strengthSeries = strengthCache.get(target);
+  if (!strengthSeries) {
+    strengthSeries = await computeTargetStrengthSeries(target, userId, windowDates, ctxCache);
+    strengthCache.set(target, strengthSeries);
+  }
+  let cuts = cutCache.get(target);
+  if (!cuts) {
+    cuts = tertileCuts([...strengthSeries.values()]);
+    cutCache.set(target, cuts);
+  }
+  for (const d of windowDates) {
+    const v = strengthSeries.get(d);
+    series.set(d, v !== undefined && classifyBand(v, cuts) === band);
+  }
+  return series;
+};
+
+/** 시드 활성 시리즈 (시드당 1회). strength_band는 2-pass, 그 외는 일자별 evaluateTrigger. */
 export const computeSeedActivationSeries = async (
   seed: SajuSeedWithMetrics,
   userId: number,
@@ -384,7 +486,19 @@ export const computeSeedActivationSeries = async (
   ctxCache: Map<string, DailyContext | null>,
   stemMap: Map<string, number>,
   branchMap: Map<string, number>,
+  strengthCache: Map<string, Map<string, number>> = new Map(),
+  cutCache: Map<string, BandCuts> = new Map(),
 ): Promise<Map<string, boolean>> => {
+  if (seed.trigger_target_type === 'strength_band') {
+    return computeStrengthBandActivation(
+      seed,
+      userId,
+      windowDates,
+      ctxCache,
+      strengthCache,
+      cutCache,
+    );
+  }
   const series = new Map<string, boolean>();
   for (const d of windowDates) {
     let ctx = ctxCache.get(d);
@@ -487,13 +601,25 @@ export const verifyUserLinks = async (
     signalSeriesById.set(sid, await computeSignalSeries(userId, signal, windowDates));
   }
   const ctxCache = new Map<string, DailyContext | null>();
+  // 강도 시리즈·컷 캐시 — 18 밴드 시드가 6 target(일간+5오행) 계산을 공유(재계산 방지).
+  const strengthCache = new Map<string, Map<string, number>>();
+  const cutCache = new Map<string, BandCuts>();
   const seedSeriesById = new Map<number, Map<string, boolean>>();
   for (const seedId of new Set(linkRes.rows.map((r) => r.seed_id))) {
     const seed = seedById.get(seedId);
     if (!seed) continue;
     seedSeriesById.set(
       seedId,
-      await computeSeedActivationSeries(seed, userId, windowDates, ctxCache, stemMap, branchMap),
+      await computeSeedActivationSeries(
+        seed,
+        userId,
+        windowDates,
+        ctxCache,
+        stemMap,
+        branchMap,
+        strengthCache,
+        cutCache,
+      ),
     );
   }
 
@@ -535,7 +661,8 @@ export const verifyUserLinks = async (
     interim.map((x) => ({ hits: x.cont.a, misses: x.cont.b })),
   );
   // q는 자기상관 보정된 block-perm p로(Fisher는 test_detail 참고용).
-  const qValues = bhFdr(interim.map((x) => x.blockP));
+  // FDR 가족 분리 (ADR-0037): 강도 밴드(saju_strength)와 baseline을 독립 보정 → 가족 간 비용 격리.
+  const qValues = bhFdrByFamily(interim.map((x) => ({ p: x.blockP, family: familyOf(x.seed) })));
 
   return interim.map((x, i) => {
     const qValue = qValues[i] ?? NaN;
@@ -574,4 +701,48 @@ export const verifyUserLinks = async (
       nextStatus: statusForVerdict(verdict, x.row.status, x.eValue),
     };
   });
+};
+
+// ─── 강도 분위수 컷 산출 (#477 P4a, 저장은 weekly-verification) ──
+
+export interface StrengthCutpoint {
+  target: StrengthTarget;
+  low: number;
+  high: number;
+  nSamples: number;
+}
+
+/**
+ * 활성 strength_band 시드가 있는 target별 주간 분위수 컷 산출 (읽기전용).
+ * 일별 cron이 이 저장 컷으로 "오늘 밴드"를 판정 → 발현 로그(seed_daily_activations)·recent tier.
+ * 주간 검증 엔진은 자체 윈도우로 컷을 재계산하므로(결정론) 이 저장값에 의존하지 않음 — 일별 경로 전용.
+ */
+export const computeStrengthCutpoints = async (
+  userId: number,
+  today: string,
+): Promise<StrengthCutpoint[]> => {
+  const seedRes = await query<{ trigger_aux: Record<string, unknown> | null }>(
+    `SELECT trigger_aux FROM pattern_catalog
+      WHERE user_id = $1 AND active = true AND trigger_target_type = 'strength_band'`,
+    [userId],
+  );
+  const targets = new Set<StrengthTarget>();
+  for (const r of seedRes.rows) {
+    const t = r.trigger_aux?.['target'];
+    if (isStrengthTarget(t)) targets.add(t);
+  }
+  if (targets.size === 0) return [];
+
+  const windowDates = buildWindowDates(today, V.windowCapDays);
+  const ctxCache = new Map<string, DailyContext | null>();
+  const out: StrengthCutpoint[] = [];
+  for (const target of targets) {
+    const series = await computeTargetStrengthSeries(target, userId, windowDates, ctxCache);
+    const values = [...series.values()];
+    if (values.length === 0) continue;
+    const cuts = tertileCuts(values);
+    if (!Number.isFinite(cuts.low) || !Number.isFinite(cuts.high)) continue;
+    out.push({ target, low: cuts.low, high: cuts.high, nSamples: values.length });
+  }
+  return out;
 };

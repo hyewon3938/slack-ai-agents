@@ -234,6 +234,69 @@ describe('evaluateTrigger - element_density', () => {
   });
 });
 
+// ─── evaluateTrigger: strength_band (#477 P4a) ────────────
+// 일별 cron 경로: 저장된 분위수 컷으로 오늘 강도를 밴드 판정. 강도 계산은 순수(DB 불요).
+
+describe('evaluateTrigger - strength_band', () => {
+  const strengthSeed = (target: string, band: string): SajuSeedWithMetrics =>
+    baseSeed({ trigger_target_type: 'strength_band', trigger_aux: { target, band } });
+
+  // 극단 컷으로 밴드를 결정론적으로 강제(실제 강도값과 무관하게 wiring 검증).
+  const cutsHigh = new Map([['day_master', { low: -1e9, high: -1e9 }]]); // 모든 유한 강도 → high
+  const cutsLow = new Map([['day_master', { low: 1e9, high: 1e9 }]]); // 모든 유한 강도 → low
+
+  it('오늘 강도가 high 밴드 + 시드 band=high → true', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'high'), ctx, stemMap, branchMap, cutsHigh),
+    ).toBe(true);
+  });
+
+  it('오늘 강도가 high 밴드인데 시드 band=low → false', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'low'), ctx, stemMap, branchMap, cutsHigh),
+    ).toBe(false);
+  });
+
+  it('오늘 강도가 low 밴드 + 시드 band=low → true', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'low'), ctx, stemMap, branchMap, cutsLow),
+    ).toBe(true);
+  });
+
+  it('컷 맵 미전달(첫 주간 엔진 실행 전) → false (발현 없음, 정직)', async () => {
+    const ctx = baseCtx();
+    expect(await evaluateTrigger(strengthSeed('day_master', 'high'), ctx, stemMap, branchMap)).toBe(
+      false,
+    );
+  });
+
+  it('해당 target 컷 없으면 → false', async () => {
+    const ctx = baseCtx();
+    const otherCuts = new Map([['화', { low: -1e9, high: -1e9 }]]);
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'high'), ctx, stemMap, branchMap, otherCuts),
+    ).toBe(false);
+  });
+
+  it('잘못된 aux(target 비유효) → false', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('bogus', 'high'), ctx, stemMap, branchMap, cutsHigh),
+    ).toBe(false);
+  });
+
+  it('오행 target도 해석 (화 강도 high 컷 → true)', async () => {
+    const ctx = baseCtx();
+    const huaCuts = new Map([['화', { low: -1e9, high: -1e9 }]]);
+    expect(
+      await evaluateTrigger(strengthSeed('화', 'high'), ctx, stemMap, branchMap, huaCuts),
+    ).toBe(true);
+  });
+});
+
 // ─── evaluateTrigger: relation ────────────────────────────
 
 describe('evaluateTrigger - relation', () => {

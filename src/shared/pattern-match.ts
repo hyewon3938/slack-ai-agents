@@ -27,6 +27,8 @@ import {
   type Pillar,
   type PillarSet,
 } from './saju-calendar.js';
+import { computeStrengthForTarget, isStrengthTarget } from './saju-strength.js';
+import { classifyBand, isBand, type BandCuts } from './quantile.js';
 import { addDays } from './kst.js';
 import { dispatchLifeSignal } from './life-signal-evaluators/index.js';
 
@@ -49,6 +51,7 @@ export interface SajuSeed {
     | 'sibiunsung'
     | 'relation'
     | 'cumulative_pillar_count'
+    | 'strength_band'
     | 'life_signal';
   trigger_target_id: number | null;
   trigger_aux: Record<string, unknown> | null;
@@ -500,6 +503,15 @@ const VALID_ELEMENTS: readonly Element[] = ['목', '화', '토', '금', '수'];
 const isElement = (v: unknown): v is Element =>
   typeof v === 'string' && (VALID_ELEMENTS as readonly string[]).includes(v);
 
+/** DailyContext → 운 풀셋 PillarSet (cumulative·strength_band 공용) */
+const pillarSetOf = (ctx: DailyContext): PillarSet => ({
+  wonguk: ctx.natal.pillars,
+  daeun: ctx.daeun,
+  seun: ctx.seun,
+  wolun: ctx.wolun,
+  ilun: ctx.ilun,
+});
+
 /**
  * cumulative_pillar_count trigger 평가 (Phase 2.5).
  * trigger_aux:
@@ -511,14 +523,7 @@ const evaluateCumulativePillarCount = (seed: SajuSeed, ctx: DailyContext): boole
   const countMin = getNumberField(aux as Record<string, unknown>, 'count_min');
   if (countMin === null || countMin <= 0) return false;
 
-  const pillarSet: PillarSet = {
-    wonguk: ctx.natal.pillars,
-    daeun: ctx.daeun,
-    seun: ctx.seun,
-    wolun: ctx.wolun,
-    ilun: ctx.ilun,
-  };
-  const count = computeCumulativePillarCount(ctx.natal.dayMaster, pillarSet);
+  const count = computeCumulativePillarCount(ctx.natal.dayMaster, pillarSetOf(ctx));
 
   if (isElement(aux['element'])) {
     return count.element[aux['element']] >= countMin;
@@ -534,6 +539,7 @@ export const evaluateTrigger = async (
   ctx: DailyContext,
   stemNameToId: Map<string, number>,
   branchNameToId: Map<string, number>,
+  strengthCuts?: Map<string, BandCuts>,
 ): Promise<boolean> => {
   const aux = seed.trigger_aux ?? {};
 
@@ -634,6 +640,19 @@ export const evaluateTrigger = async (
         }
       }
       return false;
+    }
+
+    case 'strength_band': {
+      // #477 P4a — 강도 밴드. 일별 cron은 윈도우가 없어 주간 엔진이 저장한 분위수 컷으로 판정.
+      // 컷 없으면(첫 주간 엔진 실행 전) false — 발현 없음(정직). 가설=시드×신호 (off-day 검증).
+      if (!strengthCuts) return false;
+      const target = aux['target'];
+      const band = aux['band'];
+      if (!isStrengthTarget(target) || !isBand(band)) return false;
+      const cuts = strengthCuts.get(target);
+      if (!cuts) return false;
+      const strength = computeStrengthForTarget(target, ctx.natal.dayMaster, pillarSetOf(ctx));
+      return classifyBand(strength, cuts) === band;
     }
 
     case 'life_signal': {
@@ -778,6 +797,29 @@ export const buildNameIdMap = async (
   return new Map(result.rows.map((r) => [r.name, r.id]));
 };
 
+interface CutpointRow {
+  target: string;
+  low_cut: string;
+  high_cut: string;
+}
+
+/**
+ * strength_band 일별 판정용 저장 컷 로드 (#477 P4a) — target('day_master'|오행) → BandCuts.
+ * 주간 검증 엔진이 윈도우 분위수로 산출·저장(strength_band_cutpoints). 없으면 빈 맵 → 발현 없음(정직).
+ * 모듈 캐시 안 함 — 봇이 장시간 떠 있어 주간 갱신 컷이 stale해지면 안 됨(매 cron 호출당 1회 로드).
+ */
+export const loadStrengthCutpoints = async (userId: number): Promise<Map<string, BandCuts>> => {
+  const result = await query<CutpointRow>(
+    `SELECT target, low_cut, high_cut FROM strength_band_cutpoints WHERE user_id = $1`,
+    [userId],
+  );
+  const map = new Map<string, BandCuts>();
+  for (const r of result.rows) {
+    map.set(r.target, { low: Number(r.low_cut), high: Number(r.high_cut) });
+  }
+  return map;
+};
+
 export const matchAllSeedsForDay = async (
   userId: number,
   date: string,
@@ -788,9 +830,10 @@ export const matchAllSeedsForDay = async (
   const seeds = await loadActiveSeeds(userId);
   if (seeds.length === 0) return [];
 
-  const [stemMap, branchMap] = await Promise.all([
+  const [stemMap, branchMap, strengthCuts] = await Promise.all([
     buildNameIdMap('stems_master'),
     buildNameIdMap('branches_master'),
+    loadStrengthCutpoints(userId),
   ]);
 
   const results: SeedMatchResult[] = [];
@@ -798,7 +841,7 @@ export const matchAllSeedsForDay = async (
     // Phase 8a: per-seed try/catch — 한 시드 trigger SQL 실패가 cron 전체를 죽이지 않게 격리.
     // 내부 metric try/catch는 trigger 통과 후 일부 metric만 fail하는 케이스 보호 → 보존.
     try {
-      const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap);
+      const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap, strengthCuts);
 
       const metricEvaluations: MetricEvaluation[] = [];
       if (triggerActivated) {

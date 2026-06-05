@@ -7,6 +7,8 @@ import {
   verifyContingency,
   classifyVerdict,
   statusForVerdict,
+  familyOf,
+  bhFdrByFamily,
   type DaySeries,
 } from '../pattern-verification.js';
 
@@ -235,5 +237,55 @@ describe('statusForVerdict', () => {
     expect(statusForVerdict('reject', 'pending', 1)).toBe('pending');
     expect(statusForVerdict('confirm', 'archived', 99)).toBe('archived');
     expect(statusForVerdict('reject', 'confirmed', 1)).toBe('confirmed');
+  });
+});
+
+// ─── FDR 가족 분리 (#477 P4a, ADR-0037) ──────────────────
+
+describe('familyOf', () => {
+  it('strength_band → saju_strength', () => {
+    expect(familyOf({ trigger_target_type: 'strength_band' })).toBe('saju_strength');
+  });
+  it('그 외(life_signal·stem·relation) → baseline', () => {
+    expect(familyOf({ trigger_target_type: 'life_signal' })).toBe('baseline');
+    expect(familyOf({ trigger_target_type: 'stem' })).toBe('baseline');
+  });
+});
+
+describe('bhFdrByFamily', () => {
+  it('가족 격리 — 강도 시드 추가가 baseline 가족 q를 바꾸지 않음', () => {
+    const baselineAlone = bhFdrByFamily([{ p: 0.01, family: 'baseline' }]);
+    expect(baselineAlone[0]).toBeCloseTo(0.01, 6); // N=1
+
+    const withStrength = bhFdrByFamily([
+      { p: 0.01, family: 'baseline' },
+      { p: 0.5, family: 'saju_strength' },
+      { p: 0.6, family: 'saju_strength' },
+      { p: 0.7, family: 'saju_strength' },
+    ]);
+    // baseline 가족은 여전히 N=1 → q=0.01 (한 가족이었다면 0.01*4=0.04로 늦춰짐).
+    expect(withStrength[0]).toBeCloseTo(0.01, 6);
+  });
+
+  it('가족 내부는 함께 BH-FDR 보정 (monotone)', () => {
+    const q = bhFdrByFamily([
+      { p: 0.01, family: 'baseline' },
+      { p: 0.04, family: 'baseline' },
+    ]);
+    expect(q[0]).toBeCloseTo(0.02, 6); // 0.01*2/1
+    expect(q[1]).toBeCloseTo(0.04, 6); // 0.04*2/2
+  });
+
+  it('입력 순서·길이 보존 (가족 섞여 있어도 인덱스 유지)', () => {
+    const items = [
+      { p: 0.5, family: 'saju_strength' as const },
+      { p: 0.01, family: 'baseline' as const },
+      { p: 0.6, family: 'saju_strength' as const },
+    ];
+    const q = bhFdrByFamily(items);
+    expect(q).toHaveLength(3);
+    expect(q[1]).toBeCloseTo(0.01, 6); // baseline 단독 가족
+    expect(Number.isFinite(q[0] ?? NaN)).toBe(true);
+    expect(Number.isFinite(q[2] ?? NaN)).toBe(true);
   });
 });

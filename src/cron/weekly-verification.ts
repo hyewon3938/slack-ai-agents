@@ -17,7 +17,12 @@ import { query } from '../shared/db.js';
 import { getKSTDayOfWeek, getTodayISO } from '../shared/kst.js';
 import { postBlockMessage } from '../shared/slack.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
-import { verifyUserLinks, type LinkVerification } from '../shared/pattern-verification.js';
+import {
+  verifyUserLinks,
+  computeStrengthCutpoints,
+  type LinkVerification,
+  type StrengthCutpoint,
+} from '../shared/pattern-verification.js';
 import { posteriorMean, credibleInterval } from '../shared/bayesian-posterior.js';
 import {
   buildVerificationBlocks,
@@ -139,6 +144,23 @@ const persistWeeklySnapshot = async (
   );
 };
 
+/** 강도 분위수 컷 UPSERT (strength_band_cutpoints) — 일별 cron의 "오늘 밴드" 판정용(#477 P4a). */
+const persistStrengthCutpoints = async (
+  userId: number,
+  cuts: StrengthCutpoint[],
+): Promise<void> => {
+  for (const c of cuts) {
+    await query(
+      `INSERT INTO strength_band_cutpoints (user_id, target, low_cut, high_cut, n_samples, computed_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id, target) DO UPDATE SET
+         low_cut = EXCLUDED.low_cut, high_cut = EXCLUDED.high_cut,
+         n_samples = EXCLUDED.n_samples, computed_at = NOW()`,
+      [userId, c.target, c.low, c.high, c.nSamples],
+    );
+  }
+};
+
 /** 직전 주(들) 링크별 e_value — emerging 진행바 "지난주 → 이번주" delta용 (link당 최신 1행). */
 const loadPrevWeekEValues = async (
   userId: number,
@@ -230,6 +252,15 @@ const processUser = async (
   weekStart: string,
   today: string,
 ): Promise<void> => {
+  // 강도 분위수 컷 갱신(일별 cron 핸드오프) — 검증과 독립. 실패해도 링크 검증은 진행.
+  try {
+    const cutpoints = await computeStrengthCutpoints(userId, today);
+    await persistStrengthCutpoints(userId, cutpoints);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Verification] 강도 컷 산출/저장 실패 user=${userId}: ${msg}`);
+  }
+
   const results = await verifyUserLinks(userId, today);
 
   // 직전 주 e_value 먼저 로드(이번 주 스냅샷 쓰기 전 — delta가 과거만 반영하게).

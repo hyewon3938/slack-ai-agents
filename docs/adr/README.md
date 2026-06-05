@@ -142,6 +142,8 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0033](0033-metric-as-hypothesis-and-saju-feature-substrate.md) | 매트릭=가설 5어휘 재정의 + 결정론 사주 feature substrate (생극·합충·합화 → feature, graded 레벨 비단조) | Accepted | 2026-06-04 | insight, schema, architecture, statistics |
 | [0034](0034-evalue-construction-replay-test-martingale.md) | e-value 구성 — 결정론 리플레이 betting test martingale (SET 정합 + null 시뮬 빌드 게이트) | Accepted | 2026-06-05 | insight, statistics |
 | [0035](0035-graded-confidence-exposure.md) | 등급별 노출 정책 — 검증됨/검증중/오늘발현 3-tier (엄격 게이트는 확정 주장에만) | Accepted | 2026-06-05 | insight, ux, architecture |
+| [0036](0036-relative-quantile-strength-bands.md) | 강도 feature 밴드를 상대 분위수로 정의 — n=1 자기 패턴 발견(남 비교면 절대, 자기 패턴이면 분위수) | Accepted | 2026-06-05 | insight, statistics, architecture |
+| [0037](0037-verification-fdr-family-split.md) | 검정 FDR 가족 분리 — 강도 feature 시드를 자체 가족으로(빠른 트랙 보호) | Accepted | 2026-06-05 | insight, statistics |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
