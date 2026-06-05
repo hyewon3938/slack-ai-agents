@@ -246,7 +246,11 @@ describe('familyOf', () => {
   it('strength_band → saju_strength', () => {
     expect(familyOf({ trigger_target_type: 'strength_band' })).toBe('saju_strength');
   });
-  it('그 외(life_signal·stem·relation) → baseline', () => {
+  it('relation·hwa_sipsung → saju_relation (#477 P4b)', () => {
+    expect(familyOf({ trigger_target_type: 'relation' })).toBe('saju_relation');
+    expect(familyOf({ trigger_target_type: 'hwa_sipsung' })).toBe('saju_relation');
+  });
+  it('그 외(life_signal·stem) → baseline', () => {
     expect(familyOf({ trigger_target_type: 'life_signal' })).toBe('baseline');
     expect(familyOf({ trigger_target_type: 'stem' })).toBe('baseline');
   });
@@ -287,5 +291,19 @@ describe('bhFdrByFamily', () => {
     expect(q[1]).toBeCloseTo(0.01, 6); // baseline 단독 가족
     expect(Number.isFinite(q[0] ?? NaN)).toBe(true);
     expect(Number.isFinite(q[2] ?? NaN)).toBe(true);
+  });
+
+  it('saju_relation 가족 격리 — 관계 batch가 baseline·saju_strength q에 영향 없음 (#477 P4b)', () => {
+    const q = bhFdrByFamily([
+      { p: 0.01, family: 'baseline' },
+      { p: 0.02, family: 'saju_strength' },
+      // 자주 발현하는 관계 batch(유한 p 다수) — 자체 가족이라 다른 가족 m을 키우지 않음
+      { p: 0.3, family: 'saju_relation' },
+      { p: 0.4, family: 'saju_relation' },
+      { p: 0.5, family: 'saju_relation' },
+    ]);
+    expect(q[0]).toBeCloseTo(0.01, 6); // baseline N=1
+    expect(q[1]).toBeCloseTo(0.02, 6); // saju_strength N=1
+    expect(q[2]).toBeCloseTo(0.5, 6); // saju_relation N=3 → 0.3*3/1
   });
 });
