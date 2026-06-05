@@ -123,6 +123,45 @@ v2 헌장 4개 + 마스터 #434 헌장 5개를 계승한다 (본문 복제하지
 
 디테일한 사주 규칙 인코딩이 확증편향 아니냐는 우려: 규칙은 feature를 *계산*할 뿐 효과를 *단언*하지 않음 + 독립 객관 outcome에 off-day 대조 검정 → 틀린 규칙 feature는 상관 안 나와 걸러짐. 위험 셋(주관 태그 오염→객관 우선 / feature 과다→FDR·절제 / 결과 보고 튜닝→사전 고정)만 지키면 디테일이 목적에 봉사. 단 데이터 검증 전 무한 정밀화는 비효율 → 대표 규칙부터, 데이터가 어떤 feature 사는지 보고 확장.
 
+## Phase 1: 스키마 + 신호 전역화 (2026-06-05)
+
+- 이슈: [#479](https://github.com/hyewon3938/slack-ai-agents/issues/479)
+- 관련 계획서: `.claude/plans/479-p1-schema.md`
+- 상태: 구현 완료 (PR 대기)
+
+### 결정 요약
+
+시드 종속 `pattern_metrics`를 전역 `signal_defs`(신호 정의) + `pattern_links`(시드×신호 = 가설 + 누적 검증상태)로 분리한다. diary 22태그를 `kind=tag` 신호로 흡수(객관 sql 신호와 동격, 보조). `pattern_hypotheses`·`pattern_stats`(0행)·`pattern_metrics`(이관 완료) DROP, 두 뷰(`pattern_summary`·`saju_influence_summary`) 재정의.
+
+**빌드 중 설계 수정 (Option A)**: `pattern_matches` 일별행을 P1에서 폐기하려던 원안은 **daily-insight(#insight) 라이브 알림을 끊는다**는 사실이 빌드 탐색에서 드러나 철회. `saju_influence_summary` recent tier(최근 7일 trigger, 96/97행)가 `pattern_matches`에 의존하고 daily-insight routine이 이를 소비한다(ADR-0031). → `pattern_matches`는 **P2까지 유지**(archive·transient·verify는 주간 엔진과 함께 P2로 이동). 일별 cron은 raw trigger-log 기록을 유지하되 verify(카운터 확정)·confirmed 가설 라인만 제거. 주간 cron 중 가설×통계 의존인 `weekly-hypothesis-review`만 중단, `pillar-level-distribution-review`는 `pattern_matches` 유지로 무탈 → 살려둠.
+
+### 의사결정 분기점
+
+- **`pattern_matches` 처리 (빌드 중 재결정)**: 원안은 archive(rename) 후 P2 DROP. 그러나 빌드 탐색에서 `saju_influence_summary` 3층 뷰(ADR-0020)의 recent tier가 `pattern_matches` 최근 7일 trigger에 의존(현재 97행 중 96행)하고, 이를 **daily-insight #insight 라이브 알림**이 소비함을 발견. 사용자 체크포인트 → **유지(P2까지)** 채택. 위상 경계도 더 정합적 — "지속 검증 → transient" 전환은 그것을 대체할 P2 주간 엔진이 생긴 뒤가 맞다. (놓친 이유: 설계 cross-check가 검증 서브시스템 4테이블에 집중, 별도 마스터 #421 산출물인 daily-insight의 뷰 의존을 못 봄.)
+- **매트릭 이관 (전역화 정도)**: dedup(즉시 전역 실현) / 1:1(구조만 전역) — **1:1** 채택. P1은 이관 리스크 최소화가 우선. signal_defs 스키마는 전역 지원하되 기존 84 매트릭은 링크 단위 1:1, 미래 신호부터 공유. diary는 예외 — 태그가 본질상 전역이라 22 tag signal로 자연 dedup(35 link가 참조).
+- **pending 미승인 표현 (uniform)**: signal.status / link.status 어디에 둘지 — **link.status='pending'** 채택(`pattern_links` enum에 추가). tag 신호는 객관 detection이라 항상 active여야 해서, sql/tag 통일하려면 미승인성을 링크가 들어야 함. 매칭 게이트 = `link.status='active' AND signal.status='active'`. P5 승인 = 링크 활성화 단일 경로.
+- **value_type 매핑**: 데이터가 갈라줌 — `flag_present` → binary, 나머지 → continuous. 빌드 검증: 비-diary 49 중 binary 5(expense_category_present) / continuous 44, tag 22 binary.
+- **주간 cron 처리**: A 채택으로 `pattern_matches` 유지되니 `pillar-level-distribution-review`는 안 깨짐 → **유지**(무탈). 가설×통계 테이블 DROP에 의존하는 `weekly-hypothesis-review`만 플래그 중단.
+
+### 포기한 안 / 미룬 항목
+
+- **dedup 이관**: 미룸. 기존 중복 sql 신호는 P5 발굴 단계에서 자연 통합. P1 강제 dedup은 name/의미 정규화 리스크라 제외.
+- **주간 검증 엔진**(window 재계산·Fisher·BH-FDR·status 전이) + **`pattern_matches` archive/transient/일별 verify**: P2 (한 묶음 — transient는 주간 엔진이 지속 검증을 대체한 뒤).
+- **e-value·block permutation·Mann-Whitney·EB 수축**: P3. 단 컬럼(`e_value`·`test_detail`·`confound`)은 P1에서 미리 선언(헌장 ④ "후속 미루지 않기"), 로직만 P2/P3.
+- **매트릭 승인 게이트·가설 발굴 인터랙션**: P2(발굴)/P5(승인 게이트) 재설계까지 플래그 중단. 데이터(pending 링크 5건)는 보존.
+
+### 미해결·가설 → 빌드에서 해소
+
+- **diary 매트릭 35 → tag 매핑** (해소): 모든 diary_meta 매트릭이 `SELECT … WHERE tag='X'` 형식 → 정규식 `tag\s*=\s*''?([a-z_]+)`로 추출. 35개 전부 추출 성공, (시드,tag) 충돌 0 → 35 링크 전부 고유 형성. 마이그레이션이 DROP 전 DO 블록으로 카운트·합 대조(불일치 시 롤백).
+- **잠재 버그 발견**: `pattern_metrics`에 `user_id` 컬럼이 없어 `showPendingMetrics`/`metric_approve`의 `WHERE user_id=$2`가 이미 깨진 상태였음 — P1 포팅(signal_defs/pattern_links, user_id 보유)이 부수적으로 교정.
+- **transient 매칭 정확도**: A 채택으로 일별 기록을 유지하므로 쟁점 소멸(P2에서 transient 전환 시 재검토).
+
+### 회고
+
+> TODO(`/build`): 첫 운영 신호(P2 진입 전 pattern_links 누적) 확인 후 보강. daily-insight 의존성을 설계가 놓친 점 — cross-check 범위에 "이 마스터 밖이지만 같은 테이블을 읽는 소비자"를 넣는 교훈.
+
+---
+
 ## 회고 (TODO: `/build` 구현 후 보강)
 
 > 빌드 후 추가. e-value 시뮬레이션 검증 결과, 첫 운영 신호 품질도 같이.

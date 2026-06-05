@@ -33,6 +33,13 @@ import type { LifeCronConfig } from './life-cron.js';
 
 const SEED_INFLUENCE_TOP_N = 5;
 
+/**
+ * #477 P1 — 주간 가설 리뷰 비활성 플래그.
+ * pattern_hypotheses/pattern_stats DROP으로 가설×통계 기반 리뷰는 동작 불가.
+ * P2 주간 검증 엔진(pattern_links window 재계산)으로 재구축 시 false로 전환/제거.
+ */
+const WEEKLY_REVIEW_SUSPENDED_P1 = true;
+
 /** 오늘이 월요일이라는 전제 — 전주 월요일(=7일 전) 반환 */
 export const previousMondayISO = (todayIso: string): string => {
   const d = new Date(`${todayIso}T12:00:00+09:00`);
@@ -257,6 +264,11 @@ export const weeklyHypothesisReviewTask = async (
   app: App,
   config: LifeCronConfig,
 ): Promise<void> => {
+  // #477 P1: 가설×통계 테이블 DROP — P2 주간 검증 엔진 재구축까지 비활성. 등록은 유지(P2 교체).
+  if (WEEKLY_REVIEW_SUSPENDED_P1) {
+    console.warn('[Hypothesis Review] #477 P1 — P2 주간 검증 엔진 대기, 비활성 (skip)');
+    return;
+  }
   if (getKSTDayOfWeek() !== 1) return;
   const weekStart = previousMondayISO(getTodayISO());
   const mappings = await queryAllUserMappings();

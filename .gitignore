@@ -6,6 +6,7 @@ dist/
 *.log
 *.tsbuildinfo
 .DS_Store
+.obsidian/
 docs/_personal/
 .env.production
 .mcp.json

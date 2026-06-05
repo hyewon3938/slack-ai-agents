@@ -31,7 +31,6 @@ import {
   evaluateTrigger,
   evaluateMetric,
   compactMatchedLine,
-  verifyDailyMatches,
   recordDailyMatches,
   __resetCacheForTest,
   type SajuSeedWithMetrics,
@@ -427,12 +426,16 @@ describe('evaluateTrigger - sibiunsung', () => {
 
 describe('evaluateMetric', () => {
   const baseMetric = (overrides: Partial<SajuMetric> = {}): SajuMetric => ({
-    id: 1,
+    link_id: 1,
+    signal_id: 1,
     pattern_id: 1,
     metric_name: 'test_metric',
+    kind: 'sql',
     expected_metric_sql: 'SELECT 1',
     expected_direction: 'above_avg',
     expected_threshold: null,
+    value_type: 'continuous',
+    tag_name: null,
     domain: 'schedule',
     ...overrides,
   });
@@ -496,6 +499,35 @@ describe('evaluateMetric', () => {
     const result = await evaluateMetric(metric, 1, '2026-05-17');
     expect(result.todayValue).toBe(0);
     expect(result.passed).toBe(false);
+  });
+
+  it('kind=tag — 그날 태그 존재하면 passed (binary, #477 P1)', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [{ '?column?': 1 }] }));
+    const metric = baseMetric({
+      kind: 'tag',
+      tag_name: 'anxiety',
+      domain: 'diary_meta',
+      expected_metric_sql: null,
+      expected_direction: null,
+    });
+    const result = await evaluateMetric(metric, 1, '2026-05-17');
+    expect(result.passed).toBe(true);
+    expect(result.todayValue).toBe(1);
+    expect(result.direction).toBe('flag_present');
+  });
+
+  it('kind=tag — 그날 태그 없으면 not passed', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    const metric = baseMetric({
+      kind: 'tag',
+      tag_name: 'anxiety',
+      domain: 'diary_meta',
+      expected_metric_sql: null,
+      expected_direction: null,
+    });
+    const result = await evaluateMetric(metric, 1, '2026-05-17');
+    expect(result.passed).toBe(false);
+    expect(result.todayValue).toBe(0);
   });
 });
 
@@ -823,149 +855,6 @@ describe('evaluateTrigger - life_signal', () => {
     });
     const ctx = baseCtx();
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
-  });
-});
-
-// ─── Phase 4: verifyDailyMatches (matched 카운터 + Bayesian posterior) ─────
-
-describe('verifyDailyMatches (Phase 4)', () => {
-  /**
-   * verifyDailyMatches 호출은 SELECT 2건 + UPDATE 다수 패턴.
-   * mockQuery에 순차적 응답을 등록하고 호출 인자를 검증.
-   */
-
-  it('hit 매칭은 pattern_metrics hit_count + posterior_alpha UPDATE', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        return Promise.resolve({ rows: [{ id: 100, pattern_id: 7, matched: true }] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        return Promise.resolve({ rows: [] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    // UPDATE pattern_matches verify_status='hit'
-    const matchUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_matches') &&
-        sql.includes('verify_status') &&
-        Array.isArray(params) &&
-        params[0] === 'hit',
-    );
-    expect(matchUpdate).toBeDefined();
-
-    // UPDATE pattern_metrics hit_count + posterior_alpha
-    const metricUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_metrics') &&
-        sql.includes('hit_count       = hit_count + 1') &&
-        sql.includes('posterior_alpha = posterior_alpha + 1.0') &&
-        Array.isArray(params) &&
-        params[0] === 7,
-    );
-    expect(metricUpdate).toBeDefined();
-  });
-
-  it('miss 매칭은 pattern_metrics miss_count + posterior_beta UPDATE', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        return Promise.resolve({ rows: [{ id: 101, pattern_id: 8, matched: false }] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        return Promise.resolve({ rows: [] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    const metricUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_metrics') &&
-        sql.includes('miss_count      = miss_count + 1') &&
-        sql.includes('posterior_beta  = posterior_beta + 1.0') &&
-        Array.isArray(params) &&
-        params[0] === 8,
-    );
-    expect(metricUpdate).toBeDefined();
-  });
-
-  it('evidence-only (matched IS NULL)는 SELECT 1에서 제외되어 카운터 UPDATE 안 함', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        // matched IS NOT NULL 필터로 인해 빈 결과
-        return Promise.resolve({ rows: [] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        // evidence-only 1건
-        return Promise.resolve({ rows: [{ id: 200, pattern_id: 9, matched: null }] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    const metricUpdate = calls.find(
-      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE pattern_metrics'),
-    );
-    expect(metricUpdate).toBeUndefined();
-
-    // verify_status='inconclusive' UPDATE는 실행되어야 함
-    const inconclusiveUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_matches') &&
-        sql.includes("verify_status = 'inconclusive'") &&
-        Array.isArray(params) &&
-        params[0] === 200,
-    );
-    expect(inconclusiveUpdate).toBeDefined();
-  });
-
-  it('trigger_off (matched IS NOT NULL but trigger_activated=false)는 inconclusive_count UPDATE', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        return Promise.resolve({ rows: [] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        return Promise.resolve({ rows: [{ id: 300, pattern_id: 10, matched: false }] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    const inconclusiveCounter = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_metrics') &&
-        sql.includes('inconclusive_count = inconclusive_count + 1') &&
-        Array.isArray(params) &&
-        params[0] === 10,
-    );
-    expect(inconclusiveCounter).toBeDefined();
-  });
-
-  it('pending 없으면 UPDATE 호출 0회', async () => {
-    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
-    await verifyDailyMatches(1);
-
-    const updates = mockQuery.mock.calls.filter(
-      ([sql]) =>
-        typeof sql === 'string' &&
-        (sql.includes('UPDATE pattern_matches') || sql.includes('UPDATE pattern_metrics')),
-    );
-    expect(updates.length).toBe(0);
   });
 });
 
