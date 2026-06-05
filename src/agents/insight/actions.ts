@@ -20,6 +20,14 @@ import {
   decodeMetricActionPayload,
 } from './metric-approval-cards.js';
 
+/**
+ * #477 P1 — 가설 등록·매트릭 승인/거절 인터랙션 비활성 플래그.
+ * pattern_hypotheses/pattern_metrics DROP + 승인 게이트가 pattern_links 기반으로 재설계됨(P5).
+ * 발굴(P2)·승인 게이트(P5) 재구축 시 false 전환 + pattern_links 대상으로 포팅.
+ * dismiss(순수 UI, DB 미변경)는 유지.
+ */
+const PATTERN_INTERACTION_SUSPENDED_P1 = true;
+
 const resolveBodyUserId = async (body: { user?: string | { id: string } }): Promise<number> => {
   const slackUserId = body.user ? (typeof body.user === 'string' ? body.user : body.user.id) : '';
   if (!slackUserId) return DEFAULT_USER_ID;
@@ -39,6 +47,12 @@ const extractRawValue = (body: unknown): string | null => {
 export const registerInsightActions = (app: App): void => {
   app.action(HYPOTHESIS_REGISTER_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
+    if (PATTERN_INTERACTION_SUSPENDED_P1) {
+      console.warn(
+        '[Insight Action] hypothesis_register — #477 P1, 발굴/등록 P2 재설계 대기 (skip)',
+      );
+      return;
+    }
     const raw = extractRawValue(body);
     if (!raw) return;
     const payload = decodeActionPayload(raw);
@@ -90,6 +104,10 @@ export const registerInsightActions = (app: App): void => {
 
   app.action(METRIC_APPROVE_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
+    if (PATTERN_INTERACTION_SUSPENDED_P1) {
+      console.warn('[Insight Action] metric_approve — #477 P1, 승인 게이트 P5 재설계 대기 (skip)');
+      return;
+    }
     const raw = extractRawValue(body);
     if (!raw) return;
     const payload = decodeMetricActionPayload(raw);
@@ -132,6 +150,10 @@ export const registerInsightActions = (app: App): void => {
 
   app.action(METRIC_REJECT_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
+    if (PATTERN_INTERACTION_SUSPENDED_P1) {
+      console.warn('[Insight Action] metric_reject — #477 P1, 승인 게이트 P5 재설계 대기 (skip)');
+      return;
+    }
     const raw = extractRawValue(body);
     if (!raw) return;
     const payload = decodeMetricActionPayload(raw);
