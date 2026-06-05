@@ -104,10 +104,64 @@ const persistLinkVerification = async (l: LinkVerification): Promise<void> => {
   );
 };
 
+/** 링크 주간 스냅샷 UPSERT (link_weekly_stats) — 마틴게일 trail·emerging 진행바·주간대비(멱등). */
+const persistWeeklySnapshot = async (
+  userId: number,
+  l: LinkVerification,
+  weekStart: string,
+): Promise<void> => {
+  await query(
+    `INSERT INTO link_weekly_stats
+        (user_id, link_id, week_start, e_value, a, b, c, d,
+         posterior_alpha, posterior_beta, p_value, q_value, effect, test_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'fisher_2x2')
+     ON CONFLICT (link_id, week_start) DO UPDATE SET
+        e_value = EXCLUDED.e_value, a = EXCLUDED.a, b = EXCLUDED.b,
+        c = EXCLUDED.c, d = EXCLUDED.d,
+        posterior_alpha = EXCLUDED.posterior_alpha, posterior_beta = EXCLUDED.posterior_beta,
+        p_value = EXCLUDED.p_value, q_value = EXCLUDED.q_value, effect = EXCLUDED.effect,
+        computed_at = NOW()`,
+    [
+      userId,
+      l.linkId,
+      weekStart,
+      numOrNull(l.eValue),
+      l.a,
+      l.b,
+      l.c,
+      l.d,
+      l.posteriorAlpha,
+      l.posteriorBeta,
+      numOrNull(l.pValue),
+      numOrNull(l.qValue),
+      numOrNull(l.effect),
+    ],
+  );
+};
+
+/** 직전 주(들) 링크별 e_value — emerging 진행바 "지난주 → 이번주" delta용 (link당 최신 1행). */
+const loadPrevWeekEValues = async (
+  userId: number,
+  weekStart: string,
+): Promise<Map<number, number>> => {
+  const res = await query<{ link_id: number; e_value: string | null }>(
+    `SELECT DISTINCT ON (link_id) link_id, e_value
+       FROM link_weekly_stats
+      WHERE user_id = $1 AND week_start < $2
+      ORDER BY link_id, week_start DESC`,
+    [userId, weekStart],
+  );
+  const m = new Map<number, number>();
+  for (const r of res.rows) {
+    if (r.e_value !== null) m.set(r.link_id, Number(r.e_value));
+  }
+  return m;
+};
+
 /**
  * 시드 영향력 top N (credible interval lower bound 정렬).
- * pattern_summary(시드 메타 + active 여부) + pattern_links(α/β 합산, status='active')에서 산출.
- * #477 P1에서 DROP된 pattern_metrics 참조를 pattern_links로 복구.
+ * pattern_summary(시드 메타 + active 여부) + pattern_links(α/β 합산, active|confirmed)에서 산출.
+ * P3: confirmed(verified) 링크도 합산해 확정된 시드가 영향력 top에서 사라지지 않게(pattern_summary와 일관).
  */
 const loadSeedInfluence = async (userId: number, topN: number): Promise<SeedInfluenceRow[]> => {
   const summaryRes = await query<{
@@ -135,7 +189,7 @@ const loadSeedInfluence = async (userId: number, topN: number): Promise<SeedInfl
             SUM(posterior_alpha)::TEXT AS sum_alpha,
             SUM(posterior_beta)::TEXT  AS sum_beta
        FROM pattern_links
-      WHERE user_id = $1 AND status = 'active'
+      WHERE user_id = $1 AND status IN ('active', 'confirmed')
       GROUP BY seed_id`,
     [userId],
   );
@@ -178,15 +232,25 @@ const processUser = async (
 ): Promise<void> => {
   const results = await verifyUserLinks(userId, today);
 
+  // 직전 주 e_value 먼저 로드(이번 주 스냅샷 쓰기 전 — delta가 과거만 반영하게).
+  let prevEValues = new Map<number, number>();
+  try {
+    prevEValues = await loadPrevWeekEValues(userId, weekStart);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Verification] 직전주 e_value 로드 실패 user=${userId}: ${msg}`);
+  }
+
   let persisted = 0;
   for (const l of results) {
     // per-link 격리(#434 Phase 8a) — 한 링크 UPDATE 실패가 전체를 막지 않게.
     try {
       await persistLinkVerification(l);
+      await persistWeeklySnapshot(userId, l, weekStart);
       persisted += 1;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Verification] 링크 UPDATE 실패 link=${l.linkId}: ${msg}`);
+      console.error(`[Verification] 링크 persist 실패 link=${l.linkId}: ${msg}`);
     }
   }
 
@@ -198,13 +262,13 @@ const processUser = async (
     console.error(`[Verification] 시드 영향력 로드 실패 user=${userId}: ${msg}`);
   }
 
-  const confirms = results.filter((l) => l.verdict === 'confirm').length;
+  const verified = results.filter((l) => l.nextStatus === 'confirmed').length;
   const rejects = results.filter((l) => l.verdict === 'reject').length;
   console.warn(
-    `[Verification] user=${userId} 링크 ${results.length} (persist ${persisted}) confirm ${confirms} reject ${rejects}`,
+    `[Verification] user=${userId} 링크 ${results.length} (persist ${persisted}) verified ${verified} reject ${rejects}`,
   );
 
-  const blocks = buildVerificationBlocks(weekStart, results, seedInfluence);
+  const blocks = buildVerificationBlocks(weekStart, results, seedInfluence, prevEValues);
   const fallback = `패턴 검증 주간 리포트 (${weekStart} ~) — 링크 ${results.length}건`;
   try {
     await postBlockMessage(app.client, channelId, fallback, blocks);
