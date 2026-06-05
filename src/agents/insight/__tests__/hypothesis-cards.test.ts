@@ -32,6 +32,7 @@ const makeLink = (overrides: Partial<LinkVerification> = {}): LinkVerification =
   posteriorAlpha: 21,
   posteriorBeta: 6,
   posteriorP: 0.78,
+  eValue: 30,
   lastMatchedAt: '2026-06-01',
   verdict: 'confirm',
   nextStatus: 'active',

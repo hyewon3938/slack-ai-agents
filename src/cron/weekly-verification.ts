@@ -1,14 +1,15 @@
 /**
- * 주간 off-day 검증 엔진 cron — 월요일 06:00 KST (#477 P2).
- * weekly-hypothesis-review를 대체. ADR-0032(통계 스택) + ADR-0033(매트릭=가설).
+ * 주간 off-day 검증 엔진 cron — 월요일 06:00 KST (#477 P2·P3).
+ * weekly-hypothesis-review를 대체. ADR-0032(통계 스택)·0033(매트릭=가설)·0034(e-value)·0035(노출).
  *
  * 흐름:
- *   1) active pattern_links 전부 off-day 대조 재계산 (verifyUserLinks — raw 윈도우 재계산)
- *   2) 링크별 pattern_links UPDATE (counters SET + p/q/effect/posterior/test_detail + status 전이)
- *   3) 시드 영향력 top 5 + 검증 현황(provisional confirm / reject) 카드 → #insight
+ *   1) active pattern_links 전부 off-day 대조 재계산 (verifyUserLinks — raw 윈도우 재계산 + e-value)
+ *   2) 링크별 pattern_links UPDATE (counters + p/q/effect/posterior/e_value/test_detail + status 전이)
+ *   3) 링크별 주간 스냅샷 link_weekly_stats write (마틴게일 trail·emerging 진행바·주간대비)
+ *   4) 시드 영향력 top 5 + 검증 현황(verified / 검증중 / reject) 카드 → #insight
  *
- * ⚠️ confirm은 provisional — verified tier 노출/승격은 P3 e-value 게이트 전까지 보류(ADR-0032 §3).
- * status 전이는 reject만 DB 반영(반증된 패턴 제거), confirm은 카드에만(statusForVerdict).
+ * P3: 확정 게이트 = e_value ≥ 1/α(=20) → status='confirmed'(verified tier). reject만 추가로 DB 반영.
+ * confirmed는 sticky(verifyUserLinks가 active만 재검증). 등급 노출은 saju_influence_summary(080).
  */
 
 import type { App } from '@slack/bolt';
@@ -69,6 +70,7 @@ const persistLinkVerification = async (l: LinkVerification): Promise<void> => {
         test_detail        = $11::jsonb,
         status             = $12,
         last_matched_at    = COALESCE($13::timestamptz, last_matched_at),
+        e_value            = $14,
         updated_at         = NOW()
       WHERE id = $1`,
     [
@@ -85,6 +87,7 @@ const persistLinkVerification = async (l: LinkVerification): Promise<void> => {
       testDetail,
       l.nextStatus,
       l.lastMatchedAt,
+      numOrNull(l.eValue),
     ],
   );
 };
