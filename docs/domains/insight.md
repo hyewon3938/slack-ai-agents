@@ -1483,6 +1483,19 @@ ALTER TABLE pattern_matches
 
 > 계획서 `.claude/plans/479-p1-schema.md`, 서사 [design-notebook](../design-notebook/metric-first-verification.md) Phase 1 섹션.
 
+### 25. 매트릭 중심 패턴 검증 — Phase 2 (주간 검증 엔진 + 일별 활성 로그 전환, #481)
+
+> TODO(`/build`): 구현 후 본문 채우기. 아래 골격 항목 요약 —
+> - **주간 검증 엔진** (`weekly-verification.ts`, `weekly-hypothesis-review.ts` 대체): 윈도우 재계산(raw) → 신호별 일자 시리즈(전역, 신호당 1회) + 시드별 활성 시리즈(시드당 1회) → 링크별 **off-day 2×2** → Fisher's exact + BH-FDR + Beta-Binomial posterior → status 전이(active/weak/confirmed/rejected). `pattern_links` 단일 검증 진실. SET 시맨틱(전체 이력 재계산).
+> - **일별 테이블 전환**: `pattern_matches` → `seed_daily_activations` rename + 검증 컬럼(`metric_values`·`verify_status`·`error_message`) DROP. 남김: `date`·`pattern_id`·`trigger_activated`·`matched`. 일별 cron은 오늘만 transient 기록(검증·백필·#life 발송 제거).
+> - **마이그레이션 078**: rename + 컬럼 DROP + `saju_influence_summary` recent_raw 재배선(`seed_daily_activations`).
+> - **소비자 재배선**: daily-insight SKILL 2-2(`FROM pattern_matches`→신 테이블), `pillar-level-distribution-review`(테이블·`verify_status` 필터·`created_at`), `loadSeedInfluence`(깨진 `pattern_metrics` 참조 → `pattern_links` 복구).
+> - **주간 #insight 카드**: 링크 검증 현황 + 시드 영향력 top5(재배선). discovery·verified tier·주간대비 delta 없음(각 P5/P3).
+> - **통계 경계**: P2 = Fisher 2×2(binary pass) + BH-FDR + posterior + 기본 status 전이. e-value·Mann-Whitney·block permutation·EB·verified tier 노출 = P3. 연속 신호는 `direction` binary pass로 2×2. graded 레벨 시드는 독립 binary 검정(완전 graded = P4).
+> - **헌장 준수**: ② off-day 대조 / ③ 통계=ADR-0032(P2 범위) / ④ provisional confirm은 e-value 게이트(P3)까지 사용자 미노출.
+>
+> 계획서 `.claude/plans/481-p2-weekly-verification.md`, 서사 [design-notebook](../design-notebook/metric-first-verification.md) Phase 2 섹션.
+
 ## 파일 구조
 
 ```
