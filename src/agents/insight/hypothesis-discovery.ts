@@ -2,13 +2,20 @@
  * 자동 패턴 발견 — 시드 × enum 전수 스캔으로 후보 가설 발굴.
  * ADR-0019 Phase 4.
  *
+ * ⚠️ #477 P2: 이 모듈은 P5(발견·승인 게이트 재설계)까지 **비활성(dormant)** — 호출 경로 없음.
+ *    SQL은 seed_daily_activations(구 pattern_matches) + pattern_hypotheses(077에서 DROP)를 참조하므로
+ *    실제 호출 시 동작하지 않는다. P5에서 pattern_links(시드×신호) 모델로 전면 재작성 예정. 현재는 컴파일·타입 보존용.
+ *
  * 두 모드:
  *   - setup: lookbackDays 윈도우 전체 → 1차 셋업 시 backtest CLI에서 호출
  *   - recurring: 전주만 → 주간 cron에서 호출, 이미 active/confirmed 가설은 자동 제외
  */
 
 import { query } from '../../shared/db.js';
-import { fisherExact, bhFdr, type TriggerSpec } from '../../shared/pattern-hypothesis.js';
+import { fisherExact, bhFdr } from '../../shared/stats.js';
+
+/** (시드 발현) 트리거 명세. P5에서 pattern_links(시드×신호) 모델로 재정의 예정. */
+export type TriggerSpec = { type: 'seed'; signalId: number };
 import {
   cumulativePosteriorFromHitMiss,
   posteriorMean,

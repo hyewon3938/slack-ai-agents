@@ -1,13 +1,13 @@
 /**
- * 가설 Block Kit 카드 빌더 — ADR-0019 Phase 4 + Phase 7 Bayesian 병기.
+ * 검증 Block Kit 카드 빌더 — #477 P2 (주간 검증 리포트) + 가설 등록 액션 scaffolding(P5).
  *
- * - 후보 카드 (discovery → 승인/반려 액션)
- * - 주간 리뷰 묶음 (시드 영향력 top 5 + active 가설 stat 변화 + 신규 후보)
+ * - 주간 검증 리포트: 시드 영향력 top 5 + off-day 검증 현황(provisional confirm / reject)
+ * - 등록/반려 액션 상수 + payload encode/decode는 P5 승인 게이트가 재사용(현재 dormant).
  */
 
 import type { KnownBlock } from '@slack/types';
-import type { CandidateHypothesis } from './hypothesis-discovery.js';
-import type { Hypothesis, HypothesisStat, TriggerSpec } from '../../shared/pattern-hypothesis.js';
+import type { LinkVerification, Verdict } from '../../shared/pattern-verification.js';
+import type { TriggerSpec } from './hypothesis-discovery.js';
 
 export const HYPOTHESIS_REGISTER_ACTION_ID = 'hypothesis_register';
 export const HYPOTHESIS_DISMISS_ACTION_ID = 'hypothesis_dismiss';
@@ -17,9 +17,7 @@ const KIND_LABEL: Record<'saju' | 'life_signal', string> = {
   life_signal: '[생활]',
 };
 
-const CANDIDATE_CAP_PER_KIND = 5;
-
-/** Slack action value 직렬화 — JSON 한도(2000자) 안전 */
+/** Slack action value 직렬화 — JSON 한도(2000자) 안전. P5 등록 버튼 scaffolding(현재 dormant). */
 export interface HypothesisActionPayload {
   triggerSpec: TriggerSpec;
   enumTarget: string;
@@ -49,75 +47,19 @@ export const decodeActionPayload = (raw: string): HypothesisActionPayload | null
   }
 };
 
-const arrow = (latest: number, prev: number | null): string => {
-  if (prev === null || !Number.isFinite(prev) || !Number.isFinite(latest)) return '─';
-  if (latest > prev * 1.1) return '▲';
-  if (latest < prev * 0.9) return '▼';
-  return '─';
-};
-
 const formatPercent = (v: number): string =>
   Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : '—';
 
-const formatRatio = (v: number): string => (Number.isFinite(v) ? v.toFixed(2) : '—');
+const formatRatio = (v: number): string => (Number.isFinite(v) ? `${v.toFixed(2)}x` : '—');
 
 const formatPValue = (v: number): string => (Number.isFinite(v) ? v.toFixed(3) : '—');
 
 const formatPosterior = (v: number): string =>
   Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—';
 
-/** 단일 후보 카드 — 승인/반려 버튼 포함 */
-export const buildCandidateCard = (cand: CandidateHypothesis): KnownBlock[] => {
-  const payload = encodeActionPayload({
-    triggerSpec: cand.triggerSpec,
-    enumTarget: cand.enumTarget,
-  });
-  const kindLabel = KIND_LABEL[cand.patternKind];
-  const header = `${kindLabel} *${cand.signalName}* → \`${cand.enumTarget}\``;
-  const freqLine =
-    `발현일 n=${cand.nTriggerDays} · trigger ${formatPercent(cand.rateTrigger)} ` +
-    `vs baseline ${formatPercent(cand.rateBaseline)} ` +
-    `· ratio ${formatRatio(cand.rateRatio)}x`;
-  const bayesLine =
-    `p=${formatPValue(cand.rawP)} q=${formatPValue(cand.fdrQ)} · ` +
-    `사후 ${formatPosterior(cand.posteriorP)} ` +
-    `[${formatPosterior(cand.ciLower)}, ${formatPosterior(cand.ciUpper)}]`;
+// ─── 시드 영향력 섹션 (주간 리포트 상단) ─────────────────
 
-  return [
-    {
-      type: 'section',
-      text: { type: 'mrkdwn', text: `${header}\n${freqLine}\n${bayesLine}` },
-    },
-    {
-      type: 'actions',
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: '가설 승인' },
-          style: 'primary',
-          action_id: HYPOTHESIS_REGISTER_ACTION_ID,
-          value: payload,
-        },
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: '가설 반려' },
-          action_id: HYPOTHESIS_DISMISS_ACTION_ID,
-          value: payload,
-        },
-      ],
-    },
-  ];
-};
-
-export interface ActiveHypothesisRow {
-  hypothesis: Hypothesis;
-  signalName: string;
-  patternKind: 'saju' | 'life_signal';
-  latest: HypothesisStat;
-  prev: HypothesisStat | null;
-}
-
-/** 시드 영향력 섹션 — 주간 리뷰 상단. credible interval lower bound 정렬. */
+/** 시드 영향력 — credible interval lower bound 정렬. */
 export interface SeedInfluenceRow {
   patternId: number;
   patternKind: 'saju' | 'life_signal';
@@ -162,72 +104,96 @@ export const buildSeedInfluenceSection = (rows: SeedInfluenceRow[]): KnownBlock[
   ];
 };
 
-/** 주간 리뷰 묶음 — 시드 영향력 + active 가설 표 + 신규 후보 카드 */
-export const buildWeeklyReviewBlocks = (
-  active: ActiveHypothesisRow[],
-  candidates: CandidateHypothesis[],
+// ─── off-day 검증 현황 섹션 ──────────────────────────────
+
+const VERDICT_LABEL: Record<Verdict, string> = {
+  confirm: '확정(provisional)',
+  reject: '기각',
+  inconclusive: '판정 보류',
+  insufficient: '데이터 부족',
+};
+
+const countByVerdict = (links: LinkVerification[]): Record<Verdict, number> => {
+  const counts: Record<Verdict, number> = {
+    confirm: 0,
+    reject: 0,
+    inconclusive: 0,
+    insufficient: 0,
+  };
+  for (const l of links) counts[l.verdict] += 1;
+  return counts;
+};
+
+/** provisional confirm 한 줄 — off-day 대조 결과 + 사후. */
+const confirmLine = (l: LinkVerification): string => {
+  const kindLabel = KIND_LABEL[l.patternKind];
+  return (
+    `• ★ ${kindLabel} *${l.signalName}* → \`${l.seedName}\` — ` +
+    `발현 ${formatPercent(l.rateActive)} vs 비발현 ${formatPercent(l.rateOff)} ` +
+    `(effect ${formatRatio(l.effect)}, q=${formatPValue(l.qValue)}, n=${l.nActive}) · ` +
+    `사후 ${formatPosterior(l.posteriorP)}`
+  );
+};
+
+const rejectLine = (l: LinkVerification): string =>
+  `• ✗ ${KIND_LABEL[l.patternKind]} ${l.signalName} × \`${l.seedName}\` — 연관 약함(effect ${formatRatio(l.effect)})`;
+
+const PROVISIONAL_LEGEND =
+  '_★ provisional — 주간 q는 optional stopping이라 통계 확정 게이트(e-value)는 P3. 지금은 경향 모니터링용._';
+
+/**
+ * 주간 검증 리포트 — 시드 영향력 + off-day 검증 현황(confirm/reject 목록 + 요약).
+ * discovery 후보·주간 delta는 없음(P5/P3). provisional confirm은 노출 단언 아님(카드 모니터링용).
+ */
+export const buildVerificationBlocks = (
   weekStart: string,
+  links: LinkVerification[],
   seedInfluence: SeedInfluenceRow[],
 ): KnownBlock[] => {
   const blocks: KnownBlock[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `가설 주간 리포트 (${weekStart} ~)` },
+      text: { type: 'plain_text', text: `패턴 검증 주간 리포트 (${weekStart} ~)` },
     },
   ];
 
   blocks.push(...buildSeedInfluenceSection(seedInfluence));
 
-  if (active.length === 0) {
-    const noActiveText =
-      candidates.length === 0
-        ? '_active 가설 없음 — 신규 후보도 아직 없어. 데이터 더 쌓이면 자동으로 떠올거야._'
-        : '_active 가설 없음 — 아래 후보에서 골라 승인해._';
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: noActiveText },
-    });
-  } else {
-    const lines = active.map((row) => {
-      const prev = row.prev;
-      const trigArrow = arrow(row.latest.rateTrigger, prev?.rateTrigger ?? null);
-      const qArrow = arrow(row.latest.fdrQ, prev?.fdrQ ?? null);
-      const kindLabel = KIND_LABEL[row.patternKind];
-      const head =
-        `• ${kindLabel} *${row.signalName}* → \`${row.hypothesis.enumTarget}\` — ` +
-        `n=${row.latest.nTriggerDays} ` +
-        `trig ${formatPercent(row.latest.rateTrigger)} ${trigArrow} ` +
-        `ratio ${formatRatio(row.latest.rateRatio)}x ` +
-        `q=${formatPValue(row.latest.fdrQ)} ${qArrow}`;
-      const post =
-        `   사후 ${formatPosterior(row.latest.posteriorP)} ` +
-        `[${formatPosterior(row.latest.ciLower)}, ${formatPosterior(row.latest.ciUpper)}]`;
-      return `${head}\n${post}`;
-    });
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: `*active 가설 (${active.length}건)*\n${lines.join('\n')}` },
-    });
-  }
-
-  const sajuCands = candidates
-    .filter((c) => c.patternKind === 'saju')
-    .slice(0, CANDIDATE_CAP_PER_KIND);
-  const lifeCands = candidates
-    .filter((c) => c.patternKind === 'life_signal')
-    .slice(0, CANDIDATE_CAP_PER_KIND);
-
-  if (sajuCands.length + lifeCands.length > 0) {
-    blocks.push({ type: 'divider' });
+  if (links.length === 0) {
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*신규 후보 (사주 ${sajuCands.length} / 생활 ${lifeCands.length})* — 승인할 거 골라`,
+        text: '_검증할 active 링크 없음 — 시드×신호 데이터가 더 쌓이면 자동으로 검증돼._',
       },
     });
-    for (const cand of sajuCands) blocks.push(...buildCandidateCard(cand));
-    for (const cand of lifeCands) blocks.push(...buildCandidateCard(cand));
+    return blocks;
+  }
+
+  const counts = countByVerdict(links);
+  const summary =
+    `*이번 주 off-day 검증 (${links.length}개 링크)*\n` +
+    Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .map(([verdict, n]) => `${VERDICT_LABEL[verdict as Verdict]} ${n}`)
+      .join(' · ');
+  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: summary } });
+
+  const confirms = links.filter((l) => l.verdict === 'confirm');
+  if (confirms.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: confirms.map(confirmLine).join('\n') },
+    });
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: PROVISIONAL_LEGEND }] });
+  }
+
+  const rejects = links.filter((l) => l.verdict === 'reject');
+  if (rejects.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: rejects.map(rejectLine).join('\n') },
+    });
   }
 
   return blocks;

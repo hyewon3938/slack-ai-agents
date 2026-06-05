@@ -1,63 +1,56 @@
 import { describe, it, expect } from 'vitest';
 import type { KnownBlock, SectionBlock } from '@slack/types';
 import {
-  buildCandidateCard,
-  buildWeeklyReviewBlocks,
-  type ActiveHypothesisRow,
+  buildVerificationBlocks,
+  buildSeedInfluenceSection,
+  type SeedInfluenceRow,
 } from '../hypothesis-cards.js';
-import type { CandidateHypothesis } from '../hypothesis-discovery.js';
-import type { Hypothesis, HypothesisStat } from '../../../shared/pattern-hypothesis.js';
+import type { LinkVerification, Verdict } from '../../../shared/pattern-verification.js';
 
-const makeCandidate = (
-  signalId: number,
-  name: string,
+const makeLink = (overrides: Partial<LinkVerification> = {}): LinkVerification => ({
+  linkId: 1,
+  seedId: 10,
+  signalId: 20,
+  seedName: '갑목일주',
+  patternKind: 'saju',
+  signalName: '수면부족',
+  signalKind: 'sql',
+  valueType: 'continuous',
+  currentStatus: 'active',
+  a: 20,
+  b: 5,
+  c: 5,
+  d: 20,
+  inconclusive: 0,
+  nActive: 25,
+  nOff: 25,
+  rateActive: 0.8,
+  rateOff: 0.2,
+  effect: 4.0,
+  pValue: 0.001,
+  qValue: 0.01,
+  posteriorAlpha: 21,
+  posteriorBeta: 6,
+  posteriorP: 0.78,
+  lastMatchedAt: '2026-06-01',
+  verdict: 'confirm',
+  nextStatus: 'active',
+  ...overrides,
+});
+
+const makeSeedInfluence = (
   patternKind: 'saju' | 'life_signal',
-): CandidateHypothesis => ({
-  triggerSpec: { type: 'seed', signalId },
-  signalName: name,
+  signalName: string,
+): SeedInfluenceRow => ({
+  patternId: 1,
   patternKind,
-  enumTarget: 'mood_high',
-  nTriggerDays: 8,
-  nTotalDays: 28,
-  rateTrigger: 0.5,
-  rateBaseline: 0.2,
-  rateRatio: 2.5,
-  rawP: 0.04,
-  fdrQ: 0.15,
-  posteriorP: 0.5,
-  ciLower: 0.21,
-  ciUpper: 0.79,
-});
-
-const makeStat = (hypothesisId: number): HypothesisStat => ({
-  hypothesisId,
-  weekStart: '2026-05-25',
-  nTriggerDays: 4,
-  nTotalDays: 7,
-  rateTrigger: 0.5,
-  rateBaseline: 0.2,
-  rateRatio: 2.5,
-  rawP: 0.04,
-  fdrQ: 0.15,
-  posteriorAlpha: 3,
-  posteriorBeta: 3,
-  posteriorP: 0.5,
-  ciLower: 0.18,
-  ciUpper: 0.82,
-});
-
-const makeHypothesis = (id: number, signalId: number): Hypothesis => ({
-  id,
-  userId: 1,
-  triggerSpec: { type: 'seed', signalId },
-  enumTarget: 'mood_high',
-  status: 'active',
-  source: 'discovery',
-  registeredAt: new Date('2026-05-01T00:00:00Z'),
-  confirmedAt: null,
-  rejectedAt: null,
-  archivedAt: null,
-  notes: null,
+  signalName,
+  description: '설명',
+  totalHits: 12,
+  totalMisses: 3,
+  posteriorP: 0.7,
+  ciLower: 0.5,
+  ciUpper: 0.85,
 });
 
 const sectionTexts = (blocks: KnownBlock[]): string[] =>
@@ -69,89 +62,87 @@ const sectionTexts = (blocks: KnownBlock[]): string[] =>
       return '';
     });
 
-describe('buildCandidateCard — patternKind prefix', () => {
-  it('saju 시드는 [사주] prefix를 header에 포함', () => {
-    const blocks = buildCandidateCard(makeCandidate(1, '갑목일주', 'saju'));
+describe('buildVerificationBlocks — 빈 링크', () => {
+  it('active 링크 없으면 header + 안내 메시지만', () => {
+    const blocks = buildVerificationBlocks('2026-06-01', [], []);
+    expect(blocks[0]?.type).toBe('header');
     const texts = sectionTexts(blocks);
-    expect(texts.length).toBeGreaterThan(0);
-    expect(texts[0]).toMatch(/^\[사주\] \*갑목일주\*/);
-  });
-
-  it('life_signal 시드는 [생활] prefix를 header에 포함', () => {
-    const blocks = buildCandidateCard(makeCandidate(2, '저녁 운동', 'life_signal'));
-    const texts = sectionTexts(blocks);
-    expect(texts[0]).toMatch(/^\[생활\] \*저녁 운동\*/);
+    expect(texts.some((t) => t.includes('검증할 active 링크 없음'))).toBe(true);
   });
 });
 
-describe('buildWeeklyReviewBlocks — cap per kind', () => {
-  it('saju 6 + life_signal 7 → 종류별 5건씩만 노출 (최대 10건)', () => {
-    const candidates: CandidateHypothesis[] = [
-      ...Array.from({ length: 6 }, (_, i) => makeCandidate(100 + i, `사주${i}`, 'saju')),
-      ...Array.from({ length: 7 }, (_, i) => makeCandidate(200 + i, `생활${i}`, 'life_signal')),
-    ];
-    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25', []);
+describe('buildVerificationBlocks — provisional confirm', () => {
+  it('confirm 링크는 ★ + 시드/신호 + off-day 대조율 노출', () => {
+    const blocks = buildVerificationBlocks('2026-06-01', [makeLink()], []);
     const texts = sectionTexts(blocks);
-
-    const sajuCards = texts.filter((t) => /^\[사주\]/.test(t));
-    const lifeCards = texts.filter((t) => /^\[생활\]/.test(t));
-    expect(sajuCards.length).toBe(5);
-    expect(lifeCards.length).toBe(5);
+    const confirmText = texts.find((t) => t.includes('★'));
+    expect(confirmText).toBeDefined();
+    expect(confirmText).toContain('[사주]');
+    expect(confirmText).toContain('수면부족');
+    expect(confirmText).toContain('갑목일주');
+    expect(confirmText).toContain('발현 80.0%');
+    expect(confirmText).toContain('비발현 20.0%');
   });
 
-  it('신규 후보 섹션 헤더에 종류별 카운트 표기', () => {
-    const candidates: CandidateHypothesis[] = [
-      makeCandidate(1, '사주A', 'saju'),
-      makeCandidate(2, '사주B', 'saju'),
-      makeCandidate(3, '생활A', 'life_signal'),
-    ];
-    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25', []);
-    const headerSection = sectionTexts(blocks).find((t) => /^\*신규 후보/.test(t));
-    expect(headerSection).toBeDefined();
-    expect(headerSection).toContain('사주 2');
-    expect(headerSection).toContain('생활 1');
-  });
-
-  it('한쪽이 비어 있어도 header에 0 카운트로 표기', () => {
-    const candidates: CandidateHypothesis[] = [
-      makeCandidate(1, '사주A', 'saju'),
-      makeCandidate(2, '사주B', 'saju'),
-    ];
-    const blocks = buildWeeklyReviewBlocks([], candidates, '2026-05-25', []);
-    const headerSection = sectionTexts(blocks).find((t) => /^\*신규 후보/.test(t));
-    expect(headerSection).toContain('사주 2');
-    expect(headerSection).toContain('생활 0');
-  });
-
-  it('candidates가 0건이면 신규 후보 섹션 자체가 추가되지 않음', () => {
-    const blocks = buildWeeklyReviewBlocks([], [], '2026-05-25', []);
-    const headerSection = sectionTexts(blocks).find((t) => /^\*신규 후보/.test(t));
-    expect(headerSection).toBeUndefined();
+  it('confirm이 있으면 provisional 경고 컨텍스트가 붙는다', () => {
+    const blocks = buildVerificationBlocks('2026-06-01', [makeLink()], []);
+    const ctxTexts = blocks
+      .filter((b) => b.type === 'context')
+      .flatMap((b) => ('elements' in b ? b.elements : []))
+      .map((e) => ('text' in e && typeof e.text === 'string' ? e.text : ''));
+    expect(ctxTexts.some((t) => t.includes('provisional') && t.includes('P3'))).toBe(true);
   });
 });
 
-describe('buildWeeklyReviewBlocks — active 가설 prefix', () => {
-  it('active row에도 patternKind 따라 [사주] / [생활] prefix가 붙는다', () => {
-    const active: ActiveHypothesisRow[] = [
-      {
-        hypothesis: makeHypothesis(10, 100),
-        signalName: '사주가설',
-        patternKind: 'saju',
-        latest: makeStat(10),
-        prev: null,
-      },
-      {
-        hypothesis: makeHypothesis(11, 101),
-        signalName: '생활가설',
-        patternKind: 'life_signal',
-        latest: makeStat(11),
-        prev: null,
-      },
+describe('buildVerificationBlocks — verdict 요약 + reject', () => {
+  it('verdict별 카운트를 요약 라인에 표기', () => {
+    const links: LinkVerification[] = [
+      makeLink({ verdict: 'confirm' }),
+      makeLink({ verdict: 'reject', effect: 1.0 }),
+      makeLink({ verdict: 'insufficient', nActive: 3 }),
+      makeLink({ verdict: 'insufficient', nActive: 1 }),
     ];
-    const blocks = buildWeeklyReviewBlocks(active, [], '2026-05-25', []);
-    const activeSection = sectionTexts(blocks).find((t) => t.includes('active 가설'));
-    expect(activeSection).toBeDefined();
-    expect(activeSection).toMatch(/\[사주\] \*사주가설\*/);
-    expect(activeSection).toMatch(/\[생활\] \*생활가설\*/);
+    const summary = sectionTexts(buildVerificationBlocks('2026-06-01', links, [])).find((t) =>
+      t.includes('off-day 검증'),
+    );
+    expect(summary).toContain('4개 링크');
+    expect(summary).toContain('확정(provisional) 1');
+    expect(summary).toContain('기각 1');
+    expect(summary).toContain('데이터 부족 2');
+  });
+
+  it('reject 링크는 ✗로 별도 표기', () => {
+    const blocks = buildVerificationBlocks(
+      '2026-06-01',
+      [makeLink({ verdict: 'reject', signalName: '지출과다', effect: 1.0 })],
+      [],
+    );
+    const rejectText = sectionTexts(blocks).find((t) => t.includes('✗'));
+    expect(rejectText).toContain('지출과다');
   });
 });
+
+describe('buildSeedInfluenceSection — patternKind prefix', () => {
+  it('saju/life_signal에 따라 [사주]/[생활] prefix', () => {
+    const blocks = buildSeedInfluenceSection([
+      makeSeedInfluence('saju', '갑목'),
+      makeSeedInfluence('life_signal', '저녁운동'),
+    ]);
+    const text = sectionTexts(blocks)[0] ?? '';
+    expect(text).toContain('[사주] *갑목*');
+    expect(text).toContain('[생활] *저녁운동*');
+  });
+
+  it('빈 배열이면 블록 없음', () => {
+    expect(buildSeedInfluenceSection([])).toEqual([]);
+  });
+});
+
+// 타입 사용처 — Verdict union이 카드 라벨과 일치하는지 컴파일 타임 확인
+const _verdictCheck: Record<Verdict, true> = {
+  confirm: true,
+  reject: true,
+  inconclusive: true,
+  insufficient: true,
+};
+void _verdictCheck;
