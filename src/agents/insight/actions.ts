@@ -1,8 +1,9 @@
 /**
  * Insight 에이전트 Slack 액션 핸들러.
  *
- * - 가설 후보 카드 등록/패스 버튼 (ADR-0019 Phase 4)
- * - LLM 매트릭 후보 카드 승인/거절 버튼 (ADR-0025·0030 Phase 6)
+ * - 발굴 승인 카드 [추적 시작]/[패스] — pending pattern_link → active/archived (#477 P5a, ADR-0039).
+ *   사람은 노출·큐레이션(추적할 가치)만 게이트, 믿음(진짜인지)은 주간 e-value 트랙이 가린다.
+ * - LLM 매트릭 승인/거절 — P5b까지 suspended (signal_defs source=llm 모델로 포팅 대기).
  */
 
 import type { App } from '@slack/bolt';
@@ -10,23 +11,18 @@ import { query } from '../../shared/db.js';
 import { updateMessage } from '../../shared/slack.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {
-  HYPOTHESIS_REGISTER_ACTION_ID,
-  HYPOTHESIS_DISMISS_ACTION_ID,
-  decodeActionPayload,
+  DISCOVERY_APPROVE_ACTION_ID,
+  DISCOVERY_DISMISS_ACTION_ID,
+  decodeDiscoveryPayload,
 } from './hypothesis-cards.js';
-import {
-  METRIC_APPROVE_ACTION_ID,
-  METRIC_REJECT_ACTION_ID,
-  decodeMetricActionPayload,
-} from './metric-approval-cards.js';
+import { METRIC_APPROVE_ACTION_ID, METRIC_REJECT_ACTION_ID } from './metric-approval-cards.js';
 
 /**
- * #477 P1 — 가설 등록·매트릭 승인/거절 인터랙션 비활성 플래그.
- * pattern_hypotheses/pattern_metrics DROP + 승인 게이트가 pattern_links 기반으로 재설계됨(P5).
- * 발굴(P2)·승인 게이트(P5) 재구축 시 false 전환 + pattern_links 대상으로 포팅.
- * dismiss(순수 UI, DB 미변경)는 유지.
+ * #477 P5b — LLM 매트릭 승인/거절 인터랙션 비활성 플래그.
+ * 옛 pattern_metrics(DROP) 참조 핸들러 → 발굴 승인(P5a)은 pattern_links로 재구축 완료,
+ * LLM 신호 제안(P5b)은 signal_defs(source=llm, status=pending) 모델 포팅 대기.
  */
-const PATTERN_INTERACTION_SUSPENDED_P1 = true;
+const METRIC_INTERACTION_SUSPENDED_P5B = true;
 
 const resolveBodyUserId = async (body: { user?: string | { id: string } }): Promise<number> => {
   const slackUserId = body.user ? (typeof body.user === 'string' ? body.user : body.user.id) : '';
@@ -44,139 +40,118 @@ const extractRawValue = (body: unknown): string | null => {
   return typeof value === 'string' ? value : null;
 };
 
+// ─── 발굴 승인/패스 — pending pattern_link status 전이 (테스트 가능 코어) ──
+
+/**
+ * 발굴 후보 승인 — pending → active. 다음 주간 검증부터 off-day 대조 대상.
+ * @returns 전이된 링크 id (pending 아님/타 유저면 null).
+ */
+export const approveDiscoveryLink = async (
+  userId: number,
+  linkId: number,
+): Promise<number | null> => {
+  const res = await query<{ id: number }>(
+    `UPDATE pattern_links SET status = 'active', updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'pending'
+       RETURNING id`,
+    [linkId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+/**
+ * 발굴 후보 패스 — pending → archived. 사용자 "추적 안 함"이지 통계 'rejected'(데이터 "연관 없음")가 아님.
+ * 둘 다 여집합 제외라 재부상 안 함. @returns 전이된 링크 id (pending 아님/타 유저면 null).
+ */
+export const dismissDiscoveryLink = async (
+  userId: number,
+  linkId: number,
+): Promise<number | null> => {
+  const res = await query<{ id: number }>(
+    `UPDATE pattern_links SET status = 'archived', updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'pending'
+       RETURNING id`,
+    [linkId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+const extractChannelTs = (body: unknown): { channelId?: string; messageTs?: string } => {
+  const b = body as { channel?: { id?: string }; message?: { ts?: string } };
+  return {
+    channelId: b.channel?.id,
+    messageTs: b.message?.ts,
+  };
+};
+
 export const registerInsightActions = (app: App): void => {
-  app.action(HYPOTHESIS_REGISTER_ACTION_ID, async ({ ack, body, client }) => {
+  app.action(DISCOVERY_APPROVE_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
-    if (PATTERN_INTERACTION_SUSPENDED_P1) {
-      console.warn(
-        '[Insight Action] hypothesis_register — #477 P1, 발굴/등록 P2 재설계 대기 (skip)',
-      );
-      return;
-    }
     const raw = extractRawValue(body);
     if (!raw) return;
-    const payload = decodeActionPayload(raw);
+    const payload = decodeDiscoveryPayload(raw);
     if (!payload) {
-      console.warn('[Insight Action] hypothesis_register: payload 디코딩 실패');
+      console.warn('[Insight Action] discovery_approve: payload 디코딩 실패');
       return;
     }
     try {
       const userId = await resolveBodyUserId(body);
-      await query(
-        `INSERT INTO pattern_hypotheses (user_id, trigger_spec, enum_target, source)
-         VALUES ($1, $2, $3, 'discovery')`,
-        [userId, payload.triggerSpec, payload.enumTarget],
-      );
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
-      if (channelId && messageTs) {
-        await updateMessage(
-          client,
-          channelId,
-          messageTs,
-          `가설 등록 완료 — \`${payload.enumTarget}\` 주간 추적 시작.`,
-          [],
-        );
-      }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] hypothesis_register 오류: ${msg}`);
-    }
-  });
-
-  app.action(HYPOTHESIS_DISMISS_ACTION_ID, async ({ ack, body, client }) => {
-    await ack();
-    const raw = extractRawValue(body);
-    if (!raw) return;
-    const payload = decodeActionPayload(raw);
-    try {
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
-      if (channelId && messageTs) {
-        const label = payload?.enumTarget ?? '후보';
-        await updateMessage(client, channelId, messageTs, `_${label} 후보 반려함._`, []);
-      }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] hypothesis_dismiss 오류: ${msg}`);
-    }
-  });
-
-  app.action(METRIC_APPROVE_ACTION_ID, async ({ ack, body, client }) => {
-    await ack();
-    if (PATTERN_INTERACTION_SUSPENDED_P1) {
-      console.warn('[Insight Action] metric_approve — #477 P1, 승인 게이트 P5 재설계 대기 (skip)');
-      return;
-    }
-    const raw = extractRawValue(body);
-    if (!raw) return;
-    const payload = decodeMetricActionPayload(raw);
-    if (!payload) {
-      console.warn('[Insight Action] metric_approve: payload 디코딩 실패');
-      return;
-    }
-    try {
-      const userId = await resolveBodyUserId(body);
-      const res = await query<{ id: number; description: string }>(
-        `UPDATE pattern_metrics
-           SET status = 'active', approved_at = NOW()
-         WHERE id = $1 AND user_id = $2 AND status = 'pending'
-         RETURNING id, description`,
-        [payload.metricId, userId],
-      );
-      if (res.rows.length === 0) {
+      const linkId = await approveDiscoveryLink(userId, payload.linkId);
+      if (linkId === null) {
         console.warn(
-          `[Insight Action] metric_approve: id=${payload.metricId} pending 아님 또는 권한 없음`,
+          `[Insight Action] discovery_approve: link=${payload.linkId} pending 아님 또는 권한 없음`,
         );
         return;
       }
-      const row = res.rows[0];
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
+      const { channelId, messageTs } = extractChannelTs(body);
       if (channelId && messageTs) {
         await updateMessage(
           client,
           channelId,
           messageTs,
-          `매트릭 승인 완료 — \`${row.description}\` 다음 매칭 cron부터 활성.`,
+          '추적 시작 — 다음 주간 검증부터 off-day 대조로 진짜인지 가린다.',
           [],
         );
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] metric_approve 오류: ${msg}`);
+      console.error(`[Insight Action] discovery_approve 오류: ${msg}`);
     }
   });
 
-  app.action(METRIC_REJECT_ACTION_ID, async ({ ack, body, client }) => {
+  app.action(DISCOVERY_DISMISS_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
-    if (PATTERN_INTERACTION_SUSPENDED_P1) {
-      console.warn('[Insight Action] metric_reject — #477 P1, 승인 게이트 P5 재설계 대기 (skip)');
-      return;
-    }
     const raw = extractRawValue(body);
     if (!raw) return;
-    const payload = decodeMetricActionPayload(raw);
-    if (!payload) {
-      console.warn('[Insight Action] metric_reject: payload 디코딩 실패');
-      return;
-    }
+    const payload = decodeDiscoveryPayload(raw);
+    if (!payload) return;
     try {
       const userId = await resolveBodyUserId(body);
-      await query(
-        `UPDATE pattern_metrics
-           SET status = 'rejected', rejected_at = NOW()
-         WHERE id = $1 AND user_id = $2 AND status = 'pending'`,
-        [payload.metricId, userId],
-      );
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
+      await dismissDiscoveryLink(userId, payload.linkId);
+      const { channelId, messageTs } = extractChannelTs(body);
       if (channelId && messageTs) {
-        await updateMessage(client, channelId, messageTs, `_매트릭 후보 반려._`, []);
+        await updateMessage(client, channelId, messageTs, '_후보 패스함 — 추적 안 함._', []);
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] metric_reject 오류: ${msg}`);
+      console.error(`[Insight Action] discovery_dismiss 오류: ${msg}`);
+    }
+  });
+
+  // ── LLM 매트릭 승인/거절 — #477 P5b 재설계 대기 (stale 카드 클릭 graceful no-op) ──
+  app.action(METRIC_APPROVE_ACTION_ID, async ({ ack }) => {
+    await ack();
+    if (METRIC_INTERACTION_SUSPENDED_P5B) {
+      console.warn('[Insight Action] metric_approve — #477 P5b LLM 신호 제안 재설계 대기 (skip)');
+      return;
+    }
+  });
+
+  app.action(METRIC_REJECT_ACTION_ID, async ({ ack }) => {
+    await ack();
+    if (METRIC_INTERACTION_SUSPENDED_P5B) {
+      console.warn('[Insight Action] metric_reject — #477 P5b LLM 신호 제안 재설계 대기 (skip)');
+      return;
     }
   });
 };

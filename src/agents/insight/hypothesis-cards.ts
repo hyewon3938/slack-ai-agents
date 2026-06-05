@@ -1,48 +1,41 @@
 /**
- * 검증 Block Kit 카드 빌더 — #477 P2 (주간 검증 리포트) + 가설 등록 액션 scaffolding(P5).
+ * 검증 Block Kit 카드 빌더 — #477 P2/P3 (주간 검증 리포트) + P5a 발굴 승인 카드(ADR-0039).
  *
- * - 주간 검증 리포트: 시드 영향력 top 5 + off-day 검증 현황(provisional confirm / reject)
- * - 등록/반려 액션 상수 + payload encode/decode는 P5 승인 게이트가 재사용(현재 dormant).
+ * - 주간 검증 리포트: 시드 영향력 top 5 + off-day 검증 현황(verified / emerging / reject)
+ * - 발굴 승인 카드: 여집합 발굴 후보(pending 링크)를 맥락 풍부 카드로 → [추적 시작]/[패스].
+ *   사람은 노출·큐레이션만 게이트, 믿음(진짜인지)은 끝까지 e-value 트랙(ADR-0039 §3).
  */
 
 import type { KnownBlock } from '@slack/types';
 import type { LinkVerification } from '../../shared/pattern-verification.js';
-import type { TriggerSpec } from './hypothesis-discovery.js';
+import type { DiscoveryCandidate } from './hypothesis-discovery.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
-
-export const HYPOTHESIS_REGISTER_ACTION_ID = 'hypothesis_register';
-export const HYPOTHESIS_DISMISS_ACTION_ID = 'hypothesis_dismiss';
 
 const KIND_LABEL: Record<'saju' | 'life_signal', string> = {
   saju: '[사주]',
   life_signal: '[생활]',
 };
 
-/** Slack action value 직렬화 — JSON 한도(2000자) 안전. P5 등록 버튼 scaffolding(현재 dormant). */
-export interface HypothesisActionPayload {
-  triggerSpec: TriggerSpec;
-  enumTarget: string;
+// ─── P5a 발굴 승인 카드 (ADR-0039 §3) ────────────────────
+
+export const DISCOVERY_APPROVE_ACTION_ID = 'discovery_approve';
+export const DISCOVERY_DISMISS_ACTION_ID = 'discovery_dismiss';
+
+/** Slack action value 직렬화 — pending 링크 id만 실어 승인/패스 시 status 전이. */
+export interface DiscoveryCardPayload {
+  linkId: number;
 }
 
-export const encodeActionPayload = (payload: HypothesisActionPayload): string =>
+export const encodeDiscoveryPayload = (payload: DiscoveryCardPayload): string =>
   JSON.stringify(payload);
 
-export const decodeActionPayload = (raw: string): HypothesisActionPayload | null => {
+export const decodeDiscoveryPayload = (raw: string): DiscoveryCardPayload | null => {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') return null;
     const obj = parsed as Record<string, unknown>;
-    const ts = obj.triggerSpec;
-    const en = obj.enumTarget;
-    if (
-      !ts ||
-      typeof ts !== 'object' ||
-      typeof (ts as { type?: unknown }).type !== 'string' ||
-      typeof en !== 'string'
-    ) {
-      return null;
-    }
-    return parsed as HypothesisActionPayload;
+    if (typeof obj.linkId !== 'number' || !Number.isFinite(obj.linkId)) return null;
+    return { linkId: obj.linkId };
   } catch {
     return null;
   }
@@ -57,6 +50,54 @@ const formatPValue = (v: number): string => (Number.isFinite(v) ? v.toFixed(3) :
 
 const formatPosterior = (v: number): string =>
   Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—';
+
+// ─── P5a 발굴 후보 카드 빌더 ──────────────────────────────
+
+/** 발굴 후보(pending 링크) 카드 입력 = 후보 + 선INSERT된 링크 id. */
+export type DiscoveryCardInput = DiscoveryCandidate & { linkId: number };
+
+/**
+ * 발굴 후보 맥락 풍부 카드 — 왜 이 후보인지(off-day 통계 + 평어) + "승인=추적, 통계가 심판" 프레이밍.
+ * 사람은 추적 가치(노출·큐레이션)만 게이트. 진짜인지는 주간 e-value 트랙이 몇 주에 걸쳐 가린다.
+ */
+export const buildDiscoveryCandidateCard = (c: DiscoveryCardInput): KnownBlock[] => {
+  const payload = encodeDiscoveryPayload({ linkId: c.linkId });
+  const header = `${KIND_LABEL[c.patternKind]} *${c.seedName}* × *${c.signalName}* — 새 패턴 후보`;
+  const stat =
+    `이 시드 켜진 날 *${c.signalName}* 발현 ${formatPercent(c.rateActive)} ` +
+    `vs 평소 ${formatPercent(c.rateOff)} (effect ${formatRatio(c.effect)}, n=${c.nActive}일)`;
+  const seedDesc = c.seedDescription?.trim() || c.seedName;
+  const signalDesc = c.signalDescription?.trim() || c.signalName;
+  const meaning =
+    `_${seedDesc} → ${signalDesc} 경향이 데이터에서 보임 — ` +
+    `off-day 대조에서 연관 잡힘 (발견 q=${formatPValue(c.qValue)})_`;
+  const caveat =
+    '_아직 후보야. 추적 시작하면 주간 엔진이 몇 주 검정해서 진짜인지 가린다. 연관이지 인과 아님._';
+  return [
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `${header}\n${stat}\n${meaning}\n${caveat}` },
+    },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '추적 시작' },
+          style: 'primary',
+          action_id: DISCOVERY_APPROVE_ACTION_ID,
+          value: payload,
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '패스' },
+          action_id: DISCOVERY_DISMISS_ACTION_ID,
+          value: payload,
+        },
+      ],
+    },
+  ];
+};
 
 // ─── 시드 영향력 섹션 (주간 리포트 상단) ─────────────────
 
