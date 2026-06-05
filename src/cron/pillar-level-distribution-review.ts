@@ -3,7 +3,7 @@
  * 마스터 #434 Phase 2.5 (ADR-0027 결정론 SQL + ADR-0028 풀셋 임계치).
  *
  * 흐름:
- *   1) 90일 윈도우의 pattern_matches를 pillar_level별 hit-rate 분포 집계
+ *   1) 90일 윈도우의 seed_daily_activations를 pillar_level별 hit-rate 분포 집계
  *   2) cumulative_pillar_count trigger의 N=1..5 분포 집계
  *   3) 데이터 부족 시 (양쪽 모두 0건) 발송 스킵
  *   4) insight 채널에 한 줄 압축 메시지 발송
@@ -44,11 +44,11 @@ const SQL_PILLAR_DISTRIBUTION = `
       1
     )::TEXT AS hit_rate_pct
   FROM pattern_catalog c
-  JOIN pattern_matches m ON m.pattern_id = c.id
+  JOIN seed_daily_activations m ON m.pattern_id = c.id
   WHERE c.pattern_kind = 'saju'
     AND c.user_id = $1
-    AND m.created_at >= NOW() - INTERVAL '90 days'
-    AND m.verify_status != 'no_metric'
+    AND m.date >= CURRENT_DATE - INTERVAL '90 days'
+    AND m.matched IS NOT NULL
   GROUP BY c.pillar_level
   ORDER BY hit_rate_pct DESC NULLS LAST
 `;
@@ -61,10 +61,10 @@ const SQL_CUMULATIVE_DISTRIBUTION = `
     COUNT(m.id)::TEXT AS matches,
     SUM(CASE WHEN m.matched = true THEN 1 ELSE 0 END)::TEXT AS hits
   FROM pattern_catalog c
-  JOIN pattern_matches m ON m.pattern_id = c.id
+  JOIN seed_daily_activations m ON m.pattern_id = c.id
   WHERE c.trigger_target_type = 'cumulative_pillar_count'
     AND c.user_id = $1
-    AND m.created_at >= NOW() - INTERVAL '90 days'
+    AND m.date >= CURRENT_DATE - INTERVAL '90 days'
     AND m.matched IS NOT NULL
   GROUP BY count_min, element, sipsin
   ORDER BY element, sipsin, count_min
