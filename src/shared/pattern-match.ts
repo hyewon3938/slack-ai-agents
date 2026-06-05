@@ -771,7 +771,7 @@ interface NameIdRow {
   id: number;
 }
 
-const buildNameIdMap = async (
+export const buildNameIdMap = async (
   table: 'stems_master' | 'branches_master',
 ): Promise<Map<string, number>> => {
   const result = await query<NameIdRow>(`SELECT id, name FROM ${table}`);

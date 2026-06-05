@@ -56,4 +56,15 @@ export const INSIGHT_THRESHOLDS = {
     minPriority: 5,
     maxItems: 3,
   },
+  // #477 P2 주간 off-day 검증 엔진 임계치 (ADR-0032).
+  // ⚠️ confirm은 provisional — 진짜 확정 게이트는 P3 e-value(1/α). 주간 반복 q는 optional stopping.
+  patternVerification: {
+    windowCapDays: 365, // 윈도우 상한(전체 이력 재계산, 캡)
+    baselineWindowDays: 28, // above_avg/below_avg rolling baseline 일수 (signal.window_days 미지정 시 기본)
+    minActiveDays: 30, // confirm/reject 최소 발현일 수
+    confirmQ: 0.05, // BH-FDR q 임계 (provisional confirm)
+    minRateRatio: 1.3, // confirm 최소 효과크기 (발현일 pass율 / 비발현일 pass율)
+    rejectRatioLow: 0.95, // reject 효과크기 하한 (연관 없음 판정 밴드)
+    rejectRatioHigh: 1.05, // reject 효과크기 상한
+  },
 } as const;
