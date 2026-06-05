@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fisherExact, bhFdr } from '../pattern-hypothesis.js';
+import { fisherExact, bhFdr } from '../stats.js';
 
 // ─── fisherExact ─────────────────────────────────────────
 

@@ -7,10 +7,10 @@
  *   2) getDailyContext — 일운(getDayPillar) + 본명(saju_profiles) 로드
  *   3) evaluateTrigger — trigger_target_type별 분기 평가
  *   4) evaluateMetric — 신호 평가: kind=sql(SQL + baseline/임계 비교) | kind=tag(그날 태그 존재 여부)
- *   5) recordDailyMatch — pattern_matches UPSERT (P2 주간 검증 엔진 전까지 raw trigger-log 지속)
+ *   5) recordDailyMatches — seed_daily_activations UPSERT (오늘 발현 시드 핸드오프 로그)
  *
- * P1(#477): 검증 단위는 (시드 × 신호) = pattern_links. hit/miss 카운터는 링크에 누적(이관 완료),
- * 주간 재계산은 P2. 일별 verify(카운터 확정)는 P2 엔진으로 이관 — 본 모듈은 매칭·기록만.
+ * #477 P2: 검증 단위는 (시드 × 신호) = pattern_links, 검증은 주간 엔진(pattern-verification)이
+ * raw에서 윈도우 재계산. 본 모듈은 매칭 + 일별 핸드오프 기록(seed_daily_activations)까지만 담당.
  */
 
 import { query, queryWithClient } from './db.js';
@@ -266,9 +266,9 @@ export interface SeedMatchResult {
   metricEvaluations: MetricEvaluation[];
   /** 매트릭 평가 결과. 매트릭 없는 풀셋 시드(evidence-only)는 null. */
   matched: boolean | null;
-  /** 풀셋 evidence-only 시드 여부. true면 verify_status='no_metric'로 INSERT. */
+  /** 풀셋 evidence-only 시드 여부(매트릭 없음). matched=null로 기록. */
   isEvidenceOnly: boolean;
-  /** 시드 평가 중 SQL/시스템 오류 발생 시 message. truthy면 verify_status='error'로 INSERT. */
+  /** 시드 평가 중 SQL/시스템 오류 발생 시 message. 로깅용(일별 핸드오프 로그엔 미기록). */
   triggerError: string | null;
 }
 
@@ -649,7 +649,7 @@ export const evaluateTrigger = async (
 
 // ─── 메트릭 평가 ─────────────────────────────────────────
 
-const runMetricSql = async (sql: string, userId: number, date: string): Promise<number> => {
+export const runMetricSql = async (sql: string, userId: number, date: string): Promise<number> => {
   const result = await queryWithClient<Record<string, unknown>>(
     // pg parameter binding은 query() 경로로만 가능, queryWithClient는 raw query.
     // metric SQL은 catalog에 영속된 신뢰 SQL이므로 $1/$2 자리에 안전한 값 대입.
@@ -771,7 +771,7 @@ interface NameIdRow {
   id: number;
 }
 
-const buildNameIdMap = async (
+export const buildNameIdMap = async (
   table: 'stems_master' | 'branches_master',
 ): Promise<Map<string, number>> => {
   const result = await query<NameIdRow>(`SELECT id, name FROM ${table}`);
@@ -856,85 +856,25 @@ export const recordDailyMatches = async (
   results: SeedMatchResult[],
 ): Promise<void> => {
   for (const r of results) {
-    const metricValues = Object.fromEntries(
-      r.metricEvaluations.map((e) => [
-        e.metric_name,
-        {
-          today: e.todayValue,
-          baseline: e.baselineAvg,
-          passed: e.passed,
-        },
-      ]),
-    );
-    // Phase 8a: 시드 평가 실패 시 verify_status='error' + error_message JSONB로 INSERT (멱등 + 디버깅).
-    // ON CONFLICT에 error_message도 포함 → 다음 cron 재실행 시 성공하면 자동 NULL로 회복.
-    const verifyStatus = r.triggerError ? 'error' : r.isEvidenceOnly ? 'no_metric' : 'pending';
-    const errorMessage = r.triggerError ? JSON.stringify({ reason: r.triggerError }) : null;
+    // #477 P2: seed_daily_activations = "오늘 발현 시드" 핸드오프 로그 (검증 진실 아님).
+    // 검증 컬럼(metric_values·verify_status·error_message)은 078에서 제거 — 검증은 주간 엔진.
+    // trigger_activated/matched만 멱등 UPSERT → daily-insight·recent tier·pillar-level이 소비.
     await query(
-      `INSERT INTO pattern_matches
-         (user_id, date, pattern_id, trigger_activated, metric_values, matched, verify_status, error_message)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb)
+      `INSERT INTO seed_daily_activations
+         (user_id, date, pattern_id, trigger_activated, matched)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, date, pattern_id) DO UPDATE
          SET trigger_activated = EXCLUDED.trigger_activated,
-             metric_values     = EXCLUDED.metric_values,
-             matched           = EXCLUDED.matched,
-             verify_status     = EXCLUDED.verify_status,
-             error_message     = EXCLUDED.error_message`,
-      [
-        userId,
-        date,
-        r.seed.id,
-        r.triggerActivated,
-        JSON.stringify(metricValues),
-        r.matched,
-        verifyStatus,
-        errorMessage,
-      ],
+             matched           = EXCLUDED.matched`,
+      [userId, date, r.seed.id, r.triggerActivated, r.matched],
     );
   }
 };
 
 // ─── 검증 사이클 ─────────────────────────────────────────
-// #477 P1: 일별 verify(verify_status 확정 + 카운터 누적)는 P2 주간 검증 엔진으로 이관.
-// 카운터(hit/miss/posterior)는 pattern_links에 누적(이관 완료) → 주간 재계산이 raw pattern_matches
-// 윈도우를 결정론 재산출(ADR-0033 §2). 본 모듈은 매칭·기록(raw trigger-log)까지만 담당.
-
-// ─── Slack 한 줄 압축 ────────────────────────────────────
-
-const MAX_LINE_SEEDS = 3;
-
-export const compactMatchedLine = async (
-  ctx: DailyContext,
-  results: SeedMatchResult[],
-): Promise<string | null> => {
-  const matched = results.filter((r) => r.matched);
-  if (matched.length === 0) return null;
-
-  // 우선순위: pattern_summary view의 total_hits 높은 시드 = 검증된 시드 우선 (재현성 신뢰도)
-  // ADR-0023: 시드 단위 합계는 view에서 derive (catalog 카운터 의존 제거).
-  const patternIds = matched.map((r) => r.seed.id);
-  const summary = await query<{ pattern_id: number; total_hits: string }>(
-    `SELECT pattern_id, total_hits
-       FROM pattern_summary
-      WHERE pattern_id = ANY($1)`,
-    [patternIds],
-  );
-  const hitsByPattern = new Map<number, number>();
-  for (const row of summary.rows) {
-    hitsByPattern.set(row.pattern_id, Number(row.total_hits));
-  }
-
-  matched.sort((a, b) => (hitsByPattern.get(b.seed.id) ?? 0) - (hitsByPattern.get(a.seed.id) ?? 0));
-  const top = matched.slice(0, MAX_LINE_SEEDS);
-
-  const labels = top.map((r) => {
-    const passedDomains = new Set(r.metricEvaluations.filter((e) => e.passed).map((e) => e.domain));
-    const summaryText = Array.from(passedDomains).join('/');
-    return `${r.seed.sipsin ?? r.seed.name} (${summaryText})`;
-  });
-
-  return `오늘 일운 ${ctx.dayStem}${ctx.dayBranch} — ${labels.join(', ')}`;
-};
+// #477 P2: 검증(카운터 확정 + status 전이)은 주간 검증 엔진(pattern-verification)이 raw에서
+// 윈도우 재계산(off-day 대조). 본 모듈은 매칭 + 일별 핸드오프 기록까지만 담당.
+// (Slack 한 줄 발송 compactMatchedLine은 #477 P2에서 제거 — 사용자가 매일 확인하지 않는 경로.)
 
 // ─── 캐시 reset (테스트용) ───────────────────────────────
 

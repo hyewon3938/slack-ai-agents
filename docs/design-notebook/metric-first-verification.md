@@ -160,6 +160,52 @@ v2 헌장 4개 + 마스터 #434 헌장 5개를 계승한다 (본문 복제하지
 
 > TODO(`/build`): 첫 운영 신호(P2 진입 전 pattern_links 누적) 확인 후 보강. daily-insight 의존성을 설계가 놓친 점 — cross-check 범위에 "이 마스터 밖이지만 같은 테이블을 읽는 소비자"를 넣는 교훈.
 
+## Phase 2: 주간 검증 엔진 + 일별 활성 로그 전환 (2026-06-05)
+
+- 이슈: [#481](https://github.com/hyewon3938/slack-ai-agents/issues/481)
+- 관련 계획서: `.claude/plans/481-p2-weekly-verification.md`
+- 상태: 설계 완료 (구현 대기)
+
+### 결정 요약
+
+(시드 × 신호) 링크를 **off-day 대조**로 검증하는 주간 엔진을 세우고, 일별 `pattern_matches`를 검증 책임에서 떼어내 핸드오프 로그(`seed_daily_activations`)로 전환한다.
+
+- **주간 검증 엔진** (월요일, `weekly-hypothesis-review` 대체): raw 데이터로 윈도우 재계산 → 링크마다 off-day 2×2(시드 발현일 vs 비발현일 × 신호 pass/fail) → Fisher's exact + BH-FDR + Beta-Binomial posterior → status 전이(active/weak/confirmed/rejected). 검증 진실은 `pattern_links` 단일.
+- **핵심 통찰 — 신호 전역화(P1)의 payoff**: 신호가 전역(`signal_defs`)이라 **신호별 일자 시리즈를 신호당 1회**, **시드별 활성 시리즈를 시드당 1회** 계산하고, 링크는 그 위 조인 + 2×2. 옛 per-link 재계산 대비 O(신호 + 시드)로 환원.
+- **off-day 대조가 본질** (헌장 ②): 옛 방식은 신호를 "자기 28일 평균"과 비교했는데, P2는 "시드 발현일 vs 비발현일"을 대조. "원래 자주 그럼 / 기분탓"을 가르는 건 비발현일 baseline.
+- **일별 테이블 전환**: `pattern_matches` → `seed_daily_activations` rename + 검증용 컬럼(`metric_values`·`verify_status`·`error_message`) DROP. 일별 cron은 "오늘 발현 시드"만 transient 기록(검증·백필 없음).
+
+### 의사결정 분기점
+
+1. **`pattern_matches` 처리 (인터뷰 중 사용자 재질문으로 명료화)**: 원안의 "transient = 일별 저장 폐기"가 daily-insight를 끊는지 재점검. **daily-insight(#insight 08:00)는 07:00 매칭 cron이 쓴 "오늘 발현 시드"를 매일 읽는 핸드오프가 구조상 필요** — 사주 트리거 발현은 TS(사주 calendar·sibiunsung)로만 계산되지 순수 SQL view로 재계산 불가하기 때문. → **매일 저장 유지**(검증 책임만 제거 = 슬림 핸드오프 로그). "매일 저장 vs 주간 몰아서"는 양자택일이 아니라 **층이 다름** — 매일="어떤 시드 켜졌나"(daily-insight 입력), 주간="얼마나 연관 있나"(off-day 통계). daily-insight는 둘을 곱해 씀.
+2. **verified tier 복원 타이밍**: P2 confirm을 `saju_influence_summary` verified tier로 복원하면 daily-insight #insight로 즉시 노출. 그러나 e-value(P3) 없는 "주간 q≤0.05 확정"은 optional stopping(ADR-0032 §3)이라 거짓양성 부풀림. → **verified tier 노출은 P3까지 보류**. P2는 status 전이를 `pattern_links`에 계산 + 주간 리뷰 카드(모니터링용)에 provisional로만 표시. 데이터 ~90일이라 실질 confirm 거의 없어 노출 손실 ≈ 0.
+3. **discovery 범위 (헌장 vs plan note 충돌)**: 헌장 Phase 표는 discovery를 P5에, P1 plan note는 "P2(발굴)" 표기 → **소스 우선순위상 헌장(P5) 우선**. P2 exit("기존 링크 confirmed/rejected")에 발굴은 불필요 → 안 땡겨옴(사용자 원칙: 뒤 작업 미리 끌어오지 않기).
+4. **#life 시드 한 줄(`compactMatchedLine`)**: 사용자 미확인 → **발송 제거 + 함수 삭제**(죽은 코드 0). 매칭 cron은 조용히 저장만.
+5. **윈도우/세트 시맨틱**: 전체 이력(raw 깊이까지, 캡 365일) 재계산 + **SET**(증분 아님) — n=1이라 재계산 저렴·드리프트 없음(ADR-0033 §2). P2 첫 run이 frozen 이관 카운터를 raw 재계산 진실로 덮어씀.
+
+### 포기한 안 / 미룬 항목
+
+- **주간 스냅샷 테이블 재생성**(옛 `pattern_stats`): P3로. e-value martingale 트레일이 필요해질 때 재생성. P2 status 전이는 단일 현재 윈도우 cumulative 통계로 충분(다주 안정성 체크는 e-value의 일).
+- **주간 카드 주간대비(prev delta)**: P3(스냅샷 의존). P2 카드는 현재 검증 상태만.
+- **로그 연속성 백필**: 제거 — transient = 오늘만, cron 다운타임 갭은 윈도우 롤링으로 자가 치유(descriptive 뷰가 갭 허용).
+- **e-value · block permutation · Mann-Whitney · empirical-Bayes 수축 · verified tier 노출**: P3.
+
+### 미해결·가설 → 빌드에서 해소
+
+- **재계산 비용** (49 sql 신호 × 윈도우 일수): 신호 raw 값 시리즈를 신호당 1회 쿼리 → in-memory rolling으로 baseline·pass 도출(28일 평균 재쿼리 회피). 배칭은 후속 최적화, 정확성 우선.
+- **연속 신호 P2 처리**: `direction` 기반 binary `passed`로 2×2(헌장 e-value 게이트는 이진). raw 분포 비교(Mann-Whitney)는 P3.
+- **graded 레벨 시드**(cumulative_pillar_count N=1..5 등): P2는 각 레벨 시드를 **독립 binary 트리거**로 검정. 완전 graded/inverted-U(레벨별 baseline)는 P4.
+- **`pillar-level-distribution-review` 재배선**: `pattern_matches`→`seed_daily_activations`, `verify_status` 필터 제거(`matched IS NOT NULL`로 대체), `created_at`→`date`.
+- **`loadSeedInfluence` 복구**: P1에서 DROP된 `pattern_metrics`를 참조해 깨진 상태 → `pattern_links`로 재배선(주간 카드 시드 영향력 top5).
+
+### 기술적 의의
+
+신호 전역화(P1)를 활용해 신호 시리즈를 신호당 1회 계산하고 링크를 조인으로 환원 — off-day 대조 검증을 O(신호 + 시드)로. 검증(주간 통계, `pattern_links`)과 핸드오프(일별 활성, `seed_daily_activations`)를 책임 분리.
+
+### 회고
+
+> TODO(`/build`): 첫 주간 엔진 run 결과(확정/기각 분포, 재계산 시간) 확인 후 보강.
+
 ---
 
 ## 회고 (TODO: `/build` 구현 후 보강)

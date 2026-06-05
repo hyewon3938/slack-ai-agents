@@ -65,11 +65,12 @@
 
 - 60갑자 마스터 정규화(\~466 rows) 위에 시드 catalog를 얹어 사용자 임상 가설을 정량 검증
 - polymorphic trigger 6종(stem / branch / ganji / element_density / sibiunsung / relation) + 메트릭 5방향(above_avg / below_avg / above_abs / below_abs / flag_present)
-- 매일 07:00 일일 매칭 cron — 어제 pending 매칭 검증(hit/miss/inconclusive) + 오늘 활성 시드 평가 + 누락일 갭 자동 백필 + `#life` 한 줄 발송 (07:00 = 08:00 종합 인사이트 선행, #475)
+- 매일 07:00 일일 매칭 cron — 오늘 활성 시드 평가 → `seed_daily_activations` 기록(오늘 발현 시드 핸드오프, 08:00 종합 인사이트 선행, #475). 검증은 주간 off-day 엔진으로 이관(#477 P2)
 - 일기 LLM enum 16종 자동 추출(허용 enum 외 출력 폐기) → `diary_meta_tags` 적재
 - 약한 시드(누적 \~10건 + hit rate < 30%) 주간 알림 → 사용자 명령어로 active 토글
 - 슬랙 조회/토글: `사주 시드 보기` / `사주 시드 모두 보기` / `사주 시드 끄기 #N` / `사주 시드 켜기 #N`
-- 풀셋 시드(매트릭 없음, 마스터 #434 Phase 2): trigger만 평가하고 `pattern_matches.matched=NULL` + `verify_status='no_metric'`로 evidence-only 누적. 60+일 후 LLM 매트릭 제안 슬롯(Phase 6)이 가설 후보 풀로 사용
+- 풀셋 시드(매트릭 없음, 마스터 #434 Phase 2): trigger만 평가하고 `seed_daily_activations.matched=NULL`로 evidence-only 누적. 60+일 후 LLM 매트릭 제안 슬롯(Phase 6)이 가설 후보 풀로 사용
+- 주간 off-day 검증 엔진(#477 P2, 월 06:00): (시드 × 신호) `pattern_links`를 발현일 vs 비발현일 2×2(Fisher's exact + BH-FDR + Beta-Binomial)로 검증 → `#insight` 주간 카드. "본인 패턴"과 "base rate 높은 신호" 분리. confirm은 provisional(통계 확정 게이트 e-value = P3)
 - 운 레벨 차원(마스터 #434 Phase 2.5): 시드별 `pillar_level`(원국/대운/세운/월운/일운/누적) 차원 도입 + `cumulative_pillar_count` trigger(N=1..5 풀셋 임계치) + 화 오행 누적 시드 OR 매칭(`diary_meta` + `expense_category_present`). 월요일 09:15 자동 분포 분석 cron이 hit-rate 분포 노출
 - 결정 기록: [ADR-0017](./adr/0017-saju-ganji-master-normalization.md), [ADR-0028](./adr/0028-pillar-level-and-threshold-pool.md)
 

@@ -1,0 +1,204 @@
+import { describe, it, expect } from 'vitest';
+import {
+  buildWindowDates,
+  binarizeSqlSeries,
+  buildContingency,
+  verifyContingency,
+  classifyVerdict,
+  statusForVerdict,
+  type DaySeries,
+} from '../pattern-verification.js';
+
+// ─── buildWindowDates ────────────────────────────────────
+
+describe('buildWindowDates', () => {
+  it('today 포함 [today-cap, today] 오름차순 cap+1개', () => {
+    const dates = buildWindowDates('2026-06-05', 3);
+    expect(dates).toEqual(['2026-06-02', '2026-06-03', '2026-06-04', '2026-06-05']);
+  });
+});
+
+// ─── binarizeSqlSeries ───────────────────────────────────
+
+describe('binarizeSqlSeries', () => {
+  const dates = ['d0', 'd1', 'd2', 'd3'];
+
+  it('above_abs — v >= threshold', () => {
+    const raw = new Map<string, number | null>([
+      ['d0', 3],
+      ['d1', 1],
+      ['d2', 0],
+      ['d3', 5],
+    ]);
+    const s = binarizeSqlSeries(raw, dates, 'above_abs', 2, 28);
+    expect(s.get('d0')).toBe(true); // 3>=2
+    expect(s.get('d1')).toBe(false); // 1>=2 X
+    expect(s.get('d3')).toBe(true); // 5>=2
+  });
+
+  it('below_abs — v <= threshold', () => {
+    const raw = new Map<string, number | null>([['d0', 0]]);
+    const s = binarizeSqlSeries(raw, ['d0'], 'below_abs', 0, 28);
+    expect(s.get('d0')).toBe(true); // 0<=0
+  });
+
+  it('flag_present — v >= 1 (기본 임계)', () => {
+    const raw = new Map<string, number | null>([
+      ['d0', 1],
+      ['d1', 0],
+    ]);
+    const s = binarizeSqlSeries(raw, ['d0', 'd1'], 'flag_present', null, 28);
+    expect(s.get('d0')).toBe(true);
+    expect(s.get('d1')).toBe(false);
+  });
+
+  it('above_avg — 워밍업(i<windowDays)은 null, 이후 rolling baseline 비교', () => {
+    const raw = new Map<string, number | null>([
+      ['d0', 1],
+      ['d1', 1],
+      ['d2', 10],
+      ['d3', 0],
+    ]);
+    const s = binarizeSqlSeries(raw, dates, 'above_avg', null, 2);
+    expect(s.get('d0')).toBeNull(); // 워밍업
+    expect(s.get('d1')).toBeNull(); // 워밍업
+    expect(s.get('d2')).toBe(true); // baseline mean(1,1)=1, 10>1
+    expect(s.get('d3')).toBe(false); // baseline mean(1,10)=5.5, 0>5.5 X
+  });
+
+  it('below_avg — baseline 미만이면 true', () => {
+    const raw = new Map<string, number | null>([
+      ['d0', 1],
+      ['d1', 1],
+      ['d2', 10],
+      ['d3', 0],
+    ]);
+    const s = binarizeSqlSeries(raw, dates, 'below_avg', null, 2);
+    expect(s.get('d2')).toBe(false); // 10<1 X
+    expect(s.get('d3')).toBe(true); // 0<5.5
+  });
+
+  it('raw가 null(측정불가)이면 null', () => {
+    const raw = new Map<string, number | null>([['d0', null]]);
+    const s = binarizeSqlSeries(raw, ['d0'], 'above_abs', 1, 28);
+    expect(s.get('d0')).toBeNull();
+  });
+});
+
+// ─── buildContingency ────────────────────────────────────
+
+describe('buildContingency', () => {
+  it('발현/비발현 × pass/fail 분류 + 측정불가(null) 발현일은 inconclusive', () => {
+    const activation = new Map<string, boolean>([
+      ['d0', true],
+      ['d1', true],
+      ['d2', false],
+      ['d3', false],
+      ['d4', true],
+    ]);
+    const signal: DaySeries = new Map([
+      ['d0', true], // 발현 & pass → a
+      ['d1', false], // 발현 & fail → b
+      ['d2', true], // 비발현 & pass → c
+      ['d3', false], // 비발현 & fail → d
+      ['d4', null], // 발현 & 측정불가 → inconclusive
+    ]);
+    expect(buildContingency(activation, signal)).toEqual({
+      a: 1,
+      b: 1,
+      c: 1,
+      d: 1,
+      inconclusive: 1,
+    });
+  });
+
+  it('신호 시리즈에 없는 날(undefined)은 제외', () => {
+    const activation = new Map<string, boolean>([
+      ['d0', true],
+      ['d9', true],
+    ]);
+    const signal: DaySeries = new Map([['d0', true]]);
+    expect(buildContingency(activation, signal)).toEqual({
+      a: 1,
+      b: 0,
+      c: 0,
+      d: 0,
+      inconclusive: 0,
+    });
+  });
+});
+
+// ─── verifyContingency ───────────────────────────────────
+
+describe('verifyContingency', () => {
+  it('강한 연관 → 낮은 p, effect > 1, posterior alpha=1+a', () => {
+    const v = verifyContingency({ a: 20, b: 2, c: 2, d: 20, inconclusive: 0 });
+    expect(v.nActive).toBe(22);
+    expect(v.nOff).toBe(22);
+    expect(v.effect).toBeGreaterThan(3);
+    expect(v.p).toBeLessThan(0.01);
+    expect(v.posteriorAlpha).toBe(21); // 1 + a
+    expect(v.posteriorBeta).toBe(3); // 1 + b
+  });
+
+  it('off일 0이면 effect/p = NaN (대조 불가)', () => {
+    const v = verifyContingency({ a: 5, b: 5, c: 0, d: 0, inconclusive: 0 });
+    expect(Number.isNaN(v.effect)).toBe(true);
+    expect(Number.isNaN(v.p)).toBe(true);
+  });
+
+  it('무관(rateActive ≈ rateOff) → effect ≈ 1', () => {
+    const v = verifyContingency({ a: 10, b: 10, c: 10, d: 10, inconclusive: 0 });
+    expect(v.effect).toBeCloseTo(1, 5);
+  });
+});
+
+// ─── classifyVerdict ─────────────────────────────────────
+
+describe('classifyVerdict', () => {
+  it('nActive ≥ 30 & q ≤ 0.05 & effect ≥ 1.3 → confirm', () => {
+    expect(classifyVerdict({ nActive: 40, effect: 2.0 }, 0.01)).toBe('confirm');
+  });
+
+  it('nActive ≥ 30 & effect ∈ [0.95, 1.05] → reject', () => {
+    expect(classifyVerdict({ nActive: 40, effect: 1.0 }, 0.8)).toBe('reject');
+  });
+
+  it('nActive < 30 → insufficient', () => {
+    expect(classifyVerdict({ nActive: 10, effect: 2.0 }, 0.01)).toBe('insufficient');
+  });
+
+  it('effect NaN(off일 0) → insufficient', () => {
+    expect(classifyVerdict({ nActive: 40, effect: NaN }, 0.01)).toBe('insufficient');
+  });
+
+  it('데이터 충분하나 effect 모호(1.05~1.3) → inconclusive', () => {
+    expect(classifyVerdict({ nActive: 40, effect: 1.2 }, 0.5)).toBe('inconclusive');
+  });
+
+  it('effect 충분하나 q 비유의 → inconclusive (confirm 아님)', () => {
+    expect(classifyVerdict({ nActive: 40, effect: 2.0 }, 0.5)).toBe('inconclusive');
+  });
+});
+
+// ─── statusForVerdict (provisional 정책) ─────────────────
+
+describe('statusForVerdict', () => {
+  it('active + reject → rejected (정당한 제거)', () => {
+    expect(statusForVerdict('reject', 'active')).toBe('rejected');
+  });
+
+  it('active + confirm → active (provisional, P3 전까지 승격 안 함)', () => {
+    expect(statusForVerdict('confirm', 'active')).toBe('active');
+  });
+
+  it('active + inconclusive/insufficient → active 유지', () => {
+    expect(statusForVerdict('inconclusive', 'active')).toBe('active');
+    expect(statusForVerdict('insufficient', 'active')).toBe('active');
+  });
+
+  it('non-active(pending/archived)는 엔진이 건드리지 않음', () => {
+    expect(statusForVerdict('reject', 'pending')).toBe('pending');
+    expect(statusForVerdict('confirm', 'archived')).toBe('archived');
+  });
+});

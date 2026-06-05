@@ -1483,6 +1483,68 @@ ALTER TABLE pattern_matches
 
 > 계획서 `.claude/plans/479-p1-schema.md`, 서사 [design-notebook](../design-notebook/metric-first-verification.md) Phase 1 섹션.
 
+### 25. 매트릭 중심 패턴 검증 — Phase 2 (주간 검증 엔진 + 일별 활성 로그 전환, #481)
+
+P1이 만든 (시드 × 신호) `pattern_links`를 **off-day 대조**로 검증하는 **주간 엔진**을 세우고, 일별 `pattern_matches`를 검증 책임에서 떼어내 **핸드오프 로그**로 전환. 검증 진실은 `pattern_links` 단일 (상세 [ADR-0032](../adr/0032-metric-first-verification-statistics.md)·[ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md)).
+
+**off-day 대조 (헌장 ②)**: 발현일(트리거 fire) vs 비발현일에서 신호 pass율을 2×2로 비교. "본인 패턴"과 "그냥 base rate가 높은 신호(기분탓)"를 분리하는 게 핵심. `발현일 pass율 / 비발현일 pass율`(rate ratio)이 효과크기.
+
+**일별 테이블 전환** (마이그레이션 078):
+
+| 변경 | 내용 |
+|------|------|
+| rename | `pattern_matches` → `seed_daily_activations` (의존 view `saju_influence_summary`는 OID 추적으로 자동 추종) |
+| 검증 컬럼 DROP | `metric_values`·`verify_status`·`error_message` (검증은 주간 엔진이 raw 재계산 → 일별 컬럼은 죽은 코드) |
+| 남김 | `date`·`pattern_id`(시드)·`trigger_activated`·`matched`, `UNIQUE(user_id,date,pattern_id)` 멱등 |
+| 의미 | "오늘 발현 시드" 일별 핸드오프 로그(검증 진실 아님). daily-insight(#insight 08:03)·recent tier·pillar-level이 소비 |
+
+> 컬럼명 `pattern_id`는 `seed_id`로 안 바꿈 — daily-insight SKILL·pillar-level 쿼리 churn 최소화. 테이블 이름만 정직하게.
+
+**off-day 검증 엔진** (`pattern-verification.ts`, 순수 계산 + 읽기):
+
+- **P1 신호 전역화의 payoff**: 신호가 전역(`signal_defs`)이라 **신호별 일자 시리즈를 신호당 1회**, **시드별 활성 시리즈를 시드당 1회** 계산하고, 링크는 그 위 조인 + 2×2 → O(신호 + 시드)로 환원(옛 per-link 재계산 대비).
+- **신호 시리즈**(`computeSignalSeries`): `kind=tag`는 그날 태그 존재 여부(binary). `kind=sql`은 일자별 `runMetricSql` raw 값 → `direction`으로 이진화. `above_avg/below_avg`는 in-memory rolling baseline(직전 `window_days`일, 워밍업 미충족·측정불가는 null=2×2 제외). `above_abs/below_abs/flag_present`는 절대 임계.
+- **시드 활성 시리즈**(`computeSeedActivationSeries`): 일자별 `getDailyContext`(캐시) → `evaluateTrigger`. 사주 트리거는 TS 계산이라 SQL view로 재현 불가 — 그래서 매칭 핸드오프 테이블이 구조상 필요(Option A 경계).
+- **링크별**: `buildContingency`(발현×pass 2×2 + 측정불가 발현일=inconclusive) → `verifyContingency`(Fisher's exact + rate ratio + Beta-Binomial posterior). BH-FDR은 전 링크 p 모아 일괄.
+- **윈도우**: `[today - 365, today]` 전체 이력 재계산 + SET 시맨틱(첫 run이 frozen 이관 카운터를 raw 진실로 덮어씀). 비용: 신호당 \~366회 `runMetricSql`(주간 백그라운드 job, 사용자 대기 없음).
+
+**주간 cron** (`weekly-verification.ts`, `weekly-hypothesis-review.ts` 대체): 월요일 **06:00 KST**(마이그레이션 079 — 08:00→06:00, daily-insight 08:03과 `pattern_links` 읽기 레이스 제거). `verifyUserLinks` → 링크별 `pattern_links` UPDATE(counters SET + `p_value`·`q_value`·`effect`·`test_type='fisher_2x2'`·`posterior_*`·`test_detail` JSONB + status) → 검증 현황 카드 → #insight. per-link try/catch 격리(#434 Phase 8a).
+
+**status 전이 정책 (provisional, 보수적)**: `pattern_summary`/`saju_influence_summary.accumulating`이 `status='active'` 링크만 집계 → 'active' 외 status는 daily-insight 노출에서 사라진다. 따라서:
+
+| verdict | DB status | 이유 |
+|---------|-----------|------|
+| reject (충분한 데이터 + effect≈1) | → `rejected` | 반증된 패턴 — 노출에서 제거가 정당 |
+| confirm (q≤0.05 + effect≥1.3) | `active` 유지 | **provisional** — 주간 q는 optional stopping. 진짜 게이트는 P3 e-value(ADR-0032 §3). 승격 시 view에서 사라지므로 카드에만 표기 |
+| insufficient/inconclusive | `active` 유지 | 데이터 부족·판정 보류 |
+| pending/archived | 미변경 | 승인 게이트(P5)·수동 |
+
+**소비자 재배선**:
+
+| 대상 | 변경 |
+|------|------|
+| `pillar-level-distribution-review` | 테이블 rename, `verify_status != 'no_metric'` → `matched IS NOT NULL`, `created_at`→`date` |
+| daily-insight SKILL 2-2 | `FROM pattern_matches` → `seed_daily_activations` (배포 직후 적용 — 로컬 routine이라 repo 밖) |
+| `loadSeedInfluence`(주간 cron) | DROP된 `pattern_metrics` α/β 참조 → `pattern_links`(active) 복구 |
+| 일별 cron / `recordDailyMatches` | 슬림 write(trigger_activated·matched만), `compactMatchedLine`·#life 발송·백필 제거 |
+
+**통계 경계 (P2 vs P3)**:
+
+| 항목 | P2 | P3 |
+|------|----|----|
+| 이진 신호 연관 | Fisher's exact 2×2 (off-day) | + block permutation |
+| 연속 신호 | baseline 이진화 후 2×2 (ADR-0032 §3) | Mann-Whitney + 효과크기(raw) |
+| 누적 확신도 | Beta-Binomial posterior | + 누적 e-value(진짜 게이트) + null 시뮬 |
+| status 전이 | reject만 DB, confirm은 provisional(카드) | e-value 게이트로 verified 승격·노출 복원 |
+
+연속 신호는 `direction` 기준 binary pass로 2×2(P2). graded 레벨 시드는 독립 binary 검정(완전 graded = P4).
+
+**헌장 준수**: ② off-day 대조(신호 전역 측정) / ③ 통계 = ADR-0032 P2 범위 / ④ provisional confirm은 e-value 게이트(P3)까지 사용자 미노출. **새 ADR 없음**(0032·0033 커버).
+
+**다음 phase 연결**: P3(e-value null-시뮬 빌드 게이트 + verified tier 복원 + 연속 신호 Mann-Whitney + 주간 스냅샷 재생성), discovery·승인 게이트 = P5.
+
+> 계획서 `.claude/plans/481-p2-weekly-verification.md`, 서사 [design-notebook](../design-notebook/metric-first-verification.md) Phase 2 섹션.
+
 ## 파일 구조
 
 ```
@@ -1493,22 +1555,23 @@ src/agents/insight/
 ├── blocks.ts                      # Slack Block Kit 메시지 빌더
 ├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
 ├── saju-seed-fast-path.ts         # 사주 시드 보기/끄기/켜기 (Phase 3)
-├── hypothesis-discovery.ts        # Phase 4 자동 패턴 발견 (setup/recurring)
-├── hypothesis-cards.ts            # Phase 4 카드 빌더 + 액션 payload
+├── hypothesis-discovery.ts        # Phase 4 자동 패턴 발견 (#477 P2: P5 재설계까지 dormant)
+├── hypothesis-cards.ts            # #477 P2 주간 검증 카드 + 가설 등록 payload(P5 scaffolding)
 └── metric-approval-cards.ts       # Phase 6 LLM 매트릭 후보 카드 + 승인/거절 payload
 
 src/shared/
 ├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반
+├── pattern-verification.ts        # #477 P2 off-day 검증 엔진 (신호/시드 시리즈 → 2×2 → Fisher/posterior → verdict)
+├── stats.ts                       # 순수 통계 (Fisher's exact + BH-FDR). #477 P2: pattern-hypothesis에서 추출
 ├── saju-mappings.ts               # 십성 알고리즘 계산 (LLM 프롬프트용)
-├── insight-thresholds.ts          # Phase 1/3 인사이트·시드 임계치 단일 관리 (Phase 4 임계치는 pattern-hypothesis.ts 상수)
-├── insights.ts                    # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 #477 P1에서 제거, P2 복원)
-└── pattern-hypothesis.ts          # Fisher + BH-FDR + lifecycle (#477 P1: 주간 엔진 P2 재구축까지 미사용)
+├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification) 임계치 단일 관리
+└── insights.ts                    # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 verified tier=P3까지 미노출)
 
 src/cron/
-├── daily-pattern-matching.ts              # 07:00 사주 일일 매칭 + 갭 자동 백필 (#477 P1: verify·가설 라인 제거, raw 기록 유지)
+├── daily-pattern-matching.ts              # 07:00 사주 일일 매칭 → seed_daily_activations transient 기록 (#477 P2: 검증·백필·발송 제거)
 ├── diary-meta-extract.ts                  # 일기 → enum 태그 추출 cron (Phase 3, Opus)
-├── weekly-hypothesis-review.ts            # 월 08:00 주간 가설 리포트 (#477 P1: P2 주간 엔진까지 비활성)
-└── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5, #477 P1 유지)
+├── weekly-verification.ts                 # 월 06:00 주간 off-day 검증 엔진 (#477 P2, weekly-hypothesis-review 대체)
+└── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5, #477 P2 seed_daily_activations 재배선)
 
 scripts/
 ├── saju-hypothesis-backtest.ts    # Phase 4 임계치 튜닝 CLI
@@ -1542,6 +1605,11 @@ db/migrations/  (마스터 #434 Phase 8a — 2026-05-29)
 
 db/migrations/  (마스터 A Phase A3 — 2026-06-03)
 └── 076_daily_insight.sql                        # daily_insight_log + 매칭 07:00 + insightMorning 비활성
+
+db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
+├── 077_signal_defs_and_links.sql               # P1 신호 전역화: signal_defs + pattern_links, pattern_metrics/hypotheses/stats DROP
+├── 078_seed_daily_activations.sql              # P2 pattern_matches → seed_daily_activations rename + 검증 컬럼 DROP
+└── 079_weekly_verification_slot.sql            # P2 slot rename(weeklyVerification) + 06:00 월요일
 
 ~/.claude/scheduled-tasks/  (Claude 앱 routines, repo 외부)
 ├── monthly-metric-suggest/SKILL.md              # Phase 6 매월 1일 09:30 LLM 매트릭 후보 제안
