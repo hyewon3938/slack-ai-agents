@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import type { KnownBlock, SectionBlock } from '@slack/types';
+import type { KnownBlock, SectionBlock, ActionsBlock } from '@slack/types';
 import {
   buildVerificationBlocks,
   buildSeedInfluenceSection,
+  buildDiscoveryCandidateCard,
+  encodeDiscoveryPayload,
+  decodeDiscoveryPayload,
+  DISCOVERY_APPROVE_ACTION_ID,
+  DISCOVERY_DISMISS_ACTION_ID,
   type SeedInfluenceRow,
+  type DiscoveryCardInput,
 } from '../hypothesis-cards.js';
 import type { LinkVerification, Verdict } from '../../../shared/pattern-verification.js';
 
@@ -176,6 +182,81 @@ describe('buildSeedInfluenceSection — patternKind prefix', () => {
 
   it('빈 배열이면 블록 없음', () => {
     expect(buildSeedInfluenceSection([])).toEqual([]);
+  });
+});
+
+describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
+  const makeCandidate = (overrides: Partial<DiscoveryCardInput> = {}): DiscoveryCardInput => ({
+    linkId: 555,
+    seedId: 10,
+    signalId: 20,
+    seedName: '갑목일주',
+    seedDescription: '일간이 강한 날',
+    patternKind: 'saju',
+    signalName: '지출과다',
+    signalDescription: '하루 지출이 평소보다 많음',
+    signalKind: 'sql',
+    rateActive: 0.75,
+    rateOff: 0.25,
+    effect: 3.0,
+    nActive: 24,
+    hit: 18,
+    miss: 6,
+    inconclusive: 0,
+    fisherP: 0.002,
+    blockP: 0.004,
+    qValue: 0.03,
+    posteriorAlpha: 19,
+    posteriorBeta: 7,
+    posteriorP: 0.73,
+    family: 'saju_strength',
+    ...overrides,
+  });
+
+  const buttonsOf = (blocks: KnownBlock[]): ActionsBlock['elements'] =>
+    blocks.filter((b): b is ActionsBlock => b.type === 'actions').flatMap((b) => b.elements);
+
+  it('헤더 + off-day 통계 + 평어 + caveat', () => {
+    const text = sectionTexts(buildDiscoveryCandidateCard(makeCandidate()))[0] ?? '';
+    expect(text).toContain('[사주]');
+    expect(text).toContain('갑목일주');
+    expect(text).toContain('지출과다');
+    expect(text).toContain('새 패턴 후보');
+    expect(text).toContain('발현 75.0%');
+    expect(text).toContain('평소 25.0%');
+    expect(text).toContain('effect 3.00x');
+    expect(text).toContain('n=24');
+    expect(text).toContain('일간이 강한 날'); // seed desc 평어
+    expect(text).toContain('하루 지출이 평소보다 많음'); // signal desc 평어
+    expect(text).toContain('인과 아님'); // caveat
+  });
+
+  it('두 버튼(추적 시작/패스) + linkId payload', () => {
+    const buttons = buttonsOf(buildDiscoveryCandidateCard(makeCandidate({ linkId: 777 })));
+    expect(buttons).toHaveLength(2);
+    const ids = buttons.map((e) => ('action_id' in e ? e.action_id : ''));
+    expect(ids).toContain(DISCOVERY_APPROVE_ACTION_ID);
+    expect(ids).toContain(DISCOVERY_DISMISS_ACTION_ID);
+    const value = buttons
+      .map((e) => ('value' in e ? e.value : undefined))
+      .find((v): v is string => typeof v === 'string');
+    expect(decodeDiscoveryPayload(value ?? '')).toEqual({ linkId: 777 });
+  });
+
+  it('description 없으면 이름으로 폴백', () => {
+    const text =
+      sectionTexts(
+        buildDiscoveryCandidateCard(
+          makeCandidate({ seedDescription: null, signalDescription: null }),
+        ),
+      )[0] ?? '';
+    expect(text).toContain('갑목일주 → 지출과다');
+  });
+
+  it('payload encode/decode 왕복 + 방어', () => {
+    expect(decodeDiscoveryPayload(encodeDiscoveryPayload({ linkId: 42 }))).toEqual({ linkId: 42 });
+    expect(decodeDiscoveryPayload('not json')).toBeNull();
+    expect(decodeDiscoveryPayload('{"linkId":"x"}')).toBeNull();
   });
 });
 

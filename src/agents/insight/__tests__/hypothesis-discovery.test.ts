@@ -1,123 +1,357 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { SajuSeedWithMetrics } from '../../../shared/pattern-match.js';
+import type { DaySeries, SignalSeriesResult } from '../../../shared/pattern-verification.js';
 
-interface QueryResult<T> {
-  rows: T[];
-}
-
-type QueryArgs = readonly unknown[];
-
-interface FixtureSignal {
+// ─── fixtures ────────────────────────────────────────────
+interface SignalRow {
   id: number;
   name: string;
-  pattern_kind: 'saju' | 'life_signal';
-}
-
-interface FixtureTriggerRow {
-  pattern_id: number;
-  date: string;
-}
-
-interface FixtureEnumRow {
-  tag: string;
-  date: string;
+  kind: 'sql' | 'tag';
+  sql_body: string | null;
+  value_type: 'binary' | 'continuous' | null;
+  direction: string | null;
+  threshold: string | null;
+  tag_name: string | null;
+  window_days: number | null;
+  description: string | null;
 }
 
 interface Fixture {
-  signals: FixtureSignal[];
-  triggerRows: FixtureTriggerRow[];
-  enumRows: FixtureEnumRow[];
-  totalDays: number;
+  seeds: SajuSeedWithMetrics[];
+  signals: SignalRow[];
+  linkedPairs: Array<{ seed_id: number; signal_id: number }>;
+  activationBySeed: Map<number, Map<string, boolean>>;
+  signalSeriesById: Map<number, DaySeries>;
 }
 
-let fixture: Fixture = {
-  signals: [],
-  triggerRows: [],
-  enumRows: [],
-  totalDays: 0,
+let fixture: Fixture;
+let blockPQueue: number[];
+let blockPIdx: number;
+let insertCalls: unknown[][];
+
+const resetFixture = (): void => {
+  fixture = {
+    seeds: [],
+    signals: [],
+    linkedPairs: [],
+    activationBySeed: new Map(),
+    signalSeriesById: new Map(),
+  };
+  blockPQueue = [];
+  blockPIdx = 0;
+  insertCalls = [];
 };
+resetFixture();
 
 vi.mock('../../../shared/db.js', () => ({
-  query: vi.fn(async (sql: string, _params?: QueryArgs): Promise<QueryResult<unknown>> => {
-    if (/FROM pattern_catalog\b/i.test(sql) && /\bactive = true\b/i.test(sql)) {
+  query: vi.fn(async (sql: string, params?: readonly unknown[]) => {
+    if (/FROM signal_defs/i.test(sql) && /status = 'active'/i.test(sql)) {
       return { rows: fixture.signals };
     }
-    if (/FROM pattern_matches\b/i.test(sql)) {
-      return { rows: fixture.triggerRows };
+    if (/SELECT seed_id, signal_id FROM pattern_links/i.test(sql)) {
+      return { rows: fixture.linkedPairs };
     }
-    if (/FROM diary_meta_tags\b/i.test(sql)) {
-      return { rows: fixture.enumRows };
+    if (/INSERT INTO pattern_links/i.test(sql)) {
+      insertCalls.push([...(params ?? [])]);
+      // ON CONFLICT DO NOTHING 시뮬레이션: 충돌 표시 없으면 새 id 반환.
+      return { rows: [{ id: 9001 }] };
     }
-    if (/DATE\(\$2\) - DATE\(\$1\)/.test(sql)) {
-      return { rows: [{ days: String(fixture.totalDays) }] };
-    }
-    if (/FROM pattern_hypotheses\b/i.test(sql)) {
-      return { rows: [] };
-    }
-    throw new Error(`[fixture] unexpected SQL: ${sql.slice(0, 80)}`);
+    throw new Error(`[fixture] unexpected SQL: ${sql.slice(0, 70)}`);
   }),
 }));
 
-const { discoverCandidates } = await import('../hypothesis-discovery.js');
+vi.mock('../../../shared/pattern-match.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/pattern-match.js')>();
+  return {
+    ...actual,
+    loadActiveSeeds: vi.fn(async () => fixture.seeds),
+    buildNameIdMap: vi.fn(async () => new Map<string, number>()),
+  };
+});
 
-const isoDate = (offsetDays: number): string => {
-  const base = new Date('2026-05-01T00:00:00Z');
-  base.setUTCDate(base.getUTCDate() + offsetDays);
-  return base.toISOString().slice(0, 10);
+vi.mock('../../../shared/pattern-verification.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/pattern-verification.js')>();
+  return {
+    ...actual,
+    computeSignalSeries: vi.fn(
+      async (_userId: number, signal: { id: number }): Promise<SignalSeriesResult> => ({
+        series: fixture.signalSeriesById.get(signal.id) ?? new Map(),
+        raw: null,
+      }),
+    ),
+    computeSeedActivationSeries: vi.fn(
+      async (seed: { id: number }): Promise<Map<string, boolean>> =>
+        fixture.activationBySeed.get(seed.id) ?? new Map(),
+    ),
+  };
+});
+
+vi.mock('../../../shared/stats.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/stats.js')>();
+  return {
+    ...actual,
+    // 결정론 block-perm: survivor 순회 순서대로 큐 소비(없으면 강한 연관 가정 0.001).
+    blockPermutationP: vi.fn(() => blockPQueue[blockPIdx++] ?? 0.001),
+  };
+});
+
+const { discoverCandidates, insertPendingDiscoveryLink } =
+  await import('../hypothesis-discovery.js');
+
+// ─── helpers ─────────────────────────────────────────────
+const makeSeed = (
+  id: number,
+  name: string,
+  targetType: SajuSeedWithMetrics['trigger_target_type'] = 'stem',
+  description: string | null = `${name} 설명`,
+): SajuSeedWithMetrics => ({
+  id,
+  user_id: 1,
+  name,
+  sipsin: null,
+  description,
+  trigger_target_type: targetType,
+  trigger_target_id: null,
+  trigger_aux: null,
+  pillar_level: null,
+  active: true,
+  source: 'seed',
+  metrics: [],
+});
+
+const makeSignal = (id: number, name: string, kind: 'sql' | 'tag' = 'tag'): SignalRow => ({
+  id,
+  name,
+  kind,
+  sql_body: kind === 'sql' ? 'SELECT 1' : null,
+  value_type: kind === 'sql' ? 'binary' : null,
+  direction: kind === 'sql' ? 'flag_present' : null,
+  threshold: null,
+  tag_name: kind === 'tag' ? name : null,
+  window_days: null,
+  description: `${name} 신호`,
+});
+
+/**
+ * windowDates 앞쪽에 (a,b,c,d) 분할표를 만드는 활성/신호 시리즈 생성.
+ * a=발현&pass, b=발현&fail, c=비발현&pass, d=비발현&fail. 나머지 날은 미설정(미집계).
+ */
+const makeContingencySeries = (
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+): { activation: Map<string, boolean>; signal: DaySeries } => {
+  const activation = new Map<string, boolean>();
+  const signal: DaySeries = new Map();
+  let i = 0;
+  const base = new Date('2025-06-06T00:00:00Z');
+  const nextDate = (): string => {
+    const dt = new Date(base);
+    dt.setUTCDate(base.getUTCDate() + i++);
+    return dt.toISOString().slice(0, 10);
+  };
+  const put = (n: number, act: boolean, pass: boolean): void => {
+    for (let k = 0; k < n; k++) {
+      const date = nextDate();
+      activation.set(date, act);
+      signal.set(date, pass);
+    }
+  };
+  put(a, true, true);
+  put(b, true, false);
+  put(c, false, true);
+  put(d, false, false);
+  return { activation, signal };
 };
 
-describe('discoverCandidates — patternKind 전파', () => {
-  beforeEach(() => {
-    fixture = {
-      signals: [],
-      triggerRows: [],
-      enumRows: [],
-      totalDays: 0,
-    };
+/** 시드×신호 한 쌍을 강한/지정 분할표로 등록. */
+const wirePair = (
+  seedId: number,
+  signalId: number,
+  cont: { a: number; b: number; c: number; d: number },
+): void => {
+  const { activation, signal } = makeContingencySeries(cont.a, cont.b, cont.c, cont.d);
+  fixture.activationBySeed.set(seedId, activation);
+  fixture.signalSeriesById.set(signalId, signal);
+};
+
+const TODAY = '2026-06-08';
+
+describe('discoverCandidates — 여집합 제외', () => {
+  beforeEach(resetFixture);
+
+  it('이미 링크된 (시드, 신호) 쌍은 모든 status에서 후보 제외', async () => {
+    fixture.seeds = [makeSeed(10, '갑목일주')];
+    fixture.signals = [makeSignal(20, 'mood_high')];
+    // 강한 연관이지만 이미 링크됨(예: rejected/archived 포함 어떤 status든) → 제외.
+    fixture.linkedPairs = [{ seed_id: 10, signal_id: 20 }];
+    wirePair(10, 20, { a: 25, b: 2, c: 2, d: 25 });
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toEqual([]);
   });
 
-  it('saju + life_signal 시드가 섞여 있으면 결과 후보에 둘 다 patternKind가 채워진다', async () => {
-    fixture.totalDays = 28;
-    fixture.signals = [
-      { id: 1, name: '갑목일주', pattern_kind: 'saju' },
-      { id: 2, name: '저녁 운동', pattern_kind: 'life_signal' },
-    ];
-    // saju: 8 trigger days, 그중 7일에 enum 발현 → trigger rate 7/8, baseline (1/20)
-    // life_signal: 8 trigger days, 그중 6일에 enum 발현 → trigger rate 6/8, baseline (2/20)
-    const sajuTriggerDays = Array.from({ length: 8 }, (_, i) => isoDate(i));
-    const lifeTriggerDays = Array.from({ length: 8 }, (_, i) => isoDate(i + 10));
-    for (const d of sajuTriggerDays) {
-      fixture.triggerRows.push({ pattern_id: 1, date: d });
-    }
-    for (const d of lifeTriggerDays) {
-      fixture.triggerRows.push({ pattern_id: 2, date: d });
-    }
-    // saju enum 발현: trigger 8일 중 7일 + baseline 20일 중 1일
-    const sajuEnumOnTrigger = sajuTriggerDays.slice(0, 7);
-    const sajuEnumOnBaseline = [isoDate(20)];
-    // life_signal enum 발현: trigger 8일 중 6일 + baseline 20일 중 2일
-    const lifeEnumOnTrigger = lifeTriggerDays.slice(0, 6);
-    const lifeEnumOnBaseline = [isoDate(22), isoDate(23)];
-    // 같은 enum_target 한 종류만 발현(테스트 단순화) — energy_high
-    for (const d of [...sajuEnumOnTrigger, ...sajuEnumOnBaseline]) {
-      fixture.enumRows.push({ tag: 'mood_high', date: d });
-    }
-    for (const d of [...lifeEnumOnTrigger, ...lifeEnumOnBaseline]) {
-      // saju가 발현시킨 날과 겹칠 수 있지만 enum dedup은 set에서 자동 처리
-      fixture.enumRows.push({ tag: 'peaceful', date: d });
-    }
+  it('링크 없는 여집합 쌍은 후보로 surface', async () => {
+    fixture.seeds = [makeSeed(10, '갑목일주')];
+    fixture.signals = [makeSignal(20, 'mood_high')];
+    fixture.linkedPairs = []; // 여집합
+    wirePair(10, 20, { a: 25, b: 2, c: 2, d: 25 });
 
-    const candidates = await discoverCandidates(1, { mode: 'setup', lookbackDays: 28 });
-
-    expect(candidates.length).toBeGreaterThan(0);
-    const sajuCand = candidates.find((c) => c.signalName === '갑목일주');
-    const lifeCand = candidates.find((c) => c.signalName === '저녁 운동');
-    expect(sajuCand?.patternKind).toBe('saju');
-    expect(lifeCand?.patternKind).toBe('life_signal');
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.seedId).toBe(10);
+    expect(out[0]?.signalId).toBe(20);
+    expect(out[0]?.seedName).toBe('갑목일주');
+    expect(out[0]?.signalName).toBe('mood_high');
+    expect(out[0]?.effect).toBeGreaterThan(1.3);
   });
 
-  it('signals 빈 배열이면 후보도 빈 배열', async () => {
-    fixture.totalDays = 28;
-    const candidates = await discoverCandidates(1, { mode: 'setup', lookbackDays: 28 });
-    expect(candidates).toEqual([]);
+  it('seeds 또는 signals 비면 빈 배열', async () => {
+    fixture.signals = [makeSignal(20, 'mood_high')];
+    expect(await discoverCandidates(1, TODAY)).toEqual([]);
+    resetFixture();
+    fixture.seeds = [makeSeed(10, '갑목일주')];
+    expect(await discoverCandidates(1, TODAY)).toEqual([]);
+  });
+});
+
+describe('discoverCandidates — Fisher 사전선별', () => {
+  beforeEach(resetFixture);
+
+  it('발현일 부족(nActive < discoveryMinActive=12)이면 컷', async () => {
+    fixture.seeds = [makeSeed(10, 's')];
+    fixture.signals = [makeSignal(20, 'sig')];
+    wirePair(10, 20, { a: 6, b: 2, c: 2, d: 25 }); // nActive=8 < 12
+    expect(await discoverCandidates(1, TODAY)).toEqual([]);
+  });
+
+  it('효과크기 부족(effect < discoveryMinEffect=1.3)이면 컷', async () => {
+    fixture.seeds = [makeSeed(10, 's')];
+    fixture.signals = [makeSignal(20, 'sig')];
+    // rateActive≈rateOff → effect≈1 < 1.3
+    wirePair(10, 20, { a: 10, b: 10, c: 10, d: 10 });
+    expect(await discoverCandidates(1, TODAY)).toEqual([]);
+  });
+
+  it('Fisher 비유의(fisherP > discoveryMaxFisherP=0.1)이면 컷', async () => {
+    fixture.seeds = [makeSeed(10, 's')];
+    fixture.signals = [makeSignal(20, 'sig')];
+    // effect는 1.3 넘지만 n이 작아 Fisher가 비유의 → 컷.
+    wirePair(10, 20, { a: 13, b: 5, c: 8, d: 10 });
+    const out = await discoverCandidates(1, TODAY);
+    // 사전선별에서 fisherP가 0.1 넘으면 빈 배열(약한 신호는 surface 안 함).
+    expect(out.every((c) => c.fisherP <= 0.1)).toBe(true);
+  });
+});
+
+describe('discoverCandidates — discoverQ 게이트 + top-N', () => {
+  beforeEach(resetFixture);
+
+  it('block-perm q > discoverQ(0.15) 후보는 컷', async () => {
+    // 두 baseline 쌍 모두 사전선별 통과(강한 분할표) → block-perm q로 구분.
+    fixture.seeds = [makeSeed(10, 'a'), makeSeed(11, 'b')];
+    fixture.signals = [makeSignal(20, 'sig')];
+    fixture.activationBySeed.set(10, makeContingencySeries(25, 2, 2, 25).activation);
+    fixture.activationBySeed.set(11, makeContingencySeries(25, 2, 2, 25).activation);
+    // 두 시드가 같은 신호와 매칭 — 신호 시리즈는 시드10 기준(둘 다 동일 분할표).
+    fixture.signalSeriesById.set(20, makeContingencySeries(25, 2, 2, 25).signal);
+    // survivor 순회: (seed10,sig20) → (seed11,sig20). block-p [0.001, 0.5].
+    // BH-FDR(baseline N=2): 정렬 [0.001,0.5] → q=[0.002, 0.5]. discoverQ=0.15 → 1개만 통과.
+    blockPQueue = [0.001, 0.5];
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.seedId).toBe(10);
+    expect(out[0]?.qValue).toBeLessThanOrEqual(0.15);
+  });
+
+  it('top-N(discoveryTopN=5) 절단 — 6개 강한 후보 → 5개 반환 + 드롭 로그', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fixture.signals = [makeSignal(20, 'sig')];
+    fixture.signalSeriesById.set(20, makeContingencySeries(25, 2, 2, 25).signal);
+    // 6 시드, 전부 강한 분할표 → 전부 통과 → top 5만.
+    for (let s = 0; s < 6; s++) {
+      fixture.seeds.push(makeSeed(10 + s, `seed${s}`));
+      fixture.activationBySeed.set(10 + s, makeContingencySeries(25, 2, 2, 25).activation);
+    }
+    blockPQueue = [0.001, 0.001, 0.001, 0.001, 0.001, 0.001];
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(5);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('드롭 1'));
+    warnSpy.mockRestore();
+  });
+});
+
+describe('discoverCandidates — 가족·강도 밴드 흐름', () => {
+  beforeEach(resetFixture);
+
+  it('strength_band 시드도 여집합 스캔에 포함(2-pass 활성 시리즈 소비)', async () => {
+    // strength_band 시드의 활성 시리즈는 computeSeedActivationSeries(2-pass)가 제공 — 여기선 모킹.
+    fixture.seeds = [makeSeed(30, '일간 강함', 'strength_band')];
+    fixture.signals = [makeSignal(40, '지출과다', 'sql')];
+    wirePair(30, 40, { a: 22, b: 3, c: 3, d: 22 });
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.family).toBe('saju_strength');
+    expect(out[0]?.patternKind).toBe('saju');
+    expect(out[0]?.signalKind).toBe('sql');
+  });
+
+  it('life_signal 시드는 baseline 가족 + patternKind=life_signal', async () => {
+    fixture.seeds = [makeSeed(50, '주말', 'life_signal')];
+    fixture.signals = [makeSignal(60, 'rest')];
+    wirePair(50, 60, { a: 20, b: 3, c: 3, d: 20 });
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.family).toBe('baseline');
+    expect(out[0]?.patternKind).toBe('life_signal');
+  });
+});
+
+describe('insertPendingDiscoveryLink — pending 선INSERT', () => {
+  beforeEach(resetFixture);
+
+  it('source=discovery·status=pending으로 INSERT + linkId 반환 + 발굴 스냅샷 동봉', async () => {
+    const linkId = await insertPendingDiscoveryLink(1, {
+      seedId: 10,
+      signalId: 20,
+      seedName: 's',
+      seedDescription: '설명',
+      patternKind: 'saju',
+      signalName: 'sig',
+      signalDescription: '신호',
+      signalKind: 'tag',
+      rateActive: 0.9,
+      rateOff: 0.2,
+      effect: 4.5,
+      nActive: 27,
+      hit: 24,
+      miss: 3,
+      inconclusive: 0,
+      fisherP: 0.001,
+      blockP: 0.002,
+      qValue: 0.01,
+      posteriorAlpha: 25,
+      posteriorBeta: 4,
+      posteriorP: 0.86,
+      family: 'baseline',
+    });
+    expect(linkId).toBe(9001);
+    expect(insertCalls).toHaveLength(1);
+    const params = insertCalls[0] ?? [];
+    expect(params[0]).toBe(1); // user_id
+    expect(params[1]).toBe(10); // seed_id
+    expect(params[2]).toBe(20); // signal_id
+    expect(params[3]).toBe(24); // hit_count
+    expect(params[4]).toBe(3); // miss_count
+    // test_detail JSONB(마지막 인자)에 발굴 스냅샷.
+    const detail = JSON.parse(String(params[params.length - 1]));
+    expect(detail.source).toBe('discovery');
+    expect(detail.discover_q).toBe(0.01);
+    expect(detail.family).toBe('baseline');
   });
 });

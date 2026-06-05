@@ -1,263 +1,298 @@
 /**
- * 자동 패턴 발견 — 시드 × enum 전수 스캔으로 후보 가설 발굴.
- * ADR-0019 Phase 4.
+ * 패턴 발굴 엔진 — 링크 없는 (시드 × 신호) 여집합을 off-day 대조로 스캔 (#477 P5a, ADR-0039).
  *
- * ⚠️ #477 P2: 이 모듈은 P5(발견·승인 게이트 재설계)까지 **비활성(dormant)** — 호출 경로 없음.
- *    SQL은 seed_daily_activations(구 pattern_matches) + pattern_hypotheses(077에서 DROP)를 참조하므로
- *    실제 호출 시 동작하지 않는다. P5에서 pattern_links(시드×신호) 모델로 전면 재작성 예정. 현재는 컴파일·타입 보존용.
+ * P4a·P4b가 evidence-only로 남긴 결정론 feature 시드(강도 밴드·관계·효과적 십성)는
+ * pattern_links가 없어 주간 검증 엔진(verifyUserLinks — active 링크만)이 안 건드린다 →
+ * 영영 검증 안 됨. 발굴은 그 여집합을 기존 off-day 2×2 엔진(검증 프리미티브 재사용)으로 스캔해
+ * 발견 q 트랙으로 후보만 surface → pending pattern_link 선INSERT → #insight 승인 카드.
  *
- * 두 모드:
- *   - setup: lookbackDays 윈도우 전체 → 1차 셋업 시 backtest CLI에서 호출
- *   - recurring: 전주만 → 주간 cron에서 호출, 이미 active/confirmed 가설은 자동 제외
+ * 2층 통제(ADR-0039 §2): 느슨한 discoverQ로 *띄우기만*, 확정(믿음)은 승인 후 엄격 e-value 트랙.
+ * 거짓 발견의 비용 = 승인 카드 1장이지 거짓 믿음이 아니다. 손박기 mass-wiring 아님(헌장 ②).
+ *
+ * 본 모듈은 읽기(시리즈 계산) + pending 링크 쓰기까지. 검증 UPDATE·status 전이는 주간 엔진.
  */
 
 import { query } from '../../shared/db.js';
-import { fisherExact, bhFdr } from '../../shared/stats.js';
-
-/** (시드 발현) 트리거 명세. P5에서 pattern_links(시드×신호) 모델로 재정의 예정. */
-export type TriggerSpec = { type: 'seed'; signalId: number };
+import { blockPermutationP } from '../../shared/stats.js';
 import {
-  cumulativePosteriorFromHitMiss,
-  posteriorMean,
-  credibleInterval,
-} from '../../shared/bayesian-posterior.js';
-import { DIARY_META_TAGS, type DiaryMetaTag } from '../../cron/diary-meta-extract.js';
+  buildWindowDates,
+  computeSignalSeries,
+  computeSeedActivationSeries,
+  buildContingency,
+  buildDaySequence,
+  verifyContingency,
+  bhFdrByFamily,
+  familyOf,
+  type SignalDef,
+  type SignalDirection,
+  type DaySeries,
+  type Contingency,
+  type ContingencyVerification,
+  type FdrFamily,
+} from '../../shared/pattern-verification.js';
+import {
+  loadActiveSeeds,
+  buildNameIdMap,
+  type SajuSeedWithMetrics,
+  type DailyContext,
+} from '../../shared/pattern-match.js';
+import type { BandCuts } from '../../shared/quantile.js';
+import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 
-export type DiscoveryMode =
-  | { mode: 'setup'; lookbackDays: number }
-  | { mode: 'recurring'; weekStart: string };
+const V = INSIGHT_THRESHOLDS.patternVerification;
 
-export interface CandidateHypothesis {
-  triggerSpec: TriggerSpec;
-  signalName: string;
+/** 발굴 후보 — 여집합 off-day 대조 통과 (surface 전용, pending 링크로 선INSERT). */
+export interface DiscoveryCandidate {
+  seedId: number;
+  signalId: number;
+  seedName: string;
+  seedDescription: string | null;
   patternKind: 'saju' | 'life_signal';
-  enumTarget: DiaryMetaTag;
-  nTriggerDays: number;
-  nTotalDays: number;
-  rateTrigger: number;
-  rateBaseline: number;
-  rateRatio: number;
-  rawP: number;
-  fdrQ: number;
-  // Phase 7 — discovery 윈도우 hit/miss 기반 posterior (prior Beta(1,1))
-  posteriorP: number;
-  ciLower: number;
-  ciUpper: number;
+  signalName: string;
+  signalDescription: string | null;
+  signalKind: 'sql' | 'tag';
+  // off-day 통계 (카드 표시 + 감사)
+  rateActive: number; // 발현일 pass율
+  rateOff: number; // 비발현일 pass율
+  effect: number; // rate ratio
+  nActive: number;
+  hit: number; // cont.a — pending 링크 hit_count
+  miss: number; // cont.b — pending 링크 miss_count
+  inconclusive: number; // cont.inconclusive
+  fisherP: number; // test_detail 참고
+  blockP: number; // p_value (자기상관 보정)
+  qValue: number; // 가족별 발견 BH-FDR q
+  posteriorAlpha: number;
+  posteriorBeta: number;
+  posteriorP: number; // provisional (EB 없이 hit/miss prior)
+  family: FdrFamily;
 }
 
-const DISCOVERY_MIN_N = 5;
-const DISCOVERY_MAX_RAW_P = 0.1;
-const DISCOVERY_MAX_FDR_Q = 0.2;
-const DISCOVERY_MIN_RATE_RATIO = 1.3;
-
-interface ActiveSignal {
+interface SignalDefRow {
   id: number;
   name: string;
-  patternKind: 'saju' | 'life_signal';
+  kind: 'sql' | 'tag';
+  sql_body: string | null;
+  value_type: 'binary' | 'continuous' | null;
+  direction: SignalDirection | null;
+  threshold: string | null;
+  tag_name: string | null;
+  window_days: number | null;
+  description: string | null;
 }
 
-const loadActiveSignals = async (userId: number): Promise<ActiveSignal[]> => {
-  const res = await query<{ id: number; name: string; pattern_kind: 'saju' | 'life_signal' }>(
-    `SELECT id, name, pattern_kind FROM pattern_catalog
-       WHERE user_id = $1 AND active = true
-       ORDER BY id`,
+interface LoadedSignal {
+  def: SignalDef;
+  description: string | null;
+}
+
+/** active 신호 전부 (description 동반 — 카드 평어용). */
+const loadActiveSignals = async (userId: number): Promise<LoadedSignal[]> => {
+  const res = await query<SignalDefRow>(
+    `SELECT id, name, kind, sql_body, value_type, direction, threshold, tag_name, window_days, description
+       FROM signal_defs
+      WHERE user_id = $1 AND status = 'active'
+      ORDER BY id`,
     [userId],
   );
-  return res.rows.map((r) => ({ id: r.id, name: r.name, patternKind: r.pattern_kind }));
+  return res.rows.map((r) => ({
+    def: {
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      sqlBody: r.sql_body,
+      valueType: r.value_type,
+      direction: r.direction,
+      threshold: r.threshold === null ? null : Number(r.threshold),
+      tagName: r.tag_name,
+      windowDays: r.window_days,
+    },
+    description: r.description,
+  }));
 };
 
-const loadRegisteredCombos = async (userId: number): Promise<Set<string>> => {
-  const res = await query<{ trigger_spec: TriggerSpec; enum_target: string }>(
-    `SELECT trigger_spec, enum_target FROM pattern_hypotheses
-       WHERE user_id = $1 AND status IN ('active', 'confirmed')`,
+/** 이미 링크된 (시드, 신호) 쌍 — 모든 status. 여집합 제외 + rejected 재부상/중복 차단. */
+const loadLinkedPairs = async (userId: number): Promise<Set<string>> => {
+  const res = await query<{ seed_id: number; signal_id: number }>(
+    `SELECT seed_id, signal_id FROM pattern_links WHERE user_id = $1`,
     [userId],
   );
-  return new Set(res.rows.map((r) => `${JSON.stringify(r.trigger_spec)}::${r.enum_target}`));
+  return new Set(res.rows.map((r) => `${r.seed_id}:${r.signal_id}`));
 };
 
-const shiftDate = (date: string, days: number): string => {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
-
-const resolveWindow = (mode: DiscoveryMode): { startDate: string; endDate: string } => {
-  if (mode.mode === 'setup') {
-    const today = new Date().toISOString().slice(0, 10);
-    const startDate = shiftDate(today, -mode.lookbackDays);
-    return { startDate, endDate: today };
-  }
-  const endDate = shiftDate(mode.weekStart, 6);
-  return { startDate: mode.weekStart, endDate };
-};
-
-interface DayMap {
-  triggerByDate: Map<number, Set<string>>;
-  enumByDate: Map<string, Set<string>>;
-  totalDays: number;
+interface Survivor {
+  seed: SajuSeedWithMetrics;
+  signal: LoadedSignal;
+  cont: Contingency;
+  v: ContingencyVerification;
+  blockP: number;
 }
-
-const loadDayMap = async (userId: number, startDate: string, endDate: string): Promise<DayMap> => {
-  const triggerRes = await query<{ pattern_id: number; date: string }>(
-    `SELECT pattern_id, TO_CHAR(date, 'YYYY-MM-DD') AS date
-       FROM pattern_matches
-      WHERE user_id = $1
-        AND date >= $2 AND date <= $3
-        AND trigger_activated = true`,
-    [userId, startDate, endDate],
-  );
-  const enumRes = await query<{ tag: string; date: string }>(
-    `SELECT tag, TO_CHAR(date, 'YYYY-MM-DD') AS date
-       FROM diary_meta_tags
-      WHERE user_id = $1 AND date >= $2 AND date <= $3`,
-    [userId, startDate, endDate],
-  );
-  const dayCountRes = await query<{ days: string }>(
-    `SELECT (DATE($2) - DATE($1) + 1)::TEXT AS days`,
-    [startDate, endDate],
-  );
-
-  const triggerByDate = new Map<number, Set<string>>();
-  for (const row of triggerRes.rows) {
-    const set = triggerByDate.get(row.pattern_id) ?? new Set();
-    set.add(row.date);
-    triggerByDate.set(row.pattern_id, set);
-  }
-  const enumByDate = new Map<string, Set<string>>();
-  for (const row of enumRes.rows) {
-    const set = enumByDate.get(row.tag) ?? new Set();
-    set.add(row.date);
-    enumByDate.set(row.tag, set);
-  }
-  return {
-    triggerByDate,
-    enumByDate,
-    totalDays: Number(dayCountRes.rows[0]?.days ?? 0),
-  };
-};
-
-interface RawComboStat {
-  signal: ActiveSignal;
-  enumTarget: DiaryMetaTag;
-  triggerHits: number;
-  triggerDays: number;
-  nonTriggerHits: number;
-  nonTriggerDays: number;
-  totalDays: number;
-}
-
-const computeRawStat = (
-  signal: ActiveSignal,
-  enumTarget: DiaryMetaTag,
-  triggerDates: Set<string> | undefined,
-  enumDates: Set<string> | undefined,
-  totalDays: number,
-): RawComboStat => {
-  const triggers = triggerDates ?? new Set<string>();
-  const enums = enumDates ?? new Set<string>();
-  const triggerDays = triggers.size;
-  const nonTriggerDays = totalDays - triggerDays;
-  let triggerHits = 0;
-  let nonTriggerHits = 0;
-  for (const d of enums) {
-    if (triggers.has(d)) triggerHits++;
-    else nonTriggerHits++;
-  }
-  return {
-    signal,
-    enumTarget,
-    triggerHits,
-    triggerDays,
-    nonTriggerHits,
-    nonTriggerDays,
-    totalDays,
-  };
-};
 
 /**
- * 시드 × enum 전수 스캔. 임계 필터(p<0.1, q<0.2, ratio≥1.3, n≥5) 통과 후보만 반환.
- * 효과 크기(rate_ratio) 내림차순 정렬.
+ * 미등록 (시드 × 신호) 여집합을 off-day 대조로 스캔 → 발견 q·top-N 통과 후보.
+ * 검증 프리미티브 재사용(시드 활성 시리즈·신호 시리즈는 1회씩 계산, P1 전역화 payoff).
+ * 사전선별(Fisher) 통과 쌍만 block-perm(Monte Carlo) → 비용 차단. confirm 트랙과 별도 FDR 풀.
  */
 export const discoverCandidates = async (
   userId: number,
-  discovery: DiscoveryMode,
-): Promise<CandidateHypothesis[]> => {
-  const signals = await loadActiveSignals(userId);
-  if (signals.length === 0) return [];
+  today: string,
+): Promise<DiscoveryCandidate[]> => {
+  const [seeds, signals, linked] = await Promise.all([
+    loadActiveSeeds(userId),
+    loadActiveSignals(userId),
+    loadLinkedPairs(userId),
+  ]);
+  if (seeds.length === 0 || signals.length === 0) return [];
 
-  const { startDate, endDate } = resolveWindow(discovery);
-  const dayMap = await loadDayMap(userId, startDate, endDate);
-  const registered =
-    discovery.mode === 'recurring' ? await loadRegisteredCombos(userId) : new Set<string>();
+  const windowDates = buildWindowDates(today, V.windowCapDays);
+  const [stemMap, branchMap] = await Promise.all([
+    buildNameIdMap('stems_master'),
+    buildNameIdMap('branches_master'),
+  ]);
 
-  const rawCombos: RawComboStat[] = [];
-  for (const signal of signals) {
-    const triggerDates = dayMap.triggerByDate.get(signal.id);
-    for (const enumTarget of DIARY_META_TAGS) {
-      const triggerSpec: TriggerSpec = { type: 'seed', signalId: signal.id };
-      const key = `${JSON.stringify(triggerSpec)}::${enumTarget}`;
-      if (registered.has(key)) continue;
-      rawCombos.push(
-        computeRawStat(
-          signal,
-          enumTarget,
-          triggerDates,
-          dayMap.enumByDate.get(enumTarget),
-          dayMap.totalDays,
-        ),
-      );
+  // 신호 시리즈(신호당 1회).
+  const signalSeriesById = new Map<number, DaySeries>();
+  for (const s of signals) {
+    const r = await computeSignalSeries(userId, s.def, windowDates);
+    signalSeriesById.set(s.def.id, r.series);
+  }
+  // 시드 활성 시리즈(시드당 1회, strength_band 2-pass 포함) — ctx·강도·컷 캐시 공유.
+  const ctxCache = new Map<string, DailyContext | null>();
+  const strengthCache = new Map<string, Map<string, number>>();
+  const cutCache = new Map<string, BandCuts>();
+  const seedActivationById = new Map<number, Map<string, boolean>>();
+  for (const seed of seeds) {
+    seedActivationById.set(
+      seed.id,
+      await computeSeedActivationSeries(
+        seed,
+        userId,
+        windowDates,
+        ctxCache,
+        stemMap,
+        branchMap,
+        strengthCache,
+        cutCache,
+      ),
+    );
+  }
+
+  // 여집합 후보 → 2×2 → Fisher 사전선별 → 통과만 block-perm.
+  const survivors: Survivor[] = [];
+  for (const seed of seeds) {
+    const activation = seedActivationById.get(seed.id);
+    if (!activation) continue;
+    for (const signal of signals) {
+      if (linked.has(`${seed.id}:${signal.def.id}`)) continue;
+      const series = signalSeriesById.get(signal.def.id);
+      if (!series) continue;
+      const cont = buildContingency(activation, series);
+      const v = verifyContingency(cont);
+      // 사전선별(Monte Carlo 차단): 발현일 충분 + positive 연관 + Fisher 유의.
+      if (v.nActive < V.discoveryMinActive) continue;
+      if (!Number.isFinite(v.effect) || v.effect < V.discoveryMinEffect) continue;
+      if (!Number.isFinite(v.p) || v.p > V.discoveryMaxFisherP) continue;
+      const daySeq = buildDaySequence(activation, series, windowDates);
+      const blockP = blockPermutationP(daySeq, V.blockLen, V.blockPermIters);
+      survivors.push({ seed, signal, cont, v, blockP });
     }
   }
+  if (survivors.length === 0) return [];
 
-  const pValues = rawCombos.map((c) => {
-    if (c.triggerDays < DISCOVERY_MIN_N) return NaN;
-    return fisherExact(
-      c.triggerHits,
-      c.triggerDays - c.triggerHits,
-      c.nonTriggerHits,
-      c.nonTriggerDays - c.nonTriggerHits,
-    );
-  });
-  const qValues = bhFdr(pValues);
+  // 가족별 발견 BH-FDR (ADR-0037·0039 §2 — 확정 트랙과 별도 풀, 가족 간 비용 격리).
+  const qValues = bhFdrByFamily(survivors.map((s) => ({ p: s.blockP, family: familyOf(s.seed) })));
 
-  const candidates: CandidateHypothesis[] = [];
-  for (let i = 0; i < rawCombos.length; i++) {
-    const raw = rawCombos[i];
-    const p = pValues[i];
-    const q = qValues[i];
-    if (!raw || p === undefined || q === undefined) continue;
-    if (Number.isNaN(p) || Number.isNaN(q)) continue;
-    if (p >= DISCOVERY_MAX_RAW_P) continue;
-    if (q >= DISCOVERY_MAX_FDR_Q) continue;
-
-    const rateTrigger = raw.triggerDays > 0 ? raw.triggerHits / raw.triggerDays : 0;
-    const rateBaseline = raw.nonTriggerDays > 0 ? raw.nonTriggerHits / raw.nonTriggerDays : 0;
-    const rateRatio = rateBaseline > 0 ? rateTrigger / rateBaseline : 0;
-    if (rateRatio < DISCOVERY_MIN_RATE_RATIO) continue;
-
-    const windowMisses = raw.triggerDays - raw.triggerHits;
-    const { alpha, beta } = cumulativePosteriorFromHitMiss(raw.triggerHits, windowMisses);
-    const posteriorP = posteriorMean(alpha, beta);
-    const { lower: ciLower, upper: ciUpper } = credibleInterval(alpha, beta);
-
-    candidates.push({
-      triggerSpec: { type: 'seed', signalId: raw.signal.id },
-      signalName: raw.signal.name,
-      patternKind: raw.signal.patternKind,
-      enumTarget: raw.enumTarget,
-      nTriggerDays: raw.triggerDays,
-      nTotalDays: raw.totalDays,
-      rateTrigger,
-      rateBaseline,
-      rateRatio,
-      rawP: p,
-      fdrQ: q,
-      posteriorP,
-      ciLower,
-      ciUpper,
+  const passed: DiscoveryCandidate[] = [];
+  survivors.forEach((s, i) => {
+    const q = qValues[i] ?? NaN;
+    if (!Number.isFinite(q) || q > V.discoverQ) return;
+    passed.push({
+      seedId: s.seed.id,
+      signalId: s.signal.def.id,
+      seedName: s.seed.name,
+      seedDescription: s.seed.description,
+      patternKind: s.seed.trigger_target_type === 'life_signal' ? 'life_signal' : 'saju',
+      signalName: s.signal.def.name,
+      signalDescription: s.signal.description,
+      signalKind: s.signal.def.kind,
+      rateActive: s.v.rateActive,
+      rateOff: s.v.rateOff,
+      effect: s.v.effect,
+      nActive: s.v.nActive,
+      hit: s.cont.a,
+      miss: s.cont.b,
+      inconclusive: s.cont.inconclusive,
+      fisherP: s.v.p,
+      blockP: s.blockP,
+      qValue: q,
+      posteriorAlpha: s.v.posteriorAlpha,
+      posteriorBeta: s.v.posteriorBeta,
+      posteriorP: s.v.posteriorP,
+      family: familyOf(s.seed),
     });
-  }
+  });
 
-  candidates.sort((a, b) => b.rateRatio - a.rateRatio);
-  return candidates;
+  // top-N (effect 내림차순). 드롭 시 로그 — 무음 캡 금지(ADR-0039 단점).
+  passed.sort((a, b) => b.effect - a.effect);
+  if (passed.length > V.discoveryTopN) {
+    console.warn(
+      `[Discovery] user=${userId} 발견 ${passed.length} → top ${V.discoveryTopN} ` +
+        `(드롭 ${passed.length - V.discoveryTopN})`,
+    );
+  }
+  return passed.slice(0, V.discoveryTopN);
+};
+
+const numOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
+
+/**
+ * 발굴 후보를 pending pattern_link로 선INSERT (승인 payload = linkId, ADR-0039 §3).
+ * 발굴 통계를 test_detail에 동봉(카드·감사). posterior는 provisional(EB 없이 hit/miss prior) —
+ * 승인 후 첫 주간 검증이 EB prior로 재계산·SET 덮어씀. ON CONFLICT은 여집합이 보장하나 방어.
+ * @returns 새 링크 id, 충돌(이미 존재)이면 null.
+ */
+export const insertPendingDiscoveryLink = async (
+  userId: number,
+  c: DiscoveryCandidate,
+): Promise<number | null> => {
+  const testDetail = JSON.stringify({
+    source: 'discovery',
+    rate_active: numOrNull(c.rateActive),
+    rate_off: numOrNull(c.rateOff),
+    n_active: c.nActive,
+    hit: c.hit,
+    miss: c.miss,
+    inconclusive: c.inconclusive,
+    effect: numOrNull(c.effect),
+    fisher_p: numOrNull(c.fisherP),
+    block_p: numOrNull(c.blockP),
+    discover_q: numOrNull(c.qValue),
+    family: c.family,
+  });
+  const res = await query<{ id: number }>(
+    `INSERT INTO pattern_links
+       (user_id, seed_id, signal_id, source, status, test_type,
+        hit_count, miss_count, inconclusive_count, effect, p_value, q_value,
+        posterior_alpha, posterior_beta, posterior_p, test_detail)
+     VALUES ($1, $2, $3, 'discovery', 'pending', 'fisher_2x2',
+        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
+     ON CONFLICT (seed_id, signal_id) DO NOTHING
+     RETURNING id`,
+    [
+      userId,
+      c.seedId,
+      c.signalId,
+      c.hit,
+      c.miss,
+      c.inconclusive,
+      numOrNull(c.effect),
+      numOrNull(c.blockP),
+      numOrNull(c.qValue),
+      c.posteriorAlpha,
+      c.posteriorBeta,
+      numOrNull(c.posteriorP),
+      testDetail,
+    ],
+  );
+  return res.rows[0]?.id ?? null;
 };
