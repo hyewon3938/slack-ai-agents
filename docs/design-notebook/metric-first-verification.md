@@ -326,6 +326,66 @@ Phase 표의 "P4 결정론 사주 feature 엔진"이 가장 큰 phase라 **P4a/P
 
 > 운영 검증 TODO: 첫 주간 엔진 실행 후 — 강도 가중치 첫 분포, 분위수 밴드 발현 균형(죽은 시드 여부), 컷 산출·일별 핸드오프 동작, FDR 가족 분리 후 baseline 트랙 영향, 첫 강도 시드 검정(현 데이터로 대부분 insufficient 예상=정직).
 
+## Phase 4b: 결정론 사주 관계·합화 변환 feature 엔진 (2026-06-05)
+
+- 이슈: [#487](https://github.com/hyewon3938/slack-ai-agents/issues/487)
+- 관련 계획서: `.claude/plans/487-p4b-relation-hwa.md`
+- 상태: 구현 완료 (머지+배포 시 앱 startup `runMigrations`가 082 적용)
+
+### 결정 요약
+
+P4의 후반 — P4a(강도)에 이은 **관계·변환 패밀리**. P4a와 동일하게 **새 통계 코어 0**: 전부 결정론 boolean/밴드 시드로 기존 off-day 엔진에 태운다([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) §4). 정본 결정은 [ADR-0038](../adr/0038-saju-relation-hwa-feature-depth.md).
+
+- **합화 = 실효강도 입력단 공통 변환 pass**(별도 시드 아님): `saju-strength`가 글자 tally 전에 합화 변환 1회(化신 통근 게이트 → 化 오행 치환). 강도·밴드·절대상태·효과적 십성이 변환 글자 기준 일관. 한 변환에서 magnitude(강도)·role(십성) 두 렌즈 파생 → 이중 인코딩 아님.
+- **합충 해소 깊이 = v1a**(합 성립 + 충개합). 탐합망충·쟁합/투합·형파·거리는 파라미터 노브(기본 off)/후속.
+- **효과적 십성 시드**(새 trigger 타입): 합화 후 化 오행의 일간 대비 십성. 십성 remap은 합화의 결과라 같은 변환에서 파생.
+- **관계 확장**: 자동 생성 관계 풀(070, 합충형해파+원진)을 재사용하고 **귀문 + 대표 암합만 추가** + 고현저 관계 큐레이트 링크.
+- **FDR 가족 `saju_relation` 신규**(2→3가족, [ADR-0037](../adr/0037-verification-fdr-family-split.md) 연장). 합화 반영 강도는 `saju_strength` 유지.
+
+### 의사결정 분기점
+
+1. **합화 표현 — 강도 입력단 공통 변환(Z)** (vs X 십성만·강도 무관 / Y 별도 모디파이어 시드). 인터뷰에서 X→Y→Z로 진화. 사용자가 **정적 원국 내부 합화**(원국 글자끼리 합화로 한 오행이 강화되는 경우)로 raw 강도가 그 사람 강도 지형을 과소평가함을 제기 → 합화를 강도에 반영해야 한다는 결론. 비자명 뉘앙스: **정적 원국 합화는 모든 날 같은 상수를 더해 *상대 분위수 밴드*엔 거의 무영향**(순위 보존) — 검정 왜곡의 진짜 출처는 동적 운 합화(운이 합을 완성/파괴) + 절대상태 + 십성 일관성. 어느 쪽이든 결론은 "강도에 반영", 방식은 입력단 공통 변환(중복 검정 회피).
+2. **합충 해소 깊이 v1a** (vs v1b 합성립만 / v1c 깊은 엔진). v1c 기각 근거 둘: ① n=1 \~90일에서 깊은 레이어는 밴드 발현일을 각자 2\~3일만 뒤집어 off-day·e-value가 **구분 불가(unidentifiable)** — 검증 못 하는 정밀도. ② 각 규칙이 학파 의존 선택지라 **연구자 자유도 폭발** → 패턴 살리는 config 선택 여지 = 시스템 목적(자기기만 방지) 자해. 충개합은 충실도 대비 비용 최적이라 v1에 포함. 깊이는 노브 + SET 리플레이로 미래 비용 = rewrite 아닌 노브(헌장 ④·⑤).
+3. **검증/해석 책임 분리**: 깊은 명리 정밀도는 검증이 아니라 해석에. 검증=결정론 v1a facts(얕게), 깊은 해석=narrative LLM(weekly-fortune)이 facts grounding 위에서 hedged 추론. **결정론 deep 해석 엔진 미채택** — 헌장 ① 적용(facts는 결정론이, 해석은 LLM이).
+4. **관계 시드 = 070 자동생성 재사용** (빌드 탐색 중 발견). [070](../../db/migrations/070_saju_seed_pool.sql)이 이미 `branch_relations`/`stem_relations` 전수 LOOP로 관계 풀셋 70개를 P4a식 패턴으로 생성(원국에 없는 쌍은 휴면). 전부 evidence-only(링크 없음). → P4b는 "처음부터"가 아니라 **귀문/대표암합 확장 + 큐레이트 링크**(검증 연결). 합화오행은 TS 상수(`CHEONGAN_HAP`/`JIJI_*`)에 이미 있어 합화 변환은 데이터 추가 0.
+5. **FDR 가족 saju_relation**. 자동 생성 관계 batch가 빠른 `life_signal` 트랙을 과세하지 않게 격리.
+6. **스코프 = 검증 코어만**. 검증된 관계/합화 패턴은 P4a 강도처럼 daily-insight에 자동 노출(`saju_influence_summary` tier). weekly-fortune에 raw 명리 facts 주입(교과서 해석 풍부화)은 별도 routine + 헌장 ① 입력 확장이라 follow-up.
+
+### 포기한 안 / 미룬 항목
+
+- **v1c 깊은 결정론 합충 엔진**(탐합망충·쟁합/투합·형파·거리): 검정엔 미채택. 파라미터 노브로 기본 off 선언(헌장 ④ 미리 구현), 활성은 데이터 게이트/후속. 깊은 해석은 narrative LLM이 대신.
+- **합화 별도 boolean 시드(X) / 모디파이어 시드(Y)**: 입력단 공통 변환(Z)에 흡수.
+- **narrative raw facts 주입**(weekly-fortune LLM 입력 확장): 별도 follow-up 이슈. P4b는 검증 코어만.
+- **관계 mass-wiring**(70 관계 × 신호 전수 손박기): 회피 — P5 sql-discovery가 off-day로 발견(P4a "오행 밴드 → P5 의존"과 같은 정신). P4b는 고현저 앵커만 큐레이트.
+- **합화 별도 FDR 가족**: 합화 반영 강도는 `saju_strength` 유지(시드 수 불변), 효과적 십성·관계만 `saju_relation`. 3가족 이상 분할은 후속.
+
+### 미해결·가설 → 빌드에서 해소
+
+- **합화 성립 조건**: 천간합/육합/삼합 + 化신 통근 게이트(saju-strength `hasStem && hasRoot` 패턴 재사용). 일간이 합에 끼는 경우 변질 여부는 학파별 → 1차 보수적으로 일간 불변(파라미터). 파라미터 위치(saju-strength-params 확장 vs 새 모듈)는 빌드 결정.
+- **충개합 규칙**: 직접 충이 합 멤버를 치면 합 무효(化 안 됨). 합충 해소 step을 함수로 분리(확장 노브 진입점).
+- **효과적 십성 trigger 타입**: 타입명(`hwa_sipsung` 가칭)·aux(`{sipsin, via:'hwa'}`)·`evaluateTrigger`/`computeSeedActivationSeries` 경로. 합화는 풀셋 계산이라 per-day evaluateTrigger로 충분(강도 밴드 같은 2-pass 불요 — 십성은 윈도우 비의존 범주값).
+- **큐레이트 링크 셋**: 고현저 관계(귀문 포함, S2 임상 테마 정합) × 객관 신호, **양의 연관만**(off-day 엔진은 발현일 pass율↑만 confirm — P4a 정련 1 교훈). prod 신호명 introspection으로 확정 + 마이그레이션 RAISE 검증(silent fail 방지).
+- **귀문/암합 master 데이터**: `relation_type` CHECK에 귀문·암합 추가 + 대표 쌍(귀문관살 + 주요 정기-정기 암합 인축/묘신/사유/오해) + 070식 auto-gen.
+- **070 관계 시드 prod 잔존 확인**: P1(077)이 signal_defs/pattern_links만 건드려 pattern_catalog 시드는 보존 예상 — 빌드 시 카운트·링크 없음 확인.
+
+### 빌드 산출 (설계 대비 정련)
+
+1. **관계 큐레이트 링크 미채택 → 효과적 십성만 큐레이트(10링크)**. 설계는 "고현저 관계 큐레이트 링크"를 예상했으나, 빌드 분석에서 이 원국의 유일한 고현저 귀문 쌍(사술)이 **기존 공개 시드 S2 사술원진과 발현이 동일**(같은 날 fire)함을 확인 → 중복 가설. 나머지 관계는 P5 sql-discovery에 위임(헌장 ②, mass-wiring 회피). 관계(귀문/암합)는 evidence-only 시드만 추가. 검증 연결은 **효과적 십성 × generic 행동 신호**에 집중(원국 무관, 071 공개 범위).
+2. **대표 암합 4쌍(인축·묘신·사유·오해) 전부 이 원국에선 휴면**. 정기-정기 천간합 대표 4쌍이 모두 자/술과 무관 → 활성 0. 헌장 ④ 인프라로 유지(미리 구현). *활성 암합을 원하면 무계(자술) 추가가 필요* — 별도 결정(follow-up). 설계의 "대표 암합" 정의를 그대로 따르되 휴면 사실을 명시.
+3. **`computeElementRatios` 합화 미적용(raw 유지)**. 설계 §2의 "모두 자동 반영"을 정련 — 오행 비율은 "원국이 무슨 글자로 구성됐나(composition covariate)"라 변환 전 분포가 맞다. 합화 반영은 강도(magnitude) 함수에만(`computeElementStrengths`/`ForTarget`/`AbsoluteStrengthState`).
+4. **`saju-calendar.ts` 파생 상수 export 추가**(계획 파일 목록 외 필요 변경). `saju-hwa.ts`가 합화오행을 재계산하지 않고 단일 출처(`CHEONGAN_HAP`/`JIJI_*`)에서 쓰도록 문자 기반 `*_RULES`·`JIJI_CHUNG_PAIRS`를 파생·export(중복 테이블=drift 위험 회피). index 상수의 element 타입을 `string`→`Element`로 정밀화(부수 개선).
+5. **효과적 십성 = 5그룹(polarity-free)**. 化 오행의 음양 polarity는 학파 의존이라 편/정 미세분 없이 비겁/식상/재성/관성/인성 5그룹(`elementToSipsinGroup`). 십성 remap을 합화 변환과 같은 계산에서 파생.
+
+### 기술적 의의
+
+합화를 별도 시드가 아니라 실효강도 엔진 입력단의 공통 변환으로 환원해, magnitude(강도)와 role(십성) 두 렌즈를 한 결정론 계산에서 파생시켰다(이중 인코딩·FDR 낭비 회피). 명리 정밀도의 깊이를 **검증(결정론, 얕게)과 해석(LLM, 깊게)으로 분리**해, n=1에서 데이터가 구분 못 하는 정밀화(unidentifiable)와 학파 선택지가 만드는 자기기만 자유도를 검증에서 차단하면서 해석 풍부함은 LLM의 hedged 추론에 맡겼다. 자동 생성 관계 인프라(070)를 재사용해 P4b 무게를 확장·연결로 환원.
+
+### 회고
+
+> 운영 검증 TODO: 첫 주간 엔진 실행(다음 월 06:00) 후 — 합화 변환이 P4a 강도 밴드 컷을 얼마나 이동시키는지, 충개합 발현 빈도, 효과적 십성 5시드 발현 균형(합화 성립일 sparse 예상), 귀문/암합 auto-gen 시드 활성(대부분 휴면 예상), `saju_relation` 가족 분리 후 baseline 트랙 영향, 첫 효과적 십성 링크 검정(현 데이터로 대부분 insufficient=정직 예상) 확인 후 보강.
+>
+> 빌드 회고: 인터뷰가 합화 모델을 X→Y→Z로 끌어올린 데 더해, 빌드 탐색이 설계의 "관계 큐레이트 링크"를 **이 원국에선 중복(사술귀문≡S2)**임을 드러내 효과적 십성으로 무게중심을 옮긴 게 핵심. 도메인 직관(설계)과 데이터 현실(빌드 introspection)이 한 번 더 교차해 스코프를 정련.
+
 ---
 
 ## 회고 (TODO: `/build` 구현 후 보강)

@@ -18,6 +18,7 @@ import {
   computeCumulativePillarCount,
   getDayPillar,
   getDaeunPillar,
+  getElementByCheongan,
   getMonthPillar,
   getYearPillar,
   makePillar,
@@ -28,6 +29,8 @@ import {
   type PillarSet,
 } from './saju-calendar.js';
 import { computeStrengthForTarget, isStrengthTarget } from './saju-strength.js';
+import { detectHwaTransforms, elementToSipsinGroup, isSipsinGroup } from './saju-hwa.js';
+import { SAJU_HWA_PARAMS } from './saju-strength-params.js';
 import { classifyBand, isBand, type BandCuts } from './quantile.js';
 import { addDays } from './kst.js';
 import { dispatchLifeSignal } from './life-signal-evaluators/index.js';
@@ -52,6 +55,7 @@ export interface SajuSeed {
     | 'relation'
     | 'cumulative_pillar_count'
     | 'strength_band'
+    | 'hwa_sipsung'
     | 'life_signal';
   trigger_target_id: number | null;
   trigger_aux: Record<string, unknown> | null;
@@ -653,6 +657,17 @@ export const evaluateTrigger = async (
       if (!cuts) return false;
       const strength = computeStrengthForTarget(target, ctx.natal.dayMaster, pillarSetOf(ctx));
       return classifyBand(strength, cuts) === band;
+    }
+
+    case 'hwa_sipsung': {
+      // #477 P4b — 효과적 십성(ADR-0038). 오늘 풀셋에서 합화 변환이 일어나면 化 오행의 일간 대비
+      // 5그룹 십성을 산출 → seed.sipsin과 일치 시 발현. 합화 성립일에만 fire(sparse, 윈도우 비의존).
+      const sipsin = aux['sipsin'];
+      if (!isSipsinGroup(sipsin)) return false;
+      const { transforms } = detectHwaTransforms(pillarSetOf(ctx), SAJU_HWA_PARAMS);
+      if (transforms.length === 0) return false;
+      const dmElement = getElementByCheongan(ctx.natal.dayMaster);
+      return transforms.some((t) => elementToSipsinGroup(dmElement, t.element) === sipsin);
     }
 
     case 'life_signal': {

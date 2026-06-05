@@ -240,7 +240,7 @@ const YANG_JANGSEONG_START: Record<number, number> = {
 // ─── 상수: 합충형파해 ───────────────────────────────────
 
 /** 천간합: [a, b, 합화오행] */
-const CHEONGAN_HAP: readonly [number, number, string][] = [
+const CHEONGAN_HAP: readonly [number, number, Element][] = [
   [0, 5, '토'], // 갑기합
   [1, 6, '금'], // 을경합
   [2, 7, '수'], // 병신합
@@ -259,7 +259,7 @@ const JIJI_CHUNG: readonly [number, number][] = [
 ];
 
 /** 지지육합: [a, b, 합화오행] */
-const JIJI_YUKHAP: readonly [number, number, string][] = [
+const JIJI_YUKHAP: readonly [number, number, Element][] = [
   [0, 1, '토'], // 자축합
   [2, 11, '목'], // 인해합
   [3, 10, '화'], // 묘술합
@@ -269,7 +269,7 @@ const JIJI_YUKHAP: readonly [number, number, string][] = [
 ];
 
 /** 지지삼합: [a, b, c, 합화오행] */
-const JIJI_SAMHAP: readonly [number, number, number, string][] = [
+const JIJI_SAMHAP: readonly [number, number, number, Element][] = [
   [8, 0, 4, '수'], // 신자진
   [11, 3, 7, '목'], // 해묘미
   [2, 6, 10, '화'], // 인오술
@@ -307,6 +307,44 @@ const JIJI_HAE: readonly [number, number][] = [
   [8, 11], // 신해해
   [9, 10], // 유술해
 ];
+
+// ─── 합/충 규칙 (문자 기반, 외부 결정론 엔진용) ───────────
+// index 기반 상수(CHEONGAN_HAP/JIJI_*)를 단일 출처로 두고 문자 기반으로 파생.
+// saju-hwa.ts(합화 변환 탐지)가 합화오행·충 쌍을 글자 단위로 소비 (#477 P4b).
+
+/** 천간합 규칙: 두 천간 → 합화오행 */
+export interface StemHapRule {
+  stems: readonly [Cheongan, Cheongan];
+  element: Element;
+}
+/** 지지합 규칙: 구성 지지 → 합화오행 (육합 2지 / 삼합 3지) */
+export interface BranchHapRule {
+  branches: readonly Jiji[];
+  element: Element;
+}
+
+export const CHEONGAN_HAP_RULES: readonly StemHapRule[] = CHEONGAN_HAP.map(([a, b, element]) => ({
+  stems: [CHEONGAN_LIST[a], CHEONGAN_LIST[b]] as const,
+  element,
+}));
+
+export const JIJI_YUKHAP_RULES: readonly BranchHapRule[] = JIJI_YUKHAP.map(([a, b, element]) => ({
+  branches: [JIJI_LIST[a], JIJI_LIST[b]],
+  element,
+}));
+
+export const JIJI_SAMHAP_RULES: readonly BranchHapRule[] = JIJI_SAMHAP.map(
+  ([a, b, c, element]) => ({
+    branches: [JIJI_LIST[a], JIJI_LIST[b], JIJI_LIST[c]],
+    element,
+  }),
+);
+
+/** 지지육충 쌍 (문자 기반) — 충개합 판정용. */
+export const JIJI_CHUNG_PAIRS: readonly (readonly [Jiji, Jiji])[] = JIJI_CHUNG.map(([a, b]) => [
+  JIJI_LIST[a],
+  JIJI_LIST[b],
+]);
 
 // ─── 상수: 절기 테이블 (2024-2028) ──────────────────────
 

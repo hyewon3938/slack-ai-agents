@@ -297,6 +297,38 @@ describe('evaluateTrigger - strength_band', () => {
   });
 });
 
+// ─── evaluateTrigger: hwa_sipsung (#477 P4b) ──────────────
+
+describe('evaluateTrigger - hwa_sipsung', () => {
+  const hwaSeed = (sipsin: string): SajuSeedWithMetrics =>
+    baseSeed({ trigger_target_type: 'hwa_sipsung', trigger_aux: { sipsin, via: 'hwa' } });
+
+  // 본명 갑 + 월운 기 → 갑기합토(통근 술). 化 토는 일간 경(금) 대비 인성(토생금).
+  const hwaCtx = baseCtx({ wolun: makePillar('기', '축') });
+
+  it('합화일 효과적 십성 일치 → true (化토 → 인성)', async () => {
+    expect(await evaluateTrigger(hwaSeed('인성'), hwaCtx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('합화일이지만 다른 십성 → false', async () => {
+    expect(await evaluateTrigger(hwaSeed('재성'), hwaCtx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('합화 없는 날 → false', async () => {
+    const noHwa = baseCtx({
+      seun: makePillar('경', '신'),
+      wolun: makePillar('경', '신'),
+      ilun: makePillar('경', '신'),
+    });
+    expect(await evaluateTrigger(hwaSeed('인성'), noHwa, stemMap, branchMap)).toBe(false);
+  });
+
+  it('잘못된 sipsin aux → false', async () => {
+    const seed = baseSeed({ trigger_target_type: 'hwa_sipsung', trigger_aux: { sipsin: 'bogus' } });
+    expect(await evaluateTrigger(seed, hwaCtx, stemMap, branchMap)).toBe(false);
+  });
+});
+
 // ─── evaluateTrigger: relation ────────────────────────────
 
 describe('evaluateTrigger - relation', () => {
