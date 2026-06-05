@@ -45,3 +45,38 @@ export const SAJU_STRENGTH_PARAMS: SajuStrengthParams = {
   ABS_STRONG_RATIO: 0.55,
   ABS_WEAK_RATIO: 0.45,
 } as const;
+
+/**
+ * 합화(合化) 변환 규칙 노브 — #477 P4b (ADR-0038).
+ *
+ * 합화 = 합(천간합/육합/삼합)이 化신 통근 조건을 만족하면 구성 글자 오행을 化 오행으로 변환.
+ * 변환된 글자는 강도·밴드·절대상태·효과적 십성에 일관 반영(saju-strength 입력단 공통 변환).
+ * 검증 깊이 = v1a(합 성립 + 충개합)까지. 깊은 상호작용은 노브 기본 off(헌장 ④ 미리 선언,
+ * 활성은 데이터 게이트/후속 — 켜면 SET 전체 리플레이로 소급 적용, ADR-0034).
+ */
+export interface HwaParams {
+  /** 化신 통근 게이트 — 化 오행이 활성 지지(본기/지장간)에 뿌리내려야 합화 성립. false=합=합화로 느슨 */
+  HWA_REQUIRE_ROOT: boolean;
+  /** 충개합 — 합 구성 지지가 다른 활성 지지와 충이면 합 무효(동적 운이 정적 합을 깸, v1a 핵심) */
+  HWA_CHUNGGAEHAP: boolean;
+  /** 일간 천간 변질 허용 — 합이 일간에 닿을 때 변환할지. v1 보수적 불변(학파 의존) */
+  HWA_DAYMASTER_TRANSFORM: boolean;
+  /** [깊은 노브, 기본 off] 탐합망충 — 합이 충을 푸는 역방향 해소 */
+  HWA_TAMHAP_MANGCHUNG: boolean;
+  /** [깊은 노브, 기본 off] 쟁합/투합 — 다중 합 경쟁 처리 */
+  HWA_JAENGHAP: boolean;
+  /** [깊은 노브, 기본 off] 형/파의 합 약화 */
+  HWA_HYUNGPA_BREAK: boolean;
+  /** [깊은 노브, 기본 off] 글자 거리/위치 가중 */
+  HWA_DISTANCE: boolean;
+}
+
+export const SAJU_HWA_PARAMS: HwaParams = {
+  HWA_REQUIRE_ROOT: true,
+  HWA_CHUNGGAEHAP: true,
+  HWA_DAYMASTER_TRANSFORM: false,
+  HWA_TAMHAP_MANGCHUNG: false,
+  HWA_JAENGHAP: false,
+  HWA_HYUNGPA_BREAK: false,
+  HWA_DISTANCE: false,
+} as const;

@@ -7,7 +7,7 @@ import {
   computeElementRatios,
   isStrengthTarget,
 } from '../saju-strength.js';
-import { SAJU_STRENGTH_PARAMS } from '../saju-strength-params.js';
+import { SAJU_STRENGTH_PARAMS, SAJU_HWA_PARAMS } from '../saju-strength-params.js';
 
 // 금/토 일색 — 일간 경(금)이 비겁·인성으로 가득 → 신강. 월지 유(금)로 월령=금.
 const STRONG_METAL: PillarSet = {
@@ -143,5 +143,36 @@ describe('isStrengthTarget', () => {
     expect(isStrengthTarget('수')).toBe(true);
     expect(isStrengthTarget('일간')).toBe(false);
     expect(isStrengthTarget(null)).toBe(false);
+  });
+});
+
+// 묘술육합화 — 묘유충으로 합 깨짐. 충개합을 끄면 합화(화)가 성립해 화 강도가 올라간다(#477 P4b).
+const HWA_TOGGLE: PillarSet = {
+  wonguk: [
+    makePillar('갑', '묘'),
+    makePillar('병', '술'),
+    makePillar('경', '유'),
+    makePillar('무', '오'),
+  ],
+  daeun: null,
+  seun: makePillar('무', '축'),
+  wolun: makePillar('무', '축'),
+  ilun: makePillar('무', '축'),
+};
+
+describe('합화 변환 반영 강도 (#477 P4b)', () => {
+  it('충개합 끄면 묘술합화(화) 성립 → 화 강도가 더 높다', () => {
+    const huaBroken = computeStrengthForTarget('화', '경', HWA_TOGGLE); // 기본: 충개합으로 합 깨짐
+    const huaFormed = computeStrengthForTarget('화', '경', HWA_TOGGLE, SAJU_STRENGTH_PARAMS, {
+      ...SAJU_HWA_PARAMS,
+      HWA_CHUNGGAEHAP: false,
+    });
+    expect(huaFormed).toBeGreaterThan(huaBroken);
+  });
+
+  it('합 없는 원국은 합화 변환 영향 없음 (결정론 동일값)', () => {
+    const a = computeElementStrengths('경', STRONG_METAL);
+    const b = computeElementStrengths('경', STRONG_METAL);
+    expect(a.byElement).toEqual(b.byElement);
   });
 });

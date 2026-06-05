@@ -22,7 +22,13 @@ import {
   type Pillar,
   type PillarSet,
 } from './saju-calendar.js';
-import { SAJU_STRENGTH_PARAMS, type SajuStrengthParams } from './saju-strength-params.js';
+import {
+  SAJU_STRENGTH_PARAMS,
+  SAJU_HWA_PARAMS,
+  type SajuStrengthParams,
+  type HwaParams,
+} from './saju-strength-params.js';
+import { detectHwaTransforms, type HwaResult } from './saju-hwa.js';
 
 const ELEMENTS: readonly Element[] = ['목', '화', '토', '금', '수'];
 const ELEMENT_INDEX: Record<Element, number> = { 목: 0, 화: 1, 토: 2, 금: 3, 수: 4 };
@@ -57,15 +63,30 @@ const isSamePolaritySupport = (cElem: Element, xElem: Element): boolean => {
   return c === x || (c + 1) % 5 === x;
 };
 
+/**
+ * 합화(合化) effective element override (#477 P4b, ADR-0038).
+ * detectHwaTransforms 결과에서 stem/branch 위치별 化 오행을 읽는다. 빈 맵 = 변환 없음.
+ */
+type HwaOverride = Pick<HwaResult, 'stemOverride' | 'branchOverride'>;
+
+/** 천간 effective 오행 — 합화 변환 있으면 化 오행, 없으면 원 오행. */
+const effStem = (p: Pillar, ov: HwaOverride): Element =>
+  ov.stemOverride.get(p) ?? getElementByCheongan(p.cheongan);
+
+/** 지지 본기 effective 오행 — 합화 변환 있으면 化 오행, 없으면 원 본기 오행(지장간 중기/여기는 v1 불변). */
+const effBranch = (p: Pillar, ov: HwaOverride): Element =>
+  ov.branchOverride.get(p) ?? getElementByJiji(p.jiji);
+
 /** 원국 + 운 풀셋의 모든 글자를 (오행, 기본 위치가중)으로 펼친다. 정기=본기로 1회만(중복 방지). */
 const collectChars = (
   pillars: readonly Pillar[],
   params: SajuStrengthParams,
+  ov: HwaOverride,
 ): CharContribution[] => {
   const chars: CharContribution[] = [];
   for (const p of pillars) {
-    chars.push({ element: getElementByCheongan(p.cheongan), weight: params.W_STEM });
-    chars.push({ element: getElementByJiji(p.jiji), weight: params.W_BRANCH_MAIN }); // 본기(정기)
+    chars.push({ element: effStem(p, ov), weight: params.W_STEM });
+    chars.push({ element: effBranch(p, ov), weight: params.W_BRANCH_MAIN }); // 본기(정기)
     const jg = getJijanggan(p.jiji);
     if (jg.junggi) {
       chars.push({ element: getElementByCheongan(jg.junggi), weight: params.W_JANGGAN_MID });
@@ -83,10 +104,10 @@ const flattenPillars = (pillarSet: PillarSet): Pillar[] => {
   return list;
 };
 
-/** 간결판 월령 사령 오행 = 원국 월지(wonguk[1]) 본기 오행. 월주 없으면 null(월령 비활성). */
-const monthDominantElement = (pillarSet: PillarSet): Element | null => {
+/** 간결판 월령 사령 오행 = 원국 월지(wonguk[1]) 본기 오행(합화 반영). 월주 없으면 null(월령 비활성). */
+const monthDominantElement = (pillarSet: PillarSet, ov: HwaOverride): Element | null => {
   const monthPillar = pillarSet.wonguk[1];
-  return monthPillar ? getElementByJiji(monthPillar.jiji) : null;
+  return monthPillar ? effBranch(monthPillar, ov) : null;
 };
 
 /** 대상 오행 X의 생조(support)·극설(drain) 분해. net = support − drain. 통근은 support에 가산. */
@@ -95,9 +116,10 @@ const decompose = (
   pillars: readonly Pillar[],
   pillarSet: PillarSet,
   params: SajuStrengthParams,
+  ov: HwaOverride,
 ): { support: number; drain: number } => {
-  const chars = collectChars(pillars, params);
-  const season = monthDominantElement(pillarSet);
+  const chars = collectChars(pillars, params, ov);
+  const season = monthDominantElement(pillarSet, ov);
 
   let support = 0;
   let drain = 0;
@@ -108,12 +130,12 @@ const decompose = (
     else drain += params.geukseol * w;
   }
 
-  // 통근 게이트: X가 천간 투출 + 지장간 뿌리를 동시에 가지면 support 보너스(이진).
-  const hasStem = pillars.some((p) => getElementByCheongan(p.cheongan) === xElem);
+  // 통근 게이트: X가 천간 투출 + 지장간 뿌리를 동시에 가지면 support 보너스(이진). 천간/본기는 합화 반영.
+  const hasStem = pillars.some((p) => effStem(p, ov) === xElem);
   const hasRoot = pillars.some((p) => {
     const jg = getJijanggan(p.jiji);
     return (
-      getElementByJiji(p.jiji) === xElem ||
+      effBranch(p, ov) === xElem ||
       (jg.junggi !== undefined && getElementByCheongan(jg.junggi) === xElem) ||
       getElementByCheongan(jg.yeogi) === xElem
     );
@@ -129,32 +151,37 @@ const strengthOf = (
   pillars: readonly Pillar[],
   pillarSet: PillarSet,
   params: SajuStrengthParams,
+  ov: HwaOverride,
 ): number => {
-  const { support, drain } = decompose(xElem, pillars, pillarSet, params);
+  const { support, drain } = decompose(xElem, pillars, pillarSet, params, ov);
   return support - drain;
 };
 
-/** 일간 + 오행 5종 실효 강도 일괄 계산. */
+/** 일간 + 오행 5종 실효 강도 일괄 계산. 합화 변환을 입력단에서 1회 적용(ADR-0038). */
 export const computeElementStrengths = (
   dayMaster: Cheongan,
   pillarSet: PillarSet,
   params: SajuStrengthParams = SAJU_STRENGTH_PARAMS,
+  hwaParams: HwaParams = SAJU_HWA_PARAMS,
 ): ElementStrengths => {
   const pillars = flattenPillars(pillarSet);
+  const ov = detectHwaTransforms(pillarSet, hwaParams);
   const byElement = {} as Record<Element, number>;
-  for (const x of ELEMENTS) byElement[x] = strengthOf(x, pillars, pillarSet, params);
+  for (const x of ELEMENTS) byElement[x] = strengthOf(x, pillars, pillarSet, params, ov);
   return { dayMaster: byElement[getElementByCheongan(dayMaster)], byElement };
 };
 
-/** 단일 대상(day_master | 오행)의 강도 — 2-pass·일별 cron 공용 진입점. */
+/** 단일 대상(day_master | 오행)의 강도 — 2-pass·일별 cron 공용 진입점. 합화 변환 반영. */
 export const computeStrengthForTarget = (
   target: StrengthTarget,
   dayMaster: Cheongan,
   pillarSet: PillarSet,
   params: SajuStrengthParams = SAJU_STRENGTH_PARAMS,
+  hwaParams: HwaParams = SAJU_HWA_PARAMS,
 ): number => {
+  const ov = detectHwaTransforms(pillarSet, hwaParams);
   const xElem = target === 'day_master' ? getElementByCheongan(dayMaster) : target;
-  return strengthOf(xElem, flattenPillars(pillarSet), pillarSet, params);
+  return strengthOf(xElem, flattenPillars(pillarSet), pillarSet, params, ov);
 };
 
 /**
@@ -165,9 +192,11 @@ export const computeAbsoluteStrengthState = (
   dayMaster: Cheongan,
   pillarSet: PillarSet,
   params: SajuStrengthParams = SAJU_STRENGTH_PARAMS,
+  hwaParams: HwaParams = SAJU_HWA_PARAMS,
 ): AbsoluteStrengthState => {
+  const ov = detectHwaTransforms(pillarSet, hwaParams);
   const xElem = getElementByCheongan(dayMaster);
-  const { support, drain } = decompose(xElem, flattenPillars(pillarSet), pillarSet, params);
+  const { support, drain } = decompose(xElem, flattenPillars(pillarSet), pillarSet, params, ov);
   const total = support + drain;
   if (total <= 0) return '중화';
   const ratio = support / total;
@@ -179,6 +208,8 @@ export const computeAbsoluteStrengthState = (
 /**
  * 오행 비율 (노출·covariate용, 별도 시드 없음 — 강도에 흡수, ADR-0036).
  * 천간 + 지지 본기 발현 빈도 분포(정규화). 강도와 달리 부호·가중 없는 단순 분포.
+ * 의도적으로 합화 변환 미적용(raw 원국 구성) — "글자가 무엇으로 발현하나(실효 강도)"가 아니라
+ * "원국이 무슨 글자로 구성됐나(composition)"를 보는 covariate라 변환 전 분포가 맞다(#477 P4b).
  */
 export const computeElementRatios = (pillarSet: PillarSet): Record<Element, number> => {
   const counts = { 목: 0, 화: 0, 토: 0, 금: 0, 수: 0 } as Record<Element, number>;
