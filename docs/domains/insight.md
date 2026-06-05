@@ -369,6 +369,8 @@ Baseline 윈도우는 `BASELINE_WINDOW_DAYS = 28`. SQL 템플릿은 `$user_id`, 
 
 ### 11. 프로액티브 인사이트 v2 — Phase 4 (가설-검증 정량 파이프라인)
 
+> ⚠️ **#477 P1(### 24)에서 supersede**: `pattern_hypotheses`·`pattern_stats` DROP, `weeklyHypothesisReview`·confirmed 가설 라인 중단. 아래는 P1 이전 서사 — 현재 검증 단위는 (시드×신호) `pattern_links`(### 24), 주간 검증 엔진은 P2 재구축.
+
 Phase 3까지는 11종 결정론 패턴 + 60갑자 일일 매칭으로 "기록"만 했다. Phase 4는 그 위에 통계적으로 검증된 가설만 잔소리로 노출하는 자동 파이프라인을 얹는다. 사람 직관(혹은 LLM 추측)이 아니라 누적 데이터의 효과량 + p-value로 active/confirmed/rejected를 판정.
 
 #### 데이터 모델 (migration 058)
@@ -506,6 +508,8 @@ Phase 4는 신규 fast path 명령어 없음. 카드 액션 버튼(`hypothesis_r
 
 #### Phase A2 — `saju_influence_summary` view + idempotency 테이블
 
+> ⚠️ **#477 P1(### 24)에서 view 재정의**: verified tier(가설×통계) 제거 → accumulating·recent 2층. recent는 `pattern_matches` 유지로 daily-insight 무탈. 아래 verified tier 서술은 P1 이전.
+
 마이그레이션:
 - `db/migrations/061_saju_influence_summary_view.sql` — view 정의
 - `db/migrations/062_saju_weekly_reviews.sql` — idempotency 테이블
@@ -608,6 +612,8 @@ TODO: #408 Phase 5-B(영향력 데이터 expose) 완료 후 view 확장 + 풀이
 설계 결정 배경: [ADR-0020](../adr/0020-fortune-system-responsibility-split-via-view.md) — 사주 풀이 시스템과 v2 매칭 시스템 책임 분리 + view 인터페이스 도입.
 
 ### 14. 본인 1명 패턴 발견 시스템 — Phase 1 (스키마 일반화 + `pattern_*` rename)
+
+> ⚠️ **#477 P1(### 24)에서 supersede**: `pattern_metrics`는 `signal_defs`+`pattern_links`로 분리·DROP, `pattern_summary` view는 링크 기반 재정의. 아래 스키마는 P1 이전 — 현재는 ### 24.
 
 > [#434](https://github.com/hyewon3938/slack-ai-agents/issues/434) Phase 1
 > 설계 서사: [design-notebook/personal-pattern-discovery.md](../design-notebook/personal-pattern-discovery.md)
