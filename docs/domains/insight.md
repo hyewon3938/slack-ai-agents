@@ -1816,6 +1816,61 @@ buildVerificationBlocks(…, confoundByLink)            # 카드 caveat
 
 **노브** ([insight-thresholds.ts](../../src/shared/insight-thresholds.ts) `confound`, 헌장 ⑤): `minOverlap`(0.6)·`minCofireDays`(10)·`minEffectZX`(1.3, `patternVerification.minRateRatio` 승계)·`topN`(3). calibration 노브 — 첫 몇 주 튜닝.
 
+### 32. 매트릭 중심 패턴 검증 — Phase 7 (교란 다변량 분리: Mantel-Haenszel 층화 + 데이터 게이트, #495)
+
+P6는 marginal 교란을 **플래그**하고 각 (링크 × 교란 Z)의 공동발현일 수 `nCofire`를 기록만 했다(annotate-only). P7은 공동발현이 충분히 쌓인 쌍만 **Mantel-Haenszel 층화**로 조정 추정치를 산출해 어부지리(가짜 연관)를 노출에서 실제로 걷어낸다. **마스터 #477 마지막 phase**. 정본 [ADR-0042](../adr/0042-confound-multivariate-stratification.md). **새 통계 코어 = MH 풀링 함수 하나, 마이그레이션 083(뷰 재정의 only)** — feature 환원(P4a~P6 "새 통계 코어 ~0") 연속.
+
+**방법 = Mantel-Haenszel 층화** (vs [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 지명 elastic-net): 시드 S·신호 X·교란 Z가 전부 결정론 binary + 교란 2\~3개 캡 + n=1 희소 → 층화가 교과서적·가볍다(층별 2×2 = P6 프리미티브 재사용). elastic-net은 새 통계 코어(페널티 GLM 솔버)·log-odds 이질 척도·λ 불안정 → **교란이 층화 한계(joint strata 폭발) 넘는 다수일 때**를 위한 후속 노브(기본 off, [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §1).
+
+**MH 조정 알고리즘** ([confound.ts](../../src/shared/confound.ts) `adjustConfounders` + [stats.ts](../../src/shared/stats.ts) `mantelHaenszelRR`), 링크(S × X)마다:
+
+1. **게이트 통과 교란** = P6 `suspected` 중 `nCofire ≥ adjustMinCofire`(30). 0개면 조정 스킵(dormant — `confound.adjusted` 미기록, 뷰 무변화).
+2. **층 구성** (joint, cap 3): 게이트 통과 Z들의 값 조합으로 윈도우 일자 분할(1개 → 2층, k개 → 최대 2^k층). 층 k에서 `buildContingency(actS\|층k, sigX)` → 2×2.
+3. **viability 게이트**: 각 층 `n_k ≥ minStratumCell`(5) **AND** S발현·S비발현 양쪽 존재. 한 층이라도 미달이면 joint 포기 → **fallback: 가장 강한 단일 Z**(`overlap × effectZX` 최대)로 2층 MH. 그래도 미달이면 조정 불가(suspected만 유지).
+4. **MH 조정 rate ratio** (Greenland-Robins): `RR_MH = Σ_k [aₖ·(cₖ+dₖ)/nₖ] / Σ_k [cₖ·(aₖ+bₖ)/nₖ]`. 분모 합 0 → NaN(조정 불가). 순수 함수 → 주간 SET 리플레이 불변.
+5. **verdict** (`adjEffect = RR_MH` vs marginal):
+
+   | 조건 | verdict | 노출 |
+   |------|---------|------|
+   | `adjEffect < explainAwayMaxEffect`(1.3) | `explained_away` | verified **강등** + caveat |
+   | `explainAwayMaxEffect ≤ adjEffect < marginal·attenuatedMaxRatio`(0.8) | `attenuated` | 유지 + 약화 caveat |
+   | 그 외 | `survives` | 유지(통제해도 살아남음) |
+
+**`confound` JSONB 확장** (P6 형태에 추가, 게이트 통과 시만):
+
+```json
+{ "scannedAt": "…", "suspected": [ … ],
+  "adjusted": [{ "seedId": 0, "adjEffect": 1.0, "nCofire": 40, "verdict": "explained_away" }],
+  "explainedAway": true }
+```
+
+`adjusted`는 게이트 통과 교란별 MH 결과(joint면 기여 Z마다 같은 `adjEffect`/`verdict` 공유, fallback이면 단일). `explainedAway`는 뷰 verified 가드가 읽는 플래그.
+
+**노출 레이어 soft-demote** ([083](../../db/migrations/083_confound_adjustment_exposure.sql) `saju_influence_summary` 재정의, [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §3):
+
+- **verified 가드**: confirmed 링크 JOIN에 `(l.confound->>'explainedAway') IS DISTINCT FROM 'true'` 추가 → 시드는 **explained_away 아닌 confirmed 링크가 ≥1개일 때만** verified. 모든 confirmed 링크가 explained_away면 verified에서 빠짐 → recent(최근 발현 시) tier로 강등.
+- **`confound_note` 컬럼**(말미 append): 각 행에 그 시드의 explained_away 링크가 통제한 교란 `seedName` 집계(`adjusted` seedId → catalog 이름 join, 없으면 NULL). daily-insight caveat 입력. 컬럼 계약(앞 12개) 보존.
+- **e-value·status 불변**: e-value는 순서 있는 데이터의 순수 함수(결정론 리플레이, [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md))이고 marginal 진실의 기록 → 조정은 *노출*에만 작용(마틴게일 불변성 보존). P6=노출(marginal 정직), P7=조정(노출에 반영).
+
+**dormant (데이터 게이트, 헌장 ④)**: 현 데이터 대부분 `nCofire < 30` → 조정 0건 → `confound.adjusted` 미기록 → 뷰 explained_away 가드 매칭 0 → **배포 시 동작 변화 0**. 공동발현 30일 누적 시 다음 주간 run이 자동 조정.
+
+**흐름** (주간 엔진 [weekly-verification.ts](../../src/cron/weekly-verification.ts) `processUser`, P6 플래그 패스에 fold — 시리즈 in-hand 재사용):
+
+```
+flagConfounds(userId, today)                          # confound.ts (P6 + P7 통합)
+  → 링크별 flagConfoundersForLink → suspected (P6 marginal)
+  → adjustConfounders(actS, sigX, suspected, candById) (P7 — 게이트 통과 시만)
+       gate(nCofire≥30) → joint 층화(viability) ?? 단일 Z fallback → mantelHaenszelRR → verdict
+  → ConfoundData{ suspected, adjusted?, explainedAway? }
+persistConfound (UPDATE confound JSONB, per-link 격리) → confoundByLink 맵
+buildVerificationBlocks(…, confoundByLink)            # 카드 caveat (verdict별)
+saju_influence_summary 뷰 (verified 가드 + confound_note) → daily-insight 소비
+```
+
+**P6 vs P7 경계**: P6 = marginal 플래그(노출, always-on). P7 = 다변량 분리(MH 층화로 Z 통제 후 S 독립 기여 = *조정*, 데이터 게이트 dormant). marginal 겹침만으로 임의 강등하면 진짜 패턴 살해 위험 → 조정은 데이터 충분할 때만, 강등도 노출 레이어에서만(status·e-value 불변).
+
+**노브** ([insight-thresholds.ts](../../src/shared/insight-thresholds.ts) `confound`, 헌장 ⑤): P6(`minOverlap`·`minCofireDays`·`minEffectZX`·`topN`) + P7 `adjustMinCofire`(30, flag floor 10보다 높게)·`explainAwayMaxEffect`(1.3, `minRateRatio` 승계)·`attenuatedMaxRatio`(0.8)·`minStratumCell`(5)·`elasticNetEnabled`(false, 후속). 첫 몇 주 calibration. 뷰의 explained_away 가드는 JSONB 플래그라 SQL 하드코딩 없음(노브는 TS 조정 단계에만).
+
 ## 파일 구조
 
 ```
@@ -1834,12 +1889,12 @@ src/shared/
 ├── signal-sql-guard.ts            # #477 P5b LLM SQL 게이트 #1 정적 검증 (validateSignalSql + 테이블 화이트리스트, ADR-0040)
 ├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger + P5b runLlmSignalSql(게이트 #2)
 ├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
-├── confound.ts                    # #477 P6 교란 플래그 (공동발현 시드 marginal 탐지: overlap + Z×신호 2×2 재사용 → confound JSONB, annotate-only, ADR-0041)
+├── confound.ts                    # #477 P6 교란 플래그(marginal 탐지, ADR-0041) + P7 다변량 분리(MH 층화 조정 → confound.adjusted/explainedAway → 노출 soft-demote, ADR-0042)
 ├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
 ├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
 ├── saju-hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
 ├── quantile.ts                    # #477 P4a tertile 컷 + 밴드 분류 (주간 산출 → 일별 적용 공통 규칙)
-├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann)
+├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann + P7: Mantel-Haenszel 층화 RR)
 ├── bayesian-posterior.ts          # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
 ├── saju-mappings.ts               # 십성 알고리즘 계산 (LLM 프롬프트용)
 ├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification: P2 q + P3 e-value α·emerging 바·discoverQ·blockLen) 임계 단일 관리

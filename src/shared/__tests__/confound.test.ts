@@ -2,10 +2,15 @@ import { describe, it, expect } from 'vitest';
 import {
   computeOverlap,
   flagConfoundersForLink,
+  adjustConfounders,
+  classifyVerdict,
+  buildStrata,
   type ConfoundCandidate,
   type ConfoundThresholds,
+  type ConfoundAdjustThresholds,
+  type SuspectedConfounder,
 } from '../confound.js';
-import type { DaySeries } from '../pattern-verification.js';
+import { buildContingency, type DaySeries } from '../pattern-verification.js';
 
 // 합성 시리즈 헬퍼 — 10일 윈도우(d0..d9). buildContingency/verifyContingency는 이미 검증됨(pattern-verification.test) →
 // 여기선 교란 조립 로직(2조건 AND·정렬·topN·자기 제외)에 집중.
@@ -119,5 +124,155 @@ describe('flagConfoundersForLink', () => {
     const r = flagConfoundersForLink(1, actS, SIG, [lowOverlap], 'today', T);
     expect(r.suspected).toHaveLength(0);
     expect(r.scannedAt).toBe('today');
+  });
+});
+
+// ─── P7 다변량 분리 (Mantel-Haenszel 조정 — ADR-0042) ────
+
+// 큰 윈도우 합성 빌더 — 게이트(nCofire≥30)·층 viability를 충족하도록 셀을 정확히 깐다.
+const buildN = (n: number) => {
+  const days = Array.from({ length: n }, (_, i) => `d${i}`);
+  const rangeSet = (...ranges: [number, number][]): Set<string> => {
+    const s = new Set<string>();
+    for (const [lo, hi] of ranges) for (let i = lo; i <= hi; i++) s.add(`d${i}`);
+    return s;
+  };
+  return {
+    m: (...ranges: [number, number][]): Map<string, boolean> => {
+      const set = rangeSet(...ranges);
+      return new Map(days.map((d) => [d, set.has(d)]));
+    },
+    s: (...ranges: [number, number][]): DaySeries => {
+      const set = rangeSet(...ranges);
+      return new Map(days.map((d) => [d, set.has(d)]));
+    },
+  };
+};
+
+const AT: ConfoundAdjustThresholds = {
+  adjustMinCofire: 30,
+  explainAwayMaxEffect: 1.3,
+  attenuatedMaxRatio: 0.8,
+  minStratumCell: 5,
+};
+
+const susp = (
+  seedId: number,
+  nCofire: number,
+  overlap = 0.8,
+  effectZX = 1.7,
+): SuspectedConfounder => ({
+  seedId,
+  seedName: `Z${seedId}`,
+  overlap,
+  effectZX,
+  nCofire,
+});
+
+const cand = (seedId: number, act: Map<string, boolean>): ConfoundCandidate => ({
+  seedId,
+  seedName: `Z${seedId}`,
+  act,
+});
+
+describe('classifyVerdict', () => {
+  it('adjEffect < explainAwayMaxEffect → explained_away', () => {
+    expect(classifyVerdict(1.0, 2.0, AT)).toBe('explained_away');
+  });
+  it('explainAway ≤ adjEffect < marginal·ratio → attenuated', () => {
+    expect(classifyVerdict(1.4, 2.0, AT)).toBe('attenuated'); // 1.4≥1.3 ∧ 1.4<1.6
+  });
+  it('adjEffect ≥ marginal·ratio → survives', () => {
+    expect(classifyVerdict(1.8, 2.0, AT)).toBe('survives'); // 1.8≥1.6
+  });
+  it('marginal 비유한 → attenuated 밴드 skip → survives', () => {
+    expect(classifyVerdict(1.5, NaN, AT)).toBe('survives');
+  });
+});
+
+describe('buildStrata', () => {
+  it('1 교란 → 2층, 셀 합 = 비층화 2×2 (보존)', () => {
+    const b = buildN(8);
+    const aS = b.m([0, 3]); // S active d0..d3
+    const aZ = b.m([0, 1], [4, 5]); // Z active d0,d1,d4,d5
+    const x = b.s([0, 2], [4, 6]);
+    const strata = buildStrata(aS, x, [cand(2, aZ)]);
+    expect(strata).toHaveLength(2);
+    const sum = (k: 'a' | 'b' | 'c' | 'd') => strata.reduce((acc, st) => acc + st[k], 0);
+    const flat = buildContingency(aS, x);
+    expect(sum('a')).toBe(flat.a);
+    expect(sum('b')).toBe(flat.b);
+    expect(sum('c')).toBe(flat.c);
+    expect(sum('d')).toBe(flat.d);
+  });
+});
+
+describe('adjustConfounders', () => {
+  it('게이트 미달(nCofire < adjustMinCofire) → undefined (dormant)', () => {
+    const b = buildN(120);
+    const actZ = b.m([0, 59]);
+    const aS = b.m([0, 39], [60, 79]);
+    const x = b.s([0, 35], [40, 57], [60, 61], [80, 83]);
+    const candById = new Map([[2, cand(2, actZ)]]);
+    const r = adjustConfounders({ actS: aS, sigX: x, suspected: [susp(2, 20)], candById }, AT);
+    expect(r).toBeUndefined();
+  });
+
+  it('후보 시리즈 없음(candById 누락) → undefined', () => {
+    const b = buildN(120);
+    const aS = b.m([0, 39], [60, 79]);
+    const x = b.s([0, 35]);
+    const r = adjustConfounders(
+      { actS: aS, sigX: x, suspected: [susp(7, 40)], candById: new Map() },
+      AT,
+    );
+    expect(r).toBeUndefined();
+  });
+
+  it('게이트 통과 + 완전 교란 → explained_away (노출 강등 대상, RR≈1.0)', () => {
+    // Z-on(d0..59)/Z-off(d60..119) 각 층 내 S↔X 연관 없음, marginal만 연관(어부지리).
+    const b = buildN(120);
+    const actZ = b.m([0, 59]);
+    const aS = b.m([0, 39], [60, 79]);
+    const x = b.s([0, 35], [40, 57], [60, 61], [80, 83]);
+    const candById = new Map([[2, cand(2, actZ)]]);
+    const r = adjustConfounders({ actS: aS, sigX: x, suspected: [susp(2, 40)], candById }, AT);
+    const adj = r?.adjusted ?? [];
+    expect(r?.explainedAway).toBe(true);
+    expect(adj).toHaveLength(1);
+    expect(adj[0]?.seedId).toBe(2);
+    expect(adj[0]?.verdict).toBe('explained_away');
+    expect(adj[0]?.adjEffect).toBeCloseTo(1.0);
+  });
+
+  it('게이트 통과 + 층 내 연관 유지 → survives (노출 유지, RR≈9.0)', () => {
+    const b = buildN(120);
+    const actZ = b.m([0, 59]);
+    const aS = b.m([0, 39], [60, 79]);
+    const x = b.s([0, 35], [40, 41], [60, 77], [80, 83]);
+    const candById = new Map([[2, cand(2, actZ)]]);
+    const r = adjustConfounders({ actS: aS, sigX: x, suspected: [susp(2, 40)], candById }, AT);
+    const adj = r?.adjusted ?? [];
+    expect(r?.explainedAway).toBe(false);
+    expect(adj[0]?.verdict).toBe('survives');
+    expect(adj[0]?.adjEffect).toBeCloseTo(9.0);
+  });
+
+  it('joint 층 viability 미달 → 가장 강한 단일 Z로 fallback', () => {
+    const b = buildN(80);
+    const aS = b.m([0, 59]); // S active d0..d59
+    const actZ1 = b.m([0, 49], [60, 69]); // nCofire(S,Z1)=50
+    const actZ2 = b.m([0, 47], [60, 69]); // nCofire(S,Z2)=48 → (Z1=1,Z2=0)=d48,d49 sparse
+    const x = b.s([0, 40], [60, 75]);
+    const candById = new Map([
+      [1, cand(1, actZ1)],
+      [2, cand(2, actZ2)],
+    ]);
+    // Z1 overlap×effectZX 더 큼 → fallback이 Z1 선택.
+    const suspected = [susp(1, 50, 0.9, 2.0), susp(2, 48, 0.85, 2.0)];
+    const r = adjustConfounders({ actS: aS, sigX: x, suspected, candById }, AT);
+    const adj = r?.adjusted ?? [];
+    expect(adj).toHaveLength(1); // joint(2 교란) 포기 → 단일 Z
+    expect(adj[0]?.seedId).toBe(1); // 가장 강한 Z1
   });
 });

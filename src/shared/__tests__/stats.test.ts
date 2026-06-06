@@ -7,7 +7,9 @@ import {
   mannWhitneyU,
   hodgesLehmann,
   blockPermutationP,
+  mantelHaenszelRR,
   type DayObservation,
+  type Stratum2x2,
 } from '../stats.js';
 
 // 결정론 PRNG (mulberry32) — 시뮬 테스트 재현성 보장(고정 seed → flaky 없음).
@@ -342,5 +344,53 @@ describe('blockPermutationP', () => {
     const p2 = blockPermutationP(seq, 7, 1000);
     expect(p1).toBe(p2); // 결정론(고정 seed)
     expect(p1).toBeGreaterThan(0.05);
+  });
+});
+
+// ─── mantelHaenszelRR (P7, 교란 조정 — ADR-0042) ──────────
+
+describe('mantelHaenszelRR', () => {
+  it('단일층 = 일반 2×2 rate ratio', () => {
+    // a=8,b=2,c=4,d=6 → RR = (8/10)/(4/10) = 2.0
+    const strata: Stratum2x2[] = [{ a: 8, b: 2, c: 4, d: 6 }];
+    expect(mantelHaenszelRR(strata)).toBeCloseTo(2.0);
+  });
+
+  it('무교란(층 동질) → marginal RR에 수렴', () => {
+    // 두 층 모두 RR=2.0 → 조정해도 marginal과 같음(교란 없음).
+    const strata: Stratum2x2[] = [
+      { a: 8, b: 2, c: 4, d: 6 }, // RR 2.0
+      { a: 16, b: 4, c: 8, d: 12 }, // RR 2.0
+    ];
+    expect(mantelHaenszelRR(strata)).toBeCloseTo(2.0);
+  });
+
+  it('완전 교란(층 내 연관 소멸, marginal만 연관) → 1로 수렴 (Simpson)', () => {
+    // 각 층 RR=1.0이나 Z가 노출·결과 둘 다 끌어 marginal엔 연관(어부지리).
+    const strata: Stratum2x2[] = [
+      { a: 36, b: 4, c: 18, d: 2 }, // Z-on:  (36/40)/(18/20)=1.0
+      { a: 2, b: 18, c: 4, d: 36 }, // Z-off: (2/20)/(4/40)=1.0
+    ];
+    // marginal(층 합산): a=38,b=22,c=22,d=38 → RR=38/22≈1.73 (연관 보임)
+    expect(38 / 22).toBeGreaterThan(1.5);
+    // 조정(MH): Z 통제하면 연관 소멸 → 1.0
+    expect(mantelHaenszelRR(strata)).toBeCloseTo(1.0);
+  });
+
+  it('분모 합 0 → NaN (조정 불가)', () => {
+    // 비노출 결과+ (c) 전무 → den = Σ c·(a+b)/n = 0
+    expect(Number.isNaN(mantelHaenszelRR([{ a: 5, b: 5, c: 0, d: 10 }]))).toBe(true);
+  });
+
+  it('n=0 층은 기여 없음(skip)', () => {
+    const strata: Stratum2x2[] = [
+      { a: 0, b: 0, c: 0, d: 0 }, // 빈 층 skip
+      { a: 8, b: 2, c: 4, d: 6 }, // RR 2.0
+    ];
+    expect(mantelHaenszelRR(strata)).toBeCloseTo(2.0);
+  });
+
+  it('빈 입력 → NaN', () => {
+    expect(Number.isNaN(mantelHaenszelRR([]))).toBe(true);
   });
 });

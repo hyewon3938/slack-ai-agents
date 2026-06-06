@@ -82,11 +82,19 @@ export const INSIGHT_THRESHOLDS = {
     discoveryTopN: 5, // 주당 surface 상한 (승인 카드 폭주 방지 — 드롭 시 로그)
   },
   // #477 P6 교란 플래그 (ADR-0041) — 공동발현 시드 marginal 탐지. annotate-only(verdict 불변).
-  // calibration 노브: 첫 몇 주 튜닝(헌장 ⑤). 강등·다변량 분리는 P7(데이터 게이트).
+  // P7 교란 다변량 분리 (ADR-0042) — Mantel-Haenszel 층화 조정 + 노출 레이어 soft-demote. dormant.
+  // calibration 노브: 첫 몇 주 튜닝(헌장 ⑤).
   confound: {
+    // ── P6 플래그 ──
     minOverlap: 0.6, // P(Z active | S active) 최소 — S 켜질 때 Z도 대체로 켜짐
-    minCofireDays: 10, // 공동발현일 최소(노이즈 바닥; P7 게이트 ~30보다 낮게)
+    minCofireDays: 10, // 공동발현일 최소(노이즈 바닥; P7 게이트 30보다 낮게)
     minEffectZX: 1.3, // Z↔신호 rate ratio 최소(= patternVerification.minRateRatio 승계)
     topN: 3, // 링크당 표시 교란 후보 상한(near-dup 1차 완화)
+    // ── P7 조정 (데이터 게이트 dormant — 미달이면 P6 플래그만, 동작 변화 0) ──
+    adjustMinCofire: 30, // 공동발현일 ≥ 이 값인 (링크×교란)만 MH 조정(P6 flag floor 10보다 높게)
+    explainAwayMaxEffect: 1.3, // 조정 후 rate ratio < 이 값 → explained_away(= minRateRatio 승계)
+    attenuatedMaxRatio: 0.8, // explainAway~marginal·이 값 사이면 attenuated(약화, 노출 유지)
+    minStratumCell: 5, // joint 층 viability — 각 층 n_k 최소(미달 시 가장 강한 단일 Z fallback)
+    elasticNetEnabled: false, // 교란이 층화 한계 초과 시 elastic-net 조정(후속 노브, 기본 off)
   },
 } as const;

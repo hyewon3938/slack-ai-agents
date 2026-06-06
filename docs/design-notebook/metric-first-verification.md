@@ -565,6 +565,62 @@ off-day 검증은 단일 시드의 **marginal 연관**만 본다 — 같은 날 
 
 > TODO(`/build`): 첫 교란 패스 결과(플래그된 링크 수, 달력 vs 사주 교란 분포, near-dup 노이즈) 확인 후 보강.
 
+## Phase 7: 교란 다변량 분리 — Mantel-Haenszel 층화 + 데이터 게이트 (2026-06-06)
+
+- 이슈: [#495](https://github.com/hyewon3938/slack-ai-agents/issues/495)
+- 관련 계획서: `.claude/plans/495-p7-confound-adjust.md`
+- 상태: 설계 완료 (구현 대기)
+- 정본 결정: [ADR-0042](../adr/0042-confound-multivariate-stratification.md)
+
+### 결정 요약
+
+**마스터 #477 마지막 phase.** P6([ADR-0041](../adr/0041-confound-cofiring-flag.md))이 marginal 교란을 플래그하고 각 (링크 × 교란 Z)의 `nCofire`를 "P7 데이터 게이트 입력"으로 기록해둔 그 위에, 공동발현이 충분히 쌓인 쌍만 **Mantel-Haenszel 층화**로 조정 추정치를 산출해 어부지리를 노출에서 실제로 걷어낸다. P6=노출(marginal 정직), P7=조정(노출에 반영).
+
+- **feature 환원 연속**: 교란 Z·신호 X가 전부 결정론 binary라 층(Z-on/Z-off)별 2×2 = P6 프리미티브(`buildContingency`) 재사용 + MH 풀링 함수 하나. P4a\~P6 "새 통계 코어 0" 연속 이후 **마스터가 끝까지 미뤄둔 유일한 다변량 조각이자 가장 가벼운 형태**.
+- **데이터 게이트** (헌장 ④): `nCofire ≥ 30`만 조정. 미달이면 P6 플래그 유지 → 배포 시 동작 변화 0, 공동발현 쌓이면 자동 on.
+- **노출 레이어 soft-demote**: 조정 후 효과가 confirm floor 밑이면(explained_away) `saju_influence_summary` verified tier 강등 + caveat. **e-value·status는 불변**([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) 결정론 리플레이 보존) — 조정은 노출에만 작용.
+
+### 의사결정 분기점
+
+1. **다변량 방법 — MH 층화** (vs [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 지명 elastic-net). *사용자 체크포인트로 확정.* §6 elastic-net 지명은 회귀 패밀리 내부 비교였고 층화는 References에만 있었음 → binary×binary×교란 2\~3개 + n=1엔 층화가 교과서적·가벼움(2×2 재사용)·rate-ratio 척도 정합. elastic-net은 새 페널티 GLM 코어·log-odds 이질 척도·λ 불안정 → **후속 노브(기본 off)**. [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §1.
+2. **데이터 게이트 30** — [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 "예:30일" + [ADR-0041](../adr/0041-confound-cofiring-flag.md) "\~30" 승계. P6 flag floor(`minCofireDays`=10)보다 높게(층별 추정 데이터 확보). dormant.
+3. **조정 적용 = 노출 레이어 soft-demote** (vs status 직접 강등 / caveat-only). *사용자 체크포인트로 확정.* status 강등은 [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) e-value 결정론 깨짐, caveat-only는 P6 annotate와 차이 옅음. [ADR-0041](../adr/0041-confound-cofiring-flag.md) §C "강등은 P7 조정 결과로"의 실현이되 지점을 status가 아닌 노출 레이어로 둬 결정론 보존. [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §3.
+4. **뷰 재정의 P7로 묶음** — [ADR-0041](../adr/0041-confound-cofiring-flag.md)이 이중 재정의 회피로 위임(P6=마이그레이션 0 유지). P7 = 082 이후 첫 마이그레이션(083), **뷰 재정의 only**(새 테이블 0 — 조정치는 기존 `confound` JSONB에 산다).
+
+### 포기한 안 / 미룬 항목
+
+- **elastic-net 1차**: 후속 노브(기본 off) — 교란이 층화 한계(joint strata 폭발) 넘는 다수일 때. 깊이 = rewrite 아닌 노브 + SET 리플레이(헌장 ④·⑤).
+- **status/e-value 직접 강등**: 기각([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) 결정론 리플레이).
+- **caveat-only**(강등 안 함): 기각 — P6 annotate-only와 중복, P7 의의 옅음.
+- **깊은 결정론 명리 해석**: 검증 아닌 해석 LLM 트랙(P4b 선례, 별도 follow-up).
+- **joint vs sequential 층화**(교란 다수일 때): 빌드 calibration.
+
+### 미해결·가설 → 빌드에서 해소
+
+- **MH 풀링 함수 위치**: `stats.ts`(e-value·block-perm 옆, 통계 코어 집) pure 함수 + null/full-confound 정합 테스트. 조정 오케스트레이션은 `confound.ts` 확장(`flagConfounds`가 이미 로드한 시드/신호 시리즈 in-hand 공유 — 재계산 회피).
+- **confound JSONB 확장 형태**: `{scannedAt, suspected:[...], adjusted?:[{seedId,nCofire,adjEffect}], explainedAway?:bool}`. 시드 단위 집계 — 한 시드의 confirmed 링크가 **모두** explained_away면 verified 강등, 하나라도 살면 유지(보수적).
+- **층별 최소 셀 임계 + joint/sequential 선택**: calibration 노브.
+- **뷰 `confound_note` 컬럼**(말미 append — 컬럼 계약 보존, `e_value` 선례) + verified CTE explained_away 가드. NULL-safe(미조정 = 오늘과 동일).
+- **daily-insight SKILL 2-2 동기화**: 배포 후 적용(repo 밖 routine, P2/P3 선례). 동기화 전 추가 컬럼 무시(안전).
+- **노브**(헌장 ⑤): `confound.adjustMinCofire`(30) + `explainAwayMaxEffect`(`minRateRatio`=1.3 승계) + elastic-net off 플래그.
+
+### 마스터 #477 close (P7 `/build` 마무리에서)
+
+P7이 마지막 phase라 `/build` 마무리에서 마스터 close 처리:
+
+- design-notebook **마스터 전체 회고**(P1\~P7 서사) + Phase 7 회고
+- `docs/project-history.md` 마스터 #477 P1\~P7 1회 요약(마일스톤급)
+- MEMORY 정리: #477 P1\~P6 진행 엔트리를 토픽 파일로 통합(MEMORY.md 크기 한도 초과 해소) + 헌장은 core_principles 메모리 계승
+- 문서 정합: 노트북 P6 status line/회고 stale("설계 완료/구현 대기")는 마스터 회고로 흡수
+
+### 기술적 의의
+
+교란 통제의 노출(P6 marginal)과 조정(P7 다변량)을 분리하고, 조정을 회귀가 아닌 층화(MH)로 환원해 P6 2×2 프리미티브 위에 다변량을 얹었다(새 통계 코어 = 풀링 함수 하나). 조정을 노출 레이어에만 반영해 e-value 결정론 리플레이를 보존하면서 "어부지리를 데이터가 차면 자동으로 걷어낸다"(헌장 ④)를 실현. (어필 표현은 portfolio-candidates.)
+
+### 회고
+
+> TODO(`/build`): 첫 조정 패스(게이트 통과 쌍 수, explained_away 발생 여부 — 현 데이터선 거의 0 예상 = dormant 정상) + 마스터 전체 회고 확인 후 보강.
+
 ---
 
 ## 회고 (TODO: `/build` 구현 후 보강)

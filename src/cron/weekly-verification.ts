@@ -347,17 +347,23 @@ const processUser = async (
   try {
     const cr = await flagConfounds(userId, today);
     let flagged = 0;
+    let adjusted = 0; // P7 — 게이트 통과해 MH 조정한 링크 수
+    let explainedAway = 0; // P7 — 조정 후 어부지리 판정(노출 강등 대상)
     for (const r of cr) {
       try {
         await persistConfound(userId, r);
         confoundByLink.set(r.linkId, r.confound);
         if (r.confound.suspected.length > 0) flagged += 1;
+        if (r.confound.adjusted && r.confound.adjusted.length > 0) adjusted += 1;
+        if (r.confound.explainedAway) explainedAway += 1;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[Confound] persist 실패 link=${r.linkId}: ${msg}`);
       }
     }
-    console.warn(`[Confound] user=${userId} 교란 플래그 ${flagged}/${cr.length} 링크`);
+    console.warn(
+      `[Confound] user=${userId} 교란 플래그 ${flagged}/${cr.length} 링크 · 조정 ${adjusted} · 어부지리 ${explainedAway}`,
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Confound] user=${userId} 교란 플래그 실패: ${msg}`);

@@ -6,6 +6,7 @@
  * - e-value test martingale (순차 anytime-valid 확정 게이트, optional stopping 통제) — P3, ADR-0034
  * - block permutation p (자기상관 보정) — P3
  * - Mann-Whitney U + Hodges-Lehmann (연속 신호 보고용) — P3
+ * - Mantel-Haenszel 층화 rate ratio (교란 조정) — P7, ADR-0042
  *
  * P1까지 pattern-hypothesis.ts에 있던 pure stats를 추출. DB·도메인 의존 없음 → 단위 테스트 용이.
  */
@@ -312,4 +313,41 @@ export const blockPermutationP = (
     if (Number.isFinite(d) && d >= obs) ge++;
   }
   return (1 + ge) / (iters + 1);
+};
+
+// ─── Mantel-Haenszel 층화 rate ratio (P7, 교란 조정 — ADR-0042) ──
+
+/**
+ * 한 층의 2×2 셀 (Mantel-Haenszel 층화 입력).
+ * pattern-verification.Contingency(a,b,c,d,inconclusive)가 구조적으로 호환 → 그대로 넘길 수 있음.
+ * 도메인 의존 없이 stats를 순수 유지하려고 최소 셀만 받는다.
+ */
+export interface Stratum2x2 {
+  a: number; // 노출(시드 발현) & 결과+(신호 pass)
+  b: number; // 노출 & 결과−
+  c: number; // 비노출(시드 비발현) & 결과+
+  d: number; // 비노출 & 결과−
+}
+
+/**
+ * Mantel-Haenszel 조정 rate ratio (Greenland-Robins risk-ratio 추정량) — ADR-0042.
+ *
+ * 교란 후보 Z로 층(Z-on/Z-off, joint면 값 조합)을 나눠 각 층의 (시드 × 신호) 2×2를 풀링:
+ *   RR_MH = Σ_k [ a_k·(c_k+d_k)/n_k ]  /  Σ_k [ c_k·(a_k+b_k)/n_k ]   (n_k = a_k+b_k+c_k+d_k)
+ *
+ * 층 내 연관만 모아 합산 → 층(=Z) 효과를 통제한 조정 추정치. 무교란(층 동질)이면 marginal RR에 수렴,
+ * 완전 교란(층 내 연관 소멸)이면 1로 수렴. n_k=0 층은 기여 없음(skip). 분모 합 0 → NaN(조정 불가).
+ * 순수 함수(결정론) → 주간 SET 리플레이 불변.
+ */
+export const mantelHaenszelRR = (strata: readonly Stratum2x2[]): number => {
+  let num = 0;
+  let den = 0;
+  for (const s of strata) {
+    const n = s.a + s.b + s.c + s.d;
+    if (n === 0) continue;
+    num += (s.a * (s.c + s.d)) / n;
+    den += (s.c * (s.a + s.b)) / n;
+  }
+  if (den === 0) return NaN;
+  return num / den;
 };
