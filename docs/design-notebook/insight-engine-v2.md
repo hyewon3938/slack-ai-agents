@@ -72,6 +72,8 @@
 
 ## Phase 2: LLM 자율 슬롯 + Outcome 검증 (2026-05-16 머지)
 
+> **🗑️ 은퇴 (2026-06-07, [ADR-0043](../adr/0043-retire-v2-llm-autonomous-discovery.md))**: 이 슬롯은 생애 0건 산출(휴면)이었고, #477이 발견 역할을 통계 기반(P5a 발굴 + P5b LLM 신호)으로 이관하며 폐기됨. cron 슬롯·`llm_insights` 테이블·코드 전부 제거. 아래는 설계 당시 서사(역사 보존).
+
 - 이슈: [#390](https://github.com/hyewon3938/slack-ai-agents/issues/390)
 - 관련 ADR: [ADR-0016](../adr/0016-llm-autonomous-slot-outcome-verification.md)
 - 관련 PR: [#404](https://github.com/hyewon3938/slack-ai-agents/pull/404) (구현), [#405](https://github.com/hyewon3938/slack-ai-agents/pull/405) (채널/패턴 fix)
