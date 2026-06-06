@@ -72,6 +72,7 @@ interface SignalDefRow {
   id: number;
   name: string;
   kind: 'sql' | 'tag';
+  source: 'seed' | 'llm';
   sql_body: string | null;
   value_type: 'binary' | 'continuous' | null;
   direction: SignalDirection | null;
@@ -89,7 +90,7 @@ interface LoadedSignal {
 /** active 신호 전부 (description 동반 — 카드 평어용). */
 const loadActiveSignals = async (userId: number): Promise<LoadedSignal[]> => {
   const res = await query<SignalDefRow>(
-    `SELECT id, name, kind, sql_body, value_type, direction, threshold, tag_name, window_days, description
+    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, description
        FROM signal_defs
       WHERE user_id = $1 AND status = 'active'
       ORDER BY id`,
@@ -100,6 +101,7 @@ const loadActiveSignals = async (userId: number): Promise<LoadedSignal[]> => {
       id: r.id,
       name: r.name,
       kind: r.kind,
+      source: r.source,
       sqlBody: r.sql_body,
       valueType: r.value_type,
       direction: r.direction,

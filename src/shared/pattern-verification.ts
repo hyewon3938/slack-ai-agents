@@ -35,6 +35,7 @@ import {
   getDailyContext,
   loadActiveSeeds,
   runMetricSql,
+  runLlmSignalSql,
   buildNameIdMap,
   type SajuSeedWithMetrics,
   type DailyContext,
@@ -74,6 +75,8 @@ export interface SignalDef {
   id: number;
   name: string;
   kind: 'sql' | 'tag';
+  /** signal_defs.source — 'llm'이면 sql 신호 시리즈 계산 시 격리 실행기 사용 (#477 P5b). */
+  source: 'seed' | 'llm';
   sqlBody: string | null;
   valueType: 'binary' | 'continuous' | null;
   direction: SignalDirection | null;
@@ -385,10 +388,12 @@ export const computeSignalSeries = async (
   if (!signal.sqlBody || !signal.direction) {
     return { series: new Map(windowDates.map((d) => [d, null])), raw: null };
   }
+  // source='llm'이면 untrusted 격리 실행기(게이트 #2), seed면 기존 신뢰 경로.
+  const runner = signal.source === 'llm' ? runLlmSignalSql : runMetricSql;
   const raw = new Map<string, number | null>();
   for (const d of windowDates) {
     try {
-      raw.set(d, await runMetricSql(signal.sqlBody, userId, d));
+      raw.set(d, await runner(signal.sqlBody, userId, d));
     } catch {
       raw.set(d, null);
     }
@@ -542,6 +547,7 @@ interface SignalDefRow {
   id: number;
   name: string;
   kind: 'sql' | 'tag';
+  source: 'seed' | 'llm';
   sql_body: string | null;
   value_type: 'binary' | 'continuous' | null;
   direction: SignalDirection | null;
@@ -554,6 +560,7 @@ const toSignalDef = (row: SignalDefRow): SignalDef => ({
   id: row.id,
   name: row.name,
   kind: row.kind,
+  source: row.source,
   sqlBody: row.sql_body,
   valueType: row.value_type,
   direction: row.direction,
@@ -593,7 +600,7 @@ export const verifyUserLinks = async (
 
   const signalIds = [...new Set(linkRes.rows.map((r) => r.signal_id))];
   const signalRes = await query<SignalDefRow>(
-    `SELECT id, name, kind, sql_body, value_type, direction, threshold, tag_name, window_days
+    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days
        FROM signal_defs
       WHERE id = ANY($1::int[]) AND status = 'active'`,
     [signalIds],

@@ -13,7 +13,8 @@
  * raw에서 윈도우 재계산. 본 모듈은 매칭 + 일별 핸드오프 기록(seed_daily_activations)까지만 담당.
  */
 
-import { query, queryWithClient } from './db.js';
+import { query, queryWithClient, queryReadOnly } from './db.js';
+import { validateSignalSql, SIGNAL_ROW_CAP } from './signal-sql-guard.js';
 import {
   computeCumulativePillarCount,
   getDayPillar,
@@ -76,6 +77,8 @@ export interface SajuMetric {
   pattern_id: number;
   metric_name: string;
   kind: 'sql' | 'tag';
+  /** signal_defs.source — 'llm'이면 실행 시 untrusted SQL 격리 경로(runLlmSignalSql) 사용 (#477 P5b). */
+  source: 'seed' | 'llm';
   expected_metric_sql: string | null;
   expected_direction: 'above_avg' | 'below_avg' | 'above_abs' | 'below_abs' | 'flag_present' | null;
   expected_threshold: number | null;
@@ -376,7 +379,7 @@ export const loadActiveSeeds = async (userId: number): Promise<SajuSeedWithMetri
   // #477 P1: 검증 단위 = (시드 × 신호) 활성 링크 × 활성 신호. pending 링크/신호(LLM 미승인)는 제외.
   const metrics = await query<MetricRow>(
     `SELECT l.id AS link_id, l.seed_id AS pattern_id, s.id AS signal_id,
-            s.name AS metric_name, s.kind,
+            s.name AS metric_name, s.kind, s.source,
             s.sql_body AS expected_metric_sql, s.direction AS expected_direction,
             s.threshold AS expected_threshold, s.value_type, s.tag_name, s.domain
        FROM pattern_links l
@@ -683,15 +686,9 @@ export const evaluateTrigger = async (
 
 // ─── 메트릭 평가 ─────────────────────────────────────────
 
-export const runMetricSql = async (sql: string, userId: number, date: string): Promise<number> => {
-  const result = await queryWithClient<Record<string, unknown>>(
-    // pg parameter binding은 query() 경로로만 가능, queryWithClient는 raw query.
-    // metric SQL은 catalog에 영속된 신뢰 SQL이므로 $1/$2 자리에 안전한 값 대입.
-    // userId는 INTEGER, date는 'YYYY-MM-DD' 형식 → SQL injection 위험 없음.
-    sql.replace(/\$1/g, String(userId)).replace(/\$2/g, `'${date}'`),
-    METRIC_TIMEOUT_MS,
-  );
-  const firstRow = result.rows[0];
+/** 단일 숫자 신호 결과 추출 — 첫 행 첫 컬럼을 number로 좁힘(없거나 비숫자면 0). */
+const extractFirstNumber = (rows: Record<string, unknown>[]): number => {
+  const firstRow = rows[0];
   if (!firstRow) return 0;
   const firstValue = Object.values(firstRow)[0];
   if (firstValue === null || firstValue === undefined) return 0;
@@ -703,13 +700,57 @@ export const runMetricSql = async (sql: string, userId: number, date: string): P
   return 0;
 };
 
-const baselineAvg = async (sql: string, userId: number, date: string): Promise<number> => {
+/** 신호 SQL 실행기 — runMetricSql(seed, 신뢰) | runLlmSignalSql(llm, untrusted) 공통 시그니처. */
+export type MetricRunner = (sql: string, userId: number, date: string) => Promise<number>;
+
+export const runMetricSql = async (sql: string, userId: number, date: string): Promise<number> => {
+  const result = await queryWithClient<Record<string, unknown>>(
+    // pg parameter binding은 query() 경로로만 가능, queryWithClient는 raw query.
+    // seed metric SQL은 catalog에 영속된 신뢰 SQL이므로 $1/$2 자리에 안전한 값 대입.
+    // userId는 INTEGER, date는 'YYYY-MM-DD' 형식 → SQL injection 위험 없음.
+    sql.replace(/\$1/g, String(userId)).replace(/\$2/g, `'${date}'`),
+    METRIC_TIMEOUT_MS,
+  );
+  return extractFirstNumber(result.rows);
+};
+
+/**
+ * LLM 자율 신호 SQL 실행 — 게이트 #2 (#477 P5b, ADR-0040).
+ * source='llm' SQL은 untrusted → ① 실행 직전 재검증(저장된 sql_body도 불신, 실패 시 throw)
+ * + ② read-only 트랜잭션 격리(INSERT/UPDATE/DELETE를 PG가 거부, 검증 우회 백스톱) + row cap.
+ * runMetricSql과 시그니처·반환 동일 → 호출부가 source로 둘 중 하나를 고른다.
+ */
+export const runLlmSignalSql = async (
+  sql: string,
+  userId: number,
+  date: string,
+): Promise<number> => {
+  const err = validateSignalSql(sql);
+  if (err) throw new Error(`LLM 신호 SQL 검증 실패: ${err}`);
+  const result = await queryReadOnly<Record<string, unknown>>(
+    sql.replace(/\$1/g, String(userId)).replace(/\$2/g, `'${date}'`),
+    METRIC_TIMEOUT_MS,
+    SIGNAL_ROW_CAP,
+  );
+  return extractFirstNumber(result.rows);
+};
+
+/** signal_defs.source → 실행기 선택 (llm은 격리 경로). */
+export const runnerForSource = (source: 'seed' | 'llm'): MetricRunner =>
+  source === 'llm' ? runLlmSignalSql : runMetricSql;
+
+const baselineAvg = async (
+  sql: string,
+  userId: number,
+  date: string,
+  runner: MetricRunner = runMetricSql,
+): Promise<number> => {
   let sum = 0;
   let n = 0;
   for (let i = 1; i <= BASELINE_WINDOW_DAYS; i++) {
     const d = addDays(date, -i);
     try {
-      const v = await runMetricSql(sql, userId, d);
+      const v = await runner(sql, userId, d);
       sum += v;
       n++;
     } catch {
@@ -762,18 +803,20 @@ export const evaluateMetric = async (
     };
   }
 
-  const todayValue = await runMetricSql(sql, userId, date);
+  // source='llm'이면 untrusted 격리 실행기(runLlmSignalSql), seed면 기존 신뢰 경로(runMetricSql).
+  const runner = runnerForSource(metric.source);
+  const todayValue = await runner(sql, userId, date);
 
   let baseline: number | null = null;
   let passed = false;
 
   switch (direction) {
     case 'above_avg':
-      baseline = await baselineAvg(sql, userId, date);
+      baseline = await baselineAvg(sql, userId, date, runner);
       passed = todayValue > baseline;
       break;
     case 'below_avg':
-      baseline = await baselineAvg(sql, userId, date);
+      baseline = await baselineAvg(sql, userId, date, runner);
       passed = todayValue < baseline;
       break;
     case 'above_abs':

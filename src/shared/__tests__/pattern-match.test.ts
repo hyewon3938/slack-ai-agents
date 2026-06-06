@@ -31,6 +31,9 @@ import {
   evaluateTrigger,
   evaluateMetric,
   recordDailyMatches,
+  runMetricSql,
+  runLlmSignalSql,
+  runnerForSource,
   __resetCacheForTest,
   type SajuSeedWithMetrics,
   type DailyContext,
@@ -52,8 +55,9 @@ beforeEach(async () => {
   mockConnect.mockImplementation(() =>
     Promise.resolve({
       query: (sql: string, ...args: unknown[]) => {
-        // SET statement_timeout 류는 무시 — 데이터 쿼리만 mockQuery로 위임
-        if (typeof sql === 'string' && /^\s*SET\s+statement_timeout/i.test(sql)) {
+        // 트랜잭션 제어문(SET statement_timeout / SET TRANSACTION / BEGIN / ROLLBACK / COMMIT)은
+        // 무시 — 데이터 쿼리만 mockQuery로 위임. queryReadOnly(게이트 #2) 경로도 통과.
+        if (typeof sql === 'string' && /^\s*(SET|BEGIN|ROLLBACK|COMMIT)\b/i.test(sql)) {
           return Promise.resolve({ rows: [] });
         }
         return mockQuery(sql, ...args);
@@ -525,6 +529,7 @@ describe('evaluateMetric', () => {
     pattern_id: 1,
     metric_name: 'test_metric',
     kind: 'sql',
+    source: 'seed',
     expected_metric_sql: 'SELECT 1',
     expected_direction: 'above_avg',
     expected_threshold: null,
@@ -925,5 +930,68 @@ describe('recordDailyMatches (#477 P2)', () => {
     ];
     await recordDailyMatches(1, '2026-05-29', results);
     expect(findInsertCalls()).toHaveLength(3);
+  });
+});
+
+describe('LLM 신호 실행 격리 (#477 P5b, ADR-0040)', () => {
+  describe('runnerForSource — source별 실행기 디스패치', () => {
+    it("source='llm'은 runLlmSignalSql(격리), 'seed'는 runMetricSql(신뢰)", () => {
+      expect(runnerForSource('llm')).toBe(runLlmSignalSql);
+      expect(runnerForSource('seed')).toBe(runMetricSql);
+    });
+  });
+
+  describe('runLlmSignalSql — 게이트 #2 (재검증 + read-only 실행)', () => {
+    it('검증 실패 SQL은 실행 전 throw (DB 미접근)', async () => {
+      await expect(
+        runLlmSignalSql('SELECT sum(value) FROM assets WHERE user_id = $1', 1, '2026-06-06'),
+      ).rejects.toThrow(/검증 실패/);
+      expect(mockQuery).not.toHaveBeenCalled(); // 데이터 쿼리 미실행
+    });
+
+    it('쓰기 시도(DML) SQL도 검증 게이트에서 차단(read-only 도달 전)', async () => {
+      await expect(
+        runLlmSignalSql('DELETE FROM schedules WHERE user_id = $1', 1, '2026-06-06'),
+      ).rejects.toThrow(/검증 실패/);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('검증 통과 SQL은 read-only TX로 실행되어 단일 숫자 반환', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ cnt: 4 }], rowCount: 1 });
+      const v = await runLlmSignalSql(
+        'SELECT count(*) AS cnt FROM schedules WHERE user_id = $1 AND date = $2',
+        1,
+        '2026-06-06',
+      );
+      expect(v).toBe(4);
+      // $1/$2 치환 후 데이터 쿼리가 mockQuery에 도달(제어문은 mock에서 통과 처리).
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      const issued = mockQuery.mock.calls[0]?.[0] as string;
+      expect(issued).toContain('FROM schedules');
+      expect(issued).not.toContain('$1'); // userId 치환됨
+    });
+  });
+
+  describe("evaluateMetric — source='llm' 분기", () => {
+    it('llm 신호는 격리 경로로 todayValue를 얻는다(절대 임계)', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ v: 2 }], rowCount: 1 });
+      const metric: SajuMetric = {
+        link_id: 1,
+        signal_id: 1,
+        pattern_id: 1,
+        metric_name: 'llm_test',
+        kind: 'sql',
+        source: 'llm',
+        expected_metric_sql: 'SELECT count(*) AS v FROM expenses WHERE user_id = $1 AND date = $2',
+        expected_direction: 'above_abs',
+        expected_threshold: 1,
+        value_type: 'continuous',
+        tag_name: null,
+        domain: 'expense',
+      };
+      const ev = await evaluateMetric(metric, 1, '2026-06-06');
+      expect(ev.todayValue).toBe(2);
+      expect(ev.passed).toBe(true); // 2 >= 1
+    });
   });
 });
