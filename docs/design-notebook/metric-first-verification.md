@@ -453,6 +453,68 @@ prod 사이징에서 드러난 실질 비용: 여집합 17.7k 쌍 자체는 2×2
 
 첫 주간 발굴 run(다음 월 06:00)에서 확인할 것: surface 후보 수·가족 분포·**strength_band 14개가 실제로 후보로 잡히는지**(\~1/3 일 발현이라 nActive 충분 가능) vs **relation 80개는 대부분 sparse → 사전선별(nActive<12)에서 컷 = insufficient=정직 예상**. 승인 카드 맥락 품질(평어가 시드/신호 description으로 충분히 읽히는지)도 첫 카드로 점검.
 
+## Phase 5b: LLM 신호 제안 — 열린 SQL 생성 + 검증·실행 격리 (2026-06-06)
+
+- 이슈: [#491](https://github.com/hyewon3938/slack-ai-agents/issues/491)
+- 관련 계획서: `.claude/plans/491-p5b-llm-signal.md`
+- 상태: 구현 완료 (2026-06-06)
+- 정본 결정: [ADR-0040](../adr/0040-llm-signal-sql-validation-and-execution-isolation.md)
+
+### 결정 요약
+
+P5의 후반 — P5a(통계 발굴)에 이은 **LLM 신호 제안** 트랙. LLM이 새 측정 정의(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 자율 제안 → P5a 승인 게이트 재사용으로 사람이 큐레이션 → active 후 다음 주간 P5a 발굴이 시드와 연결 → 통계 판정. **이 마스터 최대 보안 표면**(LLM-생성 SQL이 prod DB에서 무인 반복 실행) → 검증·실행 격리가 1급 설계 항목([ADR-0040](../adr/0040-llm-signal-sql-validation-and-execution-isolation.md)).
+
+- **새 통계 코어 0, 마이그레이션 0** — 077이 `signal_defs`의 `source IN ('seed','llm')`·`status IN ('active','pending','rejected')`을 이미 선언(헌장 ④). 위험은 통계가 아니라 **SQL 실행 격리**.
+- **2단 방어**: 게이트 #1(승인 시 정적 검증 `validateSignalSql`) + 게이트 #2(실행 시 `source='llm'` read-only TX + 재검증 + row cap). **미승인 = inert**(`status='active'`만 실행 진입 — 077 스키마가 보장).
+- **옛 LLM 매트릭 제안 재정의**: ADR-0025·0030이 폐기된 `pattern_metrics` 모델 위 → `signal_defs(source='llm')` 모델로 포팅. 입력 풀의 `pattern_matches.evidence`(P2 폐기) 제거·재배선.
+
+### 의사결정 분기점
+
+1. **P5 분할 P5a/P5b** ([ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) 선례). P5b = **열린 SQL 생성 = 최대 보안 표면**이라 전용 검증 체크포인트. 승인 게이트는 P5a 공유 인프라 재사용.
+2. **LLM-생성 SQL = untrusted** (*사용자 결정*). 생성자가 사용자 본인의 친화적 routine이어도 untrusted로 다룬다. 근거 4: LLM 오류 가능 · 영속·무인 반복 실행 · 시스템 정신("soft 판단 불신, hard 게이트로 검증") · Public repo "코드 보여도 안전". → 현 `runMetricSql`의 "신뢰 SQL" 가정(seed = 사람 작성 결정론)을 깨므로 격리 도입.
+3. **실행 격리 = 앱 레벨 read-only TX** (*사용자 결정*, vs 전용 DB role / 둘 다). 인프라 변경 0, 검증 + TX 이중. 전용 read-only role은 후속 옵션.
+4. **재검증 범위 = `source='llm'`만** (*사용자 결정*, vs 전체 신호). 위험원만 정밀 타격, seed 71개는 기존 경로 유지(오버헤드·기존 동작 변경 회피).
+5. **P5b 범위 = 신호 정의만** (*사용자 결정*, vs 신호 + 시드 링크 동시 제안). LLM은 측정 *정의*만 생성, 시드 연결(가설)은 P5a 발굴이 off-day로 — 헌장 ②(off-day로 발견) 정합 + P5a/P5b 깔끔한 직렬(신호 생성 → 가설 발견 → 검증), 중복 0.
+
+### 포기한 안 / 미룬 항목
+
+- **전용 read-only DB role**: 인프라 후속(옵션). 1차는 앱 레벨 read-only TX([ADR-0040](../adr/0040-llm-signal-sql-validation-and-execution-isolation.md) Alternatives).
+- **전체 신호(seed 포함) 재검증**: 미채택. 위험원 `llm`만(seed는 사람 작성 결정론, 매 실행 오버헤드·기존 동작 변경 리스크).
+- **블랙리스트만**: 미채택 — 테이블 화이트리스트(deny-by-default)가 새 표면에 안전.
+- **LLM 자기승인 / 자동 활성**: 미채택(헌장 ①, ADR-0025 C안 계승).
+- **LLM 시드 연결 판정**: 미채택 — P5a 발굴이 off-day로 연결(헌장 ②).
+
+### 미해결·가설 → 빌드에서 해소
+
+- **테이블 화이트리스트 정확 집합**: 빌드가 기존 seed `sql` 신호의 `sql_body` introspection으로 정당 raw 테이블 집합 도출 + `signal_defs.domain` enum과 정합. 메타·검증·민감 테이블은 deny.
+- **`source` 스레딩**: `SignalDef`에 `source` 필드 추가(현재 없음) → `computeSignalSeries`/`runMetricSql`이 `llm` 분기. seed는 무변경.
+- **read-only TX 헬퍼**: `db.ts`에 `queryReadOnly`(`BEGIN; SET TRANSACTION READ ONLY; … ; ROLLBACK`) 추가 → `runLlmSignalSql`이 사용(검증 + 격리 + row cap).
+- **검증 모듈 위치**: `src/shared/signal-sql-guard.ts` 신설 — `sql-tools.ts` 내보낸 헬퍼(`extractFirstKeyword`·`hasMultipleStatements`) + `db-proxy.ts` `BLOCKED_PATTERNS` 정렬 재사용. 검증 상수(화이트리스트·row cap·max length)는 통계 노브와 분리해 이 모듈에 둠.
+- **routine 입력 풀 재배선**: 옛 `monthly-metric-suggest` SKILL이 DROP된 테이블 참조(`pattern_metrics`·`pattern_matches.evidence`·`verify_status`·`matched_date`) → `signal_defs`·`seed_daily_activations`·`pattern_links` 기준으로 재배선. idempotency 체크도(`signal_defs source='llm'` 당월 발사 여부).
+- **승인 카드/액션**: `buildLlmSignalCard`(측정 의도 자연어 + 도메인 + value_type/direction, SQL은 context 블록) + `approveLlmSignal`/`rejectLlmSignal`(`signal_defs` UPDATE, `WHERE status='pending' AND user_id=$2` 가드, 승인 시 게이트 #1 검증 통과 필수). `actions.ts`의 `METRIC_INTERACTION_SUSPENDED_P5B` 해제.
+- **cap / cadence**: 월간 Opus routine(ADR-0027), cap 월 N(잠정 5 — ADR-0030 승계, 월 1회 = cap 자연 reset).
+
+### 도메인 문서 본문 채우기
+
+- [x] `docs/domains/insight.md` ### 30 (Phase 5b) 본문 — 2단 방어 표·검증 게이트·`source` 스레딩·카드/액션·미승인 inert·P5a/P5b 경계·월간 routine + 파일 구조 코멘트 갱신. ### 20(옛 Phase 6) supersede 배너 추가.
+
+### 기술적 의의
+
+LLM-생성 SQL을 untrusted input으로 다루는 2단 방어(등록 정적 검증 + 실행 read-only 격리)로, LLM 자율 신호 생성을 헌장 ①(생성/판정 분리) 위에서 실현 — LLM은 측정 *정의*만 만들고, 미승인·미검증 SQL은 실행되지 않으며, 진짜 연관인지는 active 후 off-day 통계가 가린다. (어필 표현은 portfolio-candidates.)
+
+### 회고
+
+**빌드 정련 (설계 대비)**:
+
+1. **화이트리스트 실측 정정** — 설계의 추정 8개(`schedules`·`routines`·`routine_records`·`sleeps`·`sleep_events`·`expenses`·`categories`·`diary_meta_tags`)는 prod introspection에서 절반이 틀림: 실제 테이블은 `routine_templates`(≠`routines`)·`sleep_records`(≠`sleeps`)이고 `schedule_changes`·`routine_inactive_periods`가 추가로 실재. 최종 10개 = 5개 신호 도메인의 실존 행동 테이블만. 재정(`assets`·`incomes`·`budget_*`·`fixed_cost*`)·시스템·`diary_entries`(원문, 헌장 ①)는 deny-by-default. "추측 금지, 실측 기반"이 설계 단계에서 명문화돼 있었고 빌드가 그대로 이행 — 추정대로 박았으면 정상 신호 절반이 게이트 #1에서 거부될 뻔.
+2. **EXTRACT/CTE 오탐 방지** (설계 미계획) — 순진한 `FROM/JOIN` 테이블 추출은 `EXTRACT(EPOCH FROM min(...))` 내부 `FROM`(→`min`)과 CTE 참조(`WITH rc AS (...) ... FROM rc`→`rc`)를 테이블로 오인. **prod 시드 신호에서 실측된 오탐**이라(introspection이 `min`·`rc`를 뱉음) `EXTRACT(...)` 선제거 + CTE 이름 화이트리스트 면제를 추가. 게이트 #1이 정상 신호를 막지 않게 하는 결정적 보강 — 없었으면 `EXTRACT`/CTE 쓰는 수면·루틴 신호가 전부 거부.
+3. **self-contained guard** — `sql-tools.ts` import 대신 검증 헬퍼를 모듈 내 복제(보안 경계를 한 파일에서 감사 + 외부 리팩토링이 조용히 약화 못 하게) + 문자열 스트리핑은 db-proxy 등급(이스케이프된 `''` 처리, sql-tools의 약한 버전보다 강함).
+4. **두 실행 경로 모두 분기 확인** — `runMetricSql` 3 콜사이트(`baselineAvg`·`evaluateMetric`·`computeSignalSeries`) 전부 `source` 분기. `runnerForSource` 헬퍼로 일별 매칭·주간 검증 양쪽 일관.
+
+**검증**: 756 테스트 통과(39 신규 — guard 정적검증 전수·`queryReadOnly` read-only TX·승인 게이트 #1 재검증·실행 분기). tsc·eslint 클린. **마이그레이션 0**(077 선언 재사용).
+
+**운영 검증 남음**: routine(`monthly-signal-suggest`) 배포 후 첫 발사 시 후보 SQL 품질 + 게이트 #1 통과율 확인. read-only TX 격리는 단위(`queryReadOnly` SET TRANSACTION READ ONLY 단언) + 통합(승인된 llm 신호의 첫 주간 검증 실행) 양면 확인.
+
 ---
 
 ## 회고 (TODO: `/build` 구현 후 보강)
