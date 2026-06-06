@@ -194,17 +194,37 @@ const rejectLine = (l: LinkVerification): string =>
   `• ✗ ${KIND_LABEL[l.patternKind]} ${l.signalName} × \`${l.seedName}\` — 연관 약함(effect ${formatRatio(l.effect)})`;
 
 /**
- * 교란 의심 caveat 한 줄(있으면) — annotate-only(P6, ADR-0041). suspected는 엔진에서 overlap 정렬 + topN cap.
- * verified/emerging 라인에만 덧붙임(reject는 연관 자체가 약해 교란 무의미).
+ * 교란 caveat 한 줄(있으면) — P6 marginal 플래그(ADR-0041) → P7 다변량 조정(ADR-0042).
+ * - adjusted 있음(게이트 통과·조정함): verdict별(explained_away 어부지리 / attenuated 약화 / survives 유지).
+ * - adjusted 없음(게이트 미달): P6 marginal 공존 의심.
+ * 조정 교란 이름은 suspected(seedName 보유)에서 seedId로 join. verified/emerging 라인에만 덧붙임.
  */
 const confoundCaveat = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string => {
-  const suspected = confoundByLink.get(l.linkId)?.suspected ?? [];
+  const data = confoundByLink.get(l.linkId);
+  if (!data) return '';
+  const { suspected, adjusted } = data;
+
+  if (adjusted && adjusted.length > 0) {
+    const nameById = new Map(suspected.map((s) => [s.seedId, s.seedName]));
+    const uniq = [
+      ...new Set(adjusted.map((a) => nameById.get(a.seedId) ?? `시드#${a.seedId}`)),
+    ].join(', ');
+    switch (adjusted[0]?.verdict) {
+      case 'explained_away':
+        return `\n  ⚠️ 교란 조정: ${uniq} 통제하니 효과 사라짐(어부지리)`;
+      case 'attenuated':
+        return `\n  ⚠️ 교란 조정: ${uniq} 통제하니 효과 약해짐`;
+      default:
+        return `\n  · 교란 ${uniq} 통제해도 유지`;
+    }
+  }
+
   if (suspected.length === 0) return '';
   return `\n  ⚠️ 교란 의심: ${suspected.map((s) => s.seedName).join(', ')} 공존`;
 };
 
 const TIER_LEGEND =
-  '_✅ 검증됨 = e-value≥20 통계 확정(우연 아님, 단 연관이지 인과는 아님) · 🌱 검증중 = off-day 경향은 보이나 아직 확정 전 · ✗ 기각 = 연관 약함 · ⚠️ 교란 의심 = 같이 켜지는 시드와 겹쳐 어부지리일 수 있음._';
+  '_✅ 검증됨 = e-value≥20 통계 확정(우연 아님, 단 연관이지 인과는 아님) · 🌱 검증중 = off-day 경향은 보이나 아직 확정 전 · ✗ 기각 = 연관 약함 · ⚠️ 교란 의심 = 같이 켜지는 시드와 겹쳐 어부지리일 수 있음(공동발현 쌓이면 통제 검정해 조정)._';
 
 /**
  * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
