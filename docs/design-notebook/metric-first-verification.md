@@ -515,6 +515,56 @@ LLM-생성 SQL을 untrusted input으로 다루는 2단 방어(등록 정적 검�
 
 **운영 검증 남음**: routine(`monthly-signal-suggest`) 배포 후 첫 발사 시 후보 SQL 품질 + 게이트 #1 통과율 확인. read-only TX 격리는 단위(`queryReadOnly` SET TRANSACTION READ ONLY 단언) + 통합(승인된 llm 신호의 첫 주간 검증 실행) 양면 확인.
 
+## Phase 6: 교란 플래그 — 공동발현 시드 marginal 탐지 (2026-06-06)
+
+- 이슈: [#493](https://github.com/hyewon3938/slack-ai-agents/issues/493)
+- 관련 계획서: `.claude/plans/493-p6-confound-flag.md`
+- 상태: 설계 완료 (구현 대기)
+- 정본 결정: [ADR-0041](../adr/0041-confound-cofiring-flag.md)
+
+### 결정 요약
+
+off-day 검증은 단일 시드의 **marginal 연관**만 본다 — 같은 날 공존하는 제3변수(요일·계절·월 위치 = 달력 주기, 또는 다른 사주 시드)가 시드와 신호 둘 다를 끌면 가짜 연관(교란, "어부지리")이 생긴다. P6는 그걸 **플래그**한다. 추정치 *조정*(층화/다변량)은 P7(데이터 게이트).
+
+- **feature 환원 노선** (vs 새 통계 검정): 교란변수가 **이미 18 `life_signal` 결정론 시드**(072: 요일 7+주말/평일 2+월위치 3+계절 4+공휴일 2)라 활성 시리즈를 가진다 → 플래그는 **기존 시드 활성 시리즈 overlap + 기존 2×2 재사용**. **새 통계 코어 0, 마이그레이션 0**(077 `confound` 컬럼 재사용). P4a/P4b/P5a 패턴 5연속.
+- **marginal 2조건**: 링크(S×X)에 대해 후보 Z가 (a) 공동발현 `P(Z|S)≥minOverlap` & `nCofire≥minCofireDays` **AND** (b) Z↔X 연관 `effect≥minRateRatio`면 "교란 의심" 기록. (a)만으론 노이즈 폭발 — 교란원은 신호와도 연관돼야(b 필수).
+- **annotate-only(정직 플래그)**: `pattern_links.confound` JSONB(`{scannedAt, suspected:[{seedId,seedName,overlap,effectZX,nCofire}]}`) + 주간 카드 "교란 의심: {Z} 공존". **verdict·status·e-value·tier 불변** — 확정을 죽이지 않고 정직하게 알릴 뿐. 강등·조정은 P7.
+- **always-on**: 플래그 싸고 marginal이라 데이터 적어도 valid → 매주 무조건. `nCofire` 기록이 P7 데이터 게이트(\~30일) 입력.
+
+### 의사결정 분기점
+
+1. **P6 스코프 = 교란 플래그 단독** (vs 노트북 표 원안 "알림+큐레이션+교란 플래그"). **cross-check 발견 1**: 표의 알림(#insight 카드·daily-insight 3-tier)·큐레이션(승인 게이트)·status는 **P2/P3/P5에서 이미 분산 구현** → P6 실질 잔여 = 교란 플래그뿐. 메모리의 "P7=dormant graded"는 압축 노이즈, 정본 P7 = 교란 다변량 분리(데이터 게이트) — P3 L261·P4a L301·P5a L418 모두 "P6 플래그 / P7 데이터 게이트"로 일관 위임.
+2. **새 통계 검정 vs feature 환원/층화** (사용자가 든 핵심 결정) → **feature 환원**. **cross-check 발견 2**: 교란변수(요일·계절·월위치)가 이미 결정론 `life_signal` 시드라 [ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) "운 레벨 → feature 환원"이 달력 변수엔 #434 P3에서 이미 적용됨 → "새 통계 검정 vs feature 환원" 갈림길의 답이 P6에선 거의 강제(feature 환원 = 이미 깔린 길). 새 통계 검정(partial correlation 등)은 기각([ADR-0041](../adr/0041-confound-cofiring-flag.md) A).
+3. **교란 대상 = 달력 + 모든 공동발현 시드** (vs 달력 18개 한정). [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 "다중 트리거 공존" 정의 + Context 예시("편재·월말·주말 동시") 충실 — 사주끼리의 어부지리도 포착. ([ADR-0041](../adr/0041-confound-cofiring-flag.md) D).
+4. **annotate-only vs soft-demote** → annotate. 강등은 추정치 판단이라 P7 다변량 분리 결과로 해야 정직 — marginal 겹침만으로 임의 강등하면 진짜 패턴 살해 위험([ADR-0041](../adr/0041-confound-cofiring-flag.md) C). P6=노출, P7=조정.
+
+### 포기한 안 / 미룬 항목
+
+- **새 confound 전용 통계 검정**(partial correlation/조건부 로지스틱): 기각 — n=1 부담 + "새 통계 코어 0" 이탈. Mantel-Haenszel 층화·elastic-net 같은 *조정*은 P7.
+- **soft-demote**(교란 의심 확정 링크 강등): 기각(P6) — P7 다변량 분리 결과로.
+- **다변량 교란 분리**(층화/elastic-net로 독립 기여 추정): P7, 데이터 게이트(`nCofire≥\~30`) 자동 on. dormant 빌드(헌장 ④).
+- **daily-insight verified tier 교란 caveat**: P7로 — `saju_influence_summary` 뷰가 P7에서 조정 추정치로 재정의되므로 caveat 렌더링을 거기 묶음(이틀 안에 P7이라 P6 주간 카드 노출로 정직성 즉시 충족, 뷰 이중 재정의 회피). P6 = 마이그레이션 0 유지.
+
+### 미해결·가설 → 빌드에서 해소
+
+- **시리즈 공유**: 교란 패스는 (claimable 링크의 시드/신호 + 모든 active 후보 시드) 시리즈가 필요 — 발굴(`discoverCandidates`)이 이미 계산하는 active 시드/신호 시리즈와 겹침. 발굴 시리즈 계산을 `computeActiveSeriesBundle`로 추출해 발굴+교란 공유 vs 교란 자체 재계산(월 1회 n=1 수용, P5a 재계산 선례). `verifyUserLinks` 코어는 무변경(blast radius 최소). 빌드 결정.
+- **claimable 링크 로드 범위**: 노출 대상 = `status IN ('active','confirmed')`(confirmed는 sticky라 `verifyUserLinks` results에 없음 → 교란 패스 독립 로드). verdict 의존 없이 디커플.
+- **노브 초기값**: `minOverlap`·`minCofireDays`·`minEffectZX`(=minRateRatio 1.3 승계)·`topN` — calibration 노브(첫 몇 주 튜닝, 헌장 ⑤).
+- **near-duplicate dedup**: 달력 nesting(주말≡토+일)은 중복 플래그 → 표시 단계 dedup + `topN` cap. 코어 정확성엔 무해.
+- **카드 노출 위치**: `buildVerificationBlocks`(hypothesis-cards.ts) 링크 라인에 confound.suspected 비었지 않으면 caveat 한 줄.
+
+### 도메인 문서 본문 채우기
+
+- [ ] `docs/domains/insight.md` ### 31 (Phase 6) 본문 — 교란 알고리즘(2조건)·confound JSONB·annotate-only·always-on·P6/P7 경계·노브 + 파일 구조 코멘트 갱신.
+
+### 기술적 의의
+
+교란변수가 이미 결정론 feature 시드(달력 18개 + 사주)임을 cross-check로 확인해, 교란 통제를 **새 통계 없이 기존 off-day 프리미티브 재사용**으로 환원했다(feature 환원 노선). 노출(P6 marginal 플래그, 정직)과 조정(P7 다변량 분리, 데이터 게이트)을 분리해 — marginal 겹침만으로 진짜 패턴을 죽이지 않으면서 "어부지리 의심"을 사용자에게 정직하게 도달시킨다. (어필 표현은 portfolio-candidates.)
+
+### 회고
+
+> TODO(`/build`): 첫 교란 패스 결과(플래그된 링크 수, 달력 vs 사주 교란 분포, near-dup 노이즈) 확인 후 보강.
+
 ---
 
 ## 회고 (TODO: `/build` 구현 후 보강)
