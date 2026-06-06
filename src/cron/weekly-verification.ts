@@ -23,6 +23,7 @@ import {
   type LinkVerification,
   type StrengthCutpoint,
 } from '../shared/pattern-verification.js';
+import { flagConfounds, type ConfoundData, type ConfoundResult } from '../shared/confound.js';
 import { posteriorMean, credibleInterval } from '../shared/bayesian-posterior.js';
 import {
   buildVerificationBlocks,
@@ -164,6 +165,18 @@ const persistStrengthCutpoints = async (
       [userId, c.target, c.low, c.high, c.nSamples],
     );
   }
+};
+
+/**
+ * 교란 플래그를 pattern_links.confound에 SET (annotate-only, P6 ADR-0041).
+ * verdict·status·e-value·tier는 건드리지 않음 — 사이드카 주석. user_id 가드로 교차 유저 차단.
+ */
+const persistConfound = async (userId: number, r: ConfoundResult): Promise<void> => {
+  await query(`UPDATE pattern_links SET confound = $1::jsonb WHERE id = $2 AND user_id = $3`, [
+    JSON.stringify(r.confound),
+    r.linkId,
+    userId,
+  ]);
 };
 
 /** 직전 주(들) 링크별 e_value — emerging 진행바 "지난주 → 이번주" delta용 (link당 최신 1행). */
@@ -329,7 +342,34 @@ const processUser = async (
     `[Verification] user=${userId} 링크 ${results.length} (persist ${persisted}) verified ${verified} reject ${rejects}`,
   );
 
-  const blocks = buildVerificationBlocks(weekStart, results, seedInfluence, prevEValues);
+  // 교란 플래그(P6, ADR-0041) — 검증/발굴과 독립 격리. 실패해도 검증 카드는 무탈(빈 맵).
+  const confoundByLink = new Map<number, ConfoundData>();
+  try {
+    const cr = await flagConfounds(userId, today);
+    let flagged = 0;
+    for (const r of cr) {
+      try {
+        await persistConfound(userId, r);
+        confoundByLink.set(r.linkId, r.confound);
+        if (r.confound.suspected.length > 0) flagged += 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[Confound] persist 실패 link=${r.linkId}: ${msg}`);
+      }
+    }
+    console.warn(`[Confound] user=${userId} 교란 플래그 ${flagged}/${cr.length} 링크`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Confound] user=${userId} 교란 플래그 실패: ${msg}`);
+  }
+
+  const blocks = buildVerificationBlocks(
+    weekStart,
+    results,
+    seedInfluence,
+    prevEValues,
+    confoundByLink,
+  );
   const fallback = `패턴 검증 주간 리포트 (${weekStart} ~) — 링크 ${results.length}건`;
   try {
     await postBlockMessage(app.client, channelId, fallback, blocks);

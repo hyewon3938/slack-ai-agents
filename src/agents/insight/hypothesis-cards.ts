@@ -8,6 +8,7 @@
 
 import type { KnownBlock } from '@slack/types';
 import type { LinkVerification } from '../../shared/pattern-verification.js';
+import type { ConfoundData } from '../../shared/confound.js';
 import type { DiscoveryCandidate } from './hypothesis-discovery.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 
@@ -192,8 +193,18 @@ const emergingLine = (l: LinkVerification, prevE: number | undefined): string =>
 const rejectLine = (l: LinkVerification): string =>
   `• ✗ ${KIND_LABEL[l.patternKind]} ${l.signalName} × \`${l.seedName}\` — 연관 약함(effect ${formatRatio(l.effect)})`;
 
+/**
+ * 교란 의심 caveat 한 줄(있으면) — annotate-only(P6, ADR-0041). suspected는 엔진에서 overlap 정렬 + topN cap.
+ * verified/emerging 라인에만 덧붙임(reject는 연관 자체가 약해 교란 무의미).
+ */
+const confoundCaveat = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string => {
+  const suspected = confoundByLink.get(l.linkId)?.suspected ?? [];
+  if (suspected.length === 0) return '';
+  return `\n  ⚠️ 교란 의심: ${suspected.map((s) => s.seedName).join(', ')} 공존`;
+};
+
 const TIER_LEGEND =
-  '_✅ 검증됨 = e-value≥20 통계 확정(우연 아님, 단 연관이지 인과는 아님) · 🌱 검증중 = off-day 경향은 보이나 아직 확정 전 · ✗ 기각 = 연관 약함._';
+  '_✅ 검증됨 = e-value≥20 통계 확정(우연 아님, 단 연관이지 인과는 아님) · 🌱 검증중 = off-day 경향은 보이나 아직 확정 전 · ✗ 기각 = 연관 약함 · ⚠️ 교란 의심 = 같이 켜지는 시드와 겹쳐 어부지리일 수 있음._';
 
 /**
  * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
@@ -204,6 +215,7 @@ export const buildVerificationBlocks = (
   links: LinkVerification[],
   seedInfluence: SeedInfluenceRow[],
   prevEValues: Map<number, number> = new Map(),
+  confoundByLink: Map<number, ConfoundData> = new Map(),
 ): KnownBlock[] => {
   const blocks: KnownBlock[] = [
     {
@@ -247,7 +259,10 @@ export const buildVerificationBlocks = (
   if (verified.length > 0) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: verified.map(verifiedLine).join('\n') },
+      text: {
+        type: 'mrkdwn',
+        text: verified.map((l) => verifiedLine(l) + confoundCaveat(l, confoundByLink)).join('\n'),
+      },
     });
   }
 
@@ -256,7 +271,11 @@ export const buildVerificationBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: emerging.map((l) => emergingLine(l, prevEValues.get(l.linkId))).join('\n'),
+        text: emerging
+          .map(
+            (l) => emergingLine(l, prevEValues.get(l.linkId)) + confoundCaveat(l, confoundByLink),
+          )
+          .join('\n'),
       },
     });
   }

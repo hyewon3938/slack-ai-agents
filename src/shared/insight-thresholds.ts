@@ -81,4 +81,12 @@ export const INSIGHT_THRESHOLDS = {
     discoveryMaxFisherP: 0.1, // block-perm 전 Fisher 사전선별 상한 (Monte Carlo 비용 절감)
     discoveryTopN: 5, // 주당 surface 상한 (승인 카드 폭주 방지 — 드롭 시 로그)
   },
+  // #477 P6 교란 플래그 (ADR-0041) — 공동발현 시드 marginal 탐지. annotate-only(verdict 불변).
+  // calibration 노브: 첫 몇 주 튜닝(헌장 ⑤). 강등·다변량 분리는 P7(데이터 게이트).
+  confound: {
+    minOverlap: 0.6, // P(Z active | S active) 최소 — S 켜질 때 Z도 대체로 켜짐
+    minCofireDays: 10, // 공동발현일 최소(노이즈 바닥; P7 게이트 ~30보다 낮게)
+    minEffectZX: 1.3, // Z↔신호 rate ratio 최소(= patternVerification.minRateRatio 승계)
+    topN: 3, // 링크당 표시 교란 후보 상한(near-dup 1차 완화)
+  },
 } as const;

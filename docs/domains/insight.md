@@ -1768,6 +1768,54 @@ LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 
 
 **월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-work-as-claude-app-routines.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency(이번 달 `source='llm'` 존재 시 종료) + cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
 
+### 31. 매트릭 중심 패턴 검증 — Phase 6 (교란 플래그: 공동발현 시드 marginal 탐지, #493)
+
+off-day 검증(P2)은 단일 시드의 **marginal 연관**만 본다 — 같은 날 공존하는 제3변수(요일·주말·월위치·계절 = 달력 주기, 또는 다른 사주 시드)가 시드와 신호 둘 다를 끌면 가짜 연관(교란·"어부지리")이 생긴다. P6는 claimable (시드 S × 신호 X) 링크마다 공동발현 교란 시드 Z를 탐지해 `pattern_links.confound`에 기록하고 주간 카드에 노출한다. 정본 [ADR-0041](../adr/0041-confound-cofiring-flag.md). **새 통계 코어 0, 마이그레이션 0**(077 `confound` 컬럼 재사용) — P4a/P4b/P5a 패턴 5연속.
+
+**feature 환원 노선** (vs 새 통계 검정): 교란변수가 **이미 18개 `life_signal` 결정론 시드**([072](../../db/migrations/072_life_signal_seed_pool.sql): 요일 7 + 주말/평일 2 + 월위치 3 + 계절 4 + 공휴일 2)라 활성 시리즈를 가진다 → 플래그가 **기존 시드 활성 시리즈 + 기존 2×2(`buildContingency`/`verifyContingency`) 재사용**으로 환원된다([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) "운 레벨 → feature 환원"이 달력 변수엔 #434 P3에서 이미 적용됨). partial correlation 같은 새 회귀 검정은 기각.
+
+**교란 알고리즘 (marginal 2조건)** ([confound.ts](../../src/shared/confound.ts) `flagConfoundersForLink`): 링크(S × X)에 대해 후보 Z(≠ S)가 **둘 다** 만족하면 "교란 의심"으로 수집(overlap 내림차순 → `topN` cap):
+
+| 조건 | 식 | 의미 |
+|------|------|------|
+| (a) 공동발현 | `P(Z active \| S active) ≥ minOverlap` **AND** `nCofire ≥ minCofireDays` | S 켜질 때 Z도 대체로 켜짐(노이즈 바닥) |
+| (b) Z↔X 연관 | `(Z active vs off) × (X pass/fail)` 2×2의 `rate ratio ≥ minEffectZX` | Z 자체가 신호와 연관돼야 교란원 |
+
+(a)만으론 신호와 무관한 겹침 시드까지 다 잡혀 노이즈 폭발 → **(b) 필수**. 후보 Z = **달력 18 + 모든 active 사주 시드**(달력만이 아니라 사주끼리의 어부지리도 포착, [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 "다중 트리거 공존").
+
+**`confound` JSONB** ([077](../../db/migrations/077_signal_defs_and_links.sql) 선언, P6 채움):
+
+```json
+{ "scannedAt": "2026-06-08",
+  "suspected": [{ "seedId": 0, "seedName": "주말", "overlap": 0.0, "effectZX": 0.0, "nCofire": 0 }] }
+```
+
+`scannedAt`을 항상 기록해 "점검했으나 깨끗(suspected=[])"과 "미점검"을 구분한다.
+
+**annotate-only(정직 플래그)**: 플래그는 `confound`에 SET + 주간 카드 verified/emerging 라인에 `⚠️ 교란 의심: {Z} 공존` 한 줄(reject는 연관 자체가 약해 생략). **verdict·status·e-value·tier는 건드리지 않는다** — 확정을 죽이지 않고 "어부지리일 수 있다"를 정직하게 알릴 뿐. 강등·추정치 조정은 P7.
+
+**always-on(데이터 게이트 아님)**: 플래그는 싸고(캐시된 시리즈 위 overlap + 2×2) marginal이라 데이터 적어도 valid → 매주 무조건 실행. `nCofire`를 기록해 **P7 다변량 분리가 `nCofire ≥ 임계(\~30일)`에서 자동 활성**(헌장 ④)되게 한다.
+
+**흐름** (주간 엔진 [weekly-verification.ts](../../src/cron/weekly-verification.ts) `processUser`, `verifyUserLinks` 후·카드 전):
+
+```
+flagConfounds(userId, today)                          # confound.ts 로더
+  → claimable 링크 로드 (status IN active|confirmed, JOIN active 신호·시드)
+  → 후보 = 모든 active 시드 (loadActiveSeeds)
+  → 시드 활성 시리즈 시드당 1회 (computeSeedActivationSeries, strength_band 2-pass 캐시)
+  → 링크 등장 신호 시리즈 신호당 1회 (computeSignalSeries)
+  → 링크별 flagConfoundersForLink → ConfoundResult[]
+persistConfound (per-link 격리, UPDATE confound) → confoundByLink 맵
+buildVerificationBlocks(…, confoundByLink)            # 카드 caveat
+```
+
+- **claimable = `status IN ('active','confirmed')`**: confirmed는 sticky라 `verifyUserLinks`(active만) results에 없음 → 교란 패스가 독립 로드. 카드 노출은 active만, DB 기록은 둘 다(P7 다변량 분리가 confirmed 링크도 읽음).
+- **시리즈 self-contained**: P5a 발굴과 동형으로 자체 계산·격리 — `verifyUserLinks` 코어 무변경(blast radius 최소). 발굴과의 시리즈 공유(`computeActiveSeriesBundle` 추출)는 follow-up 최적화. 검증/발굴/교란 3단계는 독립 try-catch로 격리(한 단계 실패가 나머지를 막지 않음).
+
+**P6 vs P7 경계**: P6 = marginal 플래그(노출, always-on). P7 = 다변량 분리(층화/elastic-net로 Z 통제 후 S 독립 기여 추정 = *조정*, 데이터 게이트 `nCofire ≥ \~30`, dormant 빌드). marginal 겹침만으로 임의 강등하면 진짜 패턴 살해 위험 → 조정은 데이터가 충분할 때만. daily-insight verified tier 교란 caveat는 P7로(`saju_influence_summary` 뷰가 P7에서 조정 추정치로 재정의되므로 거기 묶음).
+
+**노브** ([insight-thresholds.ts](../../src/shared/insight-thresholds.ts) `confound`, 헌장 ⑤): `minOverlap`(0.6)·`minCofireDays`(10)·`minEffectZX`(1.3, `patternVerification.minRateRatio` 승계)·`topN`(3). calibration 노브 — 첫 몇 주 튜닝.
+
 ## 파일 구조
 
 ```
@@ -1786,6 +1834,7 @@ src/shared/
 ├── signal-sql-guard.ts            # #477 P5b LLM SQL 게이트 #1 정적 검증 (validateSignalSql + 테이블 화이트리스트, ADR-0040)
 ├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger + P5b runLlmSignalSql(게이트 #2)
 ├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
+├── confound.ts                    # #477 P6 교란 플래그 (공동발현 시드 marginal 탐지: overlap + Z×신호 2×2 재사용 → confound JSONB, annotate-only, ADR-0041)
 ├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
 ├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
 ├── saju-hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
@@ -1799,7 +1848,7 @@ src/shared/
 src/cron/
 ├── daily-pattern-matching.ts              # 07:00 사주 일일 매칭 → seed_daily_activations transient 기록 (#477 P2: 검증·백필·발송 제거)
 ├── diary-meta-extract.ts                  # 일기 → enum 태그 추출 cron (Phase 3, Opus)
-├── weekly-verification.ts                 # 월 06:00 주간 off-day 검증 엔진 (#477 P2/P3: e-value persist + 주간 스냅샷 + 3-tier 카드)
+├── weekly-verification.ts                 # 월 06:00 주간 off-day 검증 엔진 (#477 P2/P3: e-value persist + 주간 스냅샷 + 3-tier 카드, P5a 발굴, P6 교란 플래그)
 └── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5, #477 P2 seed_daily_activations 재배선)
 
 scripts/
