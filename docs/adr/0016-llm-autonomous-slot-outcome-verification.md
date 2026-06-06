@@ -1,6 +1,6 @@
 # 0016. LLM 자율 슬롯 + Outcome-based 검증 — 결정론적 SQL 엔진과의 역할 분리
 
-- Status: Accepted
+- Status: Superseded by [ADR-0043](0043-retire-v2-llm-autonomous-discovery.md) (#477로 v2 자율 발견 은퇴, 2026-06-07)
 - Date: 2026-05-16
 - Related: #390 (Phase 2), #393 (마스터), #354 (이 ADR로 supersede)
 - Tags: data, insight, llm, process

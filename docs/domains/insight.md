@@ -198,9 +198,11 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 
 상세 배경 및 대안 비교는 [ADR 0014](../adr/0014-insight-engine-unification.md) 참조.
 
-### 9. 프로액티브 인사이트 v2 — Phase 2 (LLM 자율 슬롯)
+### 9. 프로액티브 인사이트 v2 — Phase 2 (LLM 자율 슬롯) — 🗑️ 은퇴 (2026-06-07)
 
-Phase 1(결정론적 SQL 11종)에 더해 **주간/월간 한정 LLM 자율 발견 슬롯**을 운영. LLM이 사용자 데이터 요약 컨텍스트를 보고 "신호 → 가설 → 검증 SQL"을 스스로 작성하면, N일 뒤 cron이 SQL을 실행해 outcome(hit/miss/inconclusive)을 채점한다. 텍스트(일기/사주)는 컨텍스트에서 배제 — 정량 데이터만 사용.
+> **은퇴됨.** #393 v2 "LLM 자율 발견 슬롯"은 생애 0건 산출(`llm_insights` 빈 테이블)로 사실상 휴면이었고, #477 헌장(정량 통계 1차 + LLM 의존 최소화)으로 발견 역할이 통계 기반 §29(P5a 발굴) + §30(P5b LLM 신호 제안)으로 이관되며 폐기. cron 슬롯 3개·`llm_insights` 테이블(마이그레이션 084 DROP)·코드(`llm-insight*`)·`LLM발견` fast path 전부 제거. [ADR-0016](../adr/0016-llm-autonomous-slot-outcome-verification.md)(Superseded) → [ADR-0043](../adr/0043-retire-v2-llm-autonomous-discovery.md). 아래는 역사 기록.
+
+Phase 1(결정론적 SQL 11종)에 더해 **주간/월간 한정 LLM 자율 발견 슬롯**을 운영했다. LLM이 사용자 데이터 요약 컨텍스트를 보고 "신호 → 가설 → 검증 SQL"을 스스로 작성하면, N일 뒤 cron이 SQL을 실행해 outcome(hit/miss/inconclusive)을 채점한다. 텍스트(일기/사주)는 컨텍스트에서 배제 — 정량 데이터만 사용.
 
 #### 슬롯 시각
 

@@ -46,9 +46,6 @@ import {
 } from '../agents/life/blocks.js';
 import { pickMorningNudges, pickNightNudges } from '../shared/insights.js';
 import { weeklyReportTask } from './weekly-report.js';
-import { weeklyLlmInsightTask } from './weekly-llm-insight.js';
-import { monthlyLlmInsightTask } from './monthly-llm-insight.js';
-import { verifyLlmInsightsTask } from './verify-llm-insights.js';
 import { dailyPatternMatchingTask } from './daily-pattern-matching.js';
 import { diaryMetaExtractTask } from './diary-meta-extract.js';
 import { weeklyVerificationTask } from './weekly-verification.js';
@@ -620,11 +617,6 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   night: nightTask,
   weeklyReport: weeklyReportTask,
   insightNight: insightNightTask,
-  weeklyLlmInsight: weeklyLlmInsightTask,
-  monthlyLlmInsight: monthlyLlmInsightTask,
-  verifyLlmInsights: async () => {
-    await verifyLlmInsightsTask();
-  },
   dailySajuMatching: dailyPatternMatchingTask,
   diaryMetaExtract: diaryMetaExtractTask,
   weeklyVerification: weeklyVerificationTask,

@@ -52,14 +52,7 @@
 - 설계 흐름: [docs/design-notebook/insight-engine-v2.md](./design-notebook/insight-engine-v2.md)
 - 결정 기록: [ADR-0014](./adr/0014-insight-engine-unification.md)
 
-### LLM 자율 발견 슬롯 (Phase 2)
-
-- 주간(월요일 09:30) / 월간(매월 1일 09:30) — 정량 데이터 컨텍스트만으로 "신호 → 가설 → 검증 SQL" 자동 작성 (`#life` 채널 발송)
-- N일 뒤 검증 cron(매일 09:10)이 SELECT-only SQL 실행 → outcome(hit/miss/inconclusive) 자동 채점
-- 4중 안전장치: JSON 파싱 폴백 / SELECT-only 정규식 / result_type 화이트리스트 / verify_after_days clamp 1\~28
-- 점진적 노출: 누적 검증 ≥ 10건부터 히트율 공개
-- 슬랙 조회: `LLM발견` (약속 명령어 — 자유언어 추출 없음)
-- 결정 기록: [ADR-0016](./adr/0016-llm-autonomous-slot-outcome-verification.md)
+> v2 "LLM 자율 발견 슬롯"(Phase 2)은 은퇴됨 — #477 통계 기반 발굴(P5a)·LLM 신호 제안(P5b)으로 대체. [ADR-0043](./adr/0043-retire-v2-llm-autonomous-discovery.md).
 
 ### 사주 일일 매칭 (Phase 3)
 
@@ -87,7 +80,6 @@
 | `#life` | `일정` / `오늘 일정` | 오늘 일정 조회 |
 | `#life` | `내일 일정` | 내일 일정 조회 |
 | `#life` | `백로그` | 밀린 일정 조회 |
-| `#life` | `LLM발견` | LLM 자율 발견 누적 정확도 + 최근 5건 |
 | `#insight` | `일운` / `오늘 일운` | 오늘 일운 조회 |
 | `#insight` | `내일 일운` | 내일 일운 조회 |
 | `#insight` | `월운` | 이번 달 월운 조회 |
@@ -99,7 +91,7 @@
 | `#insight` | `사주 시드 끄기 #N` | signal_id=N active=false (Phase 3) |
 | `#insight` | `사주 시드 켜기 #N` | signal_id=N active=true (Phase 3) |
 
-띄어쓰기·존댓말 어미는 유연하게 매칭(`일정 보여줘`, `LLM 발견`, `오늘 일운` 등). 자세한 정규식은 각 에이전트 파일 상단 주석 참조.
+띄어쓰기·존댓말 어미는 유연하게 매칭(`일정 보여줘`, `오늘 일운` 등). 자세한 정규식은 각 에이전트 파일 상단 주석 참조.
 
 ### 크론 시스템
 
@@ -108,11 +100,10 @@
 | 07:00 | 사주 일일 매칭 — 어제 검증(hit/miss/inconclusive) + 오늘 평가 + 누락일 갭 백필 + `#life` 한 줄 (Phase 3) |
 | 08:00 | 일일 종합 인사이트 — 오늘 사주 일운 + 검증/현황 개인 패턴 종합 (`#insight`, routine·Opus, #475) |
 | 09:05 | 오늘 일정 + 낮 루틴 체크리스트 + 어제 리뷰 + morning 인사이트 |
-| 09:10 | LLM 자율 발견 outcome 검증 (대기열 50건) |
 | 월요일 09:00 | 주간 인사이트 리포트 (Block Kit) |
 | 월요일 09:15 | 운 레벨 분포 분석 — `pillar_level`별·누적 N=1..5 hit-rate 분포 (`#insight`, Phase 2.5) |
-| 월요일 09:30 | 주간 LLM 자율 발견 슬롯 (Block Kit) |
-| 매월 1일 09:30 | 월간 LLM 자율 발견 슬롯 (Block Kit) |
+| 월요일 06:00 | 주간 패턴 검증 — off-day 통계 + 발굴 후보 + 교란 (`#insight`, #477) |
+| 매월 1일 09:30 | LLM 신호 제안 — 새 측정 신호 자율 제안 승인 카드 (`#insight`, #477 P5b) |
 | 23:55 | 하루 종합 리뷰 + 밤 루틴 + 마무리 잔소리 + night 인사이트 |
 | 23:55 → 익일 05:30 (hotfix 진행 중) | 일기 메타 enum 추출 (Phase 3) |
 

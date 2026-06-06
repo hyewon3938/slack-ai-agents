@@ -89,7 +89,7 @@ graph LR
 - **라우터 1차 필터** — 채널별 에이전트 매핑(`#life`/`#insight`/`#money`), 봇 메시지·subtype 필터(에코·루프 차단), 사용자별 슬라이딩 윈도우 Rate Limit(1분 5회), 메시지 길이 10KB 제한
 - **DB Proxy + SQL 화이트리스트** — DDL(테이블 생성·삭제·구조 변경) 차단, 위험 함수 차단, WHERE 필수, 벌크 처리 행 수 제한
 - **modify_db 승인 플로우** — 변경 쿼리는 Slack 카드로 dry-run 결과를 보여주고 사용자 승인 후 실행
-- **LLM 자율 슬롯 4중 안전장치** — LLM이 자유롭게 발견 쿼리를 짤 수 있는 슬롯엔 (1) SELECT-only 강제 (2) `get_schema` 사전 호출 의무 (3) `result_type` 화이트리스트 (4) `verify_after_days` 1\~28 clamp으로 폭주 방지. 슬롯 설계 전반 + 4중 안전장치 상세는 [ADR 0016](docs/adr/0016-llm-autonomous-slot-outcome-verification.md) Section 3
+- **LLM-생성 SQL 2단 방어** — LLM이 측정 신호 SQL을 자율 제안하면 (1) 정적 검증(단일 SELECT · `user_id=$1` 강제 · 테이블 deny-by-default 화이트리스트 · 위험 함수 차단) (2) 격리 실행(READ ONLY 트랜잭션 + row cap + 항상 ROLLBACK)으로 통제하고, 채택은 사람 승인 게이트 + 통계가 가린다. 상세는 [ADR 0040](docs/adr/0040-llm-signal-sql-validation-and-execution-isolation.md). (이전의 LLM 자율 발견 슬롯 [ADR 0016]은 통계 기반 발굴로 대체되어 은퇴 — [ADR 0043](docs/adr/0043-retire-v2-llm-autonomous-discovery.md))
 
 <p align="center">
   <img src="docs/images/llm-approval-card-01.png" alt="modify_db 승인 카드 — dry-run 결과" width="45%" />
