@@ -109,6 +109,44 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
   }
 };
 
+/**
+ * 읽기 전용 트랜잭션 쿼리 (#477 P5b 게이트 #2, ADR-0040).
+ * LLM 자율 신호 SQL 실행 격리용 — `SET TRANSACTION READ ONLY`로 INSERT/UPDATE/DELETE/DDL을
+ * PG가 거부(정적 검증 게이트 #1 우회 백스톱) + row cap 초과 시 throw. 항상 ROLLBACK(쓰기 없음).
+ */
+export const queryReadOnly = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
+  text: string,
+  timeoutMs: number,
+  maxRows: number,
+): Promise<pg.QueryResult<T>> => {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
+    await client.query('BEGIN');
+    await client.query('SET TRANSACTION READ ONLY');
+    const result = await client.query<T>(text);
+    if (result.rowCount !== null && result.rowCount > maxRows) {
+      await client.query('ROLLBACK');
+      throw new Error(
+        `신호 SQL이 ${result.rowCount}행 반환 (최대 ${maxRows}). 단일 숫자 결과여야 함.`,
+      );
+    }
+    await client.query('ROLLBACK'); // 읽기 전용 — 항상 ROLLBACK
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {
+      /* 무시 */
+    });
+    throw err;
+  } finally {
+    await client.query('SET statement_timeout = 0').catch(() => {
+      /* 무시 */
+    });
+    client.release();
+  }
+};
+
 export interface DryRunResult {
   rowCount: number;
   rows: Record<string, unknown>[];

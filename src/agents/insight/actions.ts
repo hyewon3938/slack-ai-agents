@@ -3,11 +3,14 @@
  *
  * - 발굴 승인 카드 [추적 시작]/[패스] — pending pattern_link → active/archived (#477 P5a, ADR-0039).
  *   사람은 노출·큐레이션(추적할 가치)만 게이트, 믿음(진짜인지)은 주간 e-value 트랙이 가린다.
- * - LLM 매트릭 승인/거절 — P5b까지 suspended (signal_defs source=llm 모델로 포팅 대기).
+ * - LLM 신호 승인/반려 [측정 시작]/[반려] — signal_defs(source=llm) pending → active/rejected
+ *   (#477 P5b, ADR-0040). 승인 시 게이트 #1(validateSignalSql) 재검증 통과해야만 활성화.
+ *   사람은 큐레이션만 게이트, untrusted SQL의 안전은 검증·격리가, 진짜인지는 off-day 통계가 가린다.
  */
 
 import type { App } from '@slack/bolt';
 import { query } from '../../shared/db.js';
+import { validateSignalSql } from '../../shared/signal-sql-guard.js';
 import { updateMessage } from '../../shared/slack.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {
@@ -15,14 +18,11 @@ import {
   DISCOVERY_DISMISS_ACTION_ID,
   decodeDiscoveryPayload,
 } from './hypothesis-cards.js';
-import { METRIC_APPROVE_ACTION_ID, METRIC_REJECT_ACTION_ID } from './metric-approval-cards.js';
-
-/**
- * #477 P5b — LLM 매트릭 승인/거절 인터랙션 비활성 플래그.
- * 옛 pattern_metrics(DROP) 참조 핸들러 → 발굴 승인(P5a)은 pattern_links로 재구축 완료,
- * LLM 신호 제안(P5b)은 signal_defs(source=llm, status=pending) 모델 포팅 대기.
- */
-const METRIC_INTERACTION_SUSPENDED_P5B = true;
+import {
+  LLM_SIGNAL_APPROVE_ACTION_ID,
+  LLM_SIGNAL_REJECT_ACTION_ID,
+  decodeLlmSignalPayload,
+} from './llm-signal-cards.js';
 
 const resolveBodyUserId = async (body: { user?: string | { id: string } }): Promise<number> => {
   const slackUserId = body.user ? (typeof body.user === 'string' ? body.user : body.user.id) : '';
@@ -72,6 +72,52 @@ export const dismissDiscoveryLink = async (
        WHERE id = $1 AND user_id = $2 AND status = 'pending'
        RETURNING id`,
     [linkId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+// ─── LLM 신호 승인/반려 — signal_defs(source=llm) status 전이 (테스트 가능 코어, ADR-0040) ──
+
+/**
+ * LLM 신호 승인 — 게이트 #1 정적 재검증 통과 시에만 pending → active (#477 P5b).
+ * 저장된 sql_body도 불신: 승인 시점에 validateSignalSql 재실행, 실패하면 활성화 거부(미승인 = 실행 0).
+ * 가드: 본인(user_id=$2) + pending + source='llm'만. @returns 활성화된 signalId, 아니면 null.
+ */
+export const approveLlmSignal = async (
+  userId: number,
+  signalId: number,
+): Promise<number | null> => {
+  const sel = await query<{ sql_body: string | null }>(
+    `SELECT sql_body FROM signal_defs
+       WHERE id = $1 AND user_id = $2 AND status = 'pending' AND source = 'llm'`,
+    [signalId, userId],
+  );
+  const sql = sel.rows[0]?.sql_body;
+  if (!sql) return null;
+  const err = validateSignalSql(sql);
+  if (err) {
+    console.warn(`[Insight Action] llm_signal 승인 거부(검증 실패) id=${signalId}: ${err}`);
+    return null;
+  }
+  const res = await query<{ id: number }>(
+    `UPDATE signal_defs SET status = 'active', approved_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'pending' AND source = 'llm'
+       RETURNING id`,
+    [signalId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+/**
+ * LLM 신호 반려 — pending → rejected. 동일 가드(본인·pending·llm). 재제안 시 LLM이 차이를 명시해야.
+ * @returns 반려된 signalId, 아니면 null.
+ */
+export const rejectLlmSignal = async (userId: number, signalId: number): Promise<number | null> => {
+  const res = await query<{ id: number }>(
+    `UPDATE signal_defs SET status = 'rejected'
+       WHERE id = $1 AND user_id = $2 AND status = 'pending' AND source = 'llm'
+       RETURNING id`,
+    [signalId, userId],
   );
   return res.rows[0]?.id ?? null;
 };
@@ -138,20 +184,60 @@ export const registerInsightActions = (app: App): void => {
     }
   });
 
-  // ── LLM 매트릭 승인/거절 — #477 P5b 재설계 대기 (stale 카드 클릭 graceful no-op) ──
-  app.action(METRIC_APPROVE_ACTION_ID, async ({ ack }) => {
+  // ── LLM 신호 승인/반려 — signal_defs(source=llm) pending → active/rejected (#477 P5b, ADR-0040) ──
+  app.action(LLM_SIGNAL_APPROVE_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
-    if (METRIC_INTERACTION_SUSPENDED_P5B) {
-      console.warn('[Insight Action] metric_approve — #477 P5b LLM 신호 제안 재설계 대기 (skip)');
+    const raw = extractRawValue(body);
+    if (!raw) return;
+    const payload = decodeLlmSignalPayload(raw);
+    if (!payload) {
+      console.warn('[Insight Action] llm_signal_approve: payload 디코딩 실패');
       return;
+    }
+    try {
+      const userId = await resolveBodyUserId(body);
+      const signalId = await approveLlmSignal(userId, payload.signalId);
+      const { channelId, messageTs } = extractChannelTs(body);
+      if (!channelId || !messageTs) return;
+      if (signalId === null) {
+        await updateMessage(
+          client,
+          channelId,
+          messageTs,
+          '_검증 실패 또는 이미 처리됨 — 활성화 안 됨._',
+          [],
+        );
+        return;
+      }
+      await updateMessage(
+        client,
+        channelId,
+        messageTs,
+        '측정 시작 — 매일 이 신호를 재고, 다음 발굴에서 시드와 연결되면 off-day로 검정한다.',
+        [],
+      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Insight Action] llm_signal_approve 오류: ${msg}`);
     }
   });
 
-  app.action(METRIC_REJECT_ACTION_ID, async ({ ack }) => {
+  app.action(LLM_SIGNAL_REJECT_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
-    if (METRIC_INTERACTION_SUSPENDED_P5B) {
-      console.warn('[Insight Action] metric_reject — #477 P5b LLM 신호 제안 재설계 대기 (skip)');
-      return;
+    const raw = extractRawValue(body);
+    if (!raw) return;
+    const payload = decodeLlmSignalPayload(raw);
+    if (!payload) return;
+    try {
+      const userId = await resolveBodyUserId(body);
+      await rejectLlmSignal(userId, payload.signalId);
+      const { channelId, messageTs } = extractChannelTs(body);
+      if (channelId && messageTs) {
+        await updateMessage(client, channelId, messageTs, '_신호 반려함 — 측정 안 함._', []);
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Insight Action] llm_signal_reject 오류: ${msg}`);
     }
   });
 };

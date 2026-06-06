@@ -1196,6 +1196,8 @@ const lifeCands = candidates
 
 ### 20. 본인 1명 패턴 발견 시스템 — Phase 6 (LLM 자율 매트릭 + 승인 게이트)
 
+> **Superseded by [### 30](#30-매트릭-중심-패턴-검증--phase-5b-llm-신호-제안--검증실행-격리-491)** (#477 P5b, ADR-0040). 본 절은 master #434 당시 `pattern_metrics`(077에서 DROP) 모델 기준의 역사적 서사 — `monthly-metric-suggest`·ADR-0025/0030은 `signal_defs(source='llm')` 모델 + 2단 방어로 재정의됨. 아래 내용은 그 시점 기록으로만 읽을 것.
+
 Phase 1\~5에서 결정론 매트릭만 평가되던 구조 위에 **LLM이 매트릭 후보를 자율 제안하는 슬롯**을 도입. 새 매트릭은 `status='pending'`으로 INSERT되고 사용자가 Slack 승인/거절 버튼을 눌러야 매칭 cron이 평가에 반영. v2 헌장 ④ (승인 게이트) 진입점.
 
 #### 운영 형태
@@ -1720,7 +1722,7 @@ P4a·P4b가 evidence-only로 남긴 결정론 feature 시드(강도 밴드·관�
 | 추적 시작 | `pending → active` | 다음 주간 검증부터 off-day 대조 대상 |
 | 패스 | `pending → archived` | 사용자 "추적 안 함" (통계 `rejected`와 구분 — 둘 다 여집합 제외) |
 
-- `approveDiscoveryLink`/`dismissDiscoveryLink`(`WHERE id=$1 AND user_id=$2 AND status='pending'` 가드) 테스트 가능 코어. LLM 매트릭 승인(`METRIC_*`)은 P5b까지 suspended.
+- `approveDiscoveryLink`/`dismissDiscoveryLink`(`WHERE id=$1 AND user_id=$2 AND status='pending'` 가드) 테스트 가능 코어. (P5a 시점엔 LLM 매트릭 승인 `METRIC_*`이 suspended였고, P5b [### 30](#30-매트릭-중심-패턴-검증--phase-5b-llm-신호-제안--검증실행-격리-491)에서 `signal_defs(source='llm')` 모델로 재구현됨.)
 - **노출 vs 믿음 분리**: 사람은 *진실*을 판정하지 않는다 — 게이트하는 건 노출·큐레이션("추적할 가치 있나"), 믿음("진짜인가")은 끝까지 e-value 트랙. 게이트 없이 느슨한 q 발견을 자동 활성하면 미검증 연관이 emerging tier로 조기 노출되므로, 사람 게이트가 그 노출만 막는다.
 
 **주간 cron 통합** ([weekly-verification.ts](../../src/cron/weekly-verification.ts) `surfaceDiscoveries`): 검증·persist·카드 발송 후 발굴 단계(검증과 독립 try-catch 격리 — 발굴 실패가 검증 결과를 막지 않게). 월요일 06:00 KST만 실행(`weeklyVerificationTask` 가드 상속).
@@ -1729,22 +1731,60 @@ P4a·P4b가 evidence-only로 남긴 결정론 feature 시드(강도 밴드·관�
 
 **P5b 의존**: LLM 신호 제안(열린 SQL 생성)은 같은 승인 게이트(맥락 카드 + pending→active)를 재사용. 발굴(P5a)은 *기존 신호*를 off-day로 잇고, LLM(P5b)은 *새 신호*를 생성한다(둘 다 사람 게이트, 통계가 심판).
 
+### 30. 매트릭 중심 패턴 검증 — Phase 5b (LLM 신호 제안 + 검증·실행 격리, #491)
+
+LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 자율 제안 → 사람 승인 게이트(P5a 재사용) → active 후 P5a 발굴이 시드와 연결 → off-day 통계가 판정. 정본 [ADR-0040](../adr/0040-llm-signal-sql-validation-and-execution-isolation.md). **이 마스터 최대 보안 표면**(LLM-생성 SQL이 prod DB에서 무인 반복 실행)이라 검증·실행 격리가 1급 설계 항목. **마이그레이션 0**(077이 `source`/`status` 선언 완료), 새 통계 코어 0.
+
+**2단 방어 — untrusted LLM SQL** ([ADR-0040](../adr/0040-llm-signal-sql-validation-and-execution-isolation.md)): 친화적 LLM이 생성했어도 prod DB에서 무인 실행되는 SQL은 untrusted 입력으로 다룬다. 두 지점에서 독립 통과해야 실행:
+
+| 게이트 | 위치 | 방어 |
+|--------|------|------|
+| #1 정적 검증 | 승인 시 (`approveLlmSignal`) + 실행 직전 (`runLlmSignalSql`) | `validateSignalSql` — 단일 SELECT/WITH·`$1/$2`만·`user_id=$1` 강제·테이블 화이트리스트·DDL/DML/위험함수 차단·길이 상한 |
+| #2 실행 격리 | 실행 시 (`runLlmSignalSql`만) | `queryReadOnly` — `SET TRANSACTION READ ONLY`(쓰기를 PG가 거부=검증 우회 백스톱) + row cap + 항상 ROLLBACK |
+
+- 게이트 #1이 1차 방어, 게이트 #2는 정적 검증을 우회한 쓰기 시도를 PG 레벨에서 막는 백스톱. **앱 레벨 read-only TX** 채택(전용 DB 역할 대비 인프라 변경 0 — follow-up).
+- **`source='llm'`만 격리** — seed 신호 71개는 기존 신뢰 경로(`runMetricSql`) 무변경. `runnerForSource(source)`가 `evaluateMetric`(일별 매칭)·`computeSignalSeries`(주간 검증+발굴) 두 실행 경로에서 분기.
+
+**검증 게이트** ([signal-sql-guard.ts](../../src/shared/signal-sql-guard.ts) `validateSignalSql`, 통과 시 null·실패 시 한글 사유): self-contained(보안 경계를 한 파일에서 감사, 외부 리팩토링이 조용히 약화 못 하게). 빠른 실패 순서 — 길이 → 단일문 → SELECT/WITH → 블록패턴(`db-proxy.ts BLOCKED_PATTERNS` 정렬 + DML 전수 + `information_schema`/`pg_catalog`) → 플레이스홀더(`$1`/`$2`만) → 테이블 화이트리스트 → `user_id=$1` 스코프.
+
+- **테이블 화이트리스트(deny-by-default, `SIGNAL_TABLE_WHITELIST`)**: prod introspection으로 확정한 5개 신호 도메인의 행동 데이터 테이블 10개(`schedules`·`schedule_changes`·`routine_templates`·`routine_records`·`routine_inactive_periods`·`sleep_records`·`sleep_events`·`expenses`·`categories`·`diary_meta_tags`). 의도적 제외 — 재정(`assets`·`incomes`·`budget_*`·`fixed_cost*`, 도메인 밖+민감) / 시스템·메타(`signal_defs`·`pattern_links`·`users`·`custom_instructions`, 자기승인·변조·교차유저 차단) / 사주 내부·마스터 / `diary_entries`(원문, 헌장 ① — 일기는 메타 태그로만).
+- **오탐 방지(빌드 정련)**: 순진한 `FROM/JOIN` 추출은 `EXTRACT(EPOCH FROM …)` 내부 `FROM`과 CTE 이름을 테이블로 오인(prod 시드 신호에서 `min`·`rc` 오탐 실측). → `EXTRACT(…)` 제거 후 추출 + CTE 이름(`WITH x AS (…)`)은 화이트리스트 면제.
+
+**`source` 스레딩**: `SignalDef.source`·`SajuMetric.source`(`'seed'|'llm'`) 추가 → 두 loader(`verifyUserLinks`·`loadActiveSeeds`·`loadActiveSignals`) SELECT에 `source` + `computeSignalSeries`/`evaluateMetric`가 `source==='llm'`이면 격리 실행기로 분기. 단일 숫자 추출은 `extractFirstNumber` 공통 헬퍼.
+
+**승인 카드/액션** (P5a 게이트 재사용):
+
+| 요소 | 구현 |
+|------|------|
+| 카드 ([llm-signal-cards.ts](../../src/agents/insight/llm-signal-cards.ts) `buildLlmSignalCard`) | `[신호 제안] {name}` + 측정 의도(자연어) + `측정: {domain}·{valueType}/{direction}` + **검토용 SQL을 context 블록에 노출**(투명성) + caveat("승인=측정 시작이지 인과 아님") + `[측정 시작]`/`[반려]`. payload=`{signalId}` |
+| 승인 ([actions.ts](../../src/agents/insight/actions.ts) `approveLlmSignal`) | SELECT `sql_body` → **게이트 #1 재검증**(저장된 SQL도 불신) → 통과 시에만 `status='active'`. `WHERE id=$1 AND user_id=$2 AND status='pending' AND source='llm'` 가드 |
+| 반려 (`rejectLlmSignal`) | `pending → rejected`. 동일 가드. 재제안 시 LLM이 차이 명시 의무 |
+
+- 옛 `metric-approval-cards.ts`(폐기 `pattern_metrics` era) 삭제·교체, `METRIC_INTERACTION_SUSPENDED_P5B` 플래그 해제.
+
+**미승인 = inert**: `status='pending'` 신호는 매칭(`loadActiveSeeds`)·검증(`verifyUserLinks`)·발굴(`loadActiveSignals`) 모두 `status='active'`만 SELECT → **승인 전까지 SQL이 한 번도 실행되지 않음**(077 status 게이트). 나쁜 `sql_body`가 등록돼도 무해 — 사람이 승인해야(게이트 #1 통과 시) 비로소 실행 대상.
+
+**P5a vs P5b 경계** (겹침 없음): 발굴(P5a) = *기존 신호*를 시드와 off-day로 연결(가설 발견) / LLM(P5b) = *새 신호*를 생성(측정 정의). 둘 다 같은 승인 게이트(pending→active) + 통계가 심판(헌장 ①). LLM은 생성만, 판정은 통계.
+
+**월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-work-as-claude-app-routines.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency(이번 달 `source='llm'` 존재 시 종료) + cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
+
 ## 파일 구조
 
 ```
 src/agents/insight/
 ├── index.ts                       # 에이전트 생성, fast path 매칭, LLM 에이전트 루프
 ├── prompt.ts                      # 시스템 프롬프트 빌더 (DB 데이터 실시간 로드)
-├── actions.ts                     # 인터랙티브 버튼 핸들러 (#477 P5a 발굴 승인/패스 active, METRIC은 P5b까지 suspended)
+├── actions.ts                     # 인터랙티브 버튼 핸들러 (#477 P5a 발굴 승인/패스 + P5b LLM 신호 승인/반려, ADR-0040)
 ├── blocks.ts                      # Slack Block Kit 메시지 빌더
 ├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
 ├── saju-seed-fast-path.ts         # 사주 시드 보기/끄기/켜기 (Phase 3)
 ├── hypothesis-discovery.ts        # #477 P5a 발굴 엔진 (여집합 off-day 스캔 → discoverCandidates + insertPendingDiscoveryLink)
 ├── hypothesis-cards.ts            # #477 P2/P3 주간 검증 카드 (3-tier ✅검증됨/🌱검증중/✗기각) + P5a 발굴 승인 카드(buildDiscoveryCandidateCard)
-└── metric-approval-cards.ts       # Phase 6 LLM 매트릭 후보 카드 + 승인/거절 payload
+└── llm-signal-cards.ts            # #477 P5b LLM 신호 제안 승인 카드 (buildLlmSignalCard + 승인/반려 payload, 옛 metric-approval-cards 대체)
 
 src/shared/
-├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger
+├── signal-sql-guard.ts            # #477 P5b LLM SQL 게이트 #1 정적 검증 (validateSignalSql + 테이블 화이트리스트, ADR-0040)
+├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger + P5b runLlmSignalSql(게이트 #2)
 ├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
 ├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
 ├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
@@ -1804,6 +1844,6 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 └── 082_relation_hwa_seeds.sql                  # P4b relation_type CHECK(귀문·암합) + hwa_sipsung CHECK + 귀문6/암합4 쌍 + auto-gen 관계 시드 + 효과적 십성 5시드 + 10 큐레이트 링크
 
 ~/.claude/scheduled-tasks/  (Claude 앱 routines, repo 외부)
-├── monthly-metric-suggest/SKILL.md              # Phase 6 매월 1일 09:30 LLM 매트릭 후보 제안
+├── monthly-signal-suggest/SKILL.md              # #477 P5b 매월 09:30 LLM 신호 제안 (signal_defs source='llm' pending, 옛 monthly-metric-suggest 재정의)
 └── daily-insight/SKILL.md                       # 일일 종합 인사이트 매일 08:00 (마스터 A A3, #475)
 ```
