@@ -23,7 +23,7 @@ import {
   deactivateReminder,
   decrementReminderCount,
 } from '../shared/life-queries.js';
-import { postBlockMessage, postToChannel } from '../shared/slack.js';
+import { postToChannel } from '../shared/slack.js';
 import {
   getTodayISO,
   getYesterdayISO,
@@ -38,8 +38,6 @@ import {
 } from '../shared/user-resolver.js';
 // personality.ts의 CHARACTER_PROMPT는 에이전트용, 크론은 자체 톤 사용
 import {
-  buildFilteredRoutineBlocks,
-  buildRoutineBlocks,
   buildScheduleText,
   buildNightScheduleText,
   buildYesterdayIncompleteText,
@@ -380,7 +378,7 @@ const backfillYesterdayBudgetLogIfMissing = async (app: App): Promise<void> => {
 
 // ─── 크론 태스크 ────────────────────────────────────────
 
-/** 아침: 어제 루틴 최종 달성률 + 루틴 기록 생성 + 오늘 일정 + 낮 루틴 체크리스트 (LLM 없음) */
+/** 아침: 어제 루틴 최종 달성률 + 루틴 기록 생성 + 오늘 일정 (LLM 없음) */
 const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
   const yesterday = getYesterdayISO();
@@ -439,14 +437,6 @@ const morningTask = async (app: App, config: LifeCronConfig): Promise<void> => {
       await postToChannel(app.client, channelId, scheduleText);
     }
 
-    // 4. 낮 루틴 체크리스트 (Block Kit)
-    const todayRecords = await queryTodayRecords(today, userId);
-    const hasDay = todayRecords.some((r) => r.time_slot === '낮');
-    if (hasDay) {
-      const { text, blocks } = buildFilteredRoutineBlocks(todayRecords, today, ['낮']);
-      await postBlockMessage(app.client, channelId, text, blocks);
-    }
-
     console.warn(`[Life Cron] 아침 알림 완료 (유저=${userId}, 기록 ${created}개 생성)`);
   });
 
@@ -494,14 +484,6 @@ const nightTask = async (app: App, config: LifeCronConfig): Promise<void> => {
       context,
       fallback,
     );
-
-    try {
-      const { text, blocks } = buildRoutineBlocks(records, today);
-      await postBlockMessage(app.client, channelId, text, blocks);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Life Cron] 밤 루틴 체크리스트 전송 실패 (유저=${userId}): ${msg}`);
-    }
 
     try {
       const summaryText = summary || fallback;
