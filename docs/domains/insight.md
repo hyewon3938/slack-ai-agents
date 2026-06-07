@@ -1432,12 +1432,12 @@ ALTER TABLE pattern_matches
 
 **데이터 수집** (메트릭/카운트만, diary 원문 입력 금지):
 - 오늘 일운: `fortune_analyses WHERE period='daily' AND date=CURRENT_DATE`
-- 오늘 발현 시드: `pattern_matches (date=CURRENT_DATE, trigger_activated=true)` JOIN `pattern_catalog` + `saju_influence_summary`(tier 판정). 사주 시드(stem/branch/ganji/relation/sibiunsung/element_density/cumulative_pillar_count)와 `life_signal`을 레이어로 분리 표시
+- 오늘 발현 시드: `seed_daily_activations (date=오늘(KST), trigger_activated=true)` JOIN `pattern_catalog` + `saju_influence_summary`(tier 판정). 사주 시드(stem/branch/ganji/relation/sibiunsung/element_density/cumulative_pillar_count)와 `life_signal`을 레이어로 분리 표시
 - `life_themes` active
 
 **멱등**: `daily_insight_log (user_id, date) UNIQUE` (마이그레이션 076). `INSERT ... ON CONFLICT DO NOTHING RETURNING` — 비면 "이미 발송, 종료".
 
-**파이프라인 순서**: 매칭(`dailySajuMatching`) **07:00** → 종합 **08:00**. 매칭 선행으로 그날 발현 시드를 종합이 읽음 (구 09:00에서 당김, 마이그레이션 076). 매칭 cron은 누락일 자동 백필 포함 — `daily-pattern-matching.ts`의 "마지막 매칭일+1~오늘" 루프 (14일 상한).
+**파이프라인 순서**: 매칭(`dailySajuMatching`) **07:00** → 종합 **08:00**. 매칭 선행으로 그날 발현 시드를 종합이 읽음 (구 09:00에서 당김, 마이그레이션 076). 매칭 cron은 그날 발현 시드를 `seed_daily_activations`에 transient 기록만 한다(Slack 발송·검증 없음). 검증은 주간 엔진(`weekly-verification`, 월 06:00)이 raw 재계산 — #477 P2에서 일별 백필·#life 한 줄 제거.
 
 **종료 조건**: ① 오늘 일운 미생성(weekly-fortune 누락) → "사주 일운 미생성, 종료" ② 이미 발송(멱등) → 종료.
 
