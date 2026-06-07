@@ -11,6 +11,7 @@ import type { LinkVerification } from '../../shared/pattern-verification.js';
 import type { ConfoundData } from '../../shared/confound.js';
 import type { DiscoveryCandidate } from './hypothesis-discovery.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
+import { credibleInterval } from '../../shared/bayesian-posterior.js';
 
 const KIND_LABEL: Record<'saju' | 'life_signal', string> = {
   saju: '[사주]',
@@ -42,15 +43,33 @@ export const decodeDiscoveryPayload = (raw: string): DiscoveryCardPayload | null
   }
 };
 
-const formatPercent = (v: number): string =>
-  Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : '—';
+/** 비율 → 정수 퍼센트 (자연어 본문용). "20%" */
+const pct = (v: number): string => (Number.isFinite(v) ? `${Math.round(v * 100)}%` : '—');
 
-const formatRatio = (v: number): string => (Number.isFinite(v) ? `${v.toFixed(2)}x` : '—');
+/** 효과크기 → "4.0배". 비유한 → "—" */
+const mult = (v: number): string => (Number.isFinite(v) ? `${v.toFixed(1)}배` : '—');
 
 const formatPValue = (v: number): string => (Number.isFinite(v) ? v.toFixed(3) : '—');
 
 const formatPosterior = (v: number): string =>
   Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—';
+
+/**
+ * off-day 대조 자연어: 발현=분수(작은 표본을 정직하게 드러냄), 평소=비율(큰 baseline 표본 왜곡 없이).
+ * effect 산출 불가(off일 0)면 배수 절(節) 생략.
+ */
+const offDayPhrase = (nActive: number, hit: number, rateOff: number, effect: number): string =>
+  Number.isFinite(effect)
+    ? `${nActive}일 중 ${hit}일 (평소 ${pct(rateOff)} → ${mult(effect)} 자주)`
+    : `${nActive}일 중 ${hit}일 (평소 ${pct(rateOff)})`;
+
+/** 확신도 보조 절: "확신도 78% [62%–89%]" — CI는 credibleInterval 재사용(표시 파생, 검증 로직 무관). */
+const confidencePhrase = (alpha: number, beta: number, p: number): string => {
+  const ci = credibleInterval(alpha, beta);
+  const lo = formatPosterior(ci.lower);
+  const hi = formatPosterior(ci.upper);
+  return `확신도 ${formatPosterior(p)} [${lo}–${hi}]`;
+};
 
 // ─── P5a 발굴 후보 카드 빌더 ──────────────────────────────
 
@@ -64,20 +83,17 @@ export type DiscoveryCardInput = DiscoveryCandidate & { linkId: number };
 export const buildDiscoveryCandidateCard = (c: DiscoveryCardInput): KnownBlock[] => {
   const payload = encodeDiscoveryPayload({ linkId: c.linkId });
   const header = `${KIND_LABEL[c.patternKind]} *${c.seedName}* × *${c.signalName}* — 새 패턴 후보`;
-  const stat =
-    `이 시드 켜진 날 *${c.signalName}* 발현 ${formatPercent(c.rateActive)} ` +
-    `vs 평소 ${formatPercent(c.rateOff)} (effect ${formatRatio(c.effect)}, n=${c.nActive}일)`;
+  const stat = `${c.seedName} 켜진 날 *${c.signalName}* — ${offDayPhrase(c.nActive, c.hit, c.rateOff, c.effect)}`;
   const seedDesc = c.seedDescription?.trim() || c.seedName;
   const signalDesc = c.signalDescription?.trim() || c.signalName;
-  const meaning =
-    `_${seedDesc} → ${signalDesc} 경향이 데이터에서 보임 — ` +
-    `off-day 대조에서 연관 잡힘 (발견 q=${formatPValue(c.qValue)})_`;
-  const caveat =
-    '_아직 후보야. 추적 시작하면 주간 엔진이 몇 주 검정해서 진짜인지 가린다. 연관이지 인과 아님._';
+  const why =
+    `_${seedDesc} → ${signalDesc}. ${c.seedName} 켜진 날 ${c.signalName}가 평소보다 자주 떠서 후보로 올렸어. ` +
+    `아직 연관일 뿐 — 추적 시작하면 주간 엔진이 몇 주 검정해서 진짜인지 가려._`;
+  const sub = `_발굴 근거 q ${formatPValue(c.qValue)} (느슨한 발견 기준 통과). 연관이지 인과 아님._`;
   return [
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: `${header}\n${stat}\n${meaning}\n${caveat}` },
+      text: { type: 'mrkdwn', text: `${header}\n${stat}\n${why}\n${sub}` },
     },
     {
       type: 'actions',
@@ -116,7 +132,7 @@ export interface SeedInfluenceRow {
 }
 
 const POSTERIOR_LEGEND =
-  '_사후 = 본인 패턴일 확률 추정 (50%=우연, 80%↑=강함) · [] = 95% 신뢰 구간 (좁을수록 정확)_';
+  '_본인 패턴일 가능성: 50%=우연, 80%↑=강함 · 괄호는 추정 범위(좁을수록 정확)_';
 
 export const buildSeedInfluenceSection = (rows: SeedInfluenceRow[]): KnownBlock[] => {
   if (rows.length === 0) return [];
@@ -127,8 +143,8 @@ export const buildSeedInfluenceSection = (rows: SeedInfluenceRow[]): KnownBlock[
     return (
       `• ${kindLabel} *${r.signalName}* (검증 ${verifyCount}개)` +
       (desc ? ` — ${desc}` : '') +
-      ` — 사후 ${formatPosterior(r.posteriorP)} ` +
-      `[${formatPosterior(r.ciLower)}, ${formatPosterior(r.ciUpper)}]`
+      ` — 본인 패턴일 가능성 ${formatPosterior(r.posteriorP)} ` +
+      `(추정 ${formatPosterior(r.ciLower)}–${formatPosterior(r.ciUpper)})`
     );
   });
   return [
@@ -168,30 +184,35 @@ const evalueBar = (e: number, threshold: number): string => {
   return '█'.repeat(filled) + '░'.repeat(7 - filled);
 };
 
-/** verified(검증됨) 한 줄 — 통계 확정 + off-day 대조. */
+/** verified(검증됨) 한 줄 — 결론 위주(자연어 본문) + 이탤릭 보조 줄(확정 증거·우연 가능성·확신도). */
 const verifiedLine = (l: LinkVerification): string =>
-  `• ✅ ${KIND_LABEL[l.patternKind]} *${l.signalName}* → \`${l.seedName}\` — ` +
-  `발현 ${formatPercent(l.rateActive)} vs 비발현 ${formatPercent(l.rateOff)} ` +
-  `(effect ${formatRatio(l.effect)}, q=${formatPValue(l.qValue)}, n=${l.nActive}) · ` +
-  `e ${l.eValue.toFixed(1)} 검증됨`;
+  `• ✅ ${KIND_LABEL[l.patternKind]} ${l.seedName} 켜진 날 *${l.signalName}* — ` +
+  `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증됨\n` +
+  `_확정 증거 e ${l.eValue.toFixed(1)} (20 넘어 확정) · 우연 가능성 q ${formatPValue(l.qValue)} · ` +
+  `${confidencePhrase(l.posteriorAlpha, l.posteriorBeta, l.posteriorP)}_`;
 
-/** emerging(검증중) 한 줄 — hedged + e-value 진행바 + 주간대비 delta. */
+/** emerging(검증중) 한 줄 — 진행도 강조(자연어 본문) + 이탤릭 보조 줄(확정까지 진행바·추세·우연·확신도). */
 const emergingLine = (l: LinkVerification, prevE: number | undefined): string => {
   const bar = evalueBar(l.eValue, V.evalueThreshold);
-  const delta =
-    prevE !== undefined && Number.isFinite(prevE)
-      ? ` (지난주 ${prevE.toFixed(1)} → 이번주 ${l.eValue.toFixed(1)})`
-      : '';
+  const cur = l.eValue;
+  let trend = '';
+  if (prevE !== undefined && Number.isFinite(prevE)) {
+    if (cur > prevE) trend = ` (지난주 ${prevE.toFixed(1)} → 오르는 중)`;
+    else if (cur < prevE) trend = ` (지난주 ${prevE.toFixed(1)} → 주춤)`;
+    else trend = ` (지난주 ${prevE.toFixed(1)} → 그대로)`;
+  }
   return (
-    `• 🌱 ${KIND_LABEL[l.patternKind]} *${l.signalName}* → \`${l.seedName}\` — ` +
-    `발현 ${formatPercent(l.rateActive)} vs 비발현 ${formatPercent(l.rateOff)} ` +
-    `(effect ${formatRatio(l.effect)}, n=${l.nActive}) · ` +
-    `검증중 ${bar} e ${l.eValue.toFixed(1)}/${V.evalueThreshold}${delta}`
+    `• 🌱 ${KIND_LABEL[l.patternKind]} ${l.seedName} 켜진 날 *${l.signalName}* — ` +
+    `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증중\n` +
+    `_확정까지 ${bar} ${cur.toFixed(1)}/${V.evalueThreshold}${trend} · ` +
+    `우연 가능성 q ${formatPValue(l.qValue)} · ` +
+    `${confidencePhrase(l.posteriorAlpha, l.posteriorBeta, l.posteriorP)}_`
   );
 };
 
 const rejectLine = (l: LinkVerification): string =>
-  `• ✗ ${KIND_LABEL[l.patternKind]} ${l.signalName} × \`${l.seedName}\` — 연관 약함(effect ${formatRatio(l.effect)})`;
+  `• ✗ ${KIND_LABEL[l.patternKind]} ${l.seedName} × ${l.signalName} — ` +
+  `켜진 날이나 아닌 날이나 비슷 (${mult(l.effect)}). 기각`;
 
 /**
  * 교란 caveat 한 줄(있으면) — P6 marginal 플래그(ADR-0041) → P7 다변량 조정(ADR-0042).
@@ -211,20 +232,23 @@ const confoundCaveat = (l: LinkVerification, confoundByLink: Map<number, Confoun
     ].join(', ');
     switch (adjusted[0]?.verdict) {
       case 'explained_away':
-        return `\n  ⚠️ 교란 조정: ${uniq} 통제하니 효과 사라짐(어부지리)`;
+        return `\n  ⚠️ ${uniq} 시드가 같이 켜지는 날이 많아서, 그거 빼고 보면 효과 사라짐 (어부지리 의심)`;
       case 'attenuated':
-        return `\n  ⚠️ 교란 조정: ${uniq} 통제하니 효과 약해짐`;
+        return `\n  ⚠️ ${uniq} 같이 켜지는 영향 빼면 효과 약해짐`;
       default:
-        return `\n  · 교란 ${uniq} 통제해도 유지`;
+        return `\n  · ${uniq} 같이 켜져도 효과 유지`;
     }
   }
 
   if (suspected.length === 0) return '';
-  return `\n  ⚠️ 교란 의심: ${suspected.map((s) => s.seedName).join(', ')} 공존`;
+  return `\n  ⚠️ ${suspected.map((s) => s.seedName).join(', ')}가 자주 같이 켜져서 영향 섞였을 수 있음`;
 };
 
 const TIER_LEGEND =
-  '_✅ 검증됨 = e-value≥20 통계 확정(우연 아님, 단 연관이지 인과는 아님) · 🌱 검증중 = off-day 경향은 보이나 아직 확정 전 · ✗ 기각 = 연관 약함 · ⚠️ 교란 의심 = 같이 켜지는 시드와 겹쳐 어부지리일 수 있음(공동발현 쌓이면 통제 검정해 조정)._';
+  '_✅ 검증됨 = 증거 충분해 확정(우연 아님, 단 연관이지 인과 아님) · ' +
+  '🌱 검증중 = 경향은 보이나 확정 전(확정까지 진행도 표시) · ' +
+  '✗ 기각 = 켜진 날이나 아닌 날이나 비슷 · ' +
+  '⚠️ 교란 = 같이 켜지는 다른 시드 영향 의심_';
 
 /**
  * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
@@ -251,7 +275,7 @@ export const buildVerificationBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: '_검증할 active 링크 없음 — 시드×신호 데이터가 더 쌓이면 자동으로 검증돼._',
+        text: '_아직 검증할 가설이 없어 — 데이터가 더 쌓이면 자동으로 검증 시작해._',
       },
     });
     return blocks;
@@ -272,7 +296,7 @@ export const buildVerificationBlocks = (
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*이번 주 off-day 검증 (${links.length}개 링크)*\n${summaryParts.join(' · ')}`,
+      text: `*이번 주 패턴 검증 (가설 ${links.length}개)*\n${summaryParts.join(' · ')}`,
     },
   });
 

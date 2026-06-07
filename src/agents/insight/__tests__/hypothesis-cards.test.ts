@@ -76,12 +76,12 @@ describe('buildVerificationBlocks — 빈 링크', () => {
     const blocks = buildVerificationBlocks('2026-06-01', [], []);
     expect(blocks[0]?.type).toBe('header');
     const texts = sectionTexts(blocks);
-    expect(texts.some((t) => t.includes('검증할 active 링크 없음'))).toBe(true);
+    expect(texts.some((t) => t.includes('아직 검증할 가설이 없어'))).toBe(true);
   });
 });
 
 describe('buildVerificationBlocks — verified (검증됨)', () => {
-  it('confirmed 링크는 ✅ + 검증됨 + off-day 대조 노출', () => {
+  it('confirmed 링크는 ✅ + 검증됨 + off-day 대조(자연어) + 보조 줄(확신도) 노출', () => {
     const blocks = buildVerificationBlocks(
       '2026-06-01',
       [makeLink({ nextStatus: 'confirmed' })],
@@ -93,8 +93,12 @@ describe('buildVerificationBlocks — verified (검증됨)', () => {
     expect(t).toContain('수면부족');
     expect(t).toContain('갑목일주');
     expect(t).toContain('검증됨');
-    expect(t).toContain('발현 80.0%');
-    expect(t).toContain('비발현 20.0%');
+    expect(t).toContain('25일 중 20일'); // 발현 = 분수(표본 작음 정직하게)
+    expect(t).toContain('평소 20%'); // 비발현 = 비율
+    expect(t).toContain('4.0배');
+    // 이탤릭 보조 줄: 확정 증거 + 확신도(credibleInterval 재사용, 표시 파생)
+    expect(t).toContain('확정 증거');
+    expect(t).toContain('확신도 78%');
   });
 
   it('verified가 있으면 tier 범례 컨텍스트가 붙는다', () => {
@@ -107,12 +111,12 @@ describe('buildVerificationBlocks — verified (검증됨)', () => {
       .filter((b) => b.type === 'context')
       .flatMap((b) => ('elements' in b ? b.elements : []))
       .map((e) => ('text' in e && typeof e.text === 'string' ? e.text : ''));
-    expect(ctxTexts.some((t) => t.includes('검증됨') && t.includes('인과는 아님'))).toBe(true);
+    expect(ctxTexts.some((t) => t.includes('검증됨') && t.includes('인과 아님'))).toBe(true);
   });
 });
 
 describe('buildVerificationBlocks — emerging (검증중)', () => {
-  it('active + effect leaning + n충분 → 🌱 + 진행바 + e/20', () => {
+  it('active + effect leaning + n충분 → 🌱 + 확정까지 진행바 + 보조 줄(확신도)', () => {
     const blocks = buildVerificationBlocks(
       '2026-06-01',
       [makeLink({ nextStatus: 'active', eValue: 7 })],
@@ -121,10 +125,12 @@ describe('buildVerificationBlocks — emerging (검증중)', () => {
     const t = sectionTexts(blocks).find((x) => x.includes('🌱'));
     expect(t).toBeDefined();
     expect(t).toContain('검증중');
-    expect(t).toContain('e 7.0/20');
+    expect(t).toContain('확정까지');
+    expect(t).toContain('7.0/20');
+    expect(t).toContain('확신도'); // 이탤릭 보조 줄
   });
 
-  it('prevEValues 있으면 주간대비 delta 표기', () => {
+  it('prevEValues 있으면 주간대비 추세(오르는 중) 표기', () => {
     const prev = new Map<number, number>([[1, 3.1]]);
     const blocks = buildVerificationBlocks(
       '2026-06-01',
@@ -133,7 +139,7 @@ describe('buildVerificationBlocks — emerging (검증중)', () => {
       prev,
     );
     const t = sectionTexts(blocks).find((x) => x.includes('🌱'));
-    expect(t).toContain('지난주 3.1 → 이번주 7.0');
+    expect(t).toContain('지난주 3.1 → 오르는 중');
   });
 
   it('effect 약하면(emerging 미달) 🌱 안 뜸', () => {
@@ -159,8 +165,8 @@ describe('buildVerificationBlocks — 요약 + reject', () => {
       }), // reject
     ];
     const texts = sectionTexts(buildVerificationBlocks('2026-06-01', links, []));
-    const summary = texts.find((t) => t.includes('off-day 검증'));
-    expect(summary).toContain('3개 링크');
+    const summary = texts.find((t) => t.includes('패턴 검증'));
+    expect(summary).toContain('가설 3개');
     expect(summary).toContain('검증됨 1');
     expect(summary).toContain('검증중 1');
     expect(summary).toContain('기각 1');
@@ -222,10 +228,9 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
     expect(text).toContain('갑목일주');
     expect(text).toContain('지출과다');
     expect(text).toContain('새 패턴 후보');
-    expect(text).toContain('발현 75.0%');
-    expect(text).toContain('평소 25.0%');
-    expect(text).toContain('effect 3.00x');
-    expect(text).toContain('n=24');
+    expect(text).toContain('24일 중 18일'); // 발현 = 분수
+    expect(text).toContain('평소 25%'); // 비발현 = 비율
+    expect(text).toContain('3.0배');
     expect(text).toContain('일간이 강한 날'); // seed desc 평어
     expect(text).toContain('하루 지출이 평소보다 많음'); // signal desc 평어
     expect(text).toContain('인과 아님'); // caveat
