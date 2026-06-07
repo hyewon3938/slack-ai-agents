@@ -434,6 +434,8 @@ LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack
 
 #### Block Kit 카드 (`src/agents/insight/hypothesis-cards.ts`)
 
+> **이후 교체됨 (#477)**: `buildCandidateCard`·`buildWeeklyReviewBlocks`는 #477에서 은퇴. 현재 카드 빌더는 `buildVerificationBlocks`·`buildSeedInfluenceSection`(주간 검증) + `buildDiscoveryCandidateCard`(발굴 승인, action_id `discovery_approve`/`discovery_dismiss`). 상세는 ### 26. 아래는 Phase 4 시점 기록.
+
 - **`buildCandidateCard`**: discoverCandidates 결과를 등록/폐기 버튼 카드로 변환. action_id: `hypothesis_register` / `hypothesis_dismiss`. payload는 type-safe JSON 인코딩.
 - **`buildWeeklyReviewBlocks`**: active 가설 표 (전주 대비 rate_ratio 변화 ▲▼─ 10% 임계) + 신규 후보 묶음.
 
@@ -694,7 +696,7 @@ GROUP BY c.id;
 
 #### `saju_influence_summary` view body 재정의 (운영 자산 보존)
 
-> ⚠️ *아래는 마스터 A(068) 시점 기록. 이후 #477 P1(2층)·**P3(3층 verified/emerging/recent, ### 26)**으로 재정의 — 현재 tier 정의는 ### 26 기준.*
+> ⚠️ *아래는 마스터 A(068) 시점 기록. 이후 #477 P1(2층)·**P3**(3층 verified/emerging/recent, ### 26)으로 재정의 — 현재 tier 정의는 ### 26 기준.*
 
 | 항목 | 결정 |
 |------|------|
@@ -1323,6 +1325,8 @@ Phase 7 (Bayesian update)에서 active 매트릭의 `posterior_alpha/beta/p`가 
 > hit를 별도 컬럼으로 추가하지 않고 `rate_trigger × n_trigger_days`로 derive하는 이유: 기존 row만으로 충분, 스키마 변경 최소.
 
 **UI 흐름**
+
+> **이후 교체됨 (#477)**: 아래 `buildCandidateCard` 카드는 #477에서 `buildVerificationBlocks`(주간 검증 카드, 자연어 카피)로 교체. 현재 카드 형식은 ### 26 참조.
 
 가설 카드(`buildCandidateCard`)는 frequentist(p/q)와 Bayesian(사후/CI)를 한 줄에 병기:
 
