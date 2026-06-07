@@ -1,6 +1,6 @@
 # 프로액티브 인사이트 v2 — 개인 라이프 패턴 발견 시스템
 
-> 매일 기록한 라이프 데이터에서 생활 패턴을 자동으로 찾아낸다. 시드가 켜진 날을 **안 켜진 날과 대조**해 채점하고, 통계·사후 확신도·누적 증거(e-value)가 충분해진 가설만 잔소리로 나온다.
+> 매일 기록한 라이프 데이터에서 내 생활 패턴을 찾아간다. 시드가 켜진 날을 **안 켜진 날과 대조**해 채점하고, 검증된 패턴은 검증됐다고, 떠오르는 패턴은 가능성으로 알려준다.
 
 ---
 
@@ -32,7 +32,7 @@
 
 매일 일기·일정·수면·루틴·지출을 기록하면, 매일 시드 발현이 기록되고 매주 가설 검증이 돌아간다. 사람은 그렇게 검증을 통과한 결과에 따른 잔소리만 들으면 된다.
 
-목표를 한 번 더 좁히면 — "패턴을 많이 찾기"가 아니라 **"패턴을 믿을 자격을 얻기"**다. 회의적인 친구가 "데이터상 아직 몰라"라고 정직하게 말해주는 시스템에 가깝다.
+목표를 한 번 더 좁히면, 패턴을 많이 찾는 게 아니라 **믿을 만한 패턴을 찾아가는 것**이다. 검증된 패턴은 검증됐다고 분명히 알려주고, 아직 검증 전이어도 가능성이 보이면 가능성으로 짚어준다. 내 패턴을 데이터와 함께 찾아가는 과정 자체가 핵심이다.
 
 ### 2-1. 어디서부터 시작할까 — 두 가지 기준
 
@@ -76,14 +76,14 @@
 | 용어 | 한 줄 정의 |
 |------|-----------|
 | **트리거** (trigger) | 매일 시드가 켜졌는지(발현) 결정하는 조건 |
-| **off-day 대조** | 검증의 핵심 잣대. 시드 **발현일** vs **비발현일(off-day)**에서 신호 발현율을 비교 |
+| **off-day 대조** | 검증의 핵심 잣대. 시드 **발현일** vs **비발현일**(off-day)의 신호 발현율을 비교 |
 | **pass / fail** | 그날 신호가 기준(평균 대비 / 절댓값 / 태그 존재)을 통과했는지 |
 | **hit / miss** | 가설 관점의 채점. 발현일에 신호 pass면 hit, fail이면 miss |
 | **rate ratio** (effect) | 효과크기 = 발현일 pass율 ÷ 비발현일 pass율. 1.0이면 차이 없음, 클수록 강한 연관 |
 | **posterior** | Bayesian Beta-Binomial 사후 확률 (지금까지 누적으로 본 실제 패턴일 확률) |
 | **e-value** | 누적 증거. 매주 반복 점검에서 "우연히 유의해진 주"(peeking)에 안 속도록 확정을 거르는 게이트. **e ≥ 20**이면 통계적으로 확정 |
 | **tier** | 노출 등급 — `verified`(검증됨) / `emerging`(검증중) / `recent`(오늘 발현) |
-| **status** | 가설(링크)의 생애 상태 — `active`·`pending`·`weak`·`confirmed`·`rejected`·`archived` |
+| **status** | 가설의 생애 상태 — `active`·`pending`·`weak`·`confirmed`·`rejected`·`archived` |
 | **pattern_kind** | 시드의 출처가 생활 통념인지 사주인지 — `life_signal` / `saju` |
 | **신호 출처** (source) | 신호가 어떻게 만들어졌나 — `seed`(사람 등록) / `discovery`(통계 발굴) / `llm`(LLM 제안) |
 
@@ -118,8 +118,8 @@ flowchart LR
   REC -. 다음 날 .-> DAILY
   DAILY -. "발현 로그 누적 (시드마다 하루 1행)" .-> WEEKLY
 
-  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
-  classDef flowInner fill:#FFFFDE,stroke:#aaaa33,color:#5d4037
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#312A52
+  classDef flowInner fill:#FFFFDE,stroke:#C8C84E,color:#5D4037
   class REC flowBox
   class DAILY,WEEKLY flowBox
   class D1,D2,W1,W2,W3 flowInner
@@ -145,11 +145,12 @@ flowchart TB
   SIGNAL -- 날짜로 조인 --> HYP
   HYP -- 주간 누적 --> VER
 
-  classDef seedBox fill:#E8EAF6,stroke:#9FA8DA,color:#283593
-  classDef signalBox fill:#E1F5FE,stroke:#81D4FA,color:#0277BD
-  classDef hypothesisNode fill:#F3E5F5,stroke:#CE93D8,color:#6A1B9A
-  classDef verifyNode fill:#FCE4EC,stroke:#F48FB1,color:#AD1457
-  class POOLS seedBox
+  classDef groupBox fill:#FDFBF2,stroke:#C2C2C2,color:#555555
+  classDef seedBox fill:#E3FFC7,stroke:#9DC873,color:#466A1C
+  classDef signalBox fill:#E0FFEE,stroke:#5CCFCB,color:#0A6C69
+  classDef hypothesisNode fill:#F5E3F8,stroke:#CD96D5,color:#7A3885
+  classDef verifyNode fill:#FBE9EF,stroke:#EE9ABA,color:#A63A62
+  class POOLS groupBox
   class SEED seedBox
   class SIGNAL signalBox
   class HYP hypothesisNode
@@ -176,10 +177,10 @@ flowchart TB
     SAJU["pattern_kind = saju · 224개<br/><br/>천간 · 지지 · 60갑자 · 오행 밀도<br/>12운성 · 관계 · 운 레벨 누적<br/>+ 강도 밴드 · 효과적 십성<br/>(자세한 건 부록)"]
   end
 
-  classDef seedBox fill:#E8EAF6,stroke:#9FA8DA,color:#283593
-  classDef seedNode fill:#C5CAE9,stroke:#7986CB,color:#283593
-  class PC seedBox
-  class LIFE,SAJU seedNode
+  classDef groupBox fill:#FDFBF2,stroke:#C2C2C2,color:#555555
+  classDef seedBox fill:#E3FFC7,stroke:#9DC873,color:#466A1C
+  class PC groupBox
+  class LIFE,SAJU seedBox
 ```
 
 **핵심**: 두 출처 모두 **같은 핵심 구성 개념 위에서 같은 흐름**을 통과한다. 사주만의 특수 검증 처리는 없다. 사주를 결정론 규칙으로 "강도/관계/합화" feature까지 계산하지만, 그건 **시드를 만드는 단계**일 뿐이고, 만들어진 시드는 다른 시드와 똑같이 off-day 통계로 채점된다. 이게 이 시스템이 **사주 검증기**가 아닌 이유다.
@@ -239,7 +240,7 @@ flowchart LR
   D -->|발현| E["seed_daily_activations에<br/>오늘 발현으로 기록"]
   D -->|비발현| F["기록 안 함<br/>(비발현은 검증 때 raw로 재계산)"]
 
-  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#312A52
   class A,B,C,D,E,F flowBox
 ```
 
@@ -291,8 +292,8 @@ flowchart TD
   F -->|추적 시작| G["status = active<br/>다음 주부터 검증 누적"]
   F -->|패스| H["status = archived"]
 
-  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
-  classDef hypothesisNode fill:#F3E5F5,stroke:#CE93D8,color:#6A1B9A
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#312A52
+  classDef hypothesisNode fill:#F5E3F8,stroke:#CD96D5,color:#7A3885
   class A,B,C,D,E,F,H flowBox
   class G hypothesisNode
 ```
@@ -377,10 +378,10 @@ flowchart TB
     L1 --> L2 --> L3
   end
 
-  classDef metricBox fill:#E1F5FE,stroke:#81D4FA,color:#0277BD
-  classDef metricNode fill:#B3E5FC,stroke:#4FC3F7,color:#0277BD
-  class DET,DISC,LLM metricBox
-  class DET1,DISC1,L1,L2,L3 metricNode
+  classDef groupBox fill:#FDFBF2,stroke:#C2C2C2,color:#555555
+  classDef signalBox fill:#E0FFEE,stroke:#5CCFCB,color:#0A6C69
+  class DET,DISC,LLM groupBox
+  class DET1,DISC1,L1,L2,L3 signalBox
 ```
 
 핵심 원칙:
@@ -423,7 +424,7 @@ posterior: Beta(1 + hit, 1 + miss)
 사후 평균 = α / (α + β),  CI 95% = [Beta(α,β).ppf(0.025), .ppf(0.975)]
 ```
 
-그 위에 **e-value**가 "확정" 판정을 책임진다. e-value는 매주 누적되는 증거(test martingale)로, optional stopping(아무 때나 멈춰 봐도)에 면역이다. Frequentist의 q가 "이번 주 유의한가"를 본다면, e-value는 "지금까지 쌓인 증거가 확정을 정당화하나"를 본다. 둘이 함께 임계를 넘을 때 비로소 confirmed가 된다.
+그 위에 **e-value**가 "확정" 판정을 책임진다. e-value는 매주 누적되는 증거(test martingale)로, optional stopping(아무 때나 멈춰 봐도)에 면역이다. Frequentist의 q가 "이번 주 유의한가"를 본다면, e-value는 "지금까지 쌓인 증거가 확정을 정당화하나"를 본다. 확정 임계 **e ≥ 20은 임의값이 아니라 유의수준 α = 0.05의 역수(1/α)**다 — e-value 이론에서 "e가 1/α를 넘으면 거짓양성 확률이 α 이하"임이 수학적으로 보장된다(Ville 부등식). 두 관점이 함께 임계를 넘을 때 비로소 confirmed가 된다.
 
 FDR은 **세 가족으로 분리**한다(ADR-0037·0038) — `saju_strength`(강도 밴드) / `saju_relation`(관계·효과적 십성) / `baseline`(그 외). 자주 발현하는 강도·관계 시드가 빠른 `life_signal` 트랙(주말·월말)의 확정을 늦추지 않게 격리한 것이다.
 
@@ -465,7 +466,7 @@ flowchart LR
   G --> H["사용자 신뢰 ↑"]
   H --> A
 
-  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#212121
+  classDef flowBox fill:#ECECFF,stroke:#9370DB,color:#312A52
   class A,B,C,D,E,F,G,H flowBox
 ```
 
@@ -568,7 +569,7 @@ pending     active      active            confirmed
 
 ## 마무리
 
-> **내가 가설을 만들지 않아도, 내 데이터가 가설을 만들고 통계가 채점한다. 잔소리는 확신할 자격을 얻은 것만 나온다.**
+> **내가 가설을 만들지 않아도, 내 데이터가 가설을 만들고 통계가 채점한다. 검증된 패턴은 검증됐다고, 떠오르는 패턴은 가능성으로 — 내 패턴을 데이터와 함께 찾아간다.**
 
 이 한 문장이 전부다. 사주가 시드 풀의 큰 부분을 차지하지만, 사주를 증명하지는 않는다. 사주든 라이프 통념이든 같은 4가지 개념 위에서 같은 흐름을 거치고, 같은 통계의 채점을 받는다.
 
