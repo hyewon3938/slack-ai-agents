@@ -122,7 +122,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0013](0013-schedule-category-fk-migration.md) | 일정 카테고리 — TEXT 참조 → 단일 FK + parent_id 계층화 | Accepted | 2026-05-13 | data, schema, refactor |
 | [0014](0014-insight-engine-unification.md) | 프로액티브 인사이트 엔진 통합 — 매일·주간 단일 엔진 + 임계치 외부화 | Accepted | 2026-05-13 | data, insight, process |
 | [0015](0015-asset-auto-deduction-policy.md) | 자산 자동 차감 정책 — 결제주기 종료 cron + 할부 미래 회차 즉시 반영 | Accepted | 2026-05-14 | data, budget |
-| [0016](0016-llm-autonomous-slot-outcome-verification.md) | LLM 자율 발견 슬롯 + Outcome-based 검증 | Accepted | 2026-05-16 | data, insight, llm |
+| [0016](0016-llm-autonomous-slot-outcome-verification.md) | LLM 자율 발견 슬롯 + Outcome-based 검증 | Superseded ([0043](0043-retire-v2-llm-autonomous-discovery.md)) | 2026-05-16 | data, insight, llm |
 | [0017](0017-saju-ganji-master-normalization.md) | 사주 60갑자 마스터 정규화 + 카탈로그 기반 일일 매칭 | Accepted | 2026-05-17 | data, architecture |
 | [0018](0018-installment-runway-scope-toggle.md) | 할부 자산 차감 범위 토글 — `distribute_to_runway` 분기 | Accepted | 2026-05-20 | data, budget |
 | [0019](0019-saju-hypothesis-verification-pipeline.md) | 프로액티브 인사이트 v2 Phase 4 — 가설-검증 정량 파이프라인 | Accepted | 2026-05-21 | data, llm, statistics |
@@ -138,6 +138,18 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0029](0029-life-signal-trigger-aux-standard.md) | `life_signal` 단일 type 통합 + `trigger_aux.kind` 평가 명세 표준 | Accepted | 2026-05-28 | data, insight, architecture, schema |
 | [0030](0030-llm-metric-suggest-input-and-cadence.md) | LLM 매트릭 제안 슬롯 — 입력 풀 구성 + 거절 재제안 + 월간 cron | Accepted | 2026-05-28 | llm, insight, ops |
 | [0031](0031-daily-insight-synthesis.md) | 일일 종합 인사이트 — 개인화 주입 지점을 생성에서 발송으로 이동 + 신뢰도 tier 종합 | Accepted | 2026-06-03 | data, insight, llm, architecture |
+| [0032](0032-metric-first-verification-statistics.md) | n=1 패턴 검증 통계 스택 — Fisher+permutation / BH-FDR / Beta-Binomial+e-value / Mann-Whitney / empirical-Bayes | Accepted | 2026-06-04 | insight, statistics, architecture |
+| [0033](0033-metric-as-hypothesis-and-saju-feature-substrate.md) | 매트릭=가설 5어휘 재정의 + 결정론 사주 feature substrate (생극·합충·합화 → feature, graded 레벨 비단조) | Accepted | 2026-06-04 | insight, schema, architecture, statistics |
+| [0034](0034-evalue-construction-replay-test-martingale.md) | e-value 구성 — 결정론 리플레이 betting test martingale (SET 정합 + null 시뮬 빌드 게이트) | Accepted | 2026-06-05 | insight, statistics |
+| [0035](0035-graded-confidence-exposure.md) | 등급별 노출 정책 — 검증됨/검증중/오늘발현 3-tier (엄격 게이트는 확정 주장에만) | Accepted | 2026-06-05 | insight, ux, architecture |
+| [0036](0036-relative-quantile-strength-bands.md) | 강도 feature 밴드를 상대 분위수로 정의 — n=1 자기 패턴 발견(남 비교면 절대, 자기 패턴이면 분위수) | Accepted | 2026-06-05 | insight, statistics, architecture |
+| [0037](0037-verification-fdr-family-split.md) | 검정 FDR 가족 분리 — 강도 feature 시드를 자체 가족으로(빠른 트랙 보호) | Accepted | 2026-06-05 | insight, statistics |
+| [0038](0038-saju-relation-hwa-feature-depth.md) | 사주 관계·합화 변환 feature 깊이 — 검증 결정론(v1a)·해석 LLM 분리 + FDR 가족 확장 | Accepted | 2026-06-05 | insight, statistics, architecture, saju |
+| [0039](0039-pattern-discovery-surface-and-approval-gate.md) | 패턴 발굴 — surface-only 제안 + 사람 승인 게이트(노출·큐레이션 vs 믿음 분리) | Accepted | 2026-06-05 | insight, statistics, architecture |
+| [0040](0040-llm-signal-sql-validation-and-execution-isolation.md) | LLM-생성 신호 SQL 검증·실행 격리 — untrusted 측정 SQL 2단 방어 (+ 옛 LLM 제안 재정의) | Accepted | 2026-06-06 | insight, security, llm, architecture |
+| [0041](0041-confound-cofiring-flag.md) | 교란 플래그 — marginal 공동발현 overlap 탐지 + annotate-only (P6/P7 분리) | Accepted | 2026-06-06 | insight, statistics, architecture |
+| [0042](0042-confound-multivariate-stratification.md) | 교란 다변량 분리 — Mantel-Haenszel 층화 + 데이터 게이트 + 노출 레이어 soft-demote | Accepted | 2026-06-06 | insight, statistics, architecture |
+| [0043](0043-retire-v2-llm-autonomous-discovery.md) | v2 LLM 자율 발견 슬롯 은퇴 — 통계 기반 발굴(0039/0040)로 대체 | Accepted | 2026-06-07 | insight, llm, process, cleanup |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 

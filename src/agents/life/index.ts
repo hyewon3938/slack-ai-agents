@@ -9,7 +9,6 @@ import { buildLifeSystemPrompt } from './prompt.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
 import { buildScheduleBlocks } from './blocks.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
-import { tryLlmInsightFastPath } from './llm-insight-fast-path.js';
 
 /** 일정 조회 패턴 (오늘 일정 fast path) */
 const SCHEDULE_QUERY_RE = /^(오늘\s*)?일정(\s*(보여줘|보여|알려줘|뭐야|확인|뭐\s*있어))?[.?!]?$/;
@@ -42,9 +41,6 @@ export const createLifeAgent = (llmClient: LLMClient): AgentHandler => {
       );
     }
     const userId = resolvedUserId ?? DEFAULT_USER_ID;
-
-    // ── fast path: LLM 자율 발견 조회 ──
-    if (await tryLlmInsightFastPath(trimmed, say, userId)) return;
 
     // ── fast path: 백로그 조회 ──
     if (BACKLOG_QUERY_RE.test(trimmed)) {

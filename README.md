@@ -48,7 +48,7 @@ graph LR
 **LLM이 합성하는 영역 — 출력은 다 화이트리스트·DB 제약으로 검증**
 
 - **일기 메타 태그 추출 (22 enum 화이트리스트)** — Opus가 일기 텍스트에서 `irritation`·`mood_down`·`task_completion` 같은 22개 enum 태그를 골라낸다. 시스템 프롬프트가 "이 22개 외엔 절대 출력 금지"로 강제 + 응답 파싱 후 `TAG_SET` 화이트리스트로 한 번 더 필터. **자유 텍스트로 새 태그가 들어올 수 없는 구조** → 카탈로그·가설 검증의 입력 일관성 보장
-- **주간 사주 회고** — 매주 월요일 아침 Opus가 지난 7일 메트릭 + 신뢰도 단계별 영향력(verified/accumulating/recent)을 받아 사주 관점 회고를 Block Kit 카드로 발송. 멱등성(idempotency) DB 제약(`UNIQUE(user_id, week_start) ON CONFLICT DO NOTHING RETURNING`)으로 크론 재실행·재시도에도 정확히 1회 영속화
+- **주간 사주 회고** — 매주 월요일 아침 Opus가 지난 7일 메트릭 + 신뢰도 단계별 영향력(verified/emerging/recent)을 받아 사주 관점 회고를 Block Kit 카드로 발송. 멱등성(idempotency) DB 제약(`UNIQUE(user_id, week_start) ON CONFLICT DO NOTHING RETURNING`)으로 크론 재실행·재시도에도 정확히 1회 영속화
 - **잔소리 합성** — SQL이 모은 패턴 + 일기 + 사주 패턴을 받아 그날 톤·맥락에 맞는 잔소리로 합성
 
 **하루 두 번 작동** — 밤은 그날 데이터를 엮은 잔소리, 아침은 어제 루틴 달성도 + 오늘 일정 안내.
@@ -89,7 +89,7 @@ graph LR
 - **라우터 1차 필터** — 채널별 에이전트 매핑(`#life`/`#insight`/`#money`), 봇 메시지·subtype 필터(에코·루프 차단), 사용자별 슬라이딩 윈도우 Rate Limit(1분 5회), 메시지 길이 10KB 제한
 - **DB Proxy + SQL 화이트리스트** — DDL(테이블 생성·삭제·구조 변경) 차단, 위험 함수 차단, WHERE 필수, 벌크 처리 행 수 제한
 - **modify_db 승인 플로우** — 변경 쿼리는 Slack 카드로 dry-run 결과를 보여주고 사용자 승인 후 실행
-- **LLM 자율 슬롯 4중 안전장치** — LLM이 자유롭게 발견 쿼리를 짤 수 있는 슬롯엔 (1) SELECT-only 강제 (2) `get_schema` 사전 호출 의무 (3) `result_type` 화이트리스트 (4) `verify_after_days` 1\~28 clamp으로 폭주 방지. 슬롯 설계 전반 + 4중 안전장치 상세는 [ADR 0016](docs/adr/0016-llm-autonomous-slot-outcome-verification.md) Section 3
+- **LLM-생성 SQL 2단 방어** — LLM이 측정 신호 SQL을 자율 제안하면 (1) 정적 검증(단일 SELECT · `user_id=$1` 강제 · 테이블 deny-by-default 화이트리스트 · 위험 함수 차단) (2) 격리 실행(READ ONLY 트랜잭션 + row cap + 항상 ROLLBACK)으로 통제하고, 채택은 사람 승인 게이트 + 통계가 가린다. 상세는 [ADR 0040](docs/adr/0040-llm-signal-sql-validation-and-execution-isolation.md). (이전의 LLM 자율 발견 슬롯 [ADR 0016]은 통계 기반 발굴로 대체되어 은퇴 — [ADR 0043](docs/adr/0043-retire-v2-llm-autonomous-discovery.md))
 
 <p align="center">
   <img src="docs/images/llm-approval-card-01.png" alt="modify_db 승인 카드 — dry-run 결과" width="45%" />
@@ -126,7 +126,7 @@ graph TB
     CF --> VIEW
     CAT --> VIEW
     REC[(최근 7일<br/>trigger 발현)] --> VIEW
-    VIEW[saju_influence_summary VIEW<br/>신뢰도 라벨링<br/>verified · accumulating · recent]
+    VIEW[saju_influence_summary VIEW<br/>신뢰도 라벨링<br/>verified · emerging · recent]
     VIEW --> O([실시간 LLM 응답에<br/>tier별 노출])
 
     classDef io fill:#f3f4f6,stroke:#6b7280,color:#111827
@@ -141,14 +141,14 @@ graph TB
 
 **자동 전이 조건 — 코드가 가설을 결정한다 (사람 개입 0)**
 
-- `active → confirmed`: BH 보정 후 **q < 0.05** AND **rate_ratio ≥ 1.3** (effect size 컷 — 통계적 유의해도 효과 미미하면 채택 안 함) AND **누적 trigger 발현일 ≥ 30**
-- `active → rejected`: 최근 4주 rate_ratio가 **0.95 ~ 1.05에서 평탄** = 효과 없음
+- `active → confirmed`: BH 보정 후 **q < 0.05** AND **rate_ratio ≥ 1.3** (effect size 컷) AND **발현일 ≥ 30** 으로 1차 선별 → **누적 e-value ≥ 20** 통과 시 확정. e-value는 순차 검정(anytime-valid)이라 매주 들여다봐도(optional stopping) 거짓양성을 통제 — "매주 q를 보면 언젠가 우연히 유의해진다"는 함정을 막는다
+- `active → rejected`: 최근 rate_ratio가 **0.95 ~ 1.05에서 평탄** = 효과 없음
 - 조건 미달이면 `active` 유지하고 다음 주 재평가
 
-**3 tier 라벨링 — OR 조건 아닌 신뢰도 등급 표시** — view는 동일 페어가 어느 단계의 근거인지 동시에 라벨링한다. LLM은 tier에 따라 어휘 강도를 조절(verified는 단정, accumulating은 가능성, recent는 즉시성).
+**3 tier 라벨링 — OR 조건 아닌 신뢰도 등급 표시** — 엄격한 게이트는 "검증됨" 주장에만, 가시성은 별도 hedged tier가 나른다(느린 확정 수율을 침묵으로 만들지 않으면서 미검증을 확정처럼 노출하지 않음). LLM은 tier에 따라 어휘 강도를 조절.
 
-- **verified**: 통계 검증 통과한 가설 (강한 신뢰도)
-- **accumulating**: 카탈로그 누적 충분(hit_rate ≥ 0.55, n ≥ 5) — 검증 전이지만 신호 있음
+- **verified** "검증됨": e-value ≥ 20 통계 확정 (강한 신뢰도, 단 연관이지 인과는 아님)
+- **emerging** "검증중": 발현일 vs 비발현일 **off-day 대조 효과**가 leaning(effect ≥ 1.3) — 확정 전이지만 경향 있음. e-value 진행바로 "쌓이는 중"을 정직하게 노출
 - **recent**: 최근 7일 trigger 발현 — 즉시성
 
 **왜 두 시스템으로 나눴나** — catalog는 "이 페어가 자주 같이 나옴"의 빠른 트래킹(통계 검정 없이 카운터만). 검증된 신호로 격상하려면 가설 파이프라인을 거쳐 통계 검정을 받아야 함. 두 단계를 view로 묶어 신뢰도 단계별로 라벨링.
@@ -218,8 +218,8 @@ graph TB
 
 일정과 루틴을 자연어 대화로 기록·조회·수정. 하루 2회 크론 알림이 진행 현황 리뷰와 프로액티브 잔소리를 함께 전달한다.
 
-- **아침 알림** — 어제 루틴 최종 달성도 + 오늘 일정 + 낮 루틴 체크리스트
-- **밤 알림** — 오늘 일정 소화 현황 + 루틴 진행률 + 그날 데이터 기반 잔소리
+- **아침 알림** — 어제 루틴 최종 달성도 + 오늘 일정
+- **밤 알림** — 오늘 일정 소화 현황 + 그날 데이터 기반 잔소리
 
 ### 2. 수면 — 자연어 입력 + 패턴 분석
 

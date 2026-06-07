@@ -14,7 +14,18 @@ vi.mock('pg', () => {
   return { default: { Pool: MockPool, types: { setTypeParser: vi.fn() } } };
 });
 
-const { connectDB, query, queryOne, disconnectDB } = await import('../db.js');
+const { connectDB, query, queryOne, queryReadOnly, disconnectDB } = await import('../db.js');
+
+/** 읽기 전용 TX 제어문은 빈 결과로 처리하고 데이터 쿼리만 dataResult로 응답하는 클라이언트 mock. */
+const makeReadOnlyClient = (dataResult: { rows: unknown[]; rowCount: number }) => {
+  const calls: string[] = [];
+  const clientQuery = vi.fn(async (text: string) => {
+    calls.push(text);
+    if (/^\s*(SET|BEGIN|ROLLBACK|COMMIT)/i.test(text)) return { rows: [], rowCount: 0 };
+    return dataResult;
+  });
+  return { client: { query: clientQuery, release: mockRelease }, calls };
+};
 
 describe('db', () => {
   beforeEach(async () => {
@@ -52,10 +63,7 @@ describe('db', () => {
       mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
 
       await query('SELECT * FROM schedules WHERE id = $1', [42]);
-      expect(mockQuery).toHaveBeenCalledWith(
-        'SELECT * FROM schedules WHERE id = $1',
-        [42],
-      );
+      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM schedules WHERE id = $1', [42]);
     });
   });
 
@@ -72,6 +80,48 @@ describe('db', () => {
       mockQuery.mockResolvedValue({ rows: [] });
       const result = await queryOne('SELECT * FROM schedules WHERE id = $1', [999]);
       expect(result).toBeNull();
+    });
+  });
+
+  describe('queryReadOnly — LLM 신호 실행 격리 (게이트 #2)', () => {
+    it('읽기 전용 TX로 실행하고 항상 ROLLBACK한다 (COMMIT 없음)', async () => {
+      await connectDB('postgresql://test@localhost/test');
+      const { client, calls } = makeReadOnlyClient({ rows: [{ n: 3 }], rowCount: 1 });
+      mockConnect.mockResolvedValue(client);
+
+      const result = await queryReadOnly('SELECT 3 AS n', 5000, 5);
+      expect(result.rows).toEqual([{ n: 3 }]);
+      expect(calls).toContain('BEGIN');
+      expect(calls).toContain('SET TRANSACTION READ ONLY');
+      expect(calls.some((c) => /^\s*ROLLBACK/i.test(c))).toBe(true);
+      expect(calls.some((c) => /^\s*COMMIT/i.test(c))).toBe(false); // 쓰기 경로 없음
+    });
+
+    it('rowCount가 maxRows 초과면 ROLLBACK 후 throw', async () => {
+      await connectDB('postgresql://test@localhost/test');
+      const { client, calls } = makeReadOnlyClient({
+        rows: new Array(10).fill({ x: 1 }),
+        rowCount: 10,
+      });
+      mockConnect.mockResolvedValue(client);
+
+      await expect(queryReadOnly('SELECT x FROM t', 5000, 5)).rejects.toThrow(/10행/);
+      expect(calls.some((c) => /^\s*ROLLBACK/i.test(c))).toBe(true);
+    });
+
+    it('실행 오류 시 ROLLBACK하고 전파한다', async () => {
+      await connectDB('postgresql://test@localhost/test');
+      const calls: string[] = [];
+      const clientQuery = vi.fn(async (text: string) => {
+        calls.push(text);
+        if (/^\s*(SET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
+        throw new Error('boom');
+      });
+      mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
+
+      await expect(queryReadOnly('SELECT bad', 5000, 5)).rejects.toThrow('boom');
+      expect(calls.some((c) => /^\s*ROLLBACK/i.test(c))).toBe(true);
+      expect(mockRelease).toHaveBeenCalled();
     });
   });
 

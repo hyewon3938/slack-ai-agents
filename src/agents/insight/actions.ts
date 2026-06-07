@@ -1,24 +1,28 @@
 /**
  * Insight 에이전트 Slack 액션 핸들러.
  *
- * - 가설 후보 카드 등록/패스 버튼 (ADR-0019 Phase 4)
- * - LLM 매트릭 후보 카드 승인/거절 버튼 (ADR-0025·0030 Phase 6)
+ * - 발굴 승인 카드 [추적 시작]/[패스] — pending pattern_link → active/archived (#477 P5a, ADR-0039).
+ *   사람은 노출·큐레이션(추적할 가치)만 게이트, 믿음(진짜인지)은 주간 e-value 트랙이 가린다.
+ * - LLM 신호 승인/반려 [측정 시작]/[반려] — signal_defs(source=llm) pending → active/rejected
+ *   (#477 P5b, ADR-0040). 승인 시 게이트 #1(validateSignalSql) 재검증 통과해야만 활성화.
+ *   사람은 큐레이션만 게이트, untrusted SQL의 안전은 검증·격리가, 진짜인지는 off-day 통계가 가린다.
  */
 
 import type { App } from '@slack/bolt';
 import { query } from '../../shared/db.js';
+import { validateSignalSql } from '../../shared/signal-sql-guard.js';
 import { updateMessage } from '../../shared/slack.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {
-  HYPOTHESIS_REGISTER_ACTION_ID,
-  HYPOTHESIS_DISMISS_ACTION_ID,
-  decodeActionPayload,
+  DISCOVERY_APPROVE_ACTION_ID,
+  DISCOVERY_DISMISS_ACTION_ID,
+  decodeDiscoveryPayload,
 } from './hypothesis-cards.js';
 import {
-  METRIC_APPROVE_ACTION_ID,
-  METRIC_REJECT_ACTION_ID,
-  decodeMetricActionPayload,
-} from './metric-approval-cards.js';
+  LLM_SIGNAL_APPROVE_ACTION_ID,
+  LLM_SIGNAL_REJECT_ACTION_ID,
+  decodeLlmSignalPayload,
+} from './llm-signal-cards.js';
 
 const resolveBodyUserId = async (body: { user?: string | { id: string } }): Promise<number> => {
   const slackUserId = body.user ? (typeof body.user === 'string' ? body.user : body.user.id) : '';
@@ -36,125 +40,204 @@ const extractRawValue = (body: unknown): string | null => {
   return typeof value === 'string' ? value : null;
 };
 
+// ─── 발굴 승인/패스 — pending pattern_link status 전이 (테스트 가능 코어) ──
+
+/**
+ * 발굴 후보 승인 — pending → active. 다음 주간 검증부터 off-day 대조 대상.
+ * @returns 전이된 링크 id (pending 아님/타 유저면 null).
+ */
+export const approveDiscoveryLink = async (
+  userId: number,
+  linkId: number,
+): Promise<number | null> => {
+  const res = await query<{ id: number }>(
+    `UPDATE pattern_links SET status = 'active', updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'pending'
+       RETURNING id`,
+    [linkId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+/**
+ * 발굴 후보 패스 — pending → archived. 사용자 "추적 안 함"이지 통계 'rejected'(데이터 "연관 없음")가 아님.
+ * 둘 다 여집합 제외라 재부상 안 함. @returns 전이된 링크 id (pending 아님/타 유저면 null).
+ */
+export const dismissDiscoveryLink = async (
+  userId: number,
+  linkId: number,
+): Promise<number | null> => {
+  const res = await query<{ id: number }>(
+    `UPDATE pattern_links SET status = 'archived', updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'pending'
+       RETURNING id`,
+    [linkId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+// ─── LLM 신호 승인/반려 — signal_defs(source=llm) status 전이 (테스트 가능 코어, ADR-0040) ──
+
+/**
+ * LLM 신호 승인 — 게이트 #1 정적 재검증 통과 시에만 pending → active (#477 P5b).
+ * 저장된 sql_body도 불신: 승인 시점에 validateSignalSql 재실행, 실패하면 활성화 거부(미승인 = 실행 0).
+ * 가드: 본인(user_id=$2) + pending + source='llm'만. @returns 활성화된 signalId, 아니면 null.
+ */
+export const approveLlmSignal = async (
+  userId: number,
+  signalId: number,
+): Promise<number | null> => {
+  const sel = await query<{ sql_body: string | null }>(
+    `SELECT sql_body FROM signal_defs
+       WHERE id = $1 AND user_id = $2 AND status = 'pending' AND source = 'llm'`,
+    [signalId, userId],
+  );
+  const sql = sel.rows[0]?.sql_body;
+  if (!sql) return null;
+  const err = validateSignalSql(sql);
+  if (err) {
+    console.warn(`[Insight Action] llm_signal 승인 거부(검증 실패) id=${signalId}: ${err}`);
+    return null;
+  }
+  const res = await query<{ id: number }>(
+    `UPDATE signal_defs SET status = 'active', approved_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'pending' AND source = 'llm'
+       RETURNING id`,
+    [signalId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+/**
+ * LLM 신호 반려 — pending → rejected. 동일 가드(본인·pending·llm). 재제안 시 LLM이 차이를 명시해야.
+ * @returns 반려된 signalId, 아니면 null.
+ */
+export const rejectLlmSignal = async (userId: number, signalId: number): Promise<number | null> => {
+  const res = await query<{ id: number }>(
+    `UPDATE signal_defs SET status = 'rejected'
+       WHERE id = $1 AND user_id = $2 AND status = 'pending' AND source = 'llm'
+       RETURNING id`,
+    [signalId, userId],
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+const extractChannelTs = (body: unknown): { channelId?: string; messageTs?: string } => {
+  const b = body as { channel?: { id?: string }; message?: { ts?: string } };
+  return {
+    channelId: b.channel?.id,
+    messageTs: b.message?.ts,
+  };
+};
+
 export const registerInsightActions = (app: App): void => {
-  app.action(HYPOTHESIS_REGISTER_ACTION_ID, async ({ ack, body, client }) => {
+  app.action(DISCOVERY_APPROVE_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
     const raw = extractRawValue(body);
     if (!raw) return;
-    const payload = decodeActionPayload(raw);
+    const payload = decodeDiscoveryPayload(raw);
     if (!payload) {
-      console.warn('[Insight Action] hypothesis_register: payload 디코딩 실패');
+      console.warn('[Insight Action] discovery_approve: payload 디코딩 실패');
       return;
     }
     try {
       const userId = await resolveBodyUserId(body);
-      await query(
-        `INSERT INTO pattern_hypotheses (user_id, trigger_spec, enum_target, source)
-         VALUES ($1, $2, $3, 'discovery')`,
-        [userId, payload.triggerSpec, payload.enumTarget],
-      );
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
-      if (channelId && messageTs) {
-        await updateMessage(
-          client,
-          channelId,
-          messageTs,
-          `가설 등록 완료 — \`${payload.enumTarget}\` 주간 추적 시작.`,
-          [],
-        );
-      }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] hypothesis_register 오류: ${msg}`);
-    }
-  });
-
-  app.action(HYPOTHESIS_DISMISS_ACTION_ID, async ({ ack, body, client }) => {
-    await ack();
-    const raw = extractRawValue(body);
-    if (!raw) return;
-    const payload = decodeActionPayload(raw);
-    try {
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
-      if (channelId && messageTs) {
-        const label = payload?.enumTarget ?? '후보';
-        await updateMessage(client, channelId, messageTs, `_${label} 후보 반려함._`, []);
-      }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] hypothesis_dismiss 오류: ${msg}`);
-    }
-  });
-
-  app.action(METRIC_APPROVE_ACTION_ID, async ({ ack, body, client }) => {
-    await ack();
-    const raw = extractRawValue(body);
-    if (!raw) return;
-    const payload = decodeMetricActionPayload(raw);
-    if (!payload) {
-      console.warn('[Insight Action] metric_approve: payload 디코딩 실패');
-      return;
-    }
-    try {
-      const userId = await resolveBodyUserId(body);
-      const res = await query<{ id: number; description: string }>(
-        `UPDATE pattern_metrics
-           SET status = 'active', approved_at = NOW()
-         WHERE id = $1 AND user_id = $2 AND status = 'pending'
-         RETURNING id, description`,
-        [payload.metricId, userId],
-      );
-      if (res.rows.length === 0) {
+      const linkId = await approveDiscoveryLink(userId, payload.linkId);
+      if (linkId === null) {
         console.warn(
-          `[Insight Action] metric_approve: id=${payload.metricId} pending 아님 또는 권한 없음`,
+          `[Insight Action] discovery_approve: link=${payload.linkId} pending 아님 또는 권한 없음`,
         );
         return;
       }
-      const row = res.rows[0];
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
+      const { channelId, messageTs } = extractChannelTs(body);
       if (channelId && messageTs) {
         await updateMessage(
           client,
           channelId,
           messageTs,
-          `매트릭 승인 완료 — \`${row.description}\` 다음 매칭 cron부터 활성.`,
+          '추적 시작 — 다음 주간 검증부터 off-day 대조로 진짜인지 가린다.',
           [],
         );
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] metric_approve 오류: ${msg}`);
+      console.error(`[Insight Action] discovery_approve 오류: ${msg}`);
     }
   });
 
-  app.action(METRIC_REJECT_ACTION_ID, async ({ ack, body, client }) => {
+  app.action(DISCOVERY_DISMISS_ACTION_ID, async ({ ack, body, client }) => {
     await ack();
     const raw = extractRawValue(body);
     if (!raw) return;
-    const payload = decodeMetricActionPayload(raw);
+    const payload = decodeDiscoveryPayload(raw);
+    if (!payload) return;
+    try {
+      const userId = await resolveBodyUserId(body);
+      await dismissDiscoveryLink(userId, payload.linkId);
+      const { channelId, messageTs } = extractChannelTs(body);
+      if (channelId && messageTs) {
+        await updateMessage(client, channelId, messageTs, '_후보 패스함 — 추적 안 함._', []);
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Insight Action] discovery_dismiss 오류: ${msg}`);
+    }
+  });
+
+  // ── LLM 신호 승인/반려 — signal_defs(source=llm) pending → active/rejected (#477 P5b, ADR-0040) ──
+  app.action(LLM_SIGNAL_APPROVE_ACTION_ID, async ({ ack, body, client }) => {
+    await ack();
+    const raw = extractRawValue(body);
+    if (!raw) return;
+    const payload = decodeLlmSignalPayload(raw);
     if (!payload) {
-      console.warn('[Insight Action] metric_reject: payload 디코딩 실패');
+      console.warn('[Insight Action] llm_signal_approve: payload 디코딩 실패');
       return;
     }
     try {
       const userId = await resolveBodyUserId(body);
-      await query(
-        `UPDATE pattern_metrics
-           SET status = 'rejected', rejected_at = NOW()
-         WHERE id = $1 AND user_id = $2 AND status = 'pending'`,
-        [payload.metricId, userId],
+      const signalId = await approveLlmSignal(userId, payload.signalId);
+      const { channelId, messageTs } = extractChannelTs(body);
+      if (!channelId || !messageTs) return;
+      if (signalId === null) {
+        await updateMessage(
+          client,
+          channelId,
+          messageTs,
+          '_검증 실패 또는 이미 처리됨 — 활성화 안 됨._',
+          [],
+        );
+        return;
+      }
+      await updateMessage(
+        client,
+        channelId,
+        messageTs,
+        '측정 시작 — 매일 이 신호를 재고, 다음 발굴에서 시드와 연결되면 off-day로 검정한다.',
+        [],
       );
-      const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
-      const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[Insight Action] llm_signal_approve 오류: ${msg}`);
+    }
+  });
+
+  app.action(LLM_SIGNAL_REJECT_ACTION_ID, async ({ ack, body, client }) => {
+    await ack();
+    const raw = extractRawValue(body);
+    if (!raw) return;
+    const payload = decodeLlmSignalPayload(raw);
+    if (!payload) return;
+    try {
+      const userId = await resolveBodyUserId(body);
+      await rejectLlmSignal(userId, payload.signalId);
+      const { channelId, messageTs } = extractChannelTs(body);
       if (channelId && messageTs) {
-        await updateMessage(client, channelId, messageTs, `_매트릭 후보 반려._`, []);
+        await updateMessage(client, channelId, messageTs, '_신호 반려함 — 측정 안 함._', []);
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[Insight Action] metric_reject 오류: ${msg}`);
+      console.error(`[Insight Action] llm_signal_reject 오류: ${msg}`);
     }
   });
 };

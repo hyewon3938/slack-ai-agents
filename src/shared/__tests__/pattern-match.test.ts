@@ -30,9 +30,10 @@ import { connectDB } from '../db.js';
 import {
   evaluateTrigger,
   evaluateMetric,
-  compactMatchedLine,
-  verifyDailyMatches,
   recordDailyMatches,
+  runMetricSql,
+  runLlmSignalSql,
+  runnerForSource,
   __resetCacheForTest,
   type SajuSeedWithMetrics,
   type DailyContext,
@@ -54,8 +55,9 @@ beforeEach(async () => {
   mockConnect.mockImplementation(() =>
     Promise.resolve({
       query: (sql: string, ...args: unknown[]) => {
-        // SET statement_timeout 류는 무시 — 데이터 쿼리만 mockQuery로 위임
-        if (typeof sql === 'string' && /^\s*SET\s+statement_timeout/i.test(sql)) {
+        // 트랜잭션 제어문(SET statement_timeout / SET TRANSACTION / BEGIN / ROLLBACK / COMMIT)은
+        // 무시 — 데이터 쿼리만 mockQuery로 위임. queryReadOnly(게이트 #2) 경로도 통과.
+        if (typeof sql === 'string' && /^\s*(SET|BEGIN|ROLLBACK|COMMIT)\b/i.test(sql)) {
           return Promise.resolve({ rows: [] });
         }
         return mockQuery(sql, ...args);
@@ -233,6 +235,101 @@ describe('evaluateTrigger - element_density', () => {
     });
     const ctx = baseCtx();
     expect(await evaluateTrigger(seed, ctx, stemMap, branchMap)).toBe(false);
+  });
+});
+
+// ─── evaluateTrigger: strength_band (#477 P4a) ────────────
+// 일별 cron 경로: 저장된 분위수 컷으로 오늘 강도를 밴드 판정. 강도 계산은 순수(DB 불요).
+
+describe('evaluateTrigger - strength_band', () => {
+  const strengthSeed = (target: string, band: string): SajuSeedWithMetrics =>
+    baseSeed({ trigger_target_type: 'strength_band', trigger_aux: { target, band } });
+
+  // 극단 컷으로 밴드를 결정론적으로 강제(실제 강도값과 무관하게 wiring 검증).
+  const cutsHigh = new Map([['day_master', { low: -1e9, high: -1e9 }]]); // 모든 유한 강도 → high
+  const cutsLow = new Map([['day_master', { low: 1e9, high: 1e9 }]]); // 모든 유한 강도 → low
+
+  it('오늘 강도가 high 밴드 + 시드 band=high → true', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'high'), ctx, stemMap, branchMap, cutsHigh),
+    ).toBe(true);
+  });
+
+  it('오늘 강도가 high 밴드인데 시드 band=low → false', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'low'), ctx, stemMap, branchMap, cutsHigh),
+    ).toBe(false);
+  });
+
+  it('오늘 강도가 low 밴드 + 시드 band=low → true', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'low'), ctx, stemMap, branchMap, cutsLow),
+    ).toBe(true);
+  });
+
+  it('컷 맵 미전달(첫 주간 엔진 실행 전) → false (발현 없음, 정직)', async () => {
+    const ctx = baseCtx();
+    expect(await evaluateTrigger(strengthSeed('day_master', 'high'), ctx, stemMap, branchMap)).toBe(
+      false,
+    );
+  });
+
+  it('해당 target 컷 없으면 → false', async () => {
+    const ctx = baseCtx();
+    const otherCuts = new Map([['화', { low: -1e9, high: -1e9 }]]);
+    expect(
+      await evaluateTrigger(strengthSeed('day_master', 'high'), ctx, stemMap, branchMap, otherCuts),
+    ).toBe(false);
+  });
+
+  it('잘못된 aux(target 비유효) → false', async () => {
+    const ctx = baseCtx();
+    expect(
+      await evaluateTrigger(strengthSeed('bogus', 'high'), ctx, stemMap, branchMap, cutsHigh),
+    ).toBe(false);
+  });
+
+  it('오행 target도 해석 (화 강도 high 컷 → true)', async () => {
+    const ctx = baseCtx();
+    const huaCuts = new Map([['화', { low: -1e9, high: -1e9 }]]);
+    expect(
+      await evaluateTrigger(strengthSeed('화', 'high'), ctx, stemMap, branchMap, huaCuts),
+    ).toBe(true);
+  });
+});
+
+// ─── evaluateTrigger: hwa_sipsung (#477 P4b) ──────────────
+
+describe('evaluateTrigger - hwa_sipsung', () => {
+  const hwaSeed = (sipsin: string): SajuSeedWithMetrics =>
+    baseSeed({ trigger_target_type: 'hwa_sipsung', trigger_aux: { sipsin, via: 'hwa' } });
+
+  // 본명 갑 + 월운 기 → 갑기합토(통근 술). 化 토는 일간 경(금) 대비 인성(토생금).
+  const hwaCtx = baseCtx({ wolun: makePillar('기', '축') });
+
+  it('합화일 효과적 십성 일치 → true (化토 → 인성)', async () => {
+    expect(await evaluateTrigger(hwaSeed('인성'), hwaCtx, stemMap, branchMap)).toBe(true);
+  });
+
+  it('합화일이지만 다른 십성 → false', async () => {
+    expect(await evaluateTrigger(hwaSeed('재성'), hwaCtx, stemMap, branchMap)).toBe(false);
+  });
+
+  it('합화 없는 날 → false', async () => {
+    const noHwa = baseCtx({
+      seun: makePillar('경', '신'),
+      wolun: makePillar('경', '신'),
+      ilun: makePillar('경', '신'),
+    });
+    expect(await evaluateTrigger(hwaSeed('인성'), noHwa, stemMap, branchMap)).toBe(false);
+  });
+
+  it('잘못된 sipsin aux → false', async () => {
+    const seed = baseSeed({ trigger_target_type: 'hwa_sipsung', trigger_aux: { sipsin: 'bogus' } });
+    expect(await evaluateTrigger(seed, hwaCtx, stemMap, branchMap)).toBe(false);
   });
 });
 
@@ -427,12 +524,17 @@ describe('evaluateTrigger - sibiunsung', () => {
 
 describe('evaluateMetric', () => {
   const baseMetric = (overrides: Partial<SajuMetric> = {}): SajuMetric => ({
-    id: 1,
+    link_id: 1,
+    signal_id: 1,
     pattern_id: 1,
     metric_name: 'test_metric',
+    kind: 'sql',
+    source: 'seed',
     expected_metric_sql: 'SELECT 1',
     expected_direction: 'above_avg',
     expected_threshold: null,
+    value_type: 'continuous',
+    tag_name: null,
     domain: 'schedule',
     ...overrides,
   });
@@ -497,95 +599,34 @@ describe('evaluateMetric', () => {
     expect(result.todayValue).toBe(0);
     expect(result.passed).toBe(false);
   });
-});
 
-// ─── compactMatchedLine ───────────────────────────────────
-
-describe('compactMatchedLine', () => {
-  const ctx = baseCtx({ dayStem: '경', dayBranch: '술' });
-
-  const buildResult = (
-    id: number,
-    name: string,
-    sipsin: string | null,
-    matched: boolean,
-    passedDomains: string[] = ['schedule'],
-  ): SeedMatchResult => ({
-    seed: baseSeed({ id, name, sipsin }),
-    triggerActivated: true,
-    metricEvaluations: passedDomains.map((d) => ({
-      metric_name: `${d}_x`,
-      domain: d,
-      todayValue: 1,
-      baselineAvg: 0,
-      threshold: null,
-      direction: 'above_abs',
-      passed: true,
-    })),
-    matched,
-    isEvidenceOnly: false,
-    triggerError: null,
-  });
-
-  /** pattern_summary view에서 pattern_id → total_hits 반환을 mock. */
-  const mockSummary = (hitsById: Record<number, number>): void => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes('pattern_summary')) {
-        return Promise.resolve({
-          rows: Object.entries(hitsById).map(([id, hits]) => ({
-            pattern_id: Number(id),
-            total_hits: String(hits),
-          })),
-        });
-      }
-      return Promise.resolve({ rows: [] });
+  it('kind=tag — 그날 태그 존재하면 passed (binary, #477 P1)', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [{ '?column?': 1 }] }));
+    const metric = baseMetric({
+      kind: 'tag',
+      tag_name: 'anxiety',
+      domain: 'diary_meta',
+      expected_metric_sql: null,
+      expected_direction: null,
     });
-  };
-
-  it('matched 시드 없으면 null', async () => {
-    mockSummary({});
-    const results = [buildResult(1, 'S1', '편재', false)];
-    expect(await compactMatchedLine(ctx, results)).toBeNull();
+    const result = await evaluateMetric(metric, 1, '2026-05-17');
+    expect(result.passed).toBe(true);
+    expect(result.todayValue).toBe(1);
+    expect(result.direction).toBe('flag_present');
   });
 
-  it('matched 시드 1개 — 일운 + 시드 한 줄 포맷', async () => {
-    mockSummary({ 1: 5 });
-    const results = [buildResult(1, 'S1_갑목_편재_천간', '편재', true)];
-    const line = await compactMatchedLine(ctx, results);
-    expect(line).toContain('오늘 일운 경술');
-    expect(line).toContain('편재');
-    expect(line).toContain('schedule');
-  });
-
-  it('최대 3개까지만 노출, pattern_summary.total_hits 높은 순', async () => {
-    mockSummary({ 1: 2, 2: 10, 3: 5, 4: 8 });
-    const results = [
-      buildResult(1, 'S1', '편재', true),
-      buildResult(2, 'S2', '식신', true),
-      buildResult(3, 'S3', '정인', true),
-      buildResult(4, 'S4', '비견', true),
-    ];
-    const line = await compactMatchedLine(ctx, results);
-    expect(line).toContain('식신'); // total_hits 10 (1순위)
-    expect(line).toContain('비견'); // total_hits 8 (2순위)
-    expect(line).toContain('정인'); // total_hits 5 (3순위)
-    expect(line).not.toContain('편재'); // total_hits 2 → cap
-  });
-
-  it('sipsin 없으면 name으로 대체', async () => {
-    mockSummary({ 5: 3 });
-    const results = [buildResult(5, 'S5_토_과다', null, true)];
-    const line = await compactMatchedLine(ctx, results);
-    expect(line).toContain('S5_토_과다');
-  });
-
-  it('pattern_summary에 행 없으면 total_hits=0으로 취급 (정렬 동률)', async () => {
-    mockSummary({}); // 빈 view 결과
-    const results = [buildResult(1, 'S1', '편재', true), buildResult(2, 'S2', '식신', true)];
-    const line = await compactMatchedLine(ctx, results);
-    // 둘 다 동률 — 입력 순서대로 유지되는지만 확인 (cap 3 미만)
-    expect(line).toContain('편재');
-    expect(line).toContain('식신');
+  it('kind=tag — 그날 태그 없으면 not passed', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    const metric = baseMetric({
+      kind: 'tag',
+      tag_name: 'anxiety',
+      domain: 'diary_meta',
+      expected_metric_sql: null,
+      expected_direction: null,
+    });
+    const result = await evaluateMetric(metric, 1, '2026-05-17');
+    expect(result.passed).toBe(false);
+    expect(result.todayValue).toBe(0);
   });
 });
 
@@ -826,152 +867,9 @@ describe('evaluateTrigger - life_signal', () => {
   });
 });
 
-// ─── Phase 4: verifyDailyMatches (matched 카운터 + Bayesian posterior) ─────
+// ─── recordDailyMatches (#477 P2 — seed_daily_activations 슬림 write) ──
 
-describe('verifyDailyMatches (Phase 4)', () => {
-  /**
-   * verifyDailyMatches 호출은 SELECT 2건 + UPDATE 다수 패턴.
-   * mockQuery에 순차적 응답을 등록하고 호출 인자를 검증.
-   */
-
-  it('hit 매칭은 pattern_metrics hit_count + posterior_alpha UPDATE', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        return Promise.resolve({ rows: [{ id: 100, pattern_id: 7, matched: true }] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        return Promise.resolve({ rows: [] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    // UPDATE pattern_matches verify_status='hit'
-    const matchUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_matches') &&
-        sql.includes('verify_status') &&
-        Array.isArray(params) &&
-        params[0] === 'hit',
-    );
-    expect(matchUpdate).toBeDefined();
-
-    // UPDATE pattern_metrics hit_count + posterior_alpha
-    const metricUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_metrics') &&
-        sql.includes('hit_count       = hit_count + 1') &&
-        sql.includes('posterior_alpha = posterior_alpha + 1.0') &&
-        Array.isArray(params) &&
-        params[0] === 7,
-    );
-    expect(metricUpdate).toBeDefined();
-  });
-
-  it('miss 매칭은 pattern_metrics miss_count + posterior_beta UPDATE', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        return Promise.resolve({ rows: [{ id: 101, pattern_id: 8, matched: false }] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        return Promise.resolve({ rows: [] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    const metricUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_metrics') &&
-        sql.includes('miss_count      = miss_count + 1') &&
-        sql.includes('posterior_beta  = posterior_beta + 1.0') &&
-        Array.isArray(params) &&
-        params[0] === 8,
-    );
-    expect(metricUpdate).toBeDefined();
-  });
-
-  it('evidence-only (matched IS NULL)는 SELECT 1에서 제외되어 카운터 UPDATE 안 함', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        // matched IS NOT NULL 필터로 인해 빈 결과
-        return Promise.resolve({ rows: [] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        // evidence-only 1건
-        return Promise.resolve({ rows: [{ id: 200, pattern_id: 9, matched: null }] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    const metricUpdate = calls.find(
-      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE pattern_metrics'),
-    );
-    expect(metricUpdate).toBeUndefined();
-
-    // verify_status='inconclusive' UPDATE는 실행되어야 함
-    const inconclusiveUpdate = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_matches') &&
-        sql.includes("verify_status = 'inconclusive'") &&
-        Array.isArray(params) &&
-        params[0] === 200,
-    );
-    expect(inconclusiveUpdate).toBeDefined();
-  });
-
-  it('trigger_off (matched IS NOT NULL but trigger_activated=false)는 inconclusive_count UPDATE', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("verify_status = 'pending'") && sql.includes('trigger_activated = true')) {
-        return Promise.resolve({ rows: [] });
-      }
-      if (sql.includes("verify_status = 'pending'") && sql.includes('OR matched IS NULL')) {
-        return Promise.resolve({ rows: [{ id: 300, pattern_id: 10, matched: false }] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-
-    await verifyDailyMatches(1);
-
-    const calls = mockQuery.mock.calls;
-    const inconclusiveCounter = calls.find(
-      ([sql, params]) =>
-        typeof sql === 'string' &&
-        sql.includes('UPDATE pattern_metrics') &&
-        sql.includes('inconclusive_count = inconclusive_count + 1') &&
-        Array.isArray(params) &&
-        params[0] === 10,
-    );
-    expect(inconclusiveCounter).toBeDefined();
-  });
-
-  it('pending 없으면 UPDATE 호출 0회', async () => {
-    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
-    await verifyDailyMatches(1);
-
-    const updates = mockQuery.mock.calls.filter(
-      ([sql]) =>
-        typeof sql === 'string' &&
-        (sql.includes('UPDATE pattern_matches') || sql.includes('UPDATE pattern_metrics')),
-    );
-    expect(updates.length).toBe(0);
-  });
-});
-
-// ─── recordDailyMatches (Phase 8a) ───────────────────────
-
-describe('recordDailyMatches (Phase 8a)', () => {
+describe('recordDailyMatches (#477 P2)', () => {
   const makeResult = (overrides: Partial<SeedMatchResult>): SeedMatchResult => ({
     seed: baseSeed({ id: 42 }),
     triggerActivated: false,
@@ -982,49 +880,118 @@ describe('recordDailyMatches (Phase 8a)', () => {
     ...overrides,
   });
 
-  /** INSERT INTO pattern_matches 호출 1건의 params 추출. */
-  const findInsertParams = (): unknown[] | null => {
+  /** INSERT INTO seed_daily_activations 호출들의 params 목록 추출. */
+  const findInsertCalls = (): unknown[][] =>
+    mockQuery.mock.calls
+      .filter(
+        ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO seed_daily_activations'),
+      )
+      .map((call) => call[1] as unknown[]);
+
+  it('seed_daily_activations에 trigger_activated/matched만 기록 (verify 컬럼 없음)', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    const r = makeResult({ seed: baseSeed({ id: 7 }), triggerActivated: true, matched: false });
+    await recordDailyMatches(1, '2026-05-29', [r]);
+
+    const calls = findInsertCalls();
+    expect(calls).toHaveLength(1);
+    // params = [user_id, date, pattern_id, trigger_activated, matched]
+    expect(calls[0]).toEqual([1, '2026-05-29', 7, true, false]);
+  });
+
+  it('matched=null(evidence-only)도 그대로 기록', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    const r = makeResult({ triggerActivated: true, isEvidenceOnly: true, matched: null });
+    await recordDailyMatches(1, '2026-05-29', [r]);
+
+    const calls = findInsertCalls();
+    expect(calls[0]?.[4]).toBeNull();
+  });
+
+  it('SQL은 metric_values·verify_status·error_message 컬럼을 쓰지 않는다', async () => {
+    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
+    await recordDailyMatches(1, '2026-05-29', [makeResult({ triggerActivated: true })]);
+
     const call = mockQuery.mock.calls.find(
-      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO pattern_matches'),
+      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO seed_daily_activations'),
     );
-    return call ? (call[1] as unknown[]) : null;
-  };
-
-  it('triggerError truthy → verify_status=error + error_message JSONB INSERT', async () => {
-    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
-    const r = makeResult({ triggerError: 'column "wake_at" does not exist' });
-    await recordDailyMatches(1, '2026-05-29', [r]);
-
-    const params = findInsertParams();
-    expect(params).not.toBeNull();
-    expect(params?.[6]).toBe('error');
-    const errorJson = params?.[7] as string;
-    expect(errorJson).not.toBeNull();
-    expect(JSON.parse(errorJson)).toEqual({ reason: 'column "wake_at" does not exist' });
+    const sql = call?.[0] as string;
+    expect(sql).not.toContain('metric_values');
+    expect(sql).not.toContain('verify_status');
+    expect(sql).not.toContain('error_message');
   });
 
-  it('triggerError null + isEvidenceOnly → verify_status=no_metric + error_message=null', async () => {
+  it('결과 N건 → INSERT N회 호출', async () => {
     mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
-    const r = makeResult({ triggerActivated: true, isEvidenceOnly: true, triggerError: null });
-    await recordDailyMatches(1, '2026-05-29', [r]);
-
-    const params = findInsertParams();
-    expect(params?.[6]).toBe('no_metric');
-    expect(params?.[7]).toBeNull();
+    const results = [
+      makeResult({ seed: baseSeed({ id: 1 }), triggerActivated: true }),
+      makeResult({ seed: baseSeed({ id: 2 }), triggerActivated: false }),
+      makeResult({ seed: baseSeed({ id: 3 }), triggerActivated: true }),
+    ];
+    await recordDailyMatches(1, '2026-05-29', results);
+    expect(findInsertCalls()).toHaveLength(3);
   });
+});
 
-  it('triggerError null + metric 있음 → verify_status=pending + error_message=null', async () => {
-    mockQuery.mockImplementation(() => Promise.resolve({ rows: [] }));
-    const r = makeResult({
-      triggerActivated: true,
-      isEvidenceOnly: false,
-      matched: false,
-      triggerError: null,
+describe('LLM 신호 실행 격리 (#477 P5b, ADR-0040)', () => {
+  describe('runnerForSource — source별 실행기 디스패치', () => {
+    it("source='llm'은 runLlmSignalSql(격리), 'seed'는 runMetricSql(신뢰)", () => {
+      expect(runnerForSource('llm')).toBe(runLlmSignalSql);
+      expect(runnerForSource('seed')).toBe(runMetricSql);
     });
-    await recordDailyMatches(1, '2026-05-29', [r]);
+  });
 
-    const params = findInsertParams();
-    expect(params?.[6]).toBe('pending');
-    expect(params?.[7]).toBeNull();
+  describe('runLlmSignalSql — 게이트 #2 (재검증 + read-only 실행)', () => {
+    it('검증 실패 SQL은 실행 전 throw (DB 미접근)', async () => {
+      await expect(
+        runLlmSignalSql('SELECT sum(value) FROM assets WHERE user_id = $1', 1, '2026-06-06'),
+      ).rejects.toThrow(/검증 실패/);
+      expect(mockQuery).not.toHaveBeenCalled(); // 데이터 쿼리 미실행
+    });
+
+    it('쓰기 시도(DML) SQL도 검증 게이트에서 차단(read-only 도달 전)', async () => {
+      await expect(
+        runLlmSignalSql('DELETE FROM schedules WHERE user_id = $1', 1, '2026-06-06'),
+      ).rejects.toThrow(/검증 실패/);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('검증 통과 SQL은 read-only TX로 실행되어 단일 숫자 반환', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ cnt: 4 }], rowCount: 1 });
+      const v = await runLlmSignalSql(
+        'SELECT count(*) AS cnt FROM schedules WHERE user_id = $1 AND date = $2',
+        1,
+        '2026-06-06',
+      );
+      expect(v).toBe(4);
+      // $1/$2 치환 후 데이터 쿼리가 mockQuery에 도달(제어문은 mock에서 통과 처리).
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      const issued = mockQuery.mock.calls[0]?.[0] as string;
+      expect(issued).toContain('FROM schedules');
+      expect(issued).not.toContain('$1'); // userId 치환됨
+    });
+  });
+
+  describe("evaluateMetric — source='llm' 분기", () => {
+    it('llm 신호는 격리 경로로 todayValue를 얻는다(절대 임계)', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ v: 2 }], rowCount: 1 });
+      const metric: SajuMetric = {
+        link_id: 1,
+        signal_id: 1,
+        pattern_id: 1,
+        metric_name: 'llm_test',
+        kind: 'sql',
+        source: 'llm',
+        expected_metric_sql: 'SELECT count(*) AS v FROM expenses WHERE user_id = $1 AND date = $2',
+        expected_direction: 'above_abs',
+        expected_threshold: 1,
+        value_type: 'continuous',
+        tag_name: null,
+        domain: 'expense',
+      };
+      const ev = await evaluateMetric(metric, 1, '2026-06-06');
+      expect(ev.todayValue).toBe(2);
+      expect(ev.passed).toBe(true); // 2 >= 1
+    });
   });
 });

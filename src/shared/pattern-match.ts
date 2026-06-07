@@ -1,20 +1,25 @@
 /**
  * 사주 시드 카탈로그 기반 일일 매칭 엔진.
- * ADR-0017 + ADR-0026(pattern_* rename) 참조.
+ * ADR-0017 + ADR-0026(pattern_* rename) + ADR-0033(매트릭=가설 5어휘 재정의, #477 P1) 참조.
  *
  * 흐름:
- *   1) loadActiveSeeds — pattern_catalog + pattern_metrics 조회
+ *   1) loadActiveSeeds — pattern_catalog + pattern_links × signal_defs(전역 신호) 조회
  *   2) getDailyContext — 일운(getDayPillar) + 본명(saju_profiles) 로드
  *   3) evaluateTrigger — trigger_target_type별 분기 평가
- *   4) evaluateMetrics — 메트릭 SQL 실행 + 28일 baseline 비교 → matched 판정
- *   5) recordDailyMatch — pattern_matches UPSERT
+ *   4) evaluateMetric — 신호 평가: kind=sql(SQL + baseline/임계 비교) | kind=tag(그날 태그 존재 여부)
+ *   5) recordDailyMatches — seed_daily_activations UPSERT (오늘 발현 시드 핸드오프 로그)
+ *
+ * #477 P2: 검증 단위는 (시드 × 신호) = pattern_links, 검증은 주간 엔진(pattern-verification)이
+ * raw에서 윈도우 재계산. 본 모듈은 매칭 + 일별 핸드오프 기록(seed_daily_activations)까지만 담당.
  */
 
-import { query, queryWithClient } from './db.js';
+import { query, queryWithClient, queryReadOnly } from './db.js';
+import { validateSignalSql, SIGNAL_ROW_CAP } from './signal-sql-guard.js';
 import {
   computeCumulativePillarCount,
   getDayPillar,
   getDaeunPillar,
+  getElementByCheongan,
   getMonthPillar,
   getYearPillar,
   makePillar,
@@ -24,6 +29,10 @@ import {
   type Pillar,
   type PillarSet,
 } from './saju-calendar.js';
+import { computeStrengthForTarget, isStrengthTarget } from './saju-strength.js';
+import { detectHwaTransforms, elementToSipsinGroup, isSipsinGroup } from './saju-hwa.js';
+import { SAJU_HWA_PARAMS } from './saju-strength-params.js';
+import { classifyBand, isBand, type BandCuts } from './quantile.js';
 import { addDays } from './kst.js';
 import { dispatchLifeSignal } from './life-signal-evaluators/index.js';
 
@@ -46,6 +55,8 @@ export interface SajuSeed {
     | 'sibiunsung'
     | 'relation'
     | 'cumulative_pillar_count'
+    | 'strength_band'
+    | 'hwa_sipsung'
     | 'life_signal';
   trigger_target_id: number | null;
   trigger_aux: Record<string, unknown> | null;
@@ -55,13 +66,24 @@ export interface SajuSeed {
   source: 'seed' | 'llm_promoted';
 }
 
+/**
+ * (시드 × 신호) 평가 단위. #477 P1: pattern_links × signal_defs JOIN 결과.
+ * kind=sql이면 expected_metric_sql/expected_direction 보유(CHECK 보장),
+ * kind=tag이면 tag_name 보유 + 그날 태그 존재 여부를 binary로 평가.
+ */
 export interface SajuMetric {
-  id: number;
+  link_id: number;
+  signal_id: number;
   pattern_id: number;
   metric_name: string;
-  expected_metric_sql: string;
-  expected_direction: 'above_avg' | 'below_avg' | 'above_abs' | 'below_abs' | 'flag_present';
+  kind: 'sql' | 'tag';
+  /** signal_defs.source — 'llm'이면 실행 시 untrusted SQL 격리 경로(runLlmSignalSql) 사용 (#477 P5b). */
+  source: 'seed' | 'llm';
+  expected_metric_sql: string | null;
+  expected_direction: 'above_avg' | 'below_avg' | 'above_abs' | 'below_abs' | 'flag_present' | null;
   expected_threshold: number | null;
+  value_type: 'binary' | 'continuous' | null;
+  tag_name: string | null;
   domain:
     | 'schedule'
     | 'routine'
@@ -254,9 +276,9 @@ export interface SeedMatchResult {
   metricEvaluations: MetricEvaluation[];
   /** 매트릭 평가 결과. 매트릭 없는 풀셋 시드(evidence-only)는 null. */
   matched: boolean | null;
-  /** 풀셋 evidence-only 시드 여부. true면 verify_status='no_metric'로 INSERT. */
+  /** 풀셋 evidence-only 시드 여부(매트릭 없음). matched=null로 기록. */
   isEvidenceOnly: boolean;
-  /** 시드 평가 중 SQL/시스템 오류 발생 시 message. truthy면 verify_status='error'로 INSERT. */
+  /** 시드 평가 중 SQL/시스템 오류 발생 시 message. 로깅용(일별 핸드오프 로그엔 미기록). */
   triggerError: string | null;
 }
 
@@ -354,13 +376,16 @@ export const loadActiveSeeds = async (userId: number): Promise<SajuSeedWithMetri
   if (seeds.rows.length === 0) return [];
 
   const ids = seeds.rows.map((s) => s.id);
-  // Phase 1: 결정론 시드 매트릭만 활성. LLM 자율 매트릭(status='pending')은 Phase 4에서.
+  // #477 P1: 검증 단위 = (시드 × 신호) 활성 링크 × 활성 신호. pending 링크/신호(LLM 미승인)는 제외.
   const metrics = await query<MetricRow>(
-    `SELECT id, pattern_id, metric_name, expected_metric_sql,
-            expected_direction, expected_threshold, domain
-       FROM pattern_metrics
-      WHERE pattern_id = ANY($1) AND status = 'active'
-      ORDER BY id`,
+    `SELECT l.id AS link_id, l.seed_id AS pattern_id, s.id AS signal_id,
+            s.name AS metric_name, s.kind, s.source,
+            s.sql_body AS expected_metric_sql, s.direction AS expected_direction,
+            s.threshold AS expected_threshold, s.value_type, s.tag_name, s.domain
+       FROM pattern_links l
+       JOIN signal_defs s ON s.id = l.signal_id
+      WHERE l.seed_id = ANY($1) AND l.status = 'active' AND s.status = 'active'
+      ORDER BY l.id`,
     [ids],
   );
 
@@ -485,6 +510,15 @@ const VALID_ELEMENTS: readonly Element[] = ['목', '화', '토', '금', '수'];
 const isElement = (v: unknown): v is Element =>
   typeof v === 'string' && (VALID_ELEMENTS as readonly string[]).includes(v);
 
+/** DailyContext → 운 풀셋 PillarSet (cumulative·strength_band 공용) */
+const pillarSetOf = (ctx: DailyContext): PillarSet => ({
+  wonguk: ctx.natal.pillars,
+  daeun: ctx.daeun,
+  seun: ctx.seun,
+  wolun: ctx.wolun,
+  ilun: ctx.ilun,
+});
+
 /**
  * cumulative_pillar_count trigger 평가 (Phase 2.5).
  * trigger_aux:
@@ -496,14 +530,7 @@ const evaluateCumulativePillarCount = (seed: SajuSeed, ctx: DailyContext): boole
   const countMin = getNumberField(aux as Record<string, unknown>, 'count_min');
   if (countMin === null || countMin <= 0) return false;
 
-  const pillarSet: PillarSet = {
-    wonguk: ctx.natal.pillars,
-    daeun: ctx.daeun,
-    seun: ctx.seun,
-    wolun: ctx.wolun,
-    ilun: ctx.ilun,
-  };
-  const count = computeCumulativePillarCount(ctx.natal.dayMaster, pillarSet);
+  const count = computeCumulativePillarCount(ctx.natal.dayMaster, pillarSetOf(ctx));
 
   if (isElement(aux['element'])) {
     return count.element[aux['element']] >= countMin;
@@ -519,6 +546,7 @@ export const evaluateTrigger = async (
   ctx: DailyContext,
   stemNameToId: Map<string, number>,
   branchNameToId: Map<string, number>,
+  strengthCuts?: Map<string, BandCuts>,
 ): Promise<boolean> => {
   const aux = seed.trigger_aux ?? {};
 
@@ -621,6 +649,30 @@ export const evaluateTrigger = async (
       return false;
     }
 
+    case 'strength_band': {
+      // #477 P4a — 강도 밴드. 일별 cron은 윈도우가 없어 주간 엔진이 저장한 분위수 컷으로 판정.
+      // 컷 없으면(첫 주간 엔진 실행 전) false — 발현 없음(정직). 가설=시드×신호 (off-day 검증).
+      if (!strengthCuts) return false;
+      const target = aux['target'];
+      const band = aux['band'];
+      if (!isStrengthTarget(target) || !isBand(band)) return false;
+      const cuts = strengthCuts.get(target);
+      if (!cuts) return false;
+      const strength = computeStrengthForTarget(target, ctx.natal.dayMaster, pillarSetOf(ctx));
+      return classifyBand(strength, cuts) === band;
+    }
+
+    case 'hwa_sipsung': {
+      // #477 P4b — 효과적 십성(ADR-0038). 오늘 풀셋에서 합화 변환이 일어나면 化 오행의 일간 대비
+      // 5그룹 십성을 산출 → seed.sipsin과 일치 시 발현. 합화 성립일에만 fire(sparse, 윈도우 비의존).
+      const sipsin = aux['sipsin'];
+      if (!isSipsinGroup(sipsin)) return false;
+      const { transforms } = detectHwaTransforms(pillarSetOf(ctx), SAJU_HWA_PARAMS);
+      if (transforms.length === 0) return false;
+      const dmElement = getElementByCheongan(ctx.natal.dayMaster);
+      return transforms.some((t) => elementToSipsinGroup(dmElement, t.element) === sipsin);
+    }
+
     case 'life_signal': {
       // Phase 3 — life_signal 단일 type + trigger_aux.kind 분기 (ADR-0029)
       if (!isLifeSignalAux(aux)) return false;
@@ -634,15 +686,9 @@ export const evaluateTrigger = async (
 
 // ─── 메트릭 평가 ─────────────────────────────────────────
 
-const runMetricSql = async (sql: string, userId: number, date: string): Promise<number> => {
-  const result = await queryWithClient<Record<string, unknown>>(
-    // pg parameter binding은 query() 경로로만 가능, queryWithClient는 raw query.
-    // metric SQL은 catalog에 영속된 신뢰 SQL이므로 $1/$2 자리에 안전한 값 대입.
-    // userId는 INTEGER, date는 'YYYY-MM-DD' 형식 → SQL injection 위험 없음.
-    sql.replace(/\$1/g, String(userId)).replace(/\$2/g, `'${date}'`),
-    METRIC_TIMEOUT_MS,
-  );
-  const firstRow = result.rows[0];
+/** 단일 숫자 신호 결과 추출 — 첫 행 첫 컬럼을 number로 좁힘(없거나 비숫자면 0). */
+const extractFirstNumber = (rows: Record<string, unknown>[]): number => {
+  const firstRow = rows[0];
   if (!firstRow) return 0;
   const firstValue = Object.values(firstRow)[0];
   if (firstValue === null || firstValue === undefined) return 0;
@@ -654,13 +700,57 @@ const runMetricSql = async (sql: string, userId: number, date: string): Promise<
   return 0;
 };
 
-const baselineAvg = async (sql: string, userId: number, date: string): Promise<number> => {
+/** 신호 SQL 실행기 — runMetricSql(seed, 신뢰) | runLlmSignalSql(llm, untrusted) 공통 시그니처. */
+export type MetricRunner = (sql: string, userId: number, date: string) => Promise<number>;
+
+export const runMetricSql = async (sql: string, userId: number, date: string): Promise<number> => {
+  const result = await queryWithClient<Record<string, unknown>>(
+    // pg parameter binding은 query() 경로로만 가능, queryWithClient는 raw query.
+    // seed metric SQL은 catalog에 영속된 신뢰 SQL이므로 $1/$2 자리에 안전한 값 대입.
+    // userId는 INTEGER, date는 'YYYY-MM-DD' 형식 → SQL injection 위험 없음.
+    sql.replace(/\$1/g, String(userId)).replace(/\$2/g, `'${date}'`),
+    METRIC_TIMEOUT_MS,
+  );
+  return extractFirstNumber(result.rows);
+};
+
+/**
+ * LLM 자율 신호 SQL 실행 — 게이트 #2 (#477 P5b, ADR-0040).
+ * source='llm' SQL은 untrusted → ① 실행 직전 재검증(저장된 sql_body도 불신, 실패 시 throw)
+ * + ② read-only 트랜잭션 격리(INSERT/UPDATE/DELETE를 PG가 거부, 검증 우회 백스톱) + row cap.
+ * runMetricSql과 시그니처·반환 동일 → 호출부가 source로 둘 중 하나를 고른다.
+ */
+export const runLlmSignalSql = async (
+  sql: string,
+  userId: number,
+  date: string,
+): Promise<number> => {
+  const err = validateSignalSql(sql);
+  if (err) throw new Error(`LLM 신호 SQL 검증 실패: ${err}`);
+  const result = await queryReadOnly<Record<string, unknown>>(
+    sql.replace(/\$1/g, String(userId)).replace(/\$2/g, `'${date}'`),
+    METRIC_TIMEOUT_MS,
+    SIGNAL_ROW_CAP,
+  );
+  return extractFirstNumber(result.rows);
+};
+
+/** signal_defs.source → 실행기 선택 (llm은 격리 경로). */
+export const runnerForSource = (source: 'seed' | 'llm'): MetricRunner =>
+  source === 'llm' ? runLlmSignalSql : runMetricSql;
+
+const baselineAvg = async (
+  sql: string,
+  userId: number,
+  date: string,
+  runner: MetricRunner = runMetricSql,
+): Promise<number> => {
   let sum = 0;
   let n = 0;
   for (let i = 1; i <= BASELINE_WINDOW_DAYS; i++) {
     const d = addDays(date, -i);
     try {
-      const v = await runMetricSql(sql, userId, d);
+      const v = await runner(sql, userId, d);
       sum += v;
       n++;
     } catch {
@@ -670,23 +760,63 @@ const baselineAvg = async (sql: string, userId: number, date: string): Promise<n
   return n > 0 ? sum / n : 0;
 };
 
+/** tag 신호 — 그날 해당 일기 메타 태그 존재 여부 (binary). */
+const tagPresent = async (userId: number, date: string, tagName: string): Promise<boolean> => {
+  const result = await query(
+    `SELECT 1 FROM diary_meta_tags WHERE user_id = $1 AND date = $2 AND tag = $3 LIMIT 1`,
+    [userId, date, tagName],
+  );
+  return result.rows.length > 0;
+};
+
 export const evaluateMetric = async (
   metric: SajuMetric,
   userId: number,
   date: string,
 ): Promise<MetricEvaluation> => {
-  const todayValue = await runMetricSql(metric.expected_metric_sql, userId, date);
+  // kind=tag — off-day 대조용 객관 보조 신호. 그날 태그가 찍혔으면 hit(binary).
+  if (metric.kind === 'tag') {
+    const present = metric.tag_name ? await tagPresent(userId, date, metric.tag_name) : false;
+    return {
+      metric_name: metric.metric_name,
+      domain: metric.domain,
+      todayValue: present ? 1 : 0,
+      baselineAvg: null,
+      threshold: 1,
+      direction: 'flag_present',
+      passed: present,
+    };
+  }
+
+  // kind=sql — signal_defs CHECK가 sql_body/direction NOT NULL 보장. 방어적으로 좁힘.
+  const sql = metric.expected_metric_sql;
+  const direction = metric.expected_direction;
+  if (!sql || !direction) {
+    return {
+      metric_name: metric.metric_name,
+      domain: metric.domain,
+      todayValue: 0,
+      baselineAvg: null,
+      threshold: metric.expected_threshold,
+      direction: direction ?? 'flag_present',
+      passed: false,
+    };
+  }
+
+  // source='llm'이면 untrusted 격리 실행기(runLlmSignalSql), seed면 기존 신뢰 경로(runMetricSql).
+  const runner = runnerForSource(metric.source);
+  const todayValue = await runner(sql, userId, date);
 
   let baseline: number | null = null;
   let passed = false;
 
-  switch (metric.expected_direction) {
+  switch (direction) {
     case 'above_avg':
-      baseline = await baselineAvg(metric.expected_metric_sql, userId, date);
+      baseline = await baselineAvg(sql, userId, date, runner);
       passed = todayValue > baseline;
       break;
     case 'below_avg':
-      baseline = await baselineAvg(metric.expected_metric_sql, userId, date);
+      baseline = await baselineAvg(sql, userId, date, runner);
       passed = todayValue < baseline;
       break;
     case 'above_abs':
@@ -706,7 +836,7 @@ export const evaluateMetric = async (
     todayValue,
     baselineAvg: baseline,
     threshold: metric.expected_threshold,
-    direction: metric.expected_direction,
+    direction,
     passed,
   };
 };
@@ -718,11 +848,34 @@ interface NameIdRow {
   id: number;
 }
 
-const buildNameIdMap = async (
+export const buildNameIdMap = async (
   table: 'stems_master' | 'branches_master',
 ): Promise<Map<string, number>> => {
   const result = await query<NameIdRow>(`SELECT id, name FROM ${table}`);
   return new Map(result.rows.map((r) => [r.name, r.id]));
+};
+
+interface CutpointRow {
+  target: string;
+  low_cut: string;
+  high_cut: string;
+}
+
+/**
+ * strength_band 일별 판정용 저장 컷 로드 (#477 P4a) — target('day_master'|오행) → BandCuts.
+ * 주간 검증 엔진이 윈도우 분위수로 산출·저장(strength_band_cutpoints). 없으면 빈 맵 → 발현 없음(정직).
+ * 모듈 캐시 안 함 — 봇이 장시간 떠 있어 주간 갱신 컷이 stale해지면 안 됨(매 cron 호출당 1회 로드).
+ */
+export const loadStrengthCutpoints = async (userId: number): Promise<Map<string, BandCuts>> => {
+  const result = await query<CutpointRow>(
+    `SELECT target, low_cut, high_cut FROM strength_band_cutpoints WHERE user_id = $1`,
+    [userId],
+  );
+  const map = new Map<string, BandCuts>();
+  for (const r of result.rows) {
+    map.set(r.target, { low: Number(r.low_cut), high: Number(r.high_cut) });
+  }
+  return map;
 };
 
 export const matchAllSeedsForDay = async (
@@ -735,9 +888,10 @@ export const matchAllSeedsForDay = async (
   const seeds = await loadActiveSeeds(userId);
   if (seeds.length === 0) return [];
 
-  const [stemMap, branchMap] = await Promise.all([
+  const [stemMap, branchMap, strengthCuts] = await Promise.all([
     buildNameIdMap('stems_master'),
     buildNameIdMap('branches_master'),
+    loadStrengthCutpoints(userId),
   ]);
 
   const results: SeedMatchResult[] = [];
@@ -745,7 +899,7 @@ export const matchAllSeedsForDay = async (
     // Phase 8a: per-seed try/catch — 한 시드 trigger SQL 실패가 cron 전체를 죽이지 않게 격리.
     // 내부 metric try/catch는 trigger 통과 후 일부 metric만 fail하는 케이스 보호 → 보존.
     try {
-      const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap);
+      const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap, strengthCuts);
 
       const metricEvaluations: MetricEvaluation[] = [];
       if (triggerActivated) {
@@ -803,154 +957,25 @@ export const recordDailyMatches = async (
   results: SeedMatchResult[],
 ): Promise<void> => {
   for (const r of results) {
-    const metricValues = Object.fromEntries(
-      r.metricEvaluations.map((e) => [
-        e.metric_name,
-        {
-          today: e.todayValue,
-          baseline: e.baselineAvg,
-          passed: e.passed,
-        },
-      ]),
-    );
-    // Phase 8a: 시드 평가 실패 시 verify_status='error' + error_message JSONB로 INSERT (멱등 + 디버깅).
-    // ON CONFLICT에 error_message도 포함 → 다음 cron 재실행 시 성공하면 자동 NULL로 회복.
-    const verifyStatus = r.triggerError ? 'error' : r.isEvidenceOnly ? 'no_metric' : 'pending';
-    const errorMessage = r.triggerError ? JSON.stringify({ reason: r.triggerError }) : null;
+    // #477 P2: seed_daily_activations = "오늘 발현 시드" 핸드오프 로그 (검증 진실 아님).
+    // 검증 컬럼(metric_values·verify_status·error_message)은 078에서 제거 — 검증은 주간 엔진.
+    // trigger_activated/matched만 멱등 UPSERT → daily-insight·recent tier·pillar-level이 소비.
     await query(
-      `INSERT INTO pattern_matches
-         (user_id, date, pattern_id, trigger_activated, metric_values, matched, verify_status, error_message)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb)
+      `INSERT INTO seed_daily_activations
+         (user_id, date, pattern_id, trigger_activated, matched)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, date, pattern_id) DO UPDATE
          SET trigger_activated = EXCLUDED.trigger_activated,
-             metric_values     = EXCLUDED.metric_values,
-             matched           = EXCLUDED.matched,
-             verify_status     = EXCLUDED.verify_status,
-             error_message     = EXCLUDED.error_message`,
-      [
-        userId,
-        date,
-        r.seed.id,
-        r.triggerActivated,
-        JSON.stringify(metricValues),
-        r.matched,
-        verifyStatus,
-        errorMessage,
-      ],
+             matched           = EXCLUDED.matched`,
+      [userId, date, r.seed.id, r.triggerActivated, r.matched],
     );
   }
 };
 
-// ─── 검증 사이클 (다음날 verify_status 확정 + outcome 카운트 누적) ─────
-
-export const verifyDailyMatches = async (userId: number): Promise<void> => {
-  // 어제 trigger_activated=true + matched IS NOT NULL인 pending → hit/miss 확정 + pattern_metrics 카운터 UPDATE.
-  // ADR-0023: counter source of truth는 pattern_metrics. ADR-0024: posterior_alpha/beta Beta-Binomial.
-  const pending = await query<{ id: number; pattern_id: number; matched: boolean | null }>(
-    `SELECT id, pattern_id, matched
-       FROM pattern_matches
-      WHERE user_id = $1 AND verify_status = 'pending'
-        AND date <= (CURRENT_DATE - INTERVAL '1 day')
-        AND trigger_activated = true
-        AND matched IS NOT NULL`,
-    [userId],
-  );
-
-  for (const row of pending.rows) {
-    const outcome = row.matched ? 'hit' : 'miss';
-    await query(`UPDATE pattern_matches SET verify_status = $1 WHERE id = $2`, [outcome, row.id]);
-    if (outcome === 'hit') {
-      await query(
-        `UPDATE pattern_metrics
-            SET hit_count       = hit_count + 1,
-                last_matched_at = NOW(),
-                posterior_alpha = posterior_alpha + 1.0,
-                posterior_p     = (posterior_alpha + 1.0) /
-                                  (posterior_alpha + posterior_beta + 1.0)
-          WHERE pattern_id = $1 AND status = 'active'`,
-        [row.pattern_id],
-      );
-    } else {
-      await query(
-        `UPDATE pattern_metrics
-            SET miss_count      = miss_count + 1,
-                last_matched_at = NOW(),
-                posterior_beta  = posterior_beta + 1.0,
-                posterior_p     = posterior_alpha /
-                                  (posterior_alpha + posterior_beta + 1.0)
-          WHERE pattern_id = $1 AND status = 'active'`,
-        [row.pattern_id],
-      );
-    }
-  }
-
-  // trigger_activated=false 또는 matched IS NULL(evidence-only)은 inconclusive 처리.
-  // matched IS NOT NULL이지만 trigger_activated=false인 케이스만 매트릭 inconclusive_count++.
-  const inconclusiveRows = await query<{
-    id: number;
-    pattern_id: number;
-    matched: boolean | null;
-  }>(
-    `SELECT id, pattern_id, matched
-       FROM pattern_matches
-      WHERE user_id = $1 AND verify_status = 'pending'
-        AND date <= (CURRENT_DATE - INTERVAL '1 day')
-        AND (trigger_activated = false OR matched IS NULL)`,
-    [userId],
-  );
-
-  for (const row of inconclusiveRows.rows) {
-    await query(`UPDATE pattern_matches SET verify_status = 'inconclusive' WHERE id = $1`, [
-      row.id,
-    ]);
-    if (row.matched !== null) {
-      await query(
-        `UPDATE pattern_metrics
-            SET inconclusive_count = inconclusive_count + 1,
-                last_matched_at    = NOW()
-          WHERE pattern_id = $1 AND status = 'active'`,
-        [row.pattern_id],
-      );
-    }
-  }
-};
-
-// ─── Slack 한 줄 압축 ────────────────────────────────────
-
-const MAX_LINE_SEEDS = 3;
-
-export const compactMatchedLine = async (
-  ctx: DailyContext,
-  results: SeedMatchResult[],
-): Promise<string | null> => {
-  const matched = results.filter((r) => r.matched);
-  if (matched.length === 0) return null;
-
-  // 우선순위: pattern_summary view의 total_hits 높은 시드 = 검증된 시드 우선 (재현성 신뢰도)
-  // ADR-0023: 시드 단위 합계는 view에서 derive (catalog 카운터 의존 제거).
-  const patternIds = matched.map((r) => r.seed.id);
-  const summary = await query<{ pattern_id: number; total_hits: string }>(
-    `SELECT pattern_id, total_hits
-       FROM pattern_summary
-      WHERE pattern_id = ANY($1)`,
-    [patternIds],
-  );
-  const hitsByPattern = new Map<number, number>();
-  for (const row of summary.rows) {
-    hitsByPattern.set(row.pattern_id, Number(row.total_hits));
-  }
-
-  matched.sort((a, b) => (hitsByPattern.get(b.seed.id) ?? 0) - (hitsByPattern.get(a.seed.id) ?? 0));
-  const top = matched.slice(0, MAX_LINE_SEEDS);
-
-  const labels = top.map((r) => {
-    const passedDomains = new Set(r.metricEvaluations.filter((e) => e.passed).map((e) => e.domain));
-    const summaryText = Array.from(passedDomains).join('/');
-    return `${r.seed.sipsin ?? r.seed.name} (${summaryText})`;
-  });
-
-  return `오늘 일운 ${ctx.dayStem}${ctx.dayBranch} — ${labels.join(', ')}`;
-};
+// ─── 검증 사이클 ─────────────────────────────────────────
+// #477 P2: 검증(카운터 확정 + status 전이)은 주간 검증 엔진(pattern-verification)이 raw에서
+// 윈도우 재계산(off-day 대조). 본 모듈은 매칭 + 일별 핸드오프 기록까지만 담당.
+// (Slack 한 줄 발송 compactMatchedLine은 #477 P2에서 제거 — 사용자가 매일 확인하지 않는 경로.)
 
 // ─── 캐시 reset (테스트용) ───────────────────────────────
 

@@ -52,24 +52,22 @@
 - 설계 흐름: [docs/design-notebook/insight-engine-v2.md](./design-notebook/insight-engine-v2.md)
 - 결정 기록: [ADR-0014](./adr/0014-insight-engine-unification.md)
 
-### LLM 자율 발견 슬롯 (Phase 2)
-
-- 주간(월요일 09:30) / 월간(매월 1일 09:30) — 정량 데이터 컨텍스트만으로 "신호 → 가설 → 검증 SQL" 자동 작성 (`#life` 채널 발송)
-- N일 뒤 검증 cron(매일 09:10)이 SELECT-only SQL 실행 → outcome(hit/miss/inconclusive) 자동 채점
-- 4중 안전장치: JSON 파싱 폴백 / SELECT-only 정규식 / result_type 화이트리스트 / verify_after_days clamp 1\~28
-- 점진적 노출: 누적 검증 ≥ 10건부터 히트율 공개
-- 슬랙 조회: `LLM발견` (약속 명령어 — 자유언어 추출 없음)
-- 결정 기록: [ADR-0016](./adr/0016-llm-autonomous-slot-outcome-verification.md)
+> v2 "LLM 자율 발견 슬롯"(Phase 2)은 은퇴됨 — #477 통계 기반 발굴(P5a)·LLM 신호 제안(P5b)으로 대체. [ADR-0043](./adr/0043-retire-v2-llm-autonomous-discovery.md).
 
 ### 사주 일일 매칭 (Phase 3)
 
 - 60갑자 마스터 정규화(\~466 rows) 위에 시드 catalog를 얹어 사용자 임상 가설을 정량 검증
 - polymorphic trigger 6종(stem / branch / ganji / element_density / sibiunsung / relation) + 메트릭 5방향(above_avg / below_avg / above_abs / below_abs / flag_present)
-- 매일 07:00 일일 매칭 cron — 어제 pending 매칭 검증(hit/miss/inconclusive) + 오늘 활성 시드 평가 + 누락일 갭 자동 백필 + `#life` 한 줄 발송 (07:00 = 08:00 종합 인사이트 선행, #475)
+- 매일 07:00 일일 매칭 cron — 오늘 활성 시드 평가 → `seed_daily_activations` 기록(오늘 발현 시드 핸드오프, 08:00 종합 인사이트 선행, #475). 검증은 주간 off-day 엔진으로 이관(#477 P2)
 - 일기 LLM enum 16종 자동 추출(허용 enum 외 출력 폐기) → `diary_meta_tags` 적재
 - 약한 시드(누적 \~10건 + hit rate < 30%) 주간 알림 → 사용자 명령어로 active 토글
 - 슬랙 조회/토글: `사주 시드 보기` / `사주 시드 모두 보기` / `사주 시드 끄기 #N` / `사주 시드 켜기 #N`
-- 풀셋 시드(매트릭 없음, 마스터 #434 Phase 2): trigger만 평가하고 `pattern_matches.matched=NULL` + `verify_status='no_metric'`로 evidence-only 누적. 60+일 후 LLM 매트릭 제안 슬롯(Phase 6)이 가설 후보 풀로 사용
+- 풀셋 시드(매트릭 없음, 마스터 #434 Phase 2): trigger만 평가하고 `seed_daily_activations.matched=NULL`로 evidence-only 누적. 60+일 후 LLM 매트릭 제안 슬롯(Phase 6)이 가설 후보 풀로 사용
+- 주간 off-day 검증 엔진(#477 P2/P3, 월 06:00): (시드 × 신호) `pattern_links`를 발현일 vs 비발현일 2×2로 검증 → `#insight` 주간 카드. "본인 패턴"과 "base rate 높은 신호" 분리. **P3 통계 스택**(ADR-0032·0034·0035): 누적 e-value(순차 anytime-valid, optional stopping 통제)로 `e≥20` 확정 + block permutation(자기상관 보정)으로 BH-FDR + 연속 Mann-Whitney 효과크기 + empirical-Bayes 수축. **e-value는 null 시뮬 빌드 게이트**(무관 데이터 거짓양성 ≤ α)
+- 신뢰도 3-tier 노출(#477 P3, ADR-0035): `saju_influence_summary` view = verified("검증됨", e≥20) / emerging("검증중", off-day 효과 leaning + e-value 진행바) / recent("오늘 발현"). 느린 확정 수율을 침묵으로 만들지 않으면서 미검증을 확정처럼 노출하지 않음. 주간 카드 ✅검증됨 / 🌱검증중 / ✗기각
+- 결정론 사주 feature 엔진(#477 P4, ADR-0036·0037·0038): 운 레벨 맥락을 통계 상호작용이 아니라 **결정론 feature**로 환원해 off-day 엔진에 태움(새 통계 코어 0). **P4a 강도**(`saju-strength`): 생조−극설 실효강도 + 월령 + 통근 → 상대 분위수 tertile 밴드(약/적정/강, 주간 컷 산출 → 일별 판정) + 절대 신강/신약 병행. **P4b 관계·합화**(`saju-hwa`): 합화(合化) 변환 pass(化신 통근 게이트 + 충개합 v1a → 강도·밴드·효과적 십성 일관 반영) + 효과적 십성 시드(`hwa_sipsung`) + 관계 확장(귀문·대표 암합). 명리 규칙은 전부 파라미터(깊은 합충 노브 기본 off, 헌장 ④). FDR 가족 3분리(`saju_strength`/`saju_relation`/`baseline`)로 자동 생성 batch가 빠른 트랙 확정을 늦추지 않게 격리. 검증=결정론 얕게(v1a) / 해석=narrative LLM(ADR-0038 §3)
+- 패턴 발굴 엔진 + 승인 게이트(#477 P5a, ADR-0039): 링크 없는 (시드 × 신호) 여집합을 off-day 대조로 스캔(검증 프리미티브 재사용, 새 통계 코어 0) → 느슨한 발견 q로 후보만 surface → `#insight` 맥락 풍부 승인 카드([추적 시작]/[패스]) → `pending`→`active`→다음 주간 엔진이 엄격 e-value로 검정. P4a·P4b가 evidence-only로 남긴 결정론 시드(강도 밴드·관계)를 데이터 기반 검증에 연결. 사람은 노출·큐레이션만 게이트, 믿음은 통계(2층 분리). LLM 신호 제안은 P5b
+- LLM 신호 제안 + 2단 방어(#477 P5b, ADR-0040): LLM이 새 측정 신호(`signal_defs`, `source='llm'`, `kind='sql'`)를 월간 자율 제안 → 사람 승인 게이트(P5a 재사용, `#insight` `[측정 시작]`/`[반려]`) → active 후 P5a 발굴이 시드와 연결 → off-day 통계가 판정(LLM은 생성만, 판정은 통계). 무인 실행되는 LLM-생성 SQL을 **untrusted**로 다뤄 2단 방어 — 게이트 #1 정적 검증(`validateSignalSql`: 단일 SELECT·`$1/$2`만·`user_id=$1` 강제·테이블 deny-by-default 화이트리스트·DDL/DML/위험함수 차단) + 게이트 #2 실행 격리(`source='llm'`만 read-only TX + 재검증 + row cap). 미승인 신호는 inert(`status='active'`만 실행 — 승인 전 SQL 0회 실행). 마이그레이션 0·새 통계 코어 0
 - 운 레벨 차원(마스터 #434 Phase 2.5): 시드별 `pillar_level`(원국/대운/세운/월운/일운/누적) 차원 도입 + `cumulative_pillar_count` trigger(N=1..5 풀셋 임계치) + 화 오행 누적 시드 OR 매칭(`diary_meta` + `expense_category_present`). 월요일 09:15 자동 분포 분석 cron이 hit-rate 분포 노출
 - 결정 기록: [ADR-0017](./adr/0017-saju-ganji-master-normalization.md), [ADR-0028](./adr/0028-pillar-level-and-threshold-pool.md)
 
@@ -82,7 +80,6 @@
 | `#life` | `일정` / `오늘 일정` | 오늘 일정 조회 |
 | `#life` | `내일 일정` | 내일 일정 조회 |
 | `#life` | `백로그` | 밀린 일정 조회 |
-| `#life` | `LLM발견` | LLM 자율 발견 누적 정확도 + 최근 5건 |
 | `#insight` | `일운` / `오늘 일운` | 오늘 일운 조회 |
 | `#insight` | `내일 일운` | 내일 일운 조회 |
 | `#insight` | `월운` | 이번 달 월운 조회 |
@@ -94,7 +91,7 @@
 | `#insight` | `사주 시드 끄기 #N` | signal_id=N active=false (Phase 3) |
 | `#insight` | `사주 시드 켜기 #N` | signal_id=N active=true (Phase 3) |
 
-띄어쓰기·존댓말 어미는 유연하게 매칭(`일정 보여줘`, `LLM 발견`, `오늘 일운` 등). 자세한 정규식은 각 에이전트 파일 상단 주석 참조.
+띄어쓰기·존댓말 어미는 유연하게 매칭(`일정 보여줘`, `오늘 일운` 등). 자세한 정규식은 각 에이전트 파일 상단 주석 참조.
 
 ### 크론 시스템
 
@@ -102,13 +99,12 @@
 |------|------|
 | 07:00 | 사주 일일 매칭 — 어제 검증(hit/miss/inconclusive) + 오늘 평가 + 누락일 갭 백필 + `#life` 한 줄 (Phase 3) |
 | 08:00 | 일일 종합 인사이트 — 오늘 사주 일운 + 검증/현황 개인 패턴 종합 (`#insight`, routine·Opus, #475) |
-| 09:05 | 오늘 일정 + 낮 루틴 체크리스트 + 어제 리뷰 + morning 인사이트 |
-| 09:10 | LLM 자율 발견 outcome 검증 (대기열 50건) |
+| 09:05 | 오늘 일정 + 어제 리뷰 + morning 인사이트 |
 | 월요일 09:00 | 주간 인사이트 리포트 (Block Kit) |
 | 월요일 09:15 | 운 레벨 분포 분석 — `pillar_level`별·누적 N=1..5 hit-rate 분포 (`#insight`, Phase 2.5) |
-| 월요일 09:30 | 주간 LLM 자율 발견 슬롯 (Block Kit) |
-| 매월 1일 09:30 | 월간 LLM 자율 발견 슬롯 (Block Kit) |
-| 23:55 | 하루 종합 리뷰 + 밤 루틴 + 마무리 잔소리 + night 인사이트 |
+| 월요일 06:00 | 주간 패턴 검증 — off-day 통계 + 발굴 후보 + 교란 (`#insight`, #477) |
+| 매월 1일 09:30 | LLM 신호 제안 — 새 측정 신호 자율 제안 승인 카드 (`#insight`, #477 P5b) |
+| 23:55 | 하루 종합 리뷰 + 마무리 잔소리 + night 인사이트 |
 | 23:55 → 익일 05:30 (hotfix 진행 중) | 일기 메타 enum 추출 (Phase 3) |
 
 타임존: `Asia/Seoul` 고정.

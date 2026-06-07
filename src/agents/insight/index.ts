@@ -96,7 +96,7 @@ const tryFortuneFastPath = async (
   return true;
 };
 
-/** pending 매트릭 목록 조회 fast path (ADR-0030) */
+/** pending 후보 목록 조회 fast path (ADR-0030 → #477 P1: pending pattern_links 기반) */
 const showPendingMetrics = async (
   say: Parameters<AgentHandler>[1],
   userId: number,
@@ -108,11 +108,15 @@ const showPendingMetrics = async (
       proposed_at: string;
       seed_name: string | null;
     }>(
-      `SELECT pm.id, pm.description, pm.proposed_at,
-              (SELECT name FROM pattern_catalog WHERE id = pm.pattern_id) AS seed_name
-         FROM pattern_metrics pm
-        WHERE pm.user_id = $1 AND pm.status = 'pending'
-        ORDER BY pm.proposed_at DESC
+      `SELECT l.id,
+              COALESCE(NULLIF(s.description, ''), s.name) AS description,
+              l.created_at::text AS proposed_at,
+              seed.name AS seed_name
+         FROM pattern_links l
+         JOIN signal_defs s ON s.id = l.signal_id
+         JOIN pattern_catalog seed ON seed.id = l.seed_id
+        WHERE l.user_id = $1 AND l.status = 'pending'
+        ORDER BY l.created_at DESC
         LIMIT 20`,
       [userId],
     );
