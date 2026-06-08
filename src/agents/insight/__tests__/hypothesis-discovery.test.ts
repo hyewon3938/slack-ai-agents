@@ -13,6 +13,7 @@ interface SignalRow {
   threshold: string | null;
   tag_name: string | null;
   window_days: number | null;
+  domain: string | null;
   description: string | null;
 }
 
@@ -126,7 +127,12 @@ const makeSeed = (
   metrics: [],
 });
 
-const makeSignal = (id: number, name: string, kind: 'sql' | 'tag' = 'tag'): SignalRow => ({
+const makeSignal = (
+  id: number,
+  name: string,
+  kind: 'sql' | 'tag' = 'tag',
+  domain: string | null = null,
+): SignalRow => ({
   id,
   name,
   kind,
@@ -136,6 +142,7 @@ const makeSignal = (id: number, name: string, kind: 'sql' | 'tag' = 'tag'): Sign
   threshold: null,
   tag_name: kind === 'tag' ? name : null,
   window_days: null,
+  domain,
   description: `${name} 신호`,
 });
 
@@ -265,6 +272,7 @@ describe('discoverCandidates — 연속 신호 효과크기 랭킹 (§4)', () =>
     threshold: null,
     tag_name: null,
     window_days: null,
+    domain: 'sleep',
     description: `${name} 신호`,
   });
 
@@ -368,6 +376,62 @@ describe('discoverCandidates — 가족·강도 밴드 흐름', () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.family).toBe('baseline');
     expect(out[0]?.patternKind).toBe('life_signal');
+  });
+});
+
+describe('discoverCandidates — 동어반복(자기상관) 필터 (#508 ④)', () => {
+  beforeEach(resetFixture);
+
+  /** 행동 시드(life_signal · behavior_baseline) — source 도메인을 signal_name으로 결정. */
+  const behaviorSeed = (id: number, name: string, signalName: string): SajuSeedWithMetrics => ({
+    ...makeSeed(id, name, 'life_signal'),
+    trigger_aux: { kind: 'behavior_baseline', signal_name: signalName },
+  });
+
+  it('행동 시드 × same-domain 신호는 드롭, cross-domain만 surface + 드롭 로그', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // spottyPattern = routine 도메인. 루틴 신호(same)는 자기상관 드롭, 수면 신호(cross)는 통과.
+    fixture.seeds = [behaviorSeed(70, 'life_behavior_spotty', 'spottyPattern')];
+    fixture.signals = [
+      makeSignal(80, 'routine_completion_rate', 'sql', 'routine'),
+      makeSignal(81, 'sleep_total_minutes', 'sql', 'sleep'),
+    ];
+    fixture.activationBySeed.set(70, makeContingencySeries(25, 2, 2, 25).activation);
+    fixture.signalSeriesById.set(80, makeContingencySeries(25, 2, 2, 25).signal);
+    fixture.signalSeriesById.set(81, makeContingencySeries(25, 2, 2, 25).signal);
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.signalId).toBe(81); // 수면(cross-domain)만
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('자기상관'));
+    warnSpy.mockRestore();
+  });
+
+  it('캘린더 life_signal은 면제(same-domain 신호여도 통과)', async () => {
+    // weekday(캘린더)는 behavior_baseline 아님 → seedDom=null → 필터 비대상.
+    const calSeed: SajuSeedWithMetrics = {
+      ...makeSeed(72, 'life_dow_월', 'life_signal'),
+      trigger_aux: { kind: 'weekday', dow: 1 },
+    };
+    fixture.seeds = [calSeed];
+    fixture.signals = [makeSignal(82, 'routine_completion_rate', 'sql', 'routine')];
+    fixture.activationBySeed.set(72, makeContingencySeries(25, 2, 2, 25).activation);
+    fixture.signalSeriesById.set(82, makeContingencySeries(25, 2, 2, 25).signal);
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.seedId).toBe(72);
+  });
+
+  it('사주 시드는 면제(도메인 매핑 없음 → 모든 신호와 교차후보)', async () => {
+    fixture.seeds = [makeSeed(74, '갑목일주', 'stem')];
+    fixture.signals = [makeSignal(84, 'routine_completion_rate', 'sql', 'routine')];
+    fixture.activationBySeed.set(74, makeContingencySeries(25, 2, 2, 25).activation);
+    fixture.signalSeriesById.set(84, makeContingencySeries(25, 2, 2, 25).signal);
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.seedId).toBe(74);
   });
 });
 
