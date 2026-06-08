@@ -1879,6 +1879,51 @@ saju_influence_summary 뷰 (verified 가드 + confound_note) → daily-insight �
 
 **노브** ([insight-thresholds.ts](../../src/shared/insight-thresholds.ts) `confound`, 헌장 ⑤): P6(`minOverlap`·`minCofireDays`·`minEffectZX`·`topN`) + P7 `adjustMinCofire`(30, flag floor 10보다 높게)·`explainAwayMaxEffect`(1.3, `minRateRatio` 승계)·`attenuatedMaxRatio`(0.8)·`minStratumCell`(5)·`elasticNetEnabled`(false, 후속). 첫 몇 주 calibration. 뷰의 explained_away 가드는 JSONB 플래그라 SQL 하드코딩 없음(노브는 TS 조정 단계에만).
 
+### 33. 발굴 엔진 측정 타당성 + 카드 UX — Phase 1 (측정 타당성, #504)
+
+첫 주간 발굴이 띄운 후보가 전부 "루틴 streak × 수면" 같은 허수였고, effect가 150\~180배로 사주 후보를 밀어냈다. 원인은 우연 검정이 아니라 **측정 타당성** — 통계 안전장치(Fisher/BH-FDR/e-value)는 "우연이냐"만 보지 "측정이 맞냐"는 못 본다(GIGO). 상세 판단은 [ADR-0044](../adr/0044-discovery-measurement-validity.md) · [discovery-refinement.md](../design-notebook/discovery-refinement.md).
+
+#### 1) 데이터-존재 윈도우 (아티팩트 근본 원인)
+
+윈도우가 365일 고정인데 도메인별 실제 데이터는 더 짧다. 수면 신호 SQL이 `COALESCE(SUM,0)`이라 **기록 없는 빈 과거를 "0분 수면=발현 안 함(fail)"으로** 세 → 비발현일 pass율(rateOff)이 0으로 깔리고 `effect = rateActive/rateOff`가 폭발. 순수 시간 교란(데이터 있는 최근 vs 텅 빈 과거).
+
+- **per-pair 데이터-존재 구간**: 윈도우 = `[max(시드 시작일, 신호 시작일), today]`. 그 시드와 그 신호가 **둘 다 데이터를 가진 구간**만 2×2·day 시퀀스에 넣는다.
+  - 신호 시작일 = 도메인 테이블 `MIN(date)` ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `DOMAIN_TABLE`: schedule→schedules, sleep→sleep_records, routine→routine_records, expense→expenses, diary_meta→diary_meta_tags, audit→schedules).
+  - 시드 시작일 = saju는 글로벌 floor(매일 일운 존재), life_signal은 의존 도메인 시작(threshold/behavior_baseline→해당 테이블, 캘린더류→floor).
+  - **단일 글로벌 floor로는 부족** — 한 도메인이 다른 도메인보다 먼저 시작하면(예: 지출 기록이 일정보다 이름) floor가 늦게 시작한 신호를 과거로 늘려 같은 아티팩트를 재생산. per-signal 클립이 필수.
+- **빈 과거는 결측, 활성 기간 내 0은 보존**: 신호 시작일 이전 raw를 `null`로 처리([computeSignalSeries](../../src/shared/pattern-verification.ts) `dataStart`) → 2×2 제외 + rolling baseline 오염 차단 + 그 날 SQL 실행 생략. 활성 기간 내 "기록 없음(유효 0)"은 의미로 살린다.
+- 검증([verifyUserLinks](../../src/shared/pattern-verification.ts))·발굴([discoverCandidates](../../src/agents/insight/hypothesis-discovery.ts)) **둘 다 동일 클립** 경유 → 양쪽 정직. `windowCapDays`(365)는 상한 안전장치로 격하(평소 데이터-존재 구간이 더 좁아 binding 안 됨).
+
+#### 2) 발굴 연속신호 효과크기 랭킹 (§4 준수)
+
+ADR-0032 §4 = "연속 신호는 이진화하지 말고 Mann-Whitney + 효과크기로". 검증 엔진은 지키는데 발굴은 raw를 버리고 이진화 rate ratio로 top-N을 잘라 위반하고 있었다.
+
+- **연속 신호**: raw 보존 → `splitRawByActivation` → `mannWhitneyU`. 효과크기 = Hodges-Lehmann(위치이동, 카드 raw 단위) + rank-biserial(scale-free `[-1,1]`)을 방향 하한(`discoveryMinEffectR`=0.2)으로.
+- **이진 신호**: 기존대로 rate ratio(`discoveryMinEffect`=1.3) + Fisher.
+- **혼합 정렬**: 두 타입을 **표준화 z**로 통일(연속=방향 MW z, 이진=2-proportion z). z는 SNR이라 표본 작은 0-분모 아티팩트가 폭증 못 함 — 윈도우 교정과 함께 허수 독식을 이중 차단. block-perm q 게이트(이진 substrate)는 공통 유지 → e-value 확정 트랙 불변.
+- 카드 표시 자연어화는 Phase 2. 이 PR은 측정만 — `DiscoveryCandidate`에 `valueType`·`effectSize`(HL)·`mwP`·`sortZ` + `test_detail` 동봉, 연속은 `test_type='mann_whitney'`.
+
+#### 3) 중복 `signal_defs` 정규화 (마이그 085)
+
+077이 `pattern_metrics`(시드별 행)를 1:1 이관하며 동일 측정 신호가 시드 수만큼 중복 생성(전역화 미완) → 같은 카드 2장+ + 여집합 cross-product 부풀림.
+
+- 전체 시맨틱 키 `(user_id, name, kind, sql_body, value_type, direction, threshold, domain, window_days)` 일치만 "같은 신호" → canonical(active 우선, 그다음 MIN id)로 [085](../../db/migrations/085_dedup_signal_defs.sql). `schedule_count_today` above/below처럼 방향만 다른 건 보존.
+- `pattern_links` repoint(`UNIQUE(seed_id,signal_id)` 충돌·중복은 삭제, canonical 우선) → 잉여 신호 `status='rejected'`(FK·이력 보존) → active sql 부분 unique 인덱스로 재발 차단(tag는 077 인덱스가 이미 보장).
+- **prod dry-run 검증**: active sql 신호 46 → canonical 22(잉여 25 rejected, 12개 중복군), 정규화 후 active 중복군 0.
+
+#### 영향·리스크
+
+- 검증 e-value **1회 re-baseline** — 클립으로 day 시퀀스가 바뀌나 결정론이라 매주 수렴. confirmed 링크는 sticky(active만 재검증)라 영향 없음.
+- 교란 조정([confound.ts](../../src/shared/confound.ts), P7)은 같은 클립 미적용 — dormant(annotate-only, verdict 불변)라 라이브 영향 없음. 활성화 전 적용 필요(코드 TODO 마커).
+
+### 34. 발굴 엔진 측정 타당성 + 카드 UX — Phase 2 (카드 가독성, #504)
+
+> TODO(`/build`): 카드 라벨 레이어 — 변수명 비노출 + 시드 조건·신호 결과 자연어(사주 활성조건 "축·미 정인이 지지에 들 때" / 생활 구체 "루틴 1개라도 N일 연속") + 검증 카드 공통. 신호 라벨 = name+domain+direction 룰 + override.
+
+### 35. 발굴 엔진 측정 타당성 + 카드 UX — Phase 3 (후보 재추천, #504)
+
+> TODO(`/build`): 묶음 전부 거부 → 다음 best 묶음 재추천(여집합 재실행으로 공짜), 자연 소진 1차 정지 + 회차 cap 보조, 무응답=보류, daily tick 트리거, 매주 리셋. 재추천 흐름 ADR은 Phase 3 진입 시.
+
 ## 파일 구조
 
 ```

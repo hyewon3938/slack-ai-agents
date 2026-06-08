@@ -4,12 +4,17 @@ import {
   binarizeSqlSeries,
   buildContingency,
   buildDaySequence,
+  splitRawByActivation,
   verifyContingency,
   classifyVerdict,
   statusForVerdict,
   familyOf,
   bhFdrByFamily,
+  signalDataStart,
+  seedDataStart,
+  maxDate,
   type DaySeries,
+  type UserDataStarts,
 } from '../pattern-verification.js';
 
 // ─── buildWindowDates ────────────────────────────────────
@@ -305,5 +310,139 @@ describe('bhFdrByFamily', () => {
     expect(q[0]).toBeCloseTo(0.01, 6); // baseline N=1
     expect(q[1]).toBeCloseTo(0.02, 6); // saju_strength N=1
     expect(q[2]).toBeCloseTo(0.5, 6); // saju_relation N=3 → 0.3*3/1
+  });
+});
+
+// ─── 데이터-존재 윈도우 클립 (#504, ADR-0044) ────────────
+
+describe('buildContingency — windowStart 데이터-존재 클립', () => {
+  // 빈 과거(데이터-존재 이전)가 off&fail(d)로 새 들어가 rateOff를 0으로 깔고 effect를 폭발시키는
+  // 측정 아티팩트(GIGO) 재현 → windowStart 클립이 교정하는지.
+  const activation = new Map<string, boolean>([
+    ['2026-01-01', false], // ↓ 빈 과거 4일 (데이터-존재 이전)
+    ['2026-01-02', false],
+    ['2026-01-03', false],
+    ['2026-01-04', false],
+    ['2026-01-05', true], // ↓ 실제 데이터 구간
+    ['2026-01-06', true],
+    ['2026-01-07', false],
+    ['2026-01-08', false],
+    ['2026-01-09', true],
+    ['2026-01-10', false],
+  ]);
+  const series: DaySeries = new Map([
+    ['2026-01-01', false], // COALESCE 0 = fail (결측을 0으로 오인)
+    ['2026-01-02', false],
+    ['2026-01-03', false],
+    ['2026-01-04', false],
+    ['2026-01-05', true],
+    ['2026-01-06', true],
+    ['2026-01-07', true],
+    ['2026-01-08', false],
+    ['2026-01-09', true],
+    ['2026-01-10', true],
+  ]);
+
+  it('클립 없으면 빈 과거가 off&fail(d)로 새 → rateOff 폭락 → effect 폭증', () => {
+    const cont = buildContingency(activation, series);
+    expect(cont).toEqual({ a: 3, b: 0, c: 2, d: 5, inconclusive: 0 });
+    expect(verifyContingency(cont).effect).toBeCloseTo(3.5, 1); // (3/3)/(2/7)
+  });
+
+  it('windowStart 클립이 빈 과거를 제외 → rateOff 정상화 → effect 정상', () => {
+    const cont = buildContingency(activation, series, '2026-01-05');
+    expect(cont).toEqual({ a: 3, b: 0, c: 2, d: 1, inconclusive: 0 });
+    expect(verifyContingency(cont).effect).toBeCloseTo(1.5, 1); // (3/3)/(2/3)
+  });
+});
+
+describe('buildDaySequence / splitRawByActivation — windowStart 클립', () => {
+  const windowDates = ['2026-01-04', '2026-01-05', '2026-01-06'];
+  const act = new Map<string, boolean>([
+    ['2026-01-04', true],
+    ['2026-01-05', true],
+    ['2026-01-06', false],
+  ]);
+
+  it('buildDaySequence — windowStart 이전 제외', () => {
+    const sig: DaySeries = new Map([
+      ['2026-01-04', true],
+      ['2026-01-05', false],
+      ['2026-01-06', true],
+    ]);
+    expect(buildDaySequence(act, sig, windowDates, '2026-01-05')).toEqual([
+      { active: true, pass: false },
+      { active: false, pass: true },
+    ]);
+  });
+
+  it('splitRawByActivation — windowStart 이전 제외', () => {
+    const raw = new Map<string, number | null>([
+      ['2026-01-04', 999],
+      ['2026-01-05', 500],
+      ['2026-01-06', 350],
+    ]);
+    expect(splitRawByActivation(act, raw, windowDates, '2026-01-05')).toEqual({
+      active: [500],
+      off: [350],
+    });
+  });
+});
+
+describe('데이터-존재 시작일 헬퍼 (#504)', () => {
+  const starts: UserDataStarts = {
+    byTable: new Map([
+      ['schedules', '2026-03-05'],
+      ['sleep_records', '2026-03-10'],
+      ['expenses', '2026-01-01'],
+      ['routine_records', '2026-03-07'],
+    ]),
+    global: '2026-01-01',
+  };
+
+  it('signalDataStart — domain→table MIN, 매핑 없으면 global fallback', () => {
+    expect(signalDataStart('sleep', starts)).toBe('2026-03-10');
+    expect(signalDataStart('expense', starts)).toBe('2026-01-01');
+    expect(signalDataStart('audit', starts)).toBe('2026-03-05'); // audit→schedules
+    expect(signalDataStart('unknown', starts)).toBe('2026-01-01'); // fallback
+    expect(signalDataStart(null, starts)).toBe('2026-01-01');
+  });
+
+  it('seedDataStart — saju=global, life_signal=의존 도메인', () => {
+    expect(seedDataStart({ trigger_target_type: 'stem', trigger_aux: null }, starts)).toBe(
+      '2026-01-01',
+    ); // saju
+    expect(
+      seedDataStart(
+        {
+          trigger_target_type: 'life_signal',
+          trigger_aux: { kind: 'threshold', source: 'sleep_minutes' },
+        },
+        starts,
+      ),
+    ).toBe('2026-03-10');
+    expect(
+      seedDataStart(
+        {
+          trigger_target_type: 'life_signal',
+          trigger_aux: { kind: 'behavior_baseline', signal_name: 'streak' },
+        },
+        starts,
+      ),
+    ).toBe('2026-03-07'); // streak→routine
+    expect(
+      seedDataStart(
+        { trigger_target_type: 'life_signal', trigger_aux: { kind: 'weekday', dow: 6 } },
+        starts,
+      ),
+    ).toBe('2026-01-01'); // 캘린더 → 데이터 비의존 → global
+  });
+
+  it('maxDate — 둘 중 늦은 날, null=제약 없음', () => {
+    expect(maxDate('2026-03-10', '2026-03-05')).toBe('2026-03-10');
+    expect(maxDate('2026-03-05', '2026-03-10')).toBe('2026-03-10');
+    expect(maxDate(null, '2026-03-05')).toBe('2026-03-05');
+    expect(maxDate('2026-03-05', null)).toBe('2026-03-05');
+    expect(maxDate(null, null)).toBeNull();
   });
 });

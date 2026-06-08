@@ -299,6 +299,7 @@ interface SignalDefRow {
   threshold: string | null;
   tag_name: string | null;
   window_days: number | null;
+  domain: string | null;
 }
 
 const toSignalDef = (r: SignalDefRow): SignalDef => ({
@@ -312,6 +313,7 @@ const toSignalDef = (r: SignalDefRow): SignalDef => ({
   threshold: r.threshold === null ? null : Number(r.threshold),
   tagName: r.tag_name,
   windowDays: r.window_days,
+  domain: r.domain,
 });
 
 /**
@@ -373,9 +375,11 @@ export const flagConfounds = async (userId: number, today: string): Promise<Conf
   }
 
   // 링크에 등장한 신호 시리즈(신호당 1회).
+  // TODO(#504 후속): 데이터-존재 윈도우(computeUserDataStarts) 미적용 — P7 교란 조정은 dormant
+  // (annotate-only, verdict 불변)라 라이브 영향 없음. 활성화 전 verifyUserLinks와 동일 클립 경유 필요.
   const signalIds = [...new Set(linkRes.rows.map((r) => r.signal_id))];
   const signalRes = await query<SignalDefRow>(
-    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days
+    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain
        FROM signal_defs
       WHERE user_id = $1 AND id = ANY($2::int[]) AND status = 'active'`,
     [userId, signalIds],

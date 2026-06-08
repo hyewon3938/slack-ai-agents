@@ -45,3 +45,6 @@ docs/design-notebook/
 
 - [insight-engine-v2.md](./insight-engine-v2.md) — 프로액티브 인사이트 v2 (마스터 #393)
 - [fortune-rework.md](./fortune-rework.md) — 사주 풀이 시스템 책임 분리 + 주간 분석 재설계 (마스터 #421)
+- [personal-pattern-discovery.md](./personal-pattern-discovery.md) — 본인 1명 패턴 발견 시스템 (마스터 #434)
+- [metric-first-verification.md](./metric-first-verification.md) — 매트릭 중심 패턴 검증 (마스터 #477)
+- [discovery-refinement.md](./discovery-refinement.md) — 발굴 엔진 측정 타당성 + 카드 UX (마스터 #504)

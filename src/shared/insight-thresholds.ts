@@ -59,7 +59,10 @@ export const INSIGHT_THRESHOLDS = {
   // #477 P2/P3 주간 off-day 검증 엔진 임계치 (ADR-0032·0034·0035).
   // q는 screening, 확정 게이트는 e-value(1/α, optional stopping 통제). emerging은 hedged 가시성 tier.
   patternVerification: {
-    windowCapDays: 365, // 윈도우 상한(전체 이력 재계산, 캡)
+    // #504(ADR-0044): 1차 윈도우 = 시드·신호 데이터-존재 구간(per-pair). windowCapDays는
+    // 그 위 상한 안전장치로 격하 — 데이터가 1년 넘게 쌓여도 전체 재계산이 폭주하지 않게 하는 캡일 뿐,
+    // 평소엔 데이터-존재 구간이 더 좁아 binding되지 않는다(빈 과거를 0=fail로 세던 측정 아티팩트 제거).
+    windowCapDays: 365, // 윈도우 상한 안전장치(데이터-존재 구간이 1차 — #504)
     baselineWindowDays: 28, // above_avg/below_avg rolling baseline 일수 (signal.window_days 미지정 시 기본)
     minActiveDays: 30, // confirm/reject 최소 발현일 수
     confirmQ: 0.05, // BH-FDR q 임계 (confirm screening — 통과 후 e-value가 최종 확정)
@@ -77,9 +80,13 @@ export const INSIGHT_THRESHOLDS = {
     // 2층 통제: 느슨한 discoverQ로 후보만 띄우고(가족별 발견 BH-FDR), 믿음은 confirmQ+e-value.
     discoverQ: 0.15, // 발견 BH-FDR q (확정 confirmQ=0.05보다 느슨 — surface 전용)
     discoveryMinActive: 12, // 발굴 최소 발현일 (확정 minActiveDays=30보다 낮게 — 일찍 제안)
-    discoveryMinEffect: 1.3, // 발굴 최소 효과크기 (= confirm floor, positive 연관만)
-    discoveryMaxFisherP: 0.1, // block-perm 전 Fisher 사전선별 상한 (Monte Carlo 비용 절감)
+    discoveryMinEffect: 1.3, // 이진 신호 발굴 최소 효과크기 rate ratio (= confirm floor, positive 연관만)
+    discoveryMaxFisherP: 0.1, // block-perm 전 사전선별 상한 (이진=Fisher p, 연속=Mann-Whitney p — Monte Carlo 비용 절감)
     discoveryTopN: 5, // 주당 surface 상한 (승인 카드 폭주 방지 — 드롭 시 로그)
+    // #504(ADR-0044, ADR-0032 §4 준수): 연속 신호는 이진화 rate ratio로 줄세우지 않는다.
+    // 발굴도 검증처럼 Mann-Whitney 효과크기로 랭킹 — rank-biserial(scale-free, [-1,1])을 효과 하한으로,
+    // 표준화 z(연속=MW z, 이진=2-proportion z)를 혼합 정렬 키로(0 분모 rate-ratio 폭증에 robust).
+    discoveryMinEffectR: 0.2, // 연속 신호 발굴 최소 효과크기 (방향 rank-biserial r; 이진 1.3에 대응하는 calibration 노브)
   },
   // #477 P6 교란 플래그 (ADR-0041) — 공동발현 시드 marginal 탐지. annotate-only(verdict 불변).
   // P7 교란 다변량 분리 (ADR-0042) — Mantel-Haenszel 층화 조정 + 노출 레이어 soft-demote. dormant.

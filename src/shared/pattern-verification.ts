@@ -83,6 +83,8 @@ export interface SignalDef {
   threshold: number | null;
   tagName: string | null;
   windowDays: number | null;
+  /** signal_defs.domain — 데이터-존재 윈도우 산출용 (#504, ADR-0044). */
+  domain: string | null;
 }
 
 export interface Contingency {
@@ -137,6 +139,114 @@ export interface LinkVerification {
   verdict: Verdict;
   nextStatus: LinkLifecycleStatus;
 }
+
+// ─── 데이터-존재 윈도우 (#504, ADR-0044) ─────────────────
+// 발굴·검증의 측정 아티팩트 제거: 윈도우를 365일 고정이 아니라 "그 시드와 그 신호가 둘 다
+// 데이터를 가진 구간"으로 한정한다. 사용자가 시스템을 쓰기 시작한 날(첫 기록) 이전의 빈 과거는
+// COALESCE(SUM,0)=0=fail로 세지 않는다(비발현 pass율 0 → rate ratio 폭발 = GIGO). 활성 기간 내
+// "기록 없음"은 의미로 살린다(floor 위는 보존). 검증·발굴 양쪽이 동일 클립을 경유 → 둘 다 정직.
+
+/** 신호 domain → 데이터-존재 기준 테이블. audit(스케줄 변경 로그)는 스케줄 라이프사이클을 따름. */
+const DOMAIN_TABLE: Record<string, string> = {
+  schedule: 'schedules',
+  routine: 'routine_records',
+  sleep: 'sleep_records',
+  expense: 'expenses',
+  expense_category_present: 'expenses',
+  diary_meta: 'diary_meta_tags',
+  audit: 'schedules',
+};
+
+/** 글로벌 floor(온보딩) 산출 대상 테이블 — DATE+user_id 보유 라이프 데이터 테이블. */
+const DATA_TABLES = [
+  'schedules',
+  'routine_records',
+  'sleep_records',
+  'expenses',
+  'diary_meta_tags',
+] as const;
+
+/** life_signal behavior_baseline signal_name → 의존 도메인. */
+const BEHAVIOR_DOMAIN: Record<string, string> = {
+  streak: 'routine',
+  recovery: 'routine',
+  lapseAlert: 'routine',
+  weeklyRegression: 'routine',
+  spottyPattern: 'routine',
+  sleepTrend: 'sleep',
+  drift: 'sleep',
+  slotGap: 'schedule',
+  weekComparison: 'schedule',
+  overdueAlert: 'schedule',
+  categorySkew: 'schedule',
+};
+
+export interface UserDataStarts {
+  /** 테이블별 첫 기록일(YYYY-MM-DD). 데이터 없는 테이블은 키 없음. */
+  byTable: Map<string, string>;
+  /** 전체 최소 = 글로벌 온보딩 floor. 매핑 누락 도메인·saju 시드 fallback. null=데이터 0(클립 안 함). */
+  global: string | null;
+}
+
+/**
+ * 유저의 라이프 데이터 테이블별 첫 기록일 + 글로벌 floor를 1회 산출 (#504).
+ * 테이블명은 고정 allowlist(DATA_TABLES)라 인터폴레이션 안전(파라미터화 불가 대상).
+ */
+export const computeUserDataStarts = async (userId: number): Promise<UserDataStarts> => {
+  const byTable = new Map<string, string>();
+  for (const table of DATA_TABLES) {
+    const res = await query<{ d: string | null }>(
+      `SELECT MIN(date)::text AS d FROM ${table} WHERE user_id = $1`,
+      [userId],
+    );
+    const d = res.rows[0]?.d ?? null;
+    if (d) byTable.set(table, d);
+  }
+  let global: string | null = null;
+  for (const d of byTable.values()) if (global === null || d < global) global = d;
+  return { byTable, global };
+};
+
+/** 신호 domain → 데이터-존재 시작일 (매핑 없거나 데이터 없으면 글로벌 floor). */
+export const signalDataStart = (domain: string | null, starts: UserDataStarts): string | null => {
+  const table = domain ? DOMAIN_TABLE[domain] : undefined;
+  return (table ? starts.byTable.get(table) : undefined) ?? starts.global;
+};
+
+/** life_signal trigger_aux → 의존 라이프 도메인 (calendar 류는 null = 데이터 비의존 → floor). */
+const lifeSignalDomain = (aux: Record<string, unknown> | null): string | null => {
+  if (!aux) return null;
+  const kind = aux['kind'];
+  if (kind === 'threshold') {
+    const source = aux['source'];
+    if (source === 'sleep_minutes') return 'sleep';
+    if (source === 'routine_streak_max') return 'routine';
+    return null;
+  }
+  if (kind === 'behavior_baseline') {
+    const name = aux['signal_name'];
+    return (typeof name === 'string' ? BEHAVIOR_DOMAIN[name] : undefined) ?? null;
+  }
+  return null; // weekday/weekday_group/month_position/season/calendar_event = 캘린더(데이터 비의존)
+};
+
+/** 시드 데이터-존재 시작일. saju=글로벌 floor(매일 일운 존재), life_signal=의존 도메인 시작(없으면 floor). */
+export const seedDataStart = (
+  seed: { trigger_target_type: string; trigger_aux: Record<string, unknown> | null },
+  starts: UserDataStarts,
+): string | null => {
+  if (seed.trigger_target_type !== 'life_signal') return starts.global;
+  const domain = lifeSignalDomain(seed.trigger_aux);
+  const table = domain ? DOMAIN_TABLE[domain] : undefined;
+  return (table ? starts.byTable.get(table) : undefined) ?? starts.global;
+};
+
+/** 두 ISO 일자의 max (null = 제약 없음 = -무한). 둘 다 null이면 null. */
+export const maxDate = (a: string | null, b: string | null): string | null => {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a > b ? a : b;
+};
 
 // ─── 순수 계산 ───────────────────────────────────────────
 
@@ -215,10 +325,14 @@ export const binarizeSqlSeries = (
   return series;
 };
 
-/** 시드 활성 시리즈 × 신호 시리즈 → 2×2 (신호 측정불가일은 inconclusive로 분리). */
+/**
+ * 시드 활성 시리즈 × 신호 시리즈 → 2×2 (신호 측정불가일은 inconclusive로 분리).
+ * windowStart(#504): 데이터-존재 구간 시작 — 이전 날은 빈 과거라 2×2에서 제외(아티팩트 차단).
+ */
 export const buildContingency = (
   activation: Map<string, boolean>,
   signalSeries: DaySeries,
+  windowStart: string | null = null,
 ): Contingency => {
   let a = 0;
   let b = 0;
@@ -226,6 +340,7 @@ export const buildContingency = (
   let d = 0;
   let inconclusive = 0;
   for (const [date, active] of activation) {
+    if (windowStart !== null && date < windowStart) continue; // 데이터-존재 윈도우 밖(빈 과거)
     const pass = signalSeries.get(date);
     if (pass === undefined) continue; // 윈도우 밖(이론상 없음)
     if (pass === null) {
@@ -249,9 +364,11 @@ export const buildDaySequence = (
   activation: Map<string, boolean>,
   signalSeries: DaySeries,
   windowDates: string[],
+  windowStart: string | null = null,
 ): DayObservation[] => {
   const seq: DayObservation[] = [];
   for (const date of windowDates) {
+    if (windowStart !== null && date < windowStart) continue; // 데이터-존재 윈도우 밖(빈 과거) — #504
     const pass = signalSeries.get(date);
     if (pass === null || pass === undefined) continue;
     seq.push({ active: activation.get(date) ?? false, pass });
@@ -366,13 +483,19 @@ export interface SignalSeriesResult {
   raw: Map<string, number | null> | null;
 }
 
-/** 신호 일자 시리즈 (신호당 1회). tag=태그 존재 여부, sql=raw 시리즈 → binarize(+continuous는 raw 보존). */
+/**
+ * 신호 일자 시리즈 (신호당 1회). tag=태그 존재 여부, sql=raw 시리즈 → binarize(+continuous는 raw 보존).
+ * dataStart(#504): 그 신호 도메인의 첫 기록일. 이전 날은 결측(null)으로 처리 — 빈 과거의 COALESCE 0이
+ * "발현 안 함=fail"로 새거나 rolling baseline을 0으로 오염시키는 측정 아티팩트를 차단(그 날 SQL도 스킵).
+ */
 export const computeSignalSeries = async (
   userId: number,
   signal: SignalDef,
   windowDates: string[],
+  dataStart: string | null = null,
 ): Promise<SignalSeriesResult> => {
   if (windowDates.length === 0) return { series: new Map(), raw: null };
+  const beforeStart = (d: string): boolean => dataStart !== null && d < dataStart;
   if (signal.kind === 'tag') {
     if (!signal.tagName) return { series: new Map(windowDates.map((d) => [d, false])), raw: null };
     const res = await query<{ date: string }>(
@@ -382,7 +505,11 @@ export const computeSignalSeries = async (
       [userId, signal.tagName, windowDates[0], windowDates[windowDates.length - 1]],
     );
     const present = new Set(res.rows.map((r) => r.date));
-    return { series: new Map(windowDates.map((d) => [d, present.has(d)])), raw: null };
+    // 태깅 시작 이전(diary_meta 첫 기록 전)은 결측 — "태그 없음=fail"로 세지 않음.
+    return {
+      series: new Map(windowDates.map((d) => [d, beforeStart(d) ? null : present.has(d)])),
+      raw: null,
+    };
   }
   // kind === 'sql'
   if (!signal.sqlBody || !signal.direction) {
@@ -392,6 +519,10 @@ export const computeSignalSeries = async (
   const runner = signal.source === 'llm' ? runLlmSignalSql : runMetricSql;
   const raw = new Map<string, number | null>();
   for (const d of windowDates) {
+    if (beforeStart(d)) {
+      raw.set(d, null); // 데이터-존재 이전 = 결측(0 아님). SQL 실행도 생략.
+      continue;
+    }
     try {
       raw.set(d, await runner(signal.sqlBody, userId, d));
     } catch {
@@ -409,15 +540,17 @@ export const computeSignalSeries = async (
   return { series, raw: signal.valueType === 'continuous' ? raw : null };
 };
 
-/** 연속 신호 raw를 발현/비발현으로 분리 (Mann-Whitney 입력). 측정불가(null)일 제외. */
+/** 연속 신호 raw를 발현/비발현으로 분리 (Mann-Whitney 입력). 측정불가(null)일·윈도우 밖 제외. */
 export const splitRawByActivation = (
   activation: Map<string, boolean>,
   raw: Map<string, number | null>,
   windowDates: string[],
+  windowStart: string | null = null,
 ): { active: number[]; off: number[] } => {
   const active: number[] = [];
   const off: number[] = [];
   for (const date of windowDates) {
+    if (windowStart !== null && date < windowStart) continue; // 데이터-존재 윈도우 밖 — #504
     const v = raw.get(date);
     if (v === null || v === undefined) continue;
     if (activation.get(date)) active.push(v);
@@ -554,6 +687,7 @@ interface SignalDefRow {
   threshold: string | null;
   tag_name: string | null;
   window_days: number | null;
+  domain: string | null;
 }
 
 const toSignalDef = (row: SignalDefRow): SignalDef => ({
@@ -567,6 +701,7 @@ const toSignalDef = (row: SignalDefRow): SignalDef => ({
   threshold: row.threshold === null ? null : Number(row.threshold),
   tagName: row.tag_name,
   windowDays: row.window_days,
+  domain: row.domain,
 });
 
 interface ActiveLinkRow {
@@ -600,7 +735,7 @@ export const verifyUserLinks = async (
 
   const signalIds = [...new Set(linkRes.rows.map((r) => r.signal_id))];
   const signalRes = await query<SignalDefRow>(
-    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days
+    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain
        FROM signal_defs
       WHERE id = ANY($1::int[]) AND status = 'active'`,
     [signalIds],
@@ -613,10 +748,20 @@ export const verifyUserLinks = async (
     buildNameIdMap('branches_master'),
   ]);
 
+  // 데이터-존재 윈도우(#504): 신호별·시드별 시작일을 1회 산출 → 링크마다 max로 클립.
+  const dataStarts = await computeUserDataStarts(userId);
+  const signalStartById = new Map(
+    [...signalById].map(([sid, sig]) => [sid, signalDataStart(sig.domain, dataStarts)]),
+  );
+
   // 신호 시리즈(신호당 1회) + 시드 활성 시리즈(시드당 1회) — P1 전역화 payoff.
+  // 신호 시리즈는 자기 도메인 시작일 기준으로 빈 과거를 결측 처리(baseline 오염·아티팩트 차단).
   const signalSeriesById = new Map<number, SignalSeriesResult>();
   for (const [sid, signal] of signalById) {
-    signalSeriesById.set(sid, await computeSignalSeries(userId, signal, windowDates));
+    signalSeriesById.set(
+      sid,
+      await computeSignalSeries(userId, signal, windowDates, signalStartById.get(sid) ?? null),
+    );
   }
   const ctxCache = new Map<string, DailyContext | null>();
   // 강도 시리즈·컷 캐시 — 18 밴드 시드가 6 target(일간+5오행) 계산을 공유(재계산 방지).
@@ -650,12 +795,17 @@ export const verifyUserLinks = async (
       const signalSeries = signalSeriesById.get(row.signal_id);
       if (!signal || !seed || !activation || !signalSeries) return null;
       const series = signalSeries.series;
-      const cont = buildContingency(activation, series);
-      const daySeq = buildDaySequence(activation, series, windowDates);
+      // 데이터-존재 윈도우(#504): 그 시드·그 신호가 둘 다 데이터를 가진 구간으로 클립.
+      const windowStart = maxDate(
+        seedDataStart(seed, dataStarts),
+        signalStartById.get(row.signal_id) ?? null,
+      );
+      const cont = buildContingency(activation, series, windowStart);
+      const daySeq = buildDaySequence(activation, series, windowDates, windowStart);
       // 연속 신호만 Mann-Whitney(보고용). raw 분리 → U/p/Hodges-Lehmann.
       let mannWhitney: MannWhitneyResult | null = null;
       if (signal.valueType === 'continuous' && signalSeries.raw) {
-        const split = splitRawByActivation(activation, signalSeries.raw, windowDates);
+        const split = splitRawByActivation(activation, signalSeries.raw, windowDates, windowStart);
         if (split.active.length > 0 && split.off.length > 0) {
           mannWhitney = mannWhitneyU(split.active, split.off);
         }
