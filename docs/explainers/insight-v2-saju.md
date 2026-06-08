@@ -171,26 +171,24 @@
 └─────────────────────────────────────────────────┘
 ```
 
-`pattern_catalog.pillar_level` 컬럼이 이 5개 + 누적(cumulative)을 enum으로 갖는다 (ADR-0028).
+`pattern_catalog.pillar_level` 컬럼이 이 5개를 enum으로 갖는다 (ADR-0028). (원래 '누적(cumulative)' 차원이 하나 더 있었으나 #508에서 은퇴 — §4 참조.)
 
 - 매일 트리거 평가는 주로 **일운** 차원에서 일어난다.
-- **누적**(cumulative)은 여러 레벨을 합산하는 차원 — §4에서 설명.
 - 운 레벨이 강도에 주는 영향(modulation)은 통계 상호작용으로 검증하지 않고, **결정론 규칙으로 "실효 강도" feature를 계산**해 시드로 환원한다(§5, #477 P4). 일운 한 차원에 갇히지 않게 하는 장치다.
 
 ---
 
 ## 3. 사주 일운 6종 — trigger_target_type
 
-`pattern_catalog.trigger_target_type`은 현재 10종 enum이다.
+`pattern_catalog.trigger_target_type`은 현재 9종 enum이다 (`cumulative_pillar_count`가 #508에서 은퇴해 10종 → 9종).
 
 ```
 stem · branch · ganji · element_density · sibiunsung · relation   ← 사주 일운 6종 (이 부록 §3)
-cumulative_pillar_count                                           ← 사주 누적 1종 (§4)
 strength_band · hwa_sipsung                                       ← 결정론 사주 feature 2종 (§5, #477 P4)
 life_signal                                                       ← 라이프 1종 (메인 §5)
 ```
 
-사주 계열은 9종(일운 6 + 누적 1 + feature 2), 라이프가 1종이다. 이 부록은 일운 6종을 §3, 누적 1종을 §4, feature 2종을 §5에서 다룬다. `life_signal`은 메인 explainer §5에서 설명.
+사주 계열은 8종(일운 6 + feature 2), 라이프가 1종이다. 이 부록은 일운 6종을 §3, feature 2종을 §5에서 다룬다(§4는 은퇴한 누적 차원의 기록). `life_signal`은 메인 explainer §5에서 설명.
 
 ### 3-1. stem (천간)
 
@@ -268,21 +266,11 @@ life_signal                                                       ← 라이프 
 
 ---
 
-## 4. cumulative_pillar_count 누적 (N=1..5)
+## 4. (은퇴) cumulative_pillar_count 누적
 
-위 6종은 일운 차원에서 평가된다. **누적(cumulative)** 차원은 따로 있다.
-
-**아이디어**: 5개 운 레벨(원국 + 대운 + 세운 + 월운 + 일운) 중 특정 오행 또는 특정 십성이 **몇 개 레벨에 발현**됐는지 카운트.
-
-```
-          원국  대운  세운  월운  일운
-화 오행:   2자   0자   1자   1자   1자    → 발현 레벨 4개 (원국·세운·월운·일운)
-                                          → N=4 임계 통과
-```
-
-`cumulative_pillar_count` trigger는 N=1\~5 임계치별로 별도 시드를 둔다 (시드 수 10). 어느 N이 의미 있는 임계인지는 데이터가 결정한다 (ADR-0028).
-
-매주 월요일 **09:15** 분포 분석 cron이 N별 발현율 분포를 한 줄로 노출한다. 임계치를 임의로 정하지 않고 데이터로 결정한다는 헌장 "임의값 박지 않기" 적용 사례.
+> **#508(ADR-0046)에서 은퇴, #514에서 코드 제거.** 원래 5개 운 레벨(원국·대운·세운·월운·일운) 중 특정 오행/십성이 몇 레벨에 발현됐는지 세는 누적 카운트 시드(화 오행·편재 N=1..5, 10개)가 있었다. 하지만 고정 임계라, 본인 사주처럼 특정 기운이 운에 늘 깔린 경우 매일 발현 → off-day(비발현일)가 사라져 통계 검정이 불가능했다(영영 확정 불가).
+>
+> 같은 "오늘 이 기운이 평소보다 강한가"는 §5의 **강도 밴드**(상대 분위수 + 주간 재계산)가 포화 없이 더 정밀하게 측정하므로, 누적 시드를 강도 밴드로 위임·archive하고 트리거 평가 코드까지 데드코드로 제거(#514)했다. 분포 분석 cron(월 09:15)도 함께 은퇴.
 
 ---
 
@@ -305,7 +293,7 @@ life_signal                                                       ← 라이프 
 - 일간 강도(신강/신약)와 오행 5개 강도를 모두 산출한다.
 - 가중치·월령 배수·통근 조건은 전부 config 파라미터다 (명리학 프레임 정본, 통계 노브와 분리).
 
-이 강도를 **상대 분위수(tertile)**로 3등분해 시드로 만든다 — 약(low) / 적정(mid) / 강(high).
+이 강도를 **상대 분위수**(tertile)로 3등분해 시드로 만든다 — 약(low) / 적정(mid) / 강(high).
 
 | trigger_target_type | aux 예 | 의미 |
 |---|---|---|
@@ -350,12 +338,11 @@ life_signal                                                       ← 라이프 
 | saju | element_density | 10 |
 | saju | sibiunsung | 12 |
 | saju | relation | 82 |
-| saju | cumulative_pillar_count | 10 |
 | saju | strength_band | 18 |
 | saju | hwa_sipsung | 5 |
-| **소계 (saju)** | | **224** |
+| **소계 (saju)** | | **214** |
 | life_signal | life_signal | 38 |
-| **합계** | | **262** |
+| **합계** | | **252** |
 
 > 시드 수는 운영 중 발굴·승급·비활성에 따라 변할 수 있다. 도메인 문서가 시드 카탈로그 변경 이력의 최신본을 보관한다.
 

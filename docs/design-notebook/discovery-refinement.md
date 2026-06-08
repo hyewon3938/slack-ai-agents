@@ -2,6 +2,8 @@
 
 > [#477](https://github.com/hyewon3938/slack-ai-agents/issues/477)(매트릭 중심 패턴 검증) 후속 교정 마스터. 첫 주간 발굴 운영에서 드러난 측정 아티팩트·카드 가독성·후보 재추천 UX를 3 Phase로.
 
+> **마스터 완결**(2026-06-08): Phase 1(측정 타당성, #505/ADR-0044)·Phase 2(카드 가독성, #506/ADR-0045)·Phase 3(후보 재추천, #512/ADR-0047) 전부 머지+배포. 후속 정리(신호·시드 정밀화 #508, BEHAVIOR_DOMAIN 단일화 #510·#511, cumulative 데드코드 cleanup #514)까지 완료. #477 발굴 엔진의 *측정 타당성 → 표현 가독성 → 재추천 cadence* 세 축을 순서대로 교정한 마스터.
+
 ## 핵심 원칙
 
 이 마스터는 **#477 헌장 4개 + [ADR-0032](../adr/0032-metric-first-verification-statistics.md) 통계 스택 위에서** 진행한다(헌장 본문은 복제하지 않음 — `project_477_metric_first_verification` / `project_insight_v2_core_principles` 메모리 + [metric-first-verification.md](metric-first-verification.md) 참조). 본 마스터가 추가로 박는 원칙:
@@ -68,6 +70,10 @@
 - **자동 활성(게이트 없이 다음 묶음 자동 추적)** — 영구 기각. ADR-0039 노출·믿음 분리 위반.
 - **재추천 카드 "추가 추천" 맥락 노트** — 보류. 월요일과 동일 빌더로 시작, 주중 후보가 혼란스러우면 한 줄 노트 추가(calibration 후속).
 - **발굴 풀스캔 배칭 최적화** — 보류(ADR-0039 단점 승계). firing 시 데일리 풀스캔은 n=1·예측 게이트라 현재 수용.
+
+#### 결과 (2026-06-08)
+
+#512 머지+배포 완료. prod 슬롯 등록(`discoveryRecommend` 07:30) + Life Cron 7→8 검증. 새 통계·카드·DB 0 — 여집합 자동제외 속성을 읽어 재추천을 "발굴 재실행 한 줄"로 환원. 이어 cumulative 데드코드 cleanup(#514)으로 #508 강도밴드 위임의 잔재(트리거 코드·타입)까지 정리하고 explainer를 현행화. **마스터 #504 완결.**
 
 ## 포기 / 보류
 
