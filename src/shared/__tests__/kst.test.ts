@@ -6,6 +6,7 @@ import {
   getKSTTimeString,
   formatDateShort,
   addDays,
+  thisWeekMondayISO,
 } from '../kst.js';
 
 // ─── getTodayISO ────────────────────────────────────────
@@ -91,5 +92,29 @@ describe('addDays', () => {
 
   it('연도 경계 넘기', () => {
     expect(addDays('2025-12-31', 1)).toBe('2026-01-01');
+  });
+});
+
+// ─── thisWeekMondayISO ──────────────────────────────────
+
+describe('thisWeekMondayISO', () => {
+  it('월요일 입력 → 자기 자신', () => {
+    // 2026-03-09는 월요일 (2026-03-08 일요일 + 1)
+    expect(thisWeekMondayISO('2026-03-09')).toBe('2026-03-09');
+  });
+
+  it('수요일 입력 → 같은 주 월요일 (2일 전)', () => {
+    // 2026-04-01은 수요일 → 같은 주 월요일 2026-03-30
+    expect(thisWeekMondayISO('2026-04-01')).toBe('2026-03-30');
+  });
+
+  it('일요일 입력 → 같은 주 월요일 (6일 전)', () => {
+    // 2026-03-08은 일요일 → 같은 주 월요일 2026-03-02 (주의 끝)
+    expect(thisWeekMondayISO('2026-03-08')).toBe('2026-03-02');
+  });
+
+  it('연도 경계를 정확히 처리한다', () => {
+    // 2026-01-01은 목요일 → 같은 주 월요일 2025-12-29
+    expect(thisWeekMondayISO('2026-01-01')).toBe('2025-12-29');
   });
 });

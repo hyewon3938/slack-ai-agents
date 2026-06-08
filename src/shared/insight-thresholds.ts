@@ -91,6 +91,9 @@ export const INSIGHT_THRESHOLDS = {
     // off-day가 소멸하면 검정 불가(헌장 ②). 자동 archive ⟷ 탈포화 시 자동 부활(archived_reason='saturation' 스코프).
     saturationRate: 0.95, // 트리거 활성률 ≥ 이 값 → 포화(archive) / < 이 값 → 탈포화(부활) 후보
     saturationMinDays: 30, // 판정 최소 윈도우 일수(데이터-존재 기준) — 소표본 오판 방지 가드
+    // #504 Phase 3(ADR-0047) 발굴 재추천 백스톱 — 주당 발굴 카드 총량 상한(월요일 묶음 포함).
+    // 자연 소진이 1차 정지, 이 cap은 느슨한 discoverQ에서 한계 후보 폭주(카드 피로)만 막는 2차 가드.
+    weeklyDiscoveryCap: 20, // 월 5 + 재추천 3라운드 × 5 — 튜닝 노브(헌장 ⑤)
   },
   // #477 P6 교란 플래그 (ADR-0041) — 공동발현 시드 marginal 탐지. annotate-only(verdict 불변).
   // P7 교란 다변량 분리 (ADR-0042) — Mantel-Haenszel 층화 조정 + 노출 레이어 soft-demote. dormant.
