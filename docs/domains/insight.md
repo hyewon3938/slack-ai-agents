@@ -941,7 +941,9 @@ export const computeCumulativePillarCount = (
 
 5개 레벨 각각에 대해 천간/지지 → 오행/십성 변환 후, 레벨 내 발현 집합을 만들어 누적. 같은 레벨 내 중복은 1회만 카운트(`Set`). 원국은 4주 통합(`pillars.wonguk: readonly Pillar[]`), 그 외는 1주씩.
 
-#### `pillar-level-distribution-review` cron (월요일 09:15 KST)
+#### `pillar-level-distribution-review` cron (월요일 09:15 KST) — 은퇴됨 (#508)
+
+> ⚠️ **은퇴 (#508, ADR-0046)**: 누적 카운트 시드가 강도 밴드(ADR-0036)로 위임·archive되면서 이 분포 리뷰는 소비 대상을 잃어 cron·코드·테스트 전부 제거됐다. 아래는 역사적 기록(Phase 2.5). 현행 위생은 [§36 포화 양방향 가드](#36-신호시드-측정-정밀화-508-adr-0046) 참조.
 
 `pattern_matches` 90일 윈도우의 `pillar_level`별 hit-rate 분포 + `cumulative_pillar_count` trigger의 N=1..5 분포를 한 줄로 압축해 `#insight` 채널에 발송. 결정론 SQL만 사용 — LLM 호출 없음([ADR-0027](../adr/0027-llm-async-routine-unification.md) 준수).
 
@@ -968,9 +970,7 @@ export const computeCumulativePillarCount = (
 
 | 시각 | 슬롯 | 의도 | 산출물 |
 |------|------|------|------|
-| 09:15 (월요일만) | `pillarLevelDistributionReview` | 운 레벨별·누적별 hit-rate 분포 노출 | `#insight` 채널 한 줄 압축 메시지 |
-
-`weeklyReport`(09:00 월요일) / `weeklyHypothesisReview`(08:00 월요일)와 시간대 겹치지 않게 분리.
+| ~~09:15 (월요일만)~~ | ~~`pillarLevelDistributionReview`~~ | 은퇴됨(#508) — 누적 시드 강도 밴드 위임으로 분포 리뷰 무의미 | — |
 
 #### 파일 구조
 
@@ -1953,6 +1953,50 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 ### 35. 발굴 엔진 측정 타당성 + 카드 UX — Phase 3 (후보 재추천, #504)
 
 > TODO(`/build`): 묶음 전부 거부 → 다음 best 묶음 재추천(여집합 재실행으로 공짜), 자연 소진 1차 정지 + 회차 cap 보조, 무응답=보류, daily tick 트리거, 매주 리셋. 재추천 흐름 ADR은 Phase 3 진입 시.
+
+### 36. 신호·시드 측정 정밀화 (#508, ADR-0046)
+
+#477·#504 운영 데이터에서 드러난 신호·시드 측정의 거칠음 4종 교정. 통계 스택·verdict·tier·임계치는 불변 — *무엇을* 측정하는지(신호 정의)와 *어떤* 시드를 살려두는지(시드 위생)만 손댄다. 마이그레이션 `086_signal_seed_precision.sql`(①② 단일 암묵 트랜잭션 + 섹션별 검증 DO 블록).
+
+#### ① 일정 날짜 변경 방향 분리
+
+`audit_date_changed`(방향무관 `COUNT`, `above_avg`)는 미룸(`after_value > before_value`)·당김(`after_value < before_value`)을 한 신호로 합산해 반대 의미를 상쇄했다(off-day 대조 무의미). 은퇴(`status='rejected'` + 링크 archive)하고 방향 신호 2개를 신설:
+
+| 신호 | 조건 | 의미 |
+|------|------|------|
+| `audit_date_postponed` | `(after_value->>'date')::date > (before_value->>'date')::date` | 일정을 더 뒤로 미룸 |
+| `audit_date_advanced` | `… < …` | 일정을 앞으로 당김 |
+
+`kind='sql'`, `value_type='continuous'`, `direction='above_abs'`, `threshold=1`, `domain='audit'`, `source='seed'`(LLM 가드 비대상). 링크 없이 시작 → P5a 발굴이 자연 재페어링. 카드 라벨 `일정 미룸`/`일정 당김`(`SIGNAL_LABEL_OVERRIDES`). prod 분포: 미룸 134 / 당김 11(합산이 미룸에 오염돼 있었음).
+
+#### ② 누적 카운트 시드 은퇴 → 강도 밴드 위임
+
+고정 임계 누적 시드(`pool_화_오행_누적_N1`\~`N5`, `pool_편재_누적_N1`\~`N5`, 10개)는 baseline 포화 시 off-day 0 → 검정 불가로 죽는다(본인 화는 운에 늘 깔려 N1\~N3 매일 발현). 동일 개념을 강도 밴드(ADR-0036)가 상대 분위수·주간 재계산으로 포화 없이 더 정밀히 측정 → archive(`active=false`, `archived_reason='delegated_to_strength_band'` + 링크 archive). 위임처: 화→`pool_강도_화`, 재성(본인 양목)→`pool_강도_목`. `cumulative_pillar_count` 트리거 코드는 휴면 보존(삭제 X, CHECK 미변경). 분포 리뷰 cron(`pillarLevelDistributionReview`, 월 09:15) 제거 → **Life Cron 슬롯 8→7**.
+
+`pattern_catalog.archived_reason TEXT` 컬럼 신설 — archive 사유 구분(③ 부활 스코프):
+
+| 값 | 의미 | 부활 |
+|----|------|------|
+| `saturation` | ③ 포화 자동 archive | 대상 (탈포화 시) |
+| `delegated_to_strength_band` | ② 누적 위임 | 제외 (영구 대체) |
+| `NULL` | 활성 또는 수동 archive | 제외 |
+
+#### ③ 포화 시드 양방향 가드 (`seed-saturation.ts`)
+
+주간 검증 엔진(`weekly-verification.ts` `processUser`)이 링크 검증·스냅샷 이후·발굴 surface 전에 양방향 sweep:
+
+- **archive**: 활성 시드의 트리거 활성률(일별 핸드오프 로그 `seed_daily_activations.trigger_activated` 집계) ≥ `saturationRate`(0.95) & 윈도우 ≥ `saturationMinDays`(30일) → `active=false`, `archived_reason='saturation'` + 링크 archive.
+- **부활(revive)**: `archived_reason='saturation'` 시드를 현재 윈도우로 `computeSeedActivationSeries` 재계산(트리거 결정론 — 비활성이어도 시리즈 산출) → 탈포화(활성률 < `saturationRate`)면 `active=true`, `archived_reason=NULL` 복귀. `'saturation'` 스코프라 ②의 위임분·수동 archive는 부활 제외.
+
+판정은 `matched`(연결 매트릭 통과, evidence-only 시드는 null)가 아니라 **`trigger_activated`**(트리거 자체 발현) — off-day 대조의 활성/비활성 축과 일치. 순수 술어 `isSaturated`/`isDesaturated`(rate, nDays)는 `minDays` 이상에서 상호배타. 강도 밴드는 상대 분위수라 \~33%씩 갈려 절대 포화 불가 → archive 대상에 안 걸림. 주간 카드 말미 `buildHygieneNotice`: `🧹 포화 시드 N개 정리` / `🌱 부활 N개`(라벨은 `seedLabel()` 통과, 변수명 노출 0).
+
+#### ④ 발굴 동어반복(자기상관) 필터
+
+`discoverCandidates` 여집합 스캔에서 **행동 시드 source 도메인 == 신호 도메인**인 쌍(예: `life_behavior_spotty`[루틴 누락] × `routine_completion_rate`[루틴 완료율])을 사전선별·FDR 전에 skip(풀 비오염) + 드롭 수 로그. 같은 행동을 두 번 잰 자기상관이라 통계가 유의해도 무의미. 행동 시드 도메인 매핑은 `insights.ts`의 `BEHAVIOR_SIGNAL_DOMAIN`(`Record<InsightType, InsightDomain>` — 각 detect 함수의 `domain` 필드가 진실, `slotGap`·`weekComparison`은 `routine_records` 집계라 routine). 캘린더 life_signal(`weekday`/`month_position` 등)·사주 시드는 행동 도메인이 없어 자동 면제(정상 cross-domain 후보 보존).
+
+#### 회고
+
+거친 측정 채널(고정 임계 누적)을 이미 존재하는 정밀 채널(상대 분위수 강도 밴드)로 은퇴·위임한 게 핵심 — 신규 통계 코어 0. 측정 불가능성(off-day 0)을 큐레이션 판단(ADR-0039 사람 게이트)과 분리해 자동·양방향 위생으로 환원: 사람은 "믿을지"만, 기계는 "검정 가능한지"를 판정. 설계 중 사용자가 archive-only의 빈틈(1년 뒤 탈포화 시드 영구 사장)을 지적 → 부활 대칭 추가. 빌드 중 `BEHAVIOR_DOMAIN`(데이터-존재 윈도우, #504)이 `slotGap`/`weekComparison`을 schedule로 매핑하는 오기를 발견(④는 `insights.ts` 진실 사용, #504 맵 교정은 후속).
 
 ## 파일 구조
 
