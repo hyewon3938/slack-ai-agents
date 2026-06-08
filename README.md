@@ -154,7 +154,7 @@ flowchart LR
 
 ## 3. 시스템 · 보안
 
-자연어 메시지가 들어오면 **채널 라우터 → Rate Limiter → Fast path 또는 Agent Loop → 응답** 순으로 흐른다. 무거운 분석은 실시간에서 떼어내 비동기로 돌리고, 결과만 DB에 영속화해 실시간 응답은 SELECT만으로 풍부한 맥락을 낸다.
+자연어 메시지가 들어오면 **채널 라우터 → Rate Limiter → Fast path 또는 Agent Loop → 응답** 순으로 흐른다. Rate Limiter는 한 사용자가 짧은 시간에 너무 많이 요청하면 잠깐 막아 과부하를 예방한다. 실시간으로 답할 필요가 없는 분석은 미리 비동기로 돌려 결과를 DB에 저장해두고, 실시간 응답 때는 그걸 조회만 해서 빠르게 낸다. 기준은 작업의 무게가 아니라 즉답이 필요한지다. 무겁더라도 즉답이 필요하면 실시간으로 처리한다.
 
 <p align="center">
   <img src="docs/images/architecture.svg" alt="아키텍처" width="100%" />
@@ -162,7 +162,7 @@ flowchart LR
 
 - **봇·DB** — Oracle Cloud VM, Docker Compose로 app + PostgreSQL 17 운영
 - **DB Proxy** — 루프백 바인딩, 외부에선 Caddy HTTPS 경유로만 접근(DB 포트 미노출). 웹(Vercel)은 DB 직결 없이 이 프록시 API를 호출
-- **비동기 분석** — node-cron(Asia/Seoul) + Claude 앱 routine으로 주간 검증·발굴·일일 종합 인사이트를 분리 처리
+- **비동기 분석** — 주간 통계 검증·발굴은 node-cron(Asia/Seoul), LLM이 무거운 일일 종합 인사이트는 Claude 앱 routine으로 실시간 경로와 분리
 - **CI/CD** — main push → GitHub Actions → GHCR 이미지 빌드 → VM 재기동, 5분 간격 자체 업타임 모니터링
 
 ### Public 저장소 다층 보안
@@ -174,7 +174,7 @@ flowchart LR
 | 네트워크 | DB·API 포트 루프백 바인딩, 외부 트래픽은 Caddy TLS 종료, HTTPS 프록시 경유 |
 | 인증 | Bearer API Key(타이밍 세이프 비교), iron-session, 요청 크기 제한 |
 | SQL 실행 | 테넌트 격리 검증, DDL/위험 함수 차단, WHERE 필수 + 행 수 제한, `statement_timeout` |
-| LLM | 프롬프트 인젝션 패턴 감지, SQL 감사 로그, LLM-생성 SQL 2단 방어(정적 검증 + read-only 격리) |
+| LLM | SQL 감사 로그, LLM-생성 SQL 2단 방어(정적 검증 + read-only 트랜잭션 격리) |
 | 요청 제어 | 슬라이딩 윈도우 Rate Limiter, 메시지 크기 제한, 봇 루프 필터 |
 | 개발 프로세스 | 커밋 전 시크릿 스캔 Hook, PR 리뷰 스킬에 보안 감사 체크리스트 내장 |
 
@@ -191,10 +191,8 @@ flowchart LR
 
 - **Hooks** — 자동 포맷·린트·타입체크·시크릿 스캔
 - **Custom Skills** — `/design`·`/build`·`/init-project`를 계획서 파일로 세션 간 핸드오프
-- **Scheduled Tasks** — 주간 패턴 검증·발굴, 일일 종합 인사이트 등 깊은 비동기 분석은 봇 서버 밖 routine으로 분리
+- **Scheduled Tasks** — 일일 종합 인사이트·월간 LLM 신호 제안처럼 LLM이 무겁게 도는 비동기 분석은 봇 서버 밖 Claude 앱 routine으로 분리해, 봇 서버에 분석 부하를 얹지 않는다
 - **5문서 아키텍처** — 인터뷰 분기점·포기·회고가 코드만 남고 휘발되지 않게 사고를 5문서(plans · design-notebook · ADR · features · domains)로 분산, 각 문서마다 `/design`·`/build` owner를 지정해 단계별로 자동 갱신
-
-작업 방식 자체(스킬 흐름·문서 운영·의사결정 기록)는 별도 메타 repo [hyewon3938/build-with-ai](https://github.com/hyewon3938/build-with-ai)에 누적한다.
 
 ### 기술 스택
 
