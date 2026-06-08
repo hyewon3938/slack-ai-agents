@@ -1950,9 +1950,47 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 - 아침 카드 라벨은 LLM 작문 경로라 같은 시드 문구가 표면별로 미세하게 다를 수 있음 — 수용(둘 다 readable이면 충분). 완벽한 cross-surface 일관성은 보류한 B안(DB label 컬럼)의 몫.
 - 신호 description의 깨진 provenance는 카드가 더는 읽지 않아 dormant(DB 잔존·미사용) — 별도 정리 불요.
 
-### 35. 발굴 엔진 측정 타당성 + 카드 UX — Phase 3 (후보 재추천, #504)
+### 35. 발굴 엔진 측정 타당성 + 카드 UX — Phase 3 (후보 재추천, #504 / #512, ADR-0047)
 
-> TODO(`/build`): 묶음 전부 거부 → 다음 best 묶음 재추천(여집합 재실행으로 공짜), 자연 소진 1차 정지 + 회차 cap 보조, 무응답=보류, daily tick 트리거, 매주 리셋. 재추천 흐름 ADR은 Phase 3 진입 시.
+발굴([ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md))은 월요일 06:00 주간 검증 직후 1회만 후보를 surface한다. 사용자가 그 묶음을 전부 [패스]하면 — 여집합에 다음 best 쌍이 남아있어도 — 다음 주 월요일까지 새 후보가 안 뜬다. evidence-only 시드가 검증 트랙에 닿는 속도가 주1회 묶음에 묶이는 게 병목이었다. **데일리 반응형 cadence**를 추가해 묶음 전부 패스 시 다음 best 묶음을 띄운다. 통계·verdict·tier·승인 게이트·카드 빌더·DB 스키마 전부 불변 — 발굴 *재실행 시점*만 늘림([ADR-0047](../adr/0047-discovery-recommendation-cadence.md)).
+
+핵심 통찰: `discoverCandidates`의 여집합은 `pattern_links`에 (어떤 status로도) 없는 쌍만 본다. 한 번 surface된 쌍은 pending·archived·active 어디로든 여집합에서 빠진다 → **발굴 재실행만으로 다음 best가 공짜**(커서·페이징 없음).
+
+#### 1) 전용 데일리 슬롯 + 공유 함수
+
+- **슬롯** `discoveryRecommend`(`notification_settings`, 07:30 KST, 마이그 `087`) → `SLOT_TASKS` 등록. **Life Cron 7→8**(#508이 8→7로 줄인 직후 실기능 1개 추가라 churn 아님). 매칭 cron(07:00, "발송 없음" 단일 책임)과 데이터 의존 없어 합류 대신 독립 슬롯 — 시각·on/off 별도 튜닝.
+- **공유 함수** `recommendDiscoveries(app, userId, channelId, today)` — weekly-verification의 private `surfaceDiscoveries`를 [discovery-recommend.ts](../../src/cron/discovery-recommend.ts)로 추출(함수 레벨 DRY). 월요일 검증 후 발굴과 데일리 재추천이 같은 surface 본문 공용, 동작 불변.
+
+#### 2) 예측 게이트 (싼 COUNT → 무거운 재실행)
+
+데일리 틱은 유저별로 싼 COUNT 1방을 먼저 던지고, 통과할 때만 무거운 `discoverCandidates` 풀스캔을 돈다.
+
+- **이번주 묶음** = `pattern_links WHERE source='discovery' AND created_at >= 이번주_월요일 00:00 KST`. 경계는 `thisWeekMondayISO(today)` 헬퍼([kst.ts](../../src/shared/kst.ts)) — 기존 `previousMondayISO`(전주, 카드 라벨용)와 구분.
+- **발사 술어** `decideReRecommend(total, archived, cap)` = `total>0 && archived===total && total<cap`(순수 코어, 단위 테스트). `archived===total` 단일 조건이 "무응답 보류"(pending 남음 → `archived<total`)와 "일부 승인 정지"(active 있음 → `archived<total`)를 동시에 배제 — 전부 패스됐을 때만 다음 묶음.
+
+| 이번주 발굴 묶음 | total/archived | 발사 |
+|------|------|------|
+| 없음 (자연 소진) | 0/0 | ✗ |
+| 전부 패스, cap 미만 | 5/5 | ✓ 다음 best |
+| 일부 미응답 (pending) | 5/4 | ✗ 보류 |
+| 전부 무응답 | 5/0 | ✗ 보류 |
+| 일부 추적 시작 (active) | 5/3 | ✗ 그 주 정지 |
+| cap 도달 | 20/20 | ✗ 백스톱 |
+
+#### 3) 정지 — 자연 소진 1차 + cap 백스톱
+
+- **1차**: 여집합 소진 → `discoverCandidates` 빈 배열 → 조용히 멈춤(추가 카드 0).
+- **2차**: `weeklyDiscoveryCap=20`([insight-thresholds.ts](../../src/shared/insight-thresholds.ts)) — 느슨한 `discoverQ=0.15`에서 한계 후보가 매일 올라오는 병적 케이스의 카드 피로 백스톱. 값은 튜닝 노브(헌장 ⑤).
+- 매주 `created_at` 스코프 자동 리셋(다음 월요일 묶음은 새 주로 카운트), archived 영구 제외.
+- **이중 surface 없음**: 월요일도 데일리 틱이 돌지만 06:00 묶음이 pending이라 `archived===total` false → 무발사.
+
+#### 데이터 모델 — 파생(무테이블)
+
+새 테이블 0. 라운드·상한 상태를 전부 `pattern_links`의 `created_at`+`status`에서 파생(ADR-0045 A안 정신: 파생 가능하면 DB 미변경). 추가는 노브 1개(`weeklyDiscoveryCap`) + 경계 헬퍼 1개(`thisWeekMondayISO`)뿐. 라운드 카운터 테이블(`discovery_rounds`)·자동 활성(게이트 없이 다음 묶음 추적)은 기각 — 후자는 ADR-0039 노출·믿음 분리 위반.
+
+#### 회고
+
+기존 설계의 속성(여집합 자동제외)을 읽어 새 기능을 페이징·커서 없이 얻은 게 핵심 — 재추천 = 발굴 재실행 한 줄. 상태도 파생으로 환원해 DB·통계·카드 0 증분(노브 1 + 헬퍼 1). `archived===total` 단일 술어가 보류·정지·발사 3분기를 한 번에 표현하는 게 설계의 압축점. 싼 예측 게이트가 무거운 풀스캔을 데일리로 돌려도 비용을 게이팅 — n=1·예측 통과 시에만 스캔이라 ADR-0039의 풀스캔 단점을 현재 수용.
 
 ### 36. 신호·시드 측정 정밀화 (#508, ADR-0046)
 

@@ -153,6 +153,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0044](0044-discovery-measurement-validity.md) | 발굴·검증 측정 타당성 — 데이터-존재 윈도우 + 연속신호 효과크기 랭킹 | Accepted | 2026-06-08 | insight, statistics, architecture |
 | [0045](0045-card-label-layer.md) | 카드 라벨 레이어 — 런타임 코드 번역 (DB 컬럼 아님) | Accepted | 2026-06-08 | insight, architecture |
 | [0046](0046-signal-seed-precision.md) | 신호·시드 측정 정밀화 — 방향 분리 + 누적→강도밴드 위임 + 포화 양방향 가드 + 동어반복 필터 | Accepted | 2026-06-08 | insight, statistics, architecture |
+| [0047](0047-discovery-recommendation-cadence.md) | 발굴 후보 재추천 — 데일리 반응형 cadence (전용 슬롯 + pattern_links 파생 상태, 묶음 전부 패스 시 다음 best) | Accepted | 2026-06-08 | insight, architecture, process |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 

@@ -146,3 +146,11 @@ export const addDays = (dateStr: string, days: number): string => {
   const dd = String(d.getUTCDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 };
+
+/** 날짜 문자열이 속한 주의 월요일 (YYYY-MM-DD, KST). 월요일이면 자기 자신. */
+export const thisWeekMondayISO = (dateStr: string): string => {
+  const d = new Date(`${dateStr}T12:00:00+09:00`);
+  const dow = d.getUTCDay(); // 0=일, 1=월
+  const daysSinceMonday = (dow + 6) % 7;
+  return addDays(dateStr, -daysSinceMonday);
+};
