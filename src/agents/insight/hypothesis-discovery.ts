@@ -43,6 +43,7 @@ import {
 } from '../../shared/pattern-match.js';
 import type { BandCuts } from '../../shared/quantile.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
+import { seedLabel, signalLabel } from '../../shared/insight-labels.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
 
@@ -52,9 +53,13 @@ export interface DiscoveryCandidate {
   signalId: number;
   seedName: string;
   seedDescription: string | null;
+  /** 카드용 자연어 라벨 — seedName 변수명 대체 (#504 P2, ADR-0045). */
+  seedLabel: string;
   patternKind: 'saju' | 'life_signal';
   signalName: string;
   signalDescription: string | null;
+  /** 카드용 자연어 라벨 — signalName 변수명·깨진 provenance 대체 (#504 P2, ADR-0045). */
+  signalLabel: string;
   signalKind: 'sql' | 'tag';
   valueType: 'binary' | 'continuous' | null;
   // off-day 통계 (카드 표시 + 감사)
@@ -282,9 +287,20 @@ export const discoverCandidates = async (
       signalId: s.signal.def.id,
       seedName: s.seed.name,
       seedDescription: s.seed.description,
+      seedLabel: seedLabel({ name: s.seed.name, description: s.seed.description }),
       patternKind: s.seed.trigger_target_type === 'life_signal' ? 'life_signal' : 'saju',
       signalName: s.signal.def.name,
       signalDescription: s.signal.description,
+      signalLabel: signalLabel({
+        name: s.signal.def.name,
+        kind: s.signal.def.kind,
+        source: s.signal.def.source,
+        direction: s.signal.def.direction,
+        threshold: s.signal.def.threshold,
+        tagName: s.signal.def.tagName,
+        domain: s.signal.def.domain,
+        description: s.signal.description,
+      }),
       signalKind: s.signal.def.kind,
       valueType: s.signal.def.valueType,
       rateActive: s.v.rateActive,

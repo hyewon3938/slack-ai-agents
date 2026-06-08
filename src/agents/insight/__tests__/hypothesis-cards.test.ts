@@ -17,9 +17,11 @@ const makeLink = (overrides: Partial<LinkVerification> = {}): LinkVerification =
   linkId: 1,
   seedId: 10,
   signalId: 20,
-  seedName: '갑목일주',
+  seedName: 'S1_갑목_편재_천간',
+  seedLabel: '일운 천간 갑목(편재)',
   patternKind: 'saju',
-  signalName: '수면부족',
+  signalName: 'sleep_night_minutes',
+  signalLabel: '밤잠 평소보다 많음',
   signalKind: 'sql',
   valueType: 'continuous',
   currentStatus: 'active',
@@ -49,12 +51,13 @@ const makeLink = (overrides: Partial<LinkVerification> = {}): LinkVerification =
 
 const makeSeedInfluence = (
   patternKind: 'saju' | 'life_signal',
-  signalName: string,
+  label: string,
 ): SeedInfluenceRow => ({
   patternId: 1,
   patternKind,
-  signalName,
+  signalName: label,
   description: '설명',
+  seedLabel: label,
   totalHits: 12,
   totalMisses: 3,
   posteriorP: 0.7,
@@ -90,8 +93,10 @@ describe('buildVerificationBlocks — verified (검증됨)', () => {
     const t = sectionTexts(blocks).find((x) => x.includes('✅'));
     expect(t).toBeDefined();
     expect(t).toContain('[사주]');
-    expect(t).toContain('수면부족');
-    expect(t).toContain('갑목일주');
+    expect(t).toContain('밤잠 평소보다 많음'); // signalLabel
+    expect(t).toContain('일운 천간 갑목(편재)'); // seedLabel
+    expect(t).not.toContain('sleep_night_minutes'); // 변수명 미노출 (#504)
+    expect(t).not.toContain('S1_갑목_편재_천간');
     expect(t).toContain('검증됨');
     expect(t).toContain('25일 중 20일'); // 발현 = 분수(표본 작음 정직하게)
     expect(t).toContain('평소 20%'); // 비발현 = 비율
@@ -161,7 +166,8 @@ describe('buildVerificationBlocks — 요약 + reject', () => {
         verdict: 'reject',
         nextStatus: 'rejected',
         effect: 1.0,
-        signalName: '지출과다',
+        signalName: 'expense_total',
+        signalLabel: '총 지출 평소보다 많음',
       }), // reject
     ];
     const texts = sectionTexts(buildVerificationBlocks('2026-06-01', links, []));
@@ -171,7 +177,8 @@ describe('buildVerificationBlocks — 요약 + reject', () => {
     expect(summary).toContain('검증중 1');
     expect(summary).toContain('기각 1');
     const rejectText = texts.find((t) => t.includes('✗'));
-    expect(rejectText).toContain('지출과다');
+    expect(rejectText).toContain('총 지출 평소보다 많음');
+    expect(rejectText).not.toContain('expense_total');
   });
 });
 
@@ -196,11 +203,13 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
     linkId: 555,
     seedId: 10,
     signalId: 20,
-    seedName: '갑목일주',
-    seedDescription: '일간이 강한 날',
+    seedName: 'S1_갑목_편재_천간',
+    seedDescription: '일운 천간 갑목(편재) → 일정/지출 폭증',
+    seedLabel: '일운 천간 갑목(편재)',
     patternKind: 'saju',
-    signalName: '지출과다',
-    signalDescription: '하루 지출이 평소보다 많음',
+    signalName: 'expense_total',
+    signalDescription: 'N8_병화_편관_천간 시드의 expense_total 평가',
+    signalLabel: '총 지출 평소보다 많음',
     signalKind: 'sql',
     valueType: 'binary',
     rateActive: 0.75,
@@ -226,18 +235,20 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
   const buttonsOf = (blocks: KnownBlock[]): ActionsBlock['elements'] =>
     blocks.filter((b): b is ActionsBlock => b.type === 'actions').flatMap((b) => b.elements);
 
-  it('헤더 + off-day 통계 + 평어 + caveat', () => {
+  it('헤더 + off-day 통계 + 라벨 + caveat', () => {
     const text = sectionTexts(buildDiscoveryCandidateCard(makeCandidate()))[0] ?? '';
     expect(text).toContain('[사주]');
-    expect(text).toContain('갑목일주');
-    expect(text).toContain('지출과다');
+    expect(text).toContain('일운 천간 갑목(편재)'); // seedLabel
+    expect(text).toContain('총 지출 평소보다 많음'); // signalLabel
     expect(text).toContain('새 패턴 후보');
     expect(text).toContain('24일 중 18일'); // 발현 = 분수
     expect(text).toContain('평소 25%'); // 비발현 = 비율
     expect(text).toContain('3.0배');
-    expect(text).toContain('일간이 강한 날'); // seed desc 평어
-    expect(text).toContain('하루 지출이 평소보다 많음'); // signal desc 평어
     expect(text).toContain('인과 아님'); // caveat
+    // 변수명·깨진 provenance 미노출 (#504 P2)
+    expect(text).not.toContain('S1_갑목_편재_천간');
+    expect(text).not.toContain('expense_total');
+    expect(text).not.toContain('평가');
   });
 
   it('두 버튼(추적 시작/패스) + linkId payload', () => {
@@ -252,14 +263,20 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
     expect(decodeDiscoveryPayload(value ?? '')).toEqual({ linkId: 777 });
   });
 
-  it('description 없으면 이름으로 폴백', () => {
+  it('카드는 description(provenance) 무시하고 라벨만 사용 — 깨진 provenance여도 미노출', () => {
     const text =
       sectionTexts(
         buildDiscoveryCandidateCard(
-          makeCandidate({ seedDescription: null, signalDescription: null }),
+          makeCandidate({
+            seedDescription: 'N8_병화_편관_천간 시드의 schedule_tax_keyword 평가',
+            signalDescription: 'N8_병화_편관_천간 시드의 schedule_tax_keyword 평가',
+          }),
         ),
       )[0] ?? '';
-    expect(text).toContain('갑목일주 → 지출과다');
+    expect(text).toContain('일운 천간 갑목(편재)'); // seedLabel
+    expect(text).toContain('총 지출 평소보다 많음'); // signalLabel
+    expect(text).not.toContain('schedule_tax_keyword');
+    expect(text).not.toContain('평가');
   });
 
   it('payload encode/decode 왕복 + 방어', () => {

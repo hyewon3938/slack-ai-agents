@@ -1918,7 +1918,37 @@ ADR-0032 §4 = "연속 신호는 이진화하지 말고 Mann-Whitney + 효과크
 
 ### 34. 발굴 엔진 측정 타당성 + 카드 UX — Phase 2 (카드 가독성, #504)
 
-> TODO(`/build`): 카드 라벨 레이어 — 변수명 비노출 + 시드 조건·신호 결과 자연어(사주 활성조건 "축·미 정인이 지지에 들 때" / 생활 구체 "루틴 1개라도 N일 연속") + 검증 카드 공통. 신호 라벨 = name+domain+direction 룰 + override.
+Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액티브 인사이트 카드(발굴 후보·주간 검증·시드 영향력·아침 일운)가 전부 내부 식별자를 날것으로 노출했다 — 시드·신호명이 변수명(`S1_갑목_편재_천간`·`sleep_night_minutes`)이고, 신호 description은 **잘못된 provenance**("N8\_… 시드의 X 평가" — 신호는 P1에서 전역화됐는데 옛 시드 종속 시절 자동생성 문구가 잔존). 사람이 [추적 시작]/[패스]로 노출을 게이트하려면(마스터 원칙 #2: 가독성 = 큐레이션 게이트) 후보가 무슨 뜻인지 읽혀야 하는데, 식별자 노출이 게이트를 무력화한다. 결정 = 런타임 코드 번역, DB·통계·view 불변([ADR-0045](../adr/0045-card-label-layer.md)). verdict·tier·임계치 일절 불변 — 표현 문자열만(#502 카피 PR 연장).
+
+#### 1) 라벨 모듈 + 비대칭 (시드 strip / 신호 룰)
+
+순수 함수 [insight-labels.ts](../../src/shared/insight-labels.ts)(`seedLabel`·`signalLabel`)가 카드 조립 지점에서 라벨 문자열을 생성. 시드와 신호는 description 신뢰도가 정반대라 생성 규칙이 비대칭이다:
+
+- **시드 = description tail-strip.** 시드 description은 hand-authored라 접두가 곧 활성조건. 첫 `→`/`—` 앞만 취한다("일운 천간 갑목(편재) → 일정/지출 폭증" → "일운 천간 갑목(편재)", "갑술 60갑자일 — … 콤보 — 본인 일지 비화" → "갑술 60갑자일"). 십성 주석 "(편재)"은 보존(`(`는 구분자에서 제외), 예측절·내부 참조(ADR)·가설 꼬리표는 자동 탈락. 6종 trigger 구조 파싱 불필요.
+- **신호 = name+domain+direction 룰.** 신호 description은 깨진 provenance라 못 쓰고 metadata로 생성. 측정 명사는 `SIGNAL_MEASURE` 맵(한글접미 `expense_배달음식`→"배달음식 지출"), 방향은 룰(above_avg→"평소보다 많음", 율·시각은 높음/낮음·늦음/이름), 합성·모호 4개는 `SIGNAL_LABEL_OVERRIDES`("세금 관련 일정" 등), tag 신호는 diary 22태그 한글맵, llm 신호는 자작 description.
+
+#### 2) 4개 표면 — hard / soft
+
+| 표면 | 빌더 | 방식 |
+|------|------|------|
+| 주간 검증 (verified/emerging/reject) | [hypothesis-cards.ts](../../src/agents/insight/hypothesis-cards.ts) | 코드 룰 (hard) |
+| 발굴 후보 카드 | hypothesis-cards.ts | 코드 룰 (hard) |
+| 시드 영향력 top | hypothesis-cards.ts | 코드 룰 (hard) |
+| 아침 일운 카드 | 외부 SKILL `daily-insight` | 프롬프트 손질 (soft) |
+
+- 코드 표면 3개: 라벨을 **로드 지점**에서 계산해 DTO에 문자열로 실어 운반(카드 빌더는 변수명·raw 필드 모름). [discoverCandidates](../../src/agents/insight/hypothesis-discovery.ts)→`DiscoveryCandidate`, [verifyUserLinks](../../src/shared/pattern-verification.ts)→`LinkVerification`, [loadSeedInfluence](../../src/cron/weekly-verification.ts)→`SeedInfluenceRow`에 `seedLabel`/`signalLabel` 동봉.
+- **교란 caveat**(verified/emerging 라인에 붙는 ⚠️)도 교란 시드명(변수명)을 노출하던 누락 — 카드 레이어에 `seedLabelById` 맵을 주입해 해소([confound.ts](../../src/shared/confound.ts)·JSONB 불변, Option B). weekly-verification이 active 시드 전체로 맵을 빌드해 `buildVerificationBlocks`에 전달.
+- 아침 카드는 외부 SKILL이 SQL view(`saju_influence_summary`)를 소비해 LLM으로 작문 → TS 룰 도달 불가. 프롬프트에 "변수명·식별자 출력 금지 + description 자연어화" hard rule 주입(soft, 배포 후 적용). view·DB 불변.
+
+#### 3) 불변식 — raw 변수명 노출 0
+
+미매핑 신호(미래 LLM 신호 등)도 도메인 명사 fallback(`DOMAIN_NOUN`+한글접미 보존)으로 끝내 raw 변수명이 사용자에게 노출되지 않는다. prod 전수 재현(active 신호 44 + 전 시드 타입 대표)에서 누출 0건 확인.
+
+#### 영향·리스크
+
+- DB·통계·view 불변 → 리스크 낮음. 라벨이 틀리면 코드 한 줄 고쳐 배포(컬럼 값 수정보다 추적 쉬움).
+- 아침 카드 라벨은 LLM 작문 경로라 같은 시드 문구가 표면별로 미세하게 다를 수 있음 — 수용(둘 다 readable이면 충분). 완벽한 cross-surface 일관성은 보류한 B안(DB label 컬럼)의 몫.
+- 신호 description의 깨진 provenance는 카드가 더는 읽지 않아 dormant(DB 잔존·미사용) — 별도 정리 불요.
 
 ### 35. 발굴 엔진 측정 타당성 + 카드 UX — Phase 3 (후보 재추천, #504)
 

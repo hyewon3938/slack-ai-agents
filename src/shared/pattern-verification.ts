@@ -48,6 +48,7 @@ import {
 import { tertileCuts, classifyBand, isBand, type BandCuts } from './quantile.js';
 import type { PillarSet } from './saju-calendar.js';
 import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
+import { seedLabel, signalLabel } from './insight-labels.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
 
@@ -112,8 +113,12 @@ export interface LinkVerification {
   seedId: number;
   signalId: number;
   seedName: string;
+  /** 카드용 자연어 라벨 — seedName 변수명 대체 (#504 P2, ADR-0045). */
+  seedLabel: string;
   patternKind: 'saju' | 'life_signal';
   signalName: string;
+  /** 카드용 자연어 라벨 — signalName 변수명·깨진 provenance 대체 (#504 P2, ADR-0045). */
+  signalLabel: string;
   signalKind: 'sql' | 'tag';
   valueType: 'binary' | 'continuous' | null;
   currentStatus: LinkLifecycleStatus;
@@ -688,6 +693,8 @@ interface SignalDefRow {
   tag_name: string | null;
   window_days: number | null;
   domain: string | null;
+  /** llm 신호 자작 라벨용 (#504 P2). seed 신호는 룰로 생성하므로 미사용. */
+  description: string | null;
 }
 
 const toSignalDef = (row: SignalDefRow): SignalDef => ({
@@ -735,12 +742,28 @@ export const verifyUserLinks = async (
 
   const signalIds = [...new Set(linkRes.rows.map((r) => r.signal_id))];
   const signalRes = await query<SignalDefRow>(
-    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain
+    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain, description
        FROM signal_defs
       WHERE id = ANY($1::int[]) AND status = 'active'`,
     [signalIds],
   );
   const signalById = new Map(signalRes.rows.map((r) => [r.id, toSignalDef(r)]));
+  // 카드용 신호 라벨 — 룰(seed) / 자작 description(llm). 로드 지점에서 1회 계산해 문자열로 운반.
+  const signalLabelById = new Map(
+    signalRes.rows.map((r) => [
+      r.id,
+      signalLabel({
+        name: r.name,
+        kind: r.kind,
+        source: r.source,
+        direction: r.direction,
+        threshold: r.threshold === null ? null : Number(r.threshold),
+        tagName: r.tag_name,
+        domain: r.domain,
+        description: r.description,
+      }),
+    ]),
+  );
 
   const windowDates = buildWindowDates(today, V.windowCapDays);
   const [stemMap, branchMap] = await Promise.all([
@@ -841,8 +864,10 @@ export const verifyUserLinks = async (
       seedId: x.row.seed_id,
       signalId: x.row.signal_id,
       seedName: x.seed.name,
+      seedLabel: seedLabel({ name: x.seed.name, description: x.seed.description }),
       patternKind: x.seed.trigger_target_type === 'life_signal' ? 'life_signal' : 'saju',
       signalName: x.signal.name,
+      signalLabel: signalLabelById.get(x.row.signal_id) ?? x.signal.name,
       signalKind: x.signal.kind,
       valueType: x.signal.valueType,
       currentStatus: x.row.status,

@@ -25,6 +25,8 @@ import {
 } from '../shared/pattern-verification.js';
 import { flagConfounds, type ConfoundData, type ConfoundResult } from '../shared/confound.js';
 import { posteriorMean, credibleInterval } from '../shared/bayesian-posterior.js';
+import { loadActiveSeeds } from '../shared/pattern-match.js';
+import { seedLabel } from '../shared/insight-labels.js';
 import {
   buildVerificationBlocks,
   buildDiscoveryCandidateCard,
@@ -252,6 +254,7 @@ const loadSeedInfluence = async (userId: number, topN: number): Promise<SeedInfl
       patternKind: r.pattern_kind,
       signalName: r.pattern_name,
       description: r.pattern_description,
+      seedLabel: seedLabel({ name: r.pattern_name, description: r.pattern_description }),
       totalHits: Math.max(0, Math.round(Number(r.total_hits))),
       totalMisses: Math.max(0, Math.round(Number(r.total_misses))),
       posteriorP: mean,
@@ -281,7 +284,7 @@ const surfaceDiscoveries = async (
     const linkId = await insertPendingDiscoveryLink(userId, c);
     if (linkId === null) continue; // ON CONFLICT(이미 존재) — 카드 스킵
     const cardBlocks = buildDiscoveryCandidateCard({ ...c, linkId });
-    const cardFallback = `새 패턴 후보 — ${c.seedName} × ${c.signalName}`;
+    const cardFallback = `새 패턴 후보 — ${c.seedLabel} × ${c.signalLabel}`;
     await postBlockMessage(app.client, channelId, cardFallback, cardBlocks);
     surfaced += 1;
   }
@@ -369,12 +372,25 @@ const processUser = async (
     console.error(`[Confound] user=${userId} 교란 플래그 실패: ${msg}`);
   }
 
+  // 교란 caveat용 시드 라벨 맵(#504 P2, ADR-0045) — 실패해도 카드는 무탈(빈 맵 → 중립 표현).
+  let seedLabelById = new Map<number, string>();
+  try {
+    const allSeeds = await loadActiveSeeds(userId);
+    seedLabelById = new Map(
+      allSeeds.map((s) => [s.id, seedLabel({ name: s.name, description: s.description })]),
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Verification] 시드 라벨 맵 로드 실패 user=${userId}: ${msg}`);
+  }
+
   const blocks = buildVerificationBlocks(
     weekStart,
     results,
     seedInfluence,
     prevEValues,
     confoundByLink,
+    seedLabelById,
   );
   const fallback = `패턴 검증 주간 리포트 (${weekStart} ~) — 링크 ${results.length}건`;
   try {

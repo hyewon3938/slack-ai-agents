@@ -82,12 +82,10 @@ export type DiscoveryCardInput = DiscoveryCandidate & { linkId: number };
  */
 export const buildDiscoveryCandidateCard = (c: DiscoveryCardInput): KnownBlock[] => {
   const payload = encodeDiscoveryPayload({ linkId: c.linkId });
-  const header = `${KIND_LABEL[c.patternKind]} *${c.seedName}* × *${c.signalName}* — 새 패턴 후보`;
-  const stat = `${c.seedName} 켜진 날 *${c.signalName}* — ${offDayPhrase(c.nActive, c.hit, c.rateOff, c.effect)}`;
-  const seedDesc = c.seedDescription?.trim() || c.seedName;
-  const signalDesc = c.signalDescription?.trim() || c.signalName;
+  const header = `${KIND_LABEL[c.patternKind]} *${c.seedLabel}* × *${c.signalLabel}* — 새 패턴 후보`;
+  const stat = `${c.seedLabel} 켜진 날 *${c.signalLabel}* — ${offDayPhrase(c.nActive, c.hit, c.rateOff, c.effect)}`;
   const why =
-    `_${seedDesc} → ${signalDesc}. ${c.seedName} 켜진 날 ${c.signalName}가 평소보다 자주 떠서 후보로 올렸어. ` +
+    `_${c.seedLabel} 켜진 날 ${c.signalLabel} 패턴이 평소보다 자주 나타나서 후보로 올렸어. ` +
     `아직 연관일 뿐 — 추적 시작하면 주간 엔진이 몇 주 검정해서 진짜인지 가려._`;
   const sub = `_발굴 근거 q ${formatPValue(c.qValue)} (느슨한 발견 기준 통과). 연관이지 인과 아님._`;
   return [
@@ -124,6 +122,8 @@ export interface SeedInfluenceRow {
   patternKind: 'saju' | 'life_signal';
   signalName: string;
   description: string | null;
+  /** 카드용 자연어 라벨 — 변수명(signalName=시드명) 대체 (#504 P2, ADR-0045). */
+  seedLabel: string;
   totalHits: number;
   totalMisses: number;
   posteriorP: number;
@@ -138,11 +138,9 @@ export const buildSeedInfluenceSection = (rows: SeedInfluenceRow[]): KnownBlock[
   if (rows.length === 0) return [];
   const lines = rows.map((r) => {
     const kindLabel = KIND_LABEL[r.patternKind];
-    const desc = (r.description ?? '').slice(0, 40);
     const verifyCount = r.totalHits + r.totalMisses;
     return (
-      `• ${kindLabel} *${r.signalName}* (검증 ${verifyCount}개)` +
-      (desc ? ` — ${desc}` : '') +
+      `• ${kindLabel} *${r.seedLabel}* (검증 ${verifyCount}개)` +
       ` — 본인 패턴일 가능성 ${formatPosterior(r.posteriorP)} ` +
       `(추정 ${formatPosterior(r.ciLower)}–${formatPosterior(r.ciUpper)})`
     );
@@ -186,7 +184,7 @@ const evalueBar = (e: number, threshold: number): string => {
 
 /** verified(검증됨) 한 줄 — 결론 위주(자연어 본문) + 이탤릭 보조 줄(확정 증거·우연 가능성·확신도). */
 const verifiedLine = (l: LinkVerification): string =>
-  `• ✅ ${KIND_LABEL[l.patternKind]} ${l.seedName} 켜진 날 *${l.signalName}* — ` +
+  `• ✅ ${KIND_LABEL[l.patternKind]} ${l.seedLabel} 켜진 날 *${l.signalLabel}* — ` +
   `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증됨\n` +
   `_확정 증거 e ${l.eValue.toFixed(1)} (20 넘어 확정) · 우연 가능성 q ${formatPValue(l.qValue)} · ` +
   `${confidencePhrase(l.posteriorAlpha, l.posteriorBeta, l.posteriorP)}_`;
@@ -202,7 +200,7 @@ const emergingLine = (l: LinkVerification, prevE: number | undefined): string =>
     else trend = ` (지난주 ${prevE.toFixed(1)} → 그대로)`;
   }
   return (
-    `• 🌱 ${KIND_LABEL[l.patternKind]} ${l.seedName} 켜진 날 *${l.signalName}* — ` +
+    `• 🌱 ${KIND_LABEL[l.patternKind]} ${l.seedLabel} 켜진 날 *${l.signalLabel}* — ` +
     `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증중\n` +
     `_확정까지 ${bar} ${cur.toFixed(1)}/${V.evalueThreshold}${trend} · ` +
     `우연 가능성 q ${formatPValue(l.qValue)} · ` +
@@ -211,7 +209,7 @@ const emergingLine = (l: LinkVerification, prevE: number | undefined): string =>
 };
 
 const rejectLine = (l: LinkVerification): string =>
-  `• ✗ ${KIND_LABEL[l.patternKind]} ${l.seedName} × ${l.signalName} — ` +
+  `• ✗ ${KIND_LABEL[l.patternKind]} ${l.seedLabel} × ${l.signalLabel} — ` +
   `켜진 날이나 아닌 날이나 비슷 (${mult(l.effect)}). 기각`;
 
 /**
@@ -220,16 +218,19 @@ const rejectLine = (l: LinkVerification): string =>
  * - adjusted 없음(게이트 미달): P6 marginal 공존 의심.
  * 조정 교란 이름은 suspected(seedName 보유)에서 seedId로 join. verified/emerging 라인에만 덧붙임.
  */
-const confoundCaveat = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string => {
+const confoundCaveat = (
+  l: LinkVerification,
+  confoundByLink: Map<number, ConfoundData>,
+  seedLabelById: Map<number, string>,
+): string => {
   const data = confoundByLink.get(l.linkId);
   if (!data) return '';
   const { suspected, adjusted } = data;
+  // 교란 시드도 변수명 대신 라벨로 (#504 P2). 미상이면 중립 표현(raw 이름·시드#id 미노출).
+  const labelOf = (seedId: number): string => seedLabelById.get(seedId) ?? '다른 시드';
 
   if (adjusted && adjusted.length > 0) {
-    const nameById = new Map(suspected.map((s) => [s.seedId, s.seedName]));
-    const uniq = [
-      ...new Set(adjusted.map((a) => nameById.get(a.seedId) ?? `시드#${a.seedId}`)),
-    ].join(', ');
+    const uniq = [...new Set(adjusted.map((a) => labelOf(a.seedId)))].join(', ');
     switch (adjusted[0]?.verdict) {
       case 'explained_away':
         return `\n  ⚠️ ${uniq} 시드가 같이 켜지는 날이 많아서, 그거 빼고 보면 효과 사라짐 (어부지리 의심)`;
@@ -241,7 +242,7 @@ const confoundCaveat = (l: LinkVerification, confoundByLink: Map<number, Confoun
   }
 
   if (suspected.length === 0) return '';
-  return `\n  ⚠️ ${suspected.map((s) => s.seedName).join(', ')}가 자주 같이 켜져서 영향 섞였을 수 있음`;
+  return `\n  ⚠️ ${suspected.map((s) => labelOf(s.seedId)).join(', ')} 시드가 자주 같이 켜져서 영향 섞였을 수 있음`;
 };
 
 const TIER_LEGEND =
@@ -260,6 +261,7 @@ export const buildVerificationBlocks = (
   seedInfluence: SeedInfluenceRow[],
   prevEValues: Map<number, number> = new Map(),
   confoundByLink: Map<number, ConfoundData> = new Map(),
+  seedLabelById: Map<number, string> = new Map(),
 ): KnownBlock[] => {
   const blocks: KnownBlock[] = [
     {
@@ -305,7 +307,9 @@ export const buildVerificationBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: verified.map((l) => verifiedLine(l) + confoundCaveat(l, confoundByLink)).join('\n'),
+        text: verified
+          .map((l) => verifiedLine(l) + confoundCaveat(l, confoundByLink, seedLabelById))
+          .join('\n'),
       },
     });
   }
@@ -317,7 +321,9 @@ export const buildVerificationBlocks = (
         type: 'mrkdwn',
         text: emerging
           .map(
-            (l) => emergingLine(l, prevEValues.get(l.linkId)) + confoundCaveat(l, confoundByLink),
+            (l) =>
+              emergingLine(l, prevEValues.get(l.linkId)) +
+              confoundCaveat(l, confoundByLink, seedLabelById),
           )
           .join('\n'),
       },
