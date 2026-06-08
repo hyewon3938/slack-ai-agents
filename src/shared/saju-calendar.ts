@@ -115,16 +115,6 @@ export interface PillarSet {
   ilun: Pillar;
 }
 
-/**
- * 5개 운 레벨에서 오행/십성 발현 카운트.
- * 각 레벨에서 해당 오행/십성이 1회 이상 나타나면 그 레벨을 1로 카운트.
- * 결과 범위: 0\~5 (대운 미적용 시 0\~4).
- */
-export interface CumulativeCount {
-  element: Record<Element, number>;
-  sipsin: Record<string, number>;
-}
-
 // ─── 상수: 천간/지지 ────────────────────────────────────
 
 const CHEONGAN_LIST: readonly Cheongan[] = [
@@ -952,43 +942,6 @@ export const getDaeunPillar = (
     else break;
   }
   return parsePillarString(active.pillar);
-};
-
-/**
- * 5개 운 레벨에서 오행/십성 발현 카운트.
- * 각 레벨에서 해당 오행/십성이 1회 이상 나타나면 그 레벨을 1로 카운트.
- * 가중치 없음. 풀셋 임계치 N=1..5 시드용 (ADR-0028).
- */
-export const computeCumulativePillarCount = (
-  dayMaster: Cheongan,
-  pillars: PillarSet,
-): CumulativeCount => {
-  const levels: ReadonlyArray<readonly Pillar[]> = [
-    pillars.wonguk,
-    pillars.daeun ? [pillars.daeun] : [],
-    [pillars.seun],
-    [pillars.wolun],
-    [pillars.ilun],
-  ];
-
-  const elementCount: Record<Element, number> = { 목: 0, 화: 0, 토: 0, 금: 0, 수: 0 };
-  const sipsinCount: Record<string, number> = {};
-
-  for (const level of levels) {
-    if (level.length === 0) continue;
-    const presentElements = new Set<Element>();
-    const presentSipsins = new Set<Sipsung>();
-    for (const p of level) {
-      presentElements.add(getElementByCheongan(p.cheongan));
-      presentElements.add(getElementByJiji(p.jiji));
-      presentSipsins.add(getSipsung(dayMaster, p.cheongan));
-      presentSipsins.add(getJijiSipsung(dayMaster, p.jiji));
-    }
-    for (const e of presentElements) elementCount[e]++;
-    for (const s of presentSipsins) sipsinCount[s] = (sipsinCount[s] ?? 0) + 1;
-  }
-
-  return { element: elementCount, sipsin: sipsinCount };
 };
 
 // ─── CLI 모드 ───────────────────────────────────────────

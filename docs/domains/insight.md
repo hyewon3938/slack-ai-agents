@@ -1436,7 +1436,7 @@ ALTER TABLE pattern_matches
 
 **데이터 수집** (메트릭/카운트만, diary 원문 입력 금지):
 - 오늘 일운: `fortune_analyses WHERE period='daily' AND date=CURRENT_DATE`
-- 오늘 발현 시드: `seed_daily_activations (date=오늘(KST), trigger_activated=true)` JOIN `pattern_catalog` + `saju_influence_summary`(tier 판정). 사주 시드(stem/branch/ganji/relation/sibiunsung/element_density/cumulative_pillar_count)와 `life_signal`을 레이어로 분리 표시
+- 오늘 발현 시드: `seed_daily_activations (date=오늘(KST), trigger_activated=true)` JOIN `pattern_catalog` + `saju_influence_summary`(tier 판정). 사주 시드(stem/branch/ganji/relation/sibiunsung/element_density)와 `life_signal`을 레이어로 분리 표시
 - `life_themes` active
 
 **멱등**: `daily_insight_log (user_id, date) UNIQUE` (마이그레이션 076). `INSERT ... ON CONFLICT DO NOTHING RETURNING` — 비면 "이미 발송, 종료".
@@ -1971,7 +1971,7 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 
 #### ② 누적 카운트 시드 은퇴 → 강도 밴드 위임
 
-고정 임계 누적 시드(`pool_화_오행_누적_N1`\~`N5`, `pool_편재_누적_N1`\~`N5`, 10개)는 baseline 포화 시 off-day 0 → 검정 불가로 죽는다(본인 화는 운에 늘 깔려 N1\~N3 매일 발현). 동일 개념을 강도 밴드(ADR-0036)가 상대 분위수·주간 재계산으로 포화 없이 더 정밀히 측정 → archive(`active=false`, `archived_reason='delegated_to_strength_band'` + 링크 archive). 위임처: 화→`pool_강도_화`, 재성(본인 양목)→`pool_강도_목`. `cumulative_pillar_count` 트리거 코드는 휴면 보존(삭제 X, CHECK 미변경). 분포 리뷰 cron(`pillarLevelDistributionReview`, 월 09:15) 제거 → **Life Cron 슬롯 8→7**.
+고정 임계 누적 시드(`pool_화_오행_누적_N1`\~`N5`, `pool_편재_누적_N1`\~`N5`, 10개)는 baseline 포화 시 off-day 0 → 검정 불가로 죽는다(본인 화는 운에 늘 깔려 N1\~N3 매일 발현). 동일 개념을 강도 밴드(ADR-0036)가 상대 분위수·주간 재계산으로 포화 없이 더 정밀히 측정 → archive(`active=false`, `archived_reason='delegated_to_strength_band'` + 링크 archive). 위임처: 화→`pool_강도_화`, 재성(본인 양목)→`pool_강도_목`. `cumulative_pillar_count` 트리거 코드·타입(`computeCumulativePillarCount`·`evaluateCumulativePillarCount`·`CumulativeCount`·`PillarLevel`의 `cumulative`)은 #514에서 데드코드 제거(활성 시드 0이라 무영향) — DB CHECK·마이그레이션은 보존(불변, archived 시드 재진입 여지). 분포 리뷰 cron(`pillarLevelDistributionReview`, 월 09:15) 제거 → **Life Cron 슬롯 8→7**.
 
 `pattern_catalog.archived_reason TEXT` 컬럼 신설 — archive 사유 구분(③ 부활 스코프):
 
