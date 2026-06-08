@@ -430,6 +430,18 @@ describe('데이터-존재 시작일 헬퍼 (#504)', () => {
         starts,
       ),
     ).toBe('2026-03-07'); // streak→routine
+    // #510 회귀: slotGap·weekComparison은 routine_records 집계라 routine(옛 맵은 schedule=03-05로 오기).
+    for (const signal_name of ['slotGap', 'weekComparison']) {
+      expect(
+        seedDataStart(
+          {
+            trigger_target_type: 'life_signal',
+            trigger_aux: { kind: 'behavior_baseline', signal_name },
+          },
+          starts,
+        ),
+      ).toBe('2026-03-07'); // routine_records (≠ schedules 03-05)
+    }
     expect(
       seedDataStart(
         { trigger_target_type: 'life_signal', trigger_aux: { kind: 'weekday', dow: 6 } },

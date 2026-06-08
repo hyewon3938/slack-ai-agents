@@ -49,6 +49,7 @@ import { tertileCuts, classifyBand, isBand, type BandCuts } from './quantile.js'
 import type { PillarSet } from './saju-calendar.js';
 import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
 import { seedLabel, signalLabel } from './insight-labels.js';
+import { BEHAVIOR_SIGNAL_DOMAIN } from './insights.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
 
@@ -171,20 +172,9 @@ const DATA_TABLES = [
   'diary_meta_tags',
 ] as const;
 
-/** life_signal behavior_baseline signal_name → 의존 도메인. */
-const BEHAVIOR_DOMAIN: Record<string, string> = {
-  streak: 'routine',
-  recovery: 'routine',
-  lapseAlert: 'routine',
-  weeklyRegression: 'routine',
-  spottyPattern: 'routine',
-  sleepTrend: 'sleep',
-  drift: 'sleep',
-  slotGap: 'schedule',
-  weekComparison: 'schedule',
-  overdueAlert: 'schedule',
-  categorySkew: 'schedule',
-};
+// life_signal behavior_baseline signal_name → 의존 도메인: insights.ts의 BEHAVIOR_SIGNAL_DOMAIN이
+// 단일 진실(각 detect 함수의 domain 선언). #510 — 옛 로컬 맵이 slotGap·weekComparison을 schedule로
+// 적던 드리프트 제거(실제는 routine_records 집계 = routine).
 
 export interface UserDataStarts {
   /** 테이블별 첫 기록일(YYYY-MM-DD). 데이터 없는 테이블은 키 없음. */
@@ -230,7 +220,11 @@ const lifeSignalDomain = (aux: Record<string, unknown> | null): string | null =>
   }
   if (kind === 'behavior_baseline') {
     const name = aux['signal_name'];
-    return (typeof name === 'string' ? BEHAVIOR_DOMAIN[name] : undefined) ?? null;
+    return (
+      (typeof name === 'string'
+        ? (BEHAVIOR_SIGNAL_DOMAIN as Record<string, string>)[name]
+        : undefined) ?? null
+    );
   }
   return null; // weekday/weekday_group/month_position/season/calendar_event = 캘린더(데이터 비의존)
 };
