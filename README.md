@@ -111,7 +111,7 @@ flowchart LR
   <img src="docs/images/cron-night.jpg" alt="밤 크론 잔소리" width="80%" />
 </p>
 
-**데이터를 바꿀 땐 승인 카드로.** `modify_db`는 바로 실행하지 않고 dry-run 결과를 Slack 카드로 띄운 뒤, 사용자가 승인해야 실행한다. LLM이 짠 변경을 사람이 눈으로 확인하는 게이트.
+**LLM이 데이터를 바꿀 땐 승인을 받는다.** 에이전트한테 여러 건을 한꺼번에 고쳐달라고 하면, LLM이 잘못 알아듣거나 엉뚱한 데이터를 건드릴 수 있다. 그래서 `modify_db`는 바로 실행하지 않고, 무엇을 어떻게 바꿀지 미리 돌려본 결과(dry-run)를 Slack 카드로 보여준 뒤 내가 승인해야 반영한다. 할루시네이션이나 실수로 데이터가 망가지는 걸 막는 안전장치다.
 
 <p align="center">
   <img src="docs/images/llm-approval-card-01.png" alt="modify_db 승인 카드 — dry-run" width="45%" />
@@ -119,7 +119,7 @@ flowchart LR
   <img src="docs/images/llm-approval-card-02.png" alt="modify_db 승인 카드 — 실행 결과" width="45%" />
 </p>
 
-**리마인더도 자연어로.** "매일 11시에 약 먹기 알림"을 봇이 cron 표현식으로 변환·저장하고, 시간이 되면 봇이 자기 자신을 호출해 알림을 보낸다. "그거 화요일로 바꿔줘" 같은 수정·삭제까지 자연어로.
+**리마인더는 말만 해두면 알아서 챙긴다.** "매일 11시에 약 먹기 알려줘"라고 슬랙에 말하면, 봇이 이걸 cron 일정으로 바꿔 저장해두고 그 시간이 되면 직접 알림을 보낸다. "그거 화요일로 바꿔줘"처럼 고치거나 지우는 것도 대화로 끝난다.
 
 <p align="center">
   <img src="docs/images/reminder.png" alt="리마인더 생성 + 알림 발송" width="80%" />
@@ -140,7 +140,7 @@ flowchart LR
   <img src="docs/images/01-app-home.PNG" alt="Slack App Home" width="22%" />
 </p>
 
-**지출·예산은 개인 예산 엔진으로.** 목표 기간을 정하면 월·일 예산이 자동 분배되고, 할부는 결제 시점이 아닌 실제 지출 시점 기준으로 월별 배분, 결제주기 종료 시 카드 자산을 자동 정산한다.
+**지출·예산은 개인 예산 엔진으로.** 예산을 등록하고 쓸 기간을 정하면 월·일 예산이 자동으로 분배된다. 할부는 결제 시점이 아니라 실제 지출 시점 기준으로 월별로 나눠 잡고, 카테고리마다 월 목표 횟수를 정해 얼마나 지켰는지 관리할 수도 있다. 카드 결제주기를 기준으로 월 예산을 산정하고, 주기가 끝나면 카드 자산을 자동 정산한다.
 
 <p align="center">
   <img src="docs/images/budget-dashboard.png" alt="예산 대시보드" width="45%" />
