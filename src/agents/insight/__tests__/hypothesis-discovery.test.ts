@@ -22,6 +22,8 @@ interface Fixture {
   linkedPairs: Array<{ seed_id: number; signal_id: number }>;
   activationBySeed: Map<number, Map<string, boolean>>;
   signalSeriesById: Map<number, DaySeries>;
+  /** 연속 신호 raw 시리즈 (Mann-Whitney 효과크기 경로 §4 테스트용). */
+  rawBySignal: Map<number, Map<string, number | null>>;
 }
 
 let fixture: Fixture;
@@ -36,6 +38,7 @@ const resetFixture = (): void => {
     linkedPairs: [],
     activationBySeed: new Map(),
     signalSeriesById: new Map(),
+    rawBySignal: new Map(),
   };
   blockPQueue = [];
   blockPIdx = 0;
@@ -45,6 +48,10 @@ resetFixture();
 
 vi.mock('../../../shared/db.js', () => ({
   query: vi.fn(async (sql: string, params?: readonly unknown[]) => {
+    // computeUserDataStarts(#504): 테이블별 MIN(date) — 픽스처는 데이터 시작 제약 없음(global=null → 무클립).
+    if (/MIN\(date\)/i.test(sql)) {
+      return { rows: [{ d: null }] };
+    }
     if (/FROM signal_defs/i.test(sql) && /status = 'active'/i.test(sql)) {
       return { rows: fixture.signals };
     }
@@ -76,7 +83,7 @@ vi.mock('../../../shared/pattern-verification.js', async (importOriginal) => {
     computeSignalSeries: vi.fn(
       async (_userId: number, signal: { id: number }): Promise<SignalSeriesResult> => ({
         series: fixture.signalSeriesById.get(signal.id) ?? new Map(),
-        raw: null,
+        raw: fixture.rawBySignal.get(signal.id) ?? null,
       }),
     ),
     computeSeedActivationSeries: vi.fn(
@@ -245,6 +252,58 @@ describe('discoverCandidates — Fisher 사전선별', () => {
   });
 });
 
+describe('discoverCandidates — 연속 신호 효과크기 랭킹 (§4)', () => {
+  beforeEach(resetFixture);
+
+  const makeContinuousSignal = (id: number, name: string): SignalRow => ({
+    id,
+    name,
+    kind: 'sql',
+    sql_body: 'SELECT COALESCE(SUM(duration_minutes),0) FROM sleep_records WHERE ...',
+    value_type: 'continuous',
+    direction: 'above_avg',
+    threshold: null,
+    tag_name: null,
+    window_days: null,
+    description: `${name} 신호`,
+  });
+
+  it('연속 신호는 Mann-Whitney 효과크기로 surface (HL·MW p 동봉, valueType=continuous)', async () => {
+    fixture.seeds = [makeSeed(10, '갑목일주')];
+    fixture.signals = [makeContinuousSignal(21, 'sleep_total_minutes')];
+    // 이진화 시리즈는 강한 분할표(공통 게이트 nActive·block-perm 통과).
+    const { activation, signal } = makeContingencySeries(12, 2, 2, 12);
+    fixture.activationBySeed.set(10, activation);
+    fixture.signalSeriesById.set(21, signal);
+    // raw: 발현일 높은 수면(500), 비발현일 낮음(350) → 강한 양의 분리(rank-biserial≈+1).
+    const raw = new Map<string, number | null>();
+    for (const [date, act] of activation) raw.set(date, act ? 500 : 350);
+    fixture.rawBySignal.set(21, raw);
+
+    const out = await discoverCandidates(1, TODAY);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.valueType).toBe('continuous');
+    expect(out[0]?.effectSize ?? 0).toBeGreaterThan(0); // HL 위치이동 양수(발현일 더 높음)
+    expect(out[0]?.mwP ?? 1).toBeLessThanOrEqual(0.1);
+    expect(Number.isFinite(out[0]?.sortZ ?? NaN)).toBe(true);
+  });
+
+  it('효과크기 부족(rank-biserial < discoveryMinEffectR=0.2)인 연속 신호는 컷', async () => {
+    fixture.seeds = [makeSeed(10, '갑목일주')];
+    fixture.signals = [makeContinuousSignal(21, 'sleep_total_minutes')];
+    const { activation, signal } = makeContingencySeries(12, 2, 2, 12);
+    fixture.activationBySeed.set(10, activation);
+    fixture.signalSeriesById.set(21, signal);
+    // raw가 발현/비발현 거의 겹침 → 위치이동 미미 → rank-biserial 하한 미달 → 컷.
+    const raw = new Map<string, number | null>();
+    let i = 0;
+    for (const [date] of activation) raw.set(date, 400 + (i++ % 2)); // 400/401 교차(분리 없음)
+    fixture.rawBySignal.set(21, raw);
+
+    expect(await discoverCandidates(1, TODAY)).toEqual([]);
+  });
+});
+
 describe('discoverCandidates — discoverQ 게이트 + top-N', () => {
   beforeEach(resetFixture);
 
@@ -325,9 +384,13 @@ describe('insertPendingDiscoveryLink — pending 선INSERT', () => {
       signalName: 'sig',
       signalDescription: '신호',
       signalKind: 'tag',
+      valueType: 'binary',
       rateActive: 0.9,
       rateOff: 0.2,
       effect: 4.5,
+      effectSize: null,
+      mwP: null,
+      sortZ: 3.4,
       nActive: 27,
       hit: 24,
       miss: 3,
@@ -348,10 +411,49 @@ describe('insertPendingDiscoveryLink — pending 선INSERT', () => {
     expect(params[2]).toBe(20); // signal_id
     expect(params[3]).toBe(24); // hit_count
     expect(params[4]).toBe(3); // miss_count
-    // test_detail JSONB(마지막 인자)에 발굴 스냅샷.
-    const detail = JSON.parse(String(params[params.length - 1]));
+    // 이진 신호 → test_type='fisher_2x2' (마지막 인자).
+    expect(params[params.length - 1]).toBe('fisher_2x2');
+    // test_detail JSONB(끝에서 두 번째 인자)에 발굴 스냅샷.
+    const detail = JSON.parse(String(params[params.length - 2]));
     expect(detail.source).toBe('discovery');
     expect(detail.discover_q).toBe(0.01);
     expect(detail.family).toBe('baseline');
+  });
+
+  it('연속 신호 → test_type=mann_whitney + 효과크기(effect_size/mw_p) 동봉 (§4)', async () => {
+    await insertPendingDiscoveryLink(1, {
+      seedId: 11,
+      signalId: 21,
+      seedName: 's',
+      seedDescription: null,
+      patternKind: 'saju',
+      signalName: 'sleep_total_minutes',
+      signalDescription: null,
+      signalKind: 'sql',
+      valueType: 'continuous',
+      rateActive: 0.7,
+      rateOff: 0.4,
+      effect: 1.75,
+      effectSize: 42.5, // Hodges-Lehmann (raw 분 단위)
+      mwP: 0.012,
+      sortZ: 2.6,
+      nActive: 20,
+      hit: 14,
+      miss: 6,
+      inconclusive: 0,
+      fisherP: 0.04,
+      blockP: 0.02,
+      qValue: 0.08,
+      posteriorAlpha: 15,
+      posteriorBeta: 7,
+      posteriorP: 0.68,
+      family: 'baseline',
+    });
+    const params = insertCalls[0] ?? [];
+    expect(params[params.length - 1]).toBe('mann_whitney');
+    const detail = JSON.parse(String(params[params.length - 2]));
+    expect(detail.effect_size).toBe(42.5);
+    expect(detail.mw_p).toBe(0.012);
+    expect(detail.sort_z).toBe(2.6);
   });
 });
