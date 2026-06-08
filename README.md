@@ -174,7 +174,7 @@ flowchart LR
 | 네트워크 | DB·API 포트 루프백 바인딩, 외부 트래픽은 Caddy TLS 종료, HTTPS 프록시 경유 |
 | 인증 | Bearer API Key(타이밍 세이프 비교), iron-session, 요청 크기 제한 |
 | SQL 실행 | 테넌트 격리 검증, DDL/위험 함수 차단, WHERE 필수 + 행 수 제한, `statement_timeout` |
-| LLM | SQL 감사 로그, LLM-생성 SQL 2단 방어(정적 검증 + read-only 트랜잭션 격리) |
+| LLM | 프롬프트 인젝션 패턴 감지, SQL 감사 로그, LLM-생성 SQL 2단 방어(정적 검증 + read-only 트랜잭션 격리) |
 | 요청 제어 | 슬라이딩 윈도우 Rate Limiter, 메시지 크기 제한, 봇 루프 필터 |
 | 개발 프로세스 | 커밋 전 시크릿 스캔 Hook, PR 리뷰 스킬에 보안 감사 체크리스트 내장 |
 
