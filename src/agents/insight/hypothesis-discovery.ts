@@ -44,8 +44,27 @@ import {
 import type { BandCuts } from '../../shared/quantile.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 import { seedLabel, signalLabel } from '../../shared/insight-labels.js';
+import { BEHAVIOR_SIGNAL_DOMAIN, type InsightDomain } from '../../shared/insights.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
+
+/**
+ * 행동 시드(life_signal · behavior_baseline)의 source 도메인 (#508 ④, ADR-0046).
+ * 사주 시드·캘린더 life_signal(weekday/month_position 등)은 행동 도메인이 없어 null → 필터 면제.
+ * 동어반복 필터가 "시드 도메인 == 신호 도메인"(같은 행동 두 번 잼)을 surface 전 거를 때 source.
+ */
+const behaviorSeedDomain = (seed: {
+  trigger_target_type: string;
+  trigger_aux: Record<string, unknown> | null;
+}): InsightDomain | null => {
+  if (seed.trigger_target_type !== 'life_signal') return null;
+  const aux = seed.trigger_aux ?? {};
+  if (aux['kind'] !== 'behavior_baseline') return null;
+  const name = aux['signal_name'];
+  return typeof name === 'string'
+    ? ((BEHAVIOR_SIGNAL_DOMAIN as Record<string, InsightDomain>)[name] ?? null)
+    : null;
+};
 
 /** 발굴 후보 — 여집합 off-day 대조 통과 (surface 전용, pending 링크로 선INSERT). */
 export interface DiscoveryCandidate {
@@ -232,12 +251,19 @@ export const discoverCandidates = async (
 
   // 여집합 후보 → 데이터-존재 윈도우 클립 → 2×2 → 타입별 효과크기 사전선별 → 통과만 block-perm.
   const survivors: Survivor[] = [];
+  let droppedSameDomain = 0; // #508 ④ — 동어반복(자기상관) 드롭 카운트(무음 캡 금지, 로그로 가시화)
   for (const seed of seeds) {
     const activation = seedActivationById.get(seed.id);
     if (!activation) continue;
     const seedStart = seedDataStart(seed, dataStarts);
+    const seedDom = behaviorSeedDomain(seed); // 행동 시드만 non-null(사주·캘린더는 면제)
     for (const signal of signals) {
       if (linked.has(`${seed.id}:${signal.def.id}`)) continue;
+      // 동어반복 필터(#508 ④): 같은 행동을 두 번 잰 자기상관 쌍은 사전선별·FDR 전에 제외(풀 오염 방지).
+      if (seedDom !== null && seedDom === signal.def.domain) {
+        droppedSameDomain += 1;
+        continue;
+      }
       const sr = signalSeriesById.get(signal.def.id);
       if (!sr) continue;
       const series = sr.series;
@@ -272,6 +298,11 @@ export const discoverCandidates = async (
       const blockP = blockPermutationP(daySeq, V.blockLen, V.blockPermIters);
       survivors.push({ seed, signal, cont, v, blockP, mannWhitney, effectSize, sortZ });
     }
+  }
+  if (droppedSameDomain > 0) {
+    console.warn(
+      `[Discovery] user=${userId} same-domain 자기상관 ${droppedSameDomain}쌍 제외(#508 ④)`,
+    );
   }
   if (survivors.length === 0) return [];
 

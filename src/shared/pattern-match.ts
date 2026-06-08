@@ -524,6 +524,9 @@ const pillarSetOf = (ctx: DailyContext): PillarSet => ({
  * trigger_aux:
  *   - { element: '화', count_min: 3 } — 화 오행이 5개 운 레벨 중 3개 이상에서 발현
  *   - { sipsin: '편재', count_min: 2 } — 편재가 5개 운 레벨 중 2개 이상에서 발현
+ *
+ * #508(ADR-0046): 고정 임계 누적 시드는 강도 밴드(ADR-0036)에 위임·은퇴(마이그 086). 활성 시드 0이라
+ * 이 평가 경로는 휴면 — 트리거 타입·CHECK는 보존(재진입 가능), 데드코드 cleanup은 별도.
  */
 const evaluateCumulativePillarCount = (seed: SajuSeed, ctx: DailyContext): boolean => {
   const aux = seed.trigger_aux ?? {};

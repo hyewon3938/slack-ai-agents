@@ -27,8 +27,10 @@ import { flagConfounds, type ConfoundData, type ConfoundResult } from '../shared
 import { posteriorMean, credibleInterval } from '../shared/bayesian-posterior.js';
 import { loadActiveSeeds } from '../shared/pattern-match.js';
 import { seedLabel } from '../shared/insight-labels.js';
+import { runSaturationSweep, type SaturationSweepResult } from '../shared/seed-saturation.js';
 import {
   buildVerificationBlocks,
+  buildHygieneNotice,
   buildDiscoveryCandidateCard,
   type SeedInfluenceRow,
 } from '../agents/insight/hypothesis-cards.js';
@@ -331,6 +333,16 @@ const processUser = async (
     }
   }
 
+  // 포화 시드 양방향 가드(#508 ③, ADR-0046) — 검정 불가 시드 자동 archive ⟷ 탈포화 부활.
+  // 검증/발굴과 독립 격리: 실패해도 검증 카드는 무탈(빈 결과). 발굴 surface 전(부활 시드 재페어링 위해).
+  let hygiene: SaturationSweepResult = { archived: [], revived: [] };
+  try {
+    hygiene = await runSaturationSweep(userId, today);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Saturation] user=${userId} sweep 실패: ${msg}`);
+  }
+
   let seedInfluence: SeedInfluenceRow[] = [];
   try {
     seedInfluence = await loadSeedInfluence(userId, SEED_INFLUENCE_TOP_N);
@@ -391,6 +403,13 @@ const processUser = async (
     prevEValues,
     confoundByLink,
     seedLabelById,
+  );
+  // 포화 가드 알림을 카드 말미에 append(#508 ③) — 변수명 미노출 라벨.
+  blocks.push(
+    ...buildHygieneNotice(
+      hygiene.archived.map((s) => s.label),
+      hygiene.revived.map((s) => s.label),
+    ),
   );
   const fallback = `패턴 검증 주간 리포트 (${weekStart} ~) — 링크 ${results.length}건`;
   try {
