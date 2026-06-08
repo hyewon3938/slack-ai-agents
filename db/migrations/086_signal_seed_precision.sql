@@ -55,3 +55,45 @@ BEGIN
   END IF;
   RAISE NOTICE '[086①] 날짜 변경 방향 분리 완료 — 방향무관 은퇴, 미룸/당김 2신호 신설';
 END $$;
+
+-- ═══ ② 누적 카운트 시드 은퇴 → 강도 밴드 위임 ═══════════════
+-- 고정 임계 누적 시드(화 오행·편재 N1~N5, 10개)는 baseline 포화 시 off-day 0 → 죽는다(본인 화는
+-- 운에 늘 깔려 N1~N3 매일 발현 = 측정 11/11). 동일 "오늘 화/재성이 평소보다 강한가"를 강도 밴드
+-- (ADR-0036)가 상대 분위수·주간 재계산·가중치로 포화 없이 더 정교하게 측정 → 위임하고 누적은 archive.
+
+-- archive 사유 컬럼 (③ 부활 스코프 + ② 위임 구분). NULL=활성 또는 수동 archive.
+ALTER TABLE pattern_catalog ADD COLUMN IF NOT EXISTS archived_reason TEXT;
+COMMENT ON COLUMN pattern_catalog.archived_reason IS
+  'archive 사유 (#508 ADR-0046). saturation=③ 포화 자동 archive(부활 대상) · delegated_to_strength_band=② 누적 위임(부활 제외) · NULL=활성 또는 수동.';
+
+-- 누적 시드 10개 archive. delegated_to_strength_band은 ③ 부활 제외 스코프(강도 밴드가 영구 대체).
+-- LIKE의 '_'는 단일문자 와일드카드지만 접두가 충분히 구체적이라 정확히 10개(화 5 + 편재 5)만 매칭.
+UPDATE pattern_catalog SET active = false, archived_reason = 'delegated_to_strength_band'
+ WHERE user_id = 1 AND active = true
+   AND (name LIKE 'pool_화_오행_누적_N%' OR name LIKE 'pool_편재_누적_N%');
+
+-- 해당 시드 링크 archive (가역). confirmed 링크가 있으면 sticky라 노출 사라짐 — 의도된 위임.
+UPDATE pattern_links SET status = 'archived', updated_at = NOW()
+ WHERE user_id = 1 AND status IN ('active', 'pending', 'weak', 'confirmed')
+   AND seed_id IN (SELECT id FROM pattern_catalog
+                    WHERE user_id = 1 AND archived_reason = 'delegated_to_strength_band');
+
+-- ② 검증
+DO $$
+DECLARE
+  cum_active INT;
+  delegated INT;
+BEGIN
+  SELECT count(*) INTO cum_active FROM pattern_catalog
+   WHERE user_id = 1 AND active = true
+     AND (name LIKE 'pool_화_오행_누적_N%' OR name LIKE 'pool_편재_누적_N%');
+  IF cum_active <> 0 THEN
+    RAISE EXCEPTION '[086②] 누적 시드 archive 실패 — active %', cum_active;
+  END IF;
+  SELECT count(*) INTO delegated FROM pattern_catalog
+   WHERE user_id = 1 AND archived_reason = 'delegated_to_strength_band';
+  IF delegated <> 10 THEN
+    RAISE EXCEPTION '[086②] 위임 archive 시드 수 이상 — % (기대 10)', delegated;
+  END IF;
+  RAISE NOTICE '[086②] 누적 시드 % 개 강도 밴드 위임 완료 (부활 제외)', delegated;
+END $$;
