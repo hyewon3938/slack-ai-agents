@@ -144,7 +144,10 @@ const SIGNAL_MEASURE: Record<string, Measure> = {
 
 /** 합성·모호 신호 — 룰로 안 떨어져 라벨 전체를 직접 지정(direction 무시). */
 const SIGNAL_LABEL_OVERRIDES: Record<string, string> = {
+  // audit_date_changed는 #508 ADR-0046에서 방향 신호 2개로 분리·은퇴 — 과거 카드 렌더 대비 라벨만 유지.
   audit_date_changed: '일정 날짜 변경',
+  audit_date_postponed: '일정 미룸',
+  audit_date_advanced: '일정 당김',
   audit_postponed_done: '미룬 일정 처리',
   expense_hospital_excl_installment: '병원비 지출(할부 제외)',
   schedule_tax_keyword: '세금 관련 일정',

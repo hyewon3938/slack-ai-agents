@@ -220,6 +220,20 @@ describe('signalLabel — override / tag / llm', () => {
     ).toBe('병원비 지출(할부 제외)');
   });
 
+  it('날짜 변경 방향 신호 override (#508 ① — direction·threshold 무시)', () => {
+    // above_abs 1이지만 "있음" 룰 대신 방향 평어 override. 변수명·언더스코어 미노출.
+    const postponed = signalLabel(
+      sig({ name: 'audit_date_postponed', domain: 'audit', direction: 'above_abs', threshold: 1 }),
+    );
+    const advanced = signalLabel(
+      sig({ name: 'audit_date_advanced', domain: 'audit', direction: 'above_abs', threshold: 1 }),
+    );
+    expect(postponed).toBe('일정 미룸');
+    expect(advanced).toBe('일정 당김');
+    expect(looksLikeIdentifier(postponed)).toBe(false);
+    expect(looksLikeIdentifier(advanced)).toBe(false);
+  });
+
   it('tag 신호는 diary 한글맵', () => {
     expect(
       signalLabel(
