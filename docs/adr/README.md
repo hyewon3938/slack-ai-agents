@@ -151,6 +151,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0042](0042-confound-multivariate-stratification.md) | 교란 다변량 분리 — Mantel-Haenszel 층화 + 데이터 게이트 + 노출 레이어 soft-demote | Accepted | 2026-06-06 | insight, statistics, architecture |
 | [0043](0043-retire-v2-llm-autonomous-discovery.md) | v2 LLM 자율 발견 슬롯 은퇴 — 통계 기반 발굴(0039/0040)로 대체 | Accepted | 2026-06-07 | insight, llm, process, cleanup |
 | [0044](0044-discovery-measurement-validity.md) | 발굴·검증 측정 타당성 — 데이터-존재 윈도우 + 연속신호 효과크기 랭킹 | Accepted | 2026-06-08 | insight, statistics, architecture |
+| [0045](0045-card-label-layer.md) | 카드 라벨 레이어 — 런타임 코드 번역 (DB 컬럼 아님) | Accepted | 2026-06-08 | insight, architecture |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
