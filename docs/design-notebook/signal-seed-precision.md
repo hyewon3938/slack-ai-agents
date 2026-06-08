@@ -46,3 +46,16 @@
 ## 기술적 의의
 
 n=1 자동 통계 시스템에서 "더 정교한 측정 채널이 이미 있으면 거친 채널은 은퇴가 정답"이라는 단일화 판단을, 신규 코드 없이 기존 substrate(강도 밴드) 재사용으로 수행. 측정 불가능성(off-day 0)을 큐레이션 판단과 분리해 자동 위생으로 환원 — 사람 게이트는 "믿을지"에만 쓰고 "검정 가능한지"는 기계가 판정.
+
+## 결과 / 회고
+
+PR [#509](https://github.com/hyewon3938/slack-ai-agents/pull/509)로 ①②③④ 한 PR(커밋 분리) + 도메인 문서 마감. 마이그레이션 `086`. 전체 797 테스트 통과, prod dry-run(BEGIN/ROLLBACK)으로 ①②(2신호 신설·10시드 위임) 검증.
+
+**빌드 중 교정 2건**:
+
+1. **포화 판정 축을 `matched` → `trigger_activated`로 교정.** 계획 초안은 `seed_daily_activations.matched`로 활성률을 집계하려 했으나, `recordDailyMatches`를 읽어보니 `matched`는 연결 매트릭 통과 여부(evidence-only 시드는 `null`)였다. 포화는 *트리거가 늘 켜지는가*의 문제 → off-day 대조의 활성 축인 `trigger_activated`가 정확. `matched` 기준이었으면 대다수 시드(evidence-only)를 놓쳤을 것.
+2. **`BEHAVIOR_DOMAIN`(#504 데이터-존재 윈도우)의 `slotGap`/`weekComparison` → schedule 오기 발견.** 실제 `insights.ts` detect 함수는 `routine_records` 완료율을 재고 `domain: 'routine'`을 선언. ④는 `insights.ts` 진실(`BEHAVIOR_SIGNAL_DOMAIN`)을 source로 써서 정확. #504 데이터-존재 맵 교정은 본 PR 범위 밖 → 후속.
+
+**운영 핸드오프**: 배포 후 첫 월요일 06:00 주간 엔진이 포화 sweep 첫 실행. ② 위임으로 발굴 후보가 재편되므로 배포 전 발굴 후보 승인 보류 → 배포 후 재발굴이 정합. ③ 부활은 saturation-archive 시드가 생겨야 작동(초기 거의 0건, forward guard).
+
+**후속(미룬 것)**: 편재 십성 강도 밴드 신설 / 임박도 맥락 신호 / `cumulative_pillar_count` 데드코드 cleanup / 동어반복 construct 수준 정밀화 / `BEHAVIOR_DOMAIN`(#504) slotGap·weekComparison 도메인 교정.
