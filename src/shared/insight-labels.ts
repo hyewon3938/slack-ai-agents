@@ -25,10 +25,51 @@ export interface SeedLabelInput {
 }
 
 /**
- * 비정형 description을 가진 시드의 수동 라벨(escape hatch, ADR-0045 §2).
- * 현 시드셋은 전부 tail-strip으로 깔끔히 떨어져 비어 있음 — 향후 strip이 어색한 시드만 등록.
+ * description tail-strip으로는 무슨 뜻인지 안 읽히는(jargon·오기) 시드의 수동 라벨(ADR-0045 §2).
+ * 행동 신호(behavior_baseline) description은 코드와 어긋나는 오기가 많아(예: drift는 "카테고리 분포
+ * 변화"로 써있으나 실제는 수면 리듬 밀림) 전부 src/shared/insights.ts 감지 로직 기준으로 재작성.
+ * 강도 밴드·합화십성은 내부 용어라 평어로. 끝을 "날"로 맞춰 활성 절(activationClause)이 "켜진 날"을
+ * 중복으로 안 붙이게 한다. 누적(N개) 시드는 정확해서 strip 유지(적응형 임계 재설계 후속에서 재검토).
  */
-export const SEED_LABEL_OVERRIDES: Record<string, string> = {};
+export const SEED_LABEL_OVERRIDES: Record<string, string> = {
+  // ── 행동 신호 (insights.ts 감지 로직 기준 — description 오기 무시) ──
+  life_behavior_spotty: '루틴 듬성듬성 빠진 날', // 최근 7일 중 3~4번 산발 누락
+  life_behavior_lapse: '쭉 지키던 루틴 거른 날', // 7일 연속 달성 후 오늘 빠짐
+  life_behavior_streak: '루틴 며칠째 연속 달성한 날',
+  life_behavior_recovery: '루틴 빠졌다 바로 복귀한 날',
+  life_behavior_overdue: '밀린 일정 쌓인 날',
+  life_behavior_weekly_regression: '루틴 완료율 지난주보다 떨어진 날',
+  life_behavior_week_compare: '루틴 완료율 지난주와 크게 달라진 날',
+  life_behavior_slot_gap: '시간대별 루틴 완료율 격차 큰 날',
+  life_behavior_skew: '일정이 한 분야에 쏠린 날',
+  life_behavior_drift: '수면 리듬 평소보다 밀린 날', // 취침·기상 늦어짐 / 중간기상 잦아짐
+  life_behavior_sleep_trend: '수면 시간 사흘 연속 늘거나 준 날',
+  // ── 오행 강도 밴드 ("실효 강도 약/강 밴드(상대 분위수)" → 평어) ──
+  pool_강도_목_강: '목 기운 강한 날',
+  pool_강도_목_약: '목 기운 약한 날',
+  pool_강도_목_적정: '목 기운 적정한 날',
+  pool_강도_화_강: '화 기운 강한 날',
+  pool_강도_화_약: '화 기운 약한 날',
+  pool_강도_화_적정: '화 기운 적정한 날',
+  pool_강도_토_강: '토 기운 강한 날',
+  pool_강도_토_약: '토 기운 약한 날',
+  pool_강도_토_적정: '토 기운 적정한 날',
+  pool_강도_금_강: '금 기운 강한 날',
+  pool_강도_금_약: '금 기운 약한 날',
+  pool_강도_금_적정: '금 기운 적정한 날',
+  pool_강도_수_강: '수 기운 강한 날',
+  pool_강도_수_약: '수 기운 약한 날',
+  pool_강도_수_적정: '수 기운 적정한 날',
+  pool_강도_일간_강: '일간 기운 강한 날(신강)',
+  pool_강도_일간_약: '일간 기운 약한 날(신약)',
+  pool_강도_일간_적정: '일간 기운 균형인 날',
+  // ── 합화십성 ("합화 변환 결과 효과적 십성 = X 발현일" → 평어) ──
+  pool_합화십성_재성: '합화로 재성 기운 도는 날',
+  pool_합화십성_비겁: '합화로 비겁 기운 도는 날',
+  pool_합화십성_식상: '합화로 식상 기운 도는 날',
+  pool_합화십성_인성: '합화로 인성 기운 도는 날',
+  pool_합화십성_관성: '합화로 관성 기운 도는 날',
+};
 
 /** 활성조건과 예측/설명을 가르는 구분자 — 첫 등장 앞만 라벨로 취한다(( 는 십성 주석이라 제외). */
 const SEED_DELIMITERS = ['→', '—', '–'];

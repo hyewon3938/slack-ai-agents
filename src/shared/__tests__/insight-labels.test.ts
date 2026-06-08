@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { seedLabel, signalLabel, type SignalLabelInput } from '../insight-labels.js';
+import {
+  seedLabel,
+  signalLabel,
+  SEED_LABEL_OVERRIDES,
+  type SignalLabelInput,
+} from '../insight-labels.js';
 
 // 변수명·provenance 노출 0 불변식 검증의 핵심 헬퍼 — 라벨에 raw 식별자 흔적이 없는지.
 const looksLikeIdentifier = (s: string): boolean => /[A-Za-z]|_/.test(s);
@@ -73,6 +78,37 @@ describe('seedLabel — description tail-strip', () => {
       expect(label).not.toContain('_');
       expect(label).not.toContain('pool');
       expect(label).not.toMatch(/[A-Za-z]/);
+    }
+  });
+});
+
+describe('seedLabel — override (jargon·오기 description 평어화)', () => {
+  it('행동 신호 override가 잘못된 description을 이긴다', () => {
+    // drift description은 "카테고리 분포 변화"(오기)지만 실제는 수면 리듬 — override가 코드 진실.
+    expect(
+      seedLabel({ name: 'life_behavior_drift', description: '카테고리 분포 점진 변화 감지일' }),
+    ).toBe('수면 리듬 평소보다 밀린 날');
+    // lapse description "정기 일정 N일째 누락일"(오기) → 실제 루틴.
+    expect(seedLabel({ name: 'life_behavior_lapse', description: '정기 일정 N일째 누락일' })).toBe(
+      '쭉 지키던 루틴 거른 날',
+    );
+  });
+
+  it('강도 밴드·합화십성 override 평어', () => {
+    expect(
+      seedLabel({ name: 'pool_강도_일간_약', description: '일간 실효 강도 약(신약 경향) — …' }),
+    ).toBe('일간 기운 약한 날(신약)');
+    expect(
+      seedLabel({
+        name: 'pool_합화십성_재성',
+        description: '합화 변환 결과 효과적 십성 = 재성(…) 발현일',
+      }),
+    ).toBe('합화로 재성 기운 도는 날');
+  });
+
+  it('모든 override 라벨은 "날/일"(+선택 괄호)로 끝난다 (activationClause 중복 방지 불변식)', () => {
+    for (const label of Object.values(SEED_LABEL_OVERRIDES)) {
+      expect(/[날일](\s*\([^)]*\))?$/.test(label)).toBe(true);
     }
   });
 });

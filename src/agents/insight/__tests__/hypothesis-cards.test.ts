@@ -279,6 +279,23 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
     expect(text).not.toContain('평가');
   });
 
+  it('seedLabel이 "날"로 끝나면 "켜진 날" 중복 안 붙음 (#504 B)', () => {
+    const text =
+      sectionTexts(
+        buildDiscoveryCandidateCard(makeCandidate({ seedLabel: '루틴 듬성듬성 빠진 날' })),
+      )[0] ?? '';
+    expect(text).toContain('루틴 듬성듬성 빠진 날 *'); // 라벨 뒤 바로 신호
+    expect(text).not.toContain('빠진 날 켜진 날'); // 중복 없음
+  });
+
+  it('seedLabel이 "날/일"로 안 끝나면 "켜진 날" 붙음', () => {
+    const text =
+      sectionTexts(
+        buildDiscoveryCandidateCard(makeCandidate({ seedLabel: '일운 천간 갑목(편재)' })),
+      )[0] ?? '';
+    expect(text).toContain('일운 천간 갑목(편재) 켜진 날');
+  });
+
   it('payload encode/decode 왕복 + 방어', () => {
     expect(decodeDiscoveryPayload(encodeDiscoveryPayload({ linkId: 42 }))).toEqual({ linkId: 42 });
     expect(decodeDiscoveryPayload('not json')).toBeNull();

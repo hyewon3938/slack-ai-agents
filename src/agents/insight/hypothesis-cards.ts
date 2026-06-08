@@ -63,6 +63,14 @@ const offDayPhrase = (nActive: number, hit: number, rateOff: number, effect: num
     ? `${nActive}일 중 ${hit}일 (평소 ${pct(rateOff)} → ${mult(effect)} 자주)`
     : `${nActive}일 중 ${hit}일 (평소 ${pct(rateOff)})`;
 
+/**
+ * 시드 활성 절 — "{시드} 켜진 날". 단 라벨이 이미 "…날/일"로 끝나면(행동·날짜 시드) 그 자체가
+ * 날 표현이라 "켜진 날"을 또 붙이지 않는다("발현일 켜진 날" 중복 방지, #504 P2).
+ * 끝 괄호 주석("…날(신강)")은 무시하고 그 앞 날/일을 본다.
+ */
+const activationClause = (seedLabel: string): string =>
+  /[날일](\s*\([^)]*\))?$/.test(seedLabel) ? seedLabel : `${seedLabel} 켜진 날`;
+
 /** 확신도 보조 절: "확신도 78% [62%–89%]" — CI는 credibleInterval 재사용(표시 파생, 검증 로직 무관). */
 const confidencePhrase = (alpha: number, beta: number, p: number): string => {
   const ci = credibleInterval(alpha, beta);
@@ -83,9 +91,9 @@ export type DiscoveryCardInput = DiscoveryCandidate & { linkId: number };
 export const buildDiscoveryCandidateCard = (c: DiscoveryCardInput): KnownBlock[] => {
   const payload = encodeDiscoveryPayload({ linkId: c.linkId });
   const header = `${KIND_LABEL[c.patternKind]} *${c.seedLabel}* × *${c.signalLabel}* — 새 패턴 후보`;
-  const stat = `${c.seedLabel} 켜진 날 *${c.signalLabel}* — ${offDayPhrase(c.nActive, c.hit, c.rateOff, c.effect)}`;
+  const stat = `${activationClause(c.seedLabel)} *${c.signalLabel}* — ${offDayPhrase(c.nActive, c.hit, c.rateOff, c.effect)}`;
   const why =
-    `_${c.seedLabel} 켜진 날 ${c.signalLabel} 패턴이 평소보다 자주 나타나서 후보로 올렸어. ` +
+    `_평소보다 자주 겹쳐서 후보로 올렸어. ` +
     `아직 연관일 뿐 — 추적 시작하면 주간 엔진이 몇 주 검정해서 진짜인지 가려._`;
   const sub = `_발굴 근거 q ${formatPValue(c.qValue)} (느슨한 발견 기준 통과). 연관이지 인과 아님._`;
   return [
@@ -184,7 +192,7 @@ const evalueBar = (e: number, threshold: number): string => {
 
 /** verified(검증됨) 한 줄 — 결론 위주(자연어 본문) + 이탤릭 보조 줄(확정 증거·우연 가능성·확신도). */
 const verifiedLine = (l: LinkVerification): string =>
-  `• ✅ ${KIND_LABEL[l.patternKind]} ${l.seedLabel} 켜진 날 *${l.signalLabel}* — ` +
+  `• ✅ ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} *${l.signalLabel}* — ` +
   `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증됨\n` +
   `_확정 증거 e ${l.eValue.toFixed(1)} (20 넘어 확정) · 우연 가능성 q ${formatPValue(l.qValue)} · ` +
   `${confidencePhrase(l.posteriorAlpha, l.posteriorBeta, l.posteriorP)}_`;
@@ -200,7 +208,7 @@ const emergingLine = (l: LinkVerification, prevE: number | undefined): string =>
     else trend = ` (지난주 ${prevE.toFixed(1)} → 그대로)`;
   }
   return (
-    `• 🌱 ${KIND_LABEL[l.patternKind]} ${l.seedLabel} 켜진 날 *${l.signalLabel}* — ` +
+    `• 🌱 ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} *${l.signalLabel}* — ` +
     `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증중\n` +
     `_확정까지 ${bar} ${cur.toFixed(1)}/${V.evalueThreshold}${trend} · ` +
     `우연 가능성 q ${formatPValue(l.qValue)} · ` +
