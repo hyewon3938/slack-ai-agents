@@ -16,7 +16,6 @@
 import { query, queryWithClient, queryReadOnly } from './db.js';
 import { validateSignalSql, SIGNAL_ROW_CAP } from './signal-sql-guard.js';
 import {
-  computeCumulativePillarCount,
   getDayPillar,
   getDaeunPillar,
   getElementByCheongan,
@@ -24,7 +23,6 @@ import {
   getYearPillar,
   makePillar,
   type Cheongan,
-  type Element,
   type Jiji,
   type Pillar,
   type PillarSet,
@@ -39,7 +37,7 @@ import { dispatchLifeSignal } from './life-signal-evaluators/index.js';
 const METRIC_TIMEOUT_MS = 5_000;
 const BASELINE_WINDOW_DAYS = 28;
 
-export type PillarLevel = 'wonguk' | 'daeun' | 'seun' | 'wolun' | 'ilun' | 'cumulative';
+export type PillarLevel = 'wonguk' | 'daeun' | 'seun' | 'wolun' | 'ilun';
 
 export interface SajuSeed {
   id: number;
@@ -54,7 +52,6 @@ export interface SajuSeed {
     | 'element_density'
     | 'sibiunsung'
     | 'relation'
-    | 'cumulative_pillar_count'
     | 'strength_band'
     | 'hwa_sipsung'
     | 'life_signal';
@@ -485,7 +482,7 @@ const getNumberField = (obj: Record<string, unknown>, key: string): number | nul
  * pillar_level에 따라 평가 대상 pillar 선택 (Phase 2.5).
  * - null / 'ilun' → 일운 (= ctx.ilun, 기존 dayStem/dayBranch 동등)
  * - 'wolun' / 'seun' / 'daeun' → 해당 운 pillar
- * - 'wonguk' / 'cumulative' → null (직접 매칭 불가 — wonguk은 Phase 2.5 1차에서 시드 없음, cumulative는 별도 trigger)
+ * - 'wonguk' → null (직접 매칭 불가 — Phase 2.5 1차에서 wonguk 시드 없음)
  * - 'daeun'이 미적용 구간이면 null (대운 미시작 사용자 / 데이터 누락)
  */
 const pickPillarByLevel = (level: PillarLevel | null, ctx: DailyContext): Pillar | null => {
@@ -500,17 +497,11 @@ const pickPillarByLevel = (level: PillarLevel | null, ctx: DailyContext): Pillar
     case 'daeun':
       return ctx.daeun;
     case 'wonguk':
-    case 'cumulative':
       return null;
   }
 };
 
-const VALID_ELEMENTS: readonly Element[] = ['목', '화', '토', '금', '수'];
-
-const isElement = (v: unknown): v is Element =>
-  typeof v === 'string' && (VALID_ELEMENTS as readonly string[]).includes(v);
-
-/** DailyContext → 운 풀셋 PillarSet (cumulative·strength_band 공용) */
+/** DailyContext → 운 풀셋 PillarSet (strength_band·hwa 공용) */
 const pillarSetOf = (ctx: DailyContext): PillarSet => ({
   wonguk: ctx.natal.pillars,
   daeun: ctx.daeun,
@@ -518,31 +509,6 @@ const pillarSetOf = (ctx: DailyContext): PillarSet => ({
   wolun: ctx.wolun,
   ilun: ctx.ilun,
 });
-
-/**
- * cumulative_pillar_count trigger 평가 (Phase 2.5).
- * trigger_aux:
- *   - { element: '화', count_min: 3 } — 화 오행이 5개 운 레벨 중 3개 이상에서 발현
- *   - { sipsin: '편재', count_min: 2 } — 편재가 5개 운 레벨 중 2개 이상에서 발현
- *
- * #508(ADR-0046): 고정 임계 누적 시드는 강도 밴드(ADR-0036)에 위임·은퇴(마이그 086). 활성 시드 0이라
- * 이 평가 경로는 휴면 — 트리거 타입·CHECK는 보존(재진입 가능), 데드코드 cleanup은 별도.
- */
-const evaluateCumulativePillarCount = (seed: SajuSeed, ctx: DailyContext): boolean => {
-  const aux = seed.trigger_aux ?? {};
-  const countMin = getNumberField(aux as Record<string, unknown>, 'count_min');
-  if (countMin === null || countMin <= 0) return false;
-
-  const count = computeCumulativePillarCount(ctx.natal.dayMaster, pillarSetOf(ctx));
-
-  if (isElement(aux['element'])) {
-    return count.element[aux['element']] >= countMin;
-  }
-  if (typeof aux['sipsin'] === 'string') {
-    return (count.sipsin[aux['sipsin']] ?? 0) >= countMin;
-  }
-  return false;
-};
 
 export const evaluateTrigger = async (
   seed: SajuSeedWithMetrics,
@@ -570,9 +536,6 @@ export const evaluateTrigger = async (
       if (isStringArray(orBranches) && orBranches.includes(pillar.jiji)) return true;
       return false;
     }
-
-    case 'cumulative_pillar_count':
-      return evaluateCumulativePillarCount(seed, ctx);
 
     case 'ganji': {
       // ganji_master.id 매칭 — 일운 stem+branch 조합의 ganji id
