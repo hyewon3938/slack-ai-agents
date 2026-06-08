@@ -87,6 +87,10 @@ export const INSIGHT_THRESHOLDS = {
     // 발굴도 검증처럼 Mann-Whitney 효과크기로 랭킹 — rank-biserial(scale-free, [-1,1])을 효과 하한으로,
     // 표준화 z(연속=MW z, 이진=2-proportion z)를 혼합 정렬 키로(0 분모 rate-ratio 폭증에 robust).
     discoveryMinEffectR: 0.2, // 연속 신호 발굴 최소 효과크기 (방향 rank-biserial r; 이진 1.3에 대응하는 calibration 노브)
+    // #508(ADR-0046) 포화 시드 양방향 가드 — 트리거가 데이터-존재 윈도우 내 거의 매일 발현해
+    // off-day가 소멸하면 검정 불가(헌장 ②). 자동 archive ⟷ 탈포화 시 자동 부활(archived_reason='saturation' 스코프).
+    saturationRate: 0.95, // 트리거 활성률 ≥ 이 값 → 포화(archive) / < 이 값 → 탈포화(부활) 후보
+    saturationMinDays: 30, // 판정 최소 윈도우 일수(데이터-존재 기준) — 소표본 오판 방지 가드
   },
   // #477 P6 교란 플래그 (ADR-0041) — 공동발현 시드 marginal 탐지. annotate-only(verdict 불변).
   // P7 교란 다변량 분리 (ADR-0042) — Mantel-Haenszel 층화 조정 + 노출 레이어 soft-demote. dormant.

@@ -260,6 +260,30 @@ const TIER_LEGEND =
   '⚠️ 교란 = 같이 켜지는 다른 시드 영향 의심_';
 
 /**
+ * 포화 시드 양방향 가드 알림(#508 ③, ADR-0046) — 주간 카드 말미 context 한 줄.
+ * archive=늘 켜져 검정 불가라 정리, revive=탈포화로 부활. 라벨은 seedLabel() 통과(변수명 노출 0).
+ * 둘 다 없으면 빈 배열(블록 미추가). buildVerificationBlocks 결과에 호출부가 append.
+ */
+export const buildHygieneNotice = (
+  archivedLabels: readonly string[],
+  revivedLabels: readonly string[],
+): KnownBlock[] => {
+  const lines: string[] = [];
+  if (archivedLabels.length > 0) {
+    lines.push(
+      `🧹 포화 시드 ${archivedLabels.length}개 정리 (늘 켜져 검정 불가): ${archivedLabels.join(', ')}`,
+    );
+  }
+  if (revivedLabels.length > 0) {
+    lines.push(
+      `🌱 부활 ${revivedLabels.length}개 (이제 안 켜지는 날 생김): ${revivedLabels.join(', ')}`,
+    );
+  }
+  if (lines.length === 0) return [];
+  return [{ type: 'context', elements: [{ type: 'mrkdwn', text: lines.join('\n') }] }];
+};
+
+/**
  * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
  * 검증중(emerging)은 e-value 진행바로 "쌓이는 중"을 정직하게 프레이밍(ADR-0035). discovery는 P5.
  */
