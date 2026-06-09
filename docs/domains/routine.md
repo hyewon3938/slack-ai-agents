@@ -11,6 +11,7 @@ routine_templates:
   time_slot TEXT,        -- '낮' | '밤'
   frequency TEXT,        -- '매일' | '격일' | '3일마다' | '주1회'
   active BOOLEAN,
+  category TEXT,         -- 시드 신호용 분류 (운동·건강·자기관리 등). nullable. '운동'은 신호 SQL 고정 참조값
   start_date DATE,       -- 통계 기산 시작일 (기본값: 생성일)
   deleted_at TIMESTAMPTZ,  -- soft delete
   created_at TIMESTAMPTZ
@@ -134,6 +135,12 @@ features/routine/
 - 템플릿 삭제 시 `active = false`, `deleted_at = NOW()`
 - `deleted_at IS NULL` 조건으로 조회에서 제외
 - 기존 기록은 보존 (통계에서 확인 가능)
+
+### 카테고리 (category)
+- 인사이트 시드가 분류별 완료율(예: 운동 루틴 완료율)을 분석할 때 참조하는 분류 컬럼 (마이그레이션 053에서 추가)
+- nullable — 미분류 루틴은 분류 기반 신호에서 제외
+- `운동` 값은 시드 신호 SQL이 문자열로 고정 참조 → 이 라벨은 변경 불가
+- 현재 생성/수정 폼에 입력란 없음. 기존 루틴은 이름 기준으로 분류 적용, 신규 루틴 자동 분류는 후속 과제 ([#519](https://github.com/hyewon3938/slack-ai-agents/issues/519))
 
 ## 관련 Slack 에이전트
 
