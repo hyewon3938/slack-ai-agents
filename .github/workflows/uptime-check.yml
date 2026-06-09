@@ -89,7 +89,7 @@ jobs:
 
       - name: Resolve prev status & notify
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           CURRENT_OUTCOME: ${{ steps.check.outcome }}
           HTTP_CODE: ${{ steps.check.outputs.http_code }}
