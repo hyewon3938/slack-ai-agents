@@ -27,14 +27,6 @@ const YEARLY_FORTUNE_RE = /^(올해\s*)?세운(\s*(보여줘|보여|알려줘|�
 const TOMORROW_FORTUNE_RE = /^내일\s*일운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
 /** 대운 조회 */
 const MAJOR_FORTUNE_RE = /^(내\s*)?대운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
-/**
- * 기간 해석 정확 일치 조회 (#529 Phase 2) — period_interpretations 경로.
- * 정확히 "월운/세운/대운"만. 접미·접두형("월운 보여줘"·"이번 달 월운")은 기존 RE → fortune_analyses(하위 호환).
- * ⚠️ 순서 의존: tryPeriodInterpretationFastPath를 tryFortuneFastPath보다 먼저 평가해야 정확일치가 신규 경로로 간다.
- */
-const EXACT_WOLUN_RE = /^월운$/;
-const EXACT_SEUN_RE = /^세운$/;
-const EXACT_DAEUN_RE = /^대운$/;
 /** 오늘 일기 조회 */
 const TODAY_DIARY_RE = /^오늘\s*일기/;
 /** LLM 매트릭 pending 목록 조회 (ADR-0030 디버깅·놓친 카드 재확인용) */
@@ -52,7 +44,9 @@ interface FortuneRow {
 }
 
 /**
- * 기간 해석 정확일치 fast path (#529 Phase 2) — 저장된 해석을 LLM 없이 즉시 렌더.
+ * 기간 해석 fast path (#529 Phase 2 / #533 단일화) — 저장된 해석을 LLM 없이 즉시 렌더.
+ * 월/세/대운의 정확일치·접미·접두형을 전부 이 경로(period_interpretations + 장부)로 단일화.
+ * ⚠️ 순서 의존: tryFortuneFastPath(일운 전용)보다 먼저 평가해야 월/세/대운이 신 경로로 간다.
  * 매칭되면 응답 전송 후 true. 행 없으면 안내(다음 전환 때 생성됨) 후 true.
  */
 const tryPeriodInterpretationFastPath = async (
@@ -61,9 +55,9 @@ const tryPeriodInterpretationFastPath = async (
   userId: number,
 ): Promise<boolean> => {
   let periodType: PeriodType;
-  if (EXACT_WOLUN_RE.test(trimmed)) periodType = 'wolun';
-  else if (EXACT_SEUN_RE.test(trimmed)) periodType = 'seun';
-  else if (EXACT_DAEUN_RE.test(trimmed)) periodType = 'daeun';
+  if (MONTHLY_FORTUNE_RE.test(trimmed)) periodType = 'wolun';
+  else if (YEARLY_FORTUNE_RE.test(trimmed)) periodType = 'seun';
+  else if (MAJOR_FORTUNE_RE.test(trimmed)) periodType = 'daeun';
   else return false;
 
   const label = PERIOD_LABEL[periodType];
@@ -96,7 +90,7 @@ const tryPeriodInterpretationFastPath = async (
   return true;
 };
 
-/** fast path 운세 조회 시도. 매칭되면 응답 전송 후 true 반환. */
+/** fast path 일운 조회 시도 (#533: 월/세/대운은 신 경로로 이관 — 여기는 일운만). 매칭되면 응답 전송 후 true. */
 const tryFortuneFastPath = async (
   trimmed: string,
   say: Parameters<AgentHandler>[1],
@@ -118,26 +112,6 @@ const tryFortuneFastPath = async (
            FROM fortune_analyses WHERE user_id = $1 AND period = 'daily' AND date = $2`;
     params = [userId, tomorrow];
     label = '내일 일운';
-  } else if (MONTHLY_FORTUNE_RE.test(trimmed)) {
-    const today = getTodayISO();
-    const monthFirst = today.slice(0, 7) + '-01';
-    sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = $1 AND period = 'monthly' AND date = $2`;
-    params = [userId, monthFirst];
-    label = '이번 달 월운';
-  } else if (YEARLY_FORTUNE_RE.test(trimmed)) {
-    const today = getTodayISO();
-    const yearFirst = today.slice(0, 4) + '-01-01';
-    sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = $1 AND period = 'yearly' AND date = $2`;
-    params = [userId, yearFirst];
-    label = '올해 세운';
-  } else if (MAJOR_FORTUNE_RE.test(trimmed)) {
-    sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = $1 AND period = 'major'
-           ORDER BY date DESC LIMIT 1`;
-    params = [userId];
-    label = '대운';
   } else {
     return false;
   }

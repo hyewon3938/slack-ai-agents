@@ -41,7 +41,7 @@ import {
   type LedgerCardData,
 } from '../shared/period-forecast.js';
 import { postBlockMessage } from '../shared/slack.js';
-import type { LLMClient } from '../shared/llm.js';
+import { createPeriodLLMClient, type LLMClient } from '../shared/llm.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 import type { LifeCronConfig } from './life-cron.js';
 
@@ -205,11 +205,13 @@ export const periodFortuneTask = async (app: App, config: LifeCronConfig): Promi
   const today = getTodayISO();
   const mappings = await queryAllUserMappings();
   const insightFallback = process.env['INSIGHT_CHANNEL_ID'] ?? config.channelId;
+  // 기간 서사는 Opus(저빈도 — 절기 전환 시에만 호출, #533). 나머지 크론은 config.llmClient(Sonnet).
+  const periodLlmClient = await createPeriodLLMClient();
 
   if (mappings.length === 0) {
     if (!insightFallback) return;
     try {
-      await processUser(app, DEFAULT_USER_ID, insightFallback, today, config.llmClient);
+      await processUser(app, DEFAULT_USER_ID, insightFallback, today, periodLlmClient);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Period Fortune] 폴백 실행 실패: ${msg}`);
@@ -221,7 +223,7 @@ export const periodFortuneTask = async (app: App, config: LifeCronConfig): Promi
     const channelId = mapping.insightChannelId ?? insightFallback;
     if (!channelId) continue;
     try {
-      await processUser(app, mapping.userId, channelId, today, config.llmClient);
+      await processUser(app, mapping.userId, channelId, today, periodLlmClient);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Period Fortune] user=${mapping.userId} 처리 실패: ${msg}`);
