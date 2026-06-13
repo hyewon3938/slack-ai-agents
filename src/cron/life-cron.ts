@@ -48,6 +48,7 @@ import { dailyPatternMatchingTask } from './daily-pattern-matching.js';
 import { diaryMetaExtractTask } from './diary-meta-extract.js';
 import { weeklyVerificationTask } from './weekly-verification.js';
 import { discoveryRecommendTask } from './discovery-recommend.js';
+import { periodFortuneTask } from './period-fortune.js';
 import { buildLifeContext } from '../shared/life-context.js';
 import { publishHomeView } from '../agents/life/home.js';
 
@@ -603,6 +604,7 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   diaryMetaExtract: diaryMetaExtractTask,
   weeklyVerification: weeklyVerificationTask,
   discoveryRecommend: discoveryRecommendTask, // 07:30 데일리 — 묶음 전부 패스 시 다음 best (#512 ADR-0047)
+  periodFortune: periodFortuneTask, // 08:20 데일리 — 절기/입춘/대운 전환 시 주기 운세 카드 (#529 ADR-0050)
   // pillarLevelDistributionReview 은퇴(#508 ADR-0046) — 누적 시드 강도 밴드 위임으로 분포 리뷰 무의미.
   // 미등록 슬롯은 loadAndSchedule가 graceful skip(if (!taskFn) continue) — DB row 비활성은 가역 정리.
 };
