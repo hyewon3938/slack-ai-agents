@@ -142,6 +142,10 @@ export interface LinkVerification {
   posteriorP: number;
   eValue: number; // 누적 e-value sup (P3, ADR-0034). ≥ evalueThreshold → confirmed.
   lastMatchedAt: string | null;
+  /** 데이터-존재 + enrollment 클립 합성 윈도우 시작 (관측성 → test_detail.window_start). #523 P0. */
+  windowStart: string | null;
+  /** BH-FDR 가족 (관측성 → 주간 로그 가족별 m 추적). #523 P0. */
+  family: FdrFamily;
   verdict: Verdict;
   nextStatus: LinkLifecycleStatus;
 }
@@ -245,6 +249,19 @@ export const maxDate = (a: string | null, b: string | null): string | null => {
   if (a === null) return b;
   if (b === null) return a;
   return a > b ? a : b;
+};
+
+/**
+ * 등록(enrollment) 클립 시작일 — 선택 편향 차단 (#523 Phase 0, D1, ADR-0048).
+ * 발굴(discovery)·LLM 제안 출신 링크는 자기를 뽑은 데이터로 그대로 확정되는 double-dipping을
+ * 막기 위해 검정 시퀀스를 등록(created_at, KST) 다음 날부터로 한정한다 — e-value의 "test from now"
+ * 정신(가설이 데이터와 독립으로 고정된 뒤부터만 검정). 카탈로그(manual=선험 가설) 링크는 선택이
+ * 없으므로 전체 데이터 윈도우 유지(null = 제약 없음). createdDate 결측 시에도 클립 없음(보수적).
+ */
+export const enrollmentStart = (source: string, createdDateKst: string | null): string | null => {
+  if (source === 'manual') return null;
+  if (createdDateKst === null) return null;
+  return addDays(createdDateKst, 1);
 };
 
 // ─── 순수 계산 ───────────────────────────────────────────
@@ -710,6 +727,8 @@ interface ActiveLinkRow {
   seed_id: number;
   signal_id: number;
   status: LinkLifecycleStatus;
+  source: string;
+  created_date: string | null;
 }
 
 /**
@@ -721,7 +740,8 @@ export const verifyUserLinks = async (
   today: string,
 ): Promise<LinkVerification[]> => {
   const linkRes = await query<ActiveLinkRow>(
-    `SELECT l.id AS link_id, l.seed_id, l.signal_id, l.status
+    `SELECT l.id AS link_id, l.seed_id, l.signal_id, l.status,
+            l.source, (l.created_at AT TIME ZONE 'Asia/Seoul')::date::text AS created_date
        FROM pattern_links l
        JOIN signal_defs s ON s.id = l.signal_id
        JOIN pattern_catalog c ON c.id = l.seed_id
@@ -812,10 +832,11 @@ export const verifyUserLinks = async (
       const signalSeries = signalSeriesById.get(row.signal_id);
       if (!signal || !seed || !activation || !signalSeries) return null;
       const series = signalSeries.series;
-      // 데이터-존재 윈도우(#504): 그 시드·그 신호가 둘 다 데이터를 가진 구간으로 클립.
+      // 데이터-존재 윈도우(#504) + enrollment 클립(#523 P0, D1): 셋의 max로 합성.
+      // ① 시드 데이터-존재 시작 ② 신호 데이터-존재 시작 ③ 발굴/제안 링크의 등록 익일.
       const windowStart = maxDate(
-        seedDataStart(seed, dataStarts),
-        signalStartById.get(row.signal_id) ?? null,
+        maxDate(seedDataStart(seed, dataStarts), signalStartById.get(row.signal_id) ?? null),
+        enrollmentStart(row.source, row.created_date),
       );
       const cont = buildContingency(activation, series, windowStart);
       const daySeq = buildDaySequence(activation, series, windowDates, windowStart);
@@ -832,6 +853,8 @@ export const verifyUserLinks = async (
         signal,
         seed,
         cont,
+        windowStart,
+        family: familyOf(seed),
         v: verifyContingency(cont),
         blockP: blockPermutationP(daySeq, V.blockLen, V.blockPermIters),
         mannWhitney,
@@ -847,7 +870,7 @@ export const verifyUserLinks = async (
   );
   // q는 자기상관 보정된 block-perm p로(Fisher는 test_detail 참고용).
   // FDR 가족 분리 (ADR-0037): 강도 밴드(saju_strength)와 baseline을 독립 보정 → 가족 간 비용 격리.
-  const qValues = bhFdrByFamily(interim.map((x) => ({ p: x.blockP, family: familyOf(x.seed) })));
+  const qValues = bhFdrByFamily(interim.map((x) => ({ p: x.blockP, family: x.family })));
 
   return interim.map((x, i) => {
     const qValue = qValues[i] ?? NaN;
@@ -884,6 +907,8 @@ export const verifyUserLinks = async (
       posteriorP: posteriorMean(post.alpha, post.beta),
       eValue: x.eValue,
       lastMatchedAt: x.lastMatchedAt,
+      windowStart: x.windowStart,
+      family: x.family,
       verdict,
       nextStatus: statusForVerdict(verdict, x.row.status, x.eValue),
     };

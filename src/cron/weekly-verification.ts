@@ -50,8 +50,11 @@ export const previousMondayISO = (todayIso: string): string => {
 
 const numOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
 
-/** 링크 검증 결과를 pattern_links에 SET 반영 (counters는 raw 재계산 진실로 덮어씀). */
-const persistLinkVerification = async (l: LinkVerification): Promise<void> => {
+/**
+ * 링크 검증 결과를 pattern_links에 SET 반영 (counters는 raw 재계산 진실로 덮어씀).
+ * named export — 재기준선 스크립트(scripts/rebaseline-pattern-links.ts)가 재사용 (#523 P0).
+ */
+export const persistLinkVerification = async (l: LinkVerification): Promise<void> => {
   const testDetail = JSON.stringify({
     a: l.a,
     b: l.b,
@@ -65,6 +68,8 @@ const persistLinkVerification = async (l: LinkVerification): Promise<void> => {
     signal_kind: l.signalKind,
     value_type: l.valueType,
     verdict: l.verdict,
+    // 클립 합성 윈도우 시작(데이터-존재 + enrollment) — 관측성. discovery/llm은 등록 익일 이상이어야 정상.
+    window_start: l.windowStart,
     // P3: p_value 컬럼 = block-perm p(자기상관 보정). Fisher·MW·e-value는 참고용 보존.
     fisher_p: numOrNull(l.fisherP),
     block_p: numOrNull(l.pValue),
@@ -326,6 +331,14 @@ const processUser = async (
   const rejects = results.filter((l) => l.verdict === 'reject').length;
   console.warn(
     `[Verification] user=${userId} 링크 ${results.length} (persist ${persisted}) verified ${verified} reject ${rejects}`,
+  );
+  // 가족별 BH 집합 크기(m) 관측 — 발굴 승인 누적에 따른 가족 m-인플레이션 추적(#523 P0, §2-5).
+  const familyTally = results.reduce<Map<string, number>>(
+    (m, l) => m.set(l.family, (m.get(l.family) ?? 0) + 1),
+    new Map(),
+  );
+  console.warn(
+    `[Verification] user=${userId} 가족별 링크 ${[...familyTally].map(([f, n]) => `${f}=${n}`).join(' ') || '없음'}`,
   );
 
   // 교란 플래그(P6, ADR-0041) — 검증/발굴과 독립 격리. 실패해도 검증 카드는 무탈(빈 맵).

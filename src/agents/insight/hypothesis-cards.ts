@@ -283,6 +283,42 @@ export const buildHygieneNotice = (
   return [{ type: 'context', elements: [{ type: 'mrkdwn', text: lines.join('\n') }] }];
 };
 
+/** 재기준선 1회성 공지 카드 입력 — 건수만(구체 패턴 라벨 미노출, §9). */
+export interface RebaselineSummary {
+  /** confirmed → active 강등 수. */
+  demoted: number;
+  /** 재기준선 후 같은 기준으로 다시 confirmed 승격된 수. */
+  reconfirmed: number;
+  /** 재검증한 active 링크 총수. */
+  total: number;
+}
+
+/**
+ * 재기준선 1회성 공지 카드(#523 P0, ADR-0048) — scripts/rebaseline-pattern-links.ts 전용.
+ * 측정 로직 정밀화 → 전체 재검증 → '검증됨' 일시 보류를 정직하게 안내. 강등은 낙인이 아니라
+ * 측정 정확도의 결과(기준 불변)임을 명시. 구체 패턴 라벨은 노출하지 않고 건수만(§9).
+ */
+export const buildRebaselineNotice = (s: RebaselineSummary): KnownBlock[] => {
+  const head = '🔧 *패턴 검증 재기준선 안내*';
+  const body =
+    '측정 방식을 좀 더 정밀하게 고쳤어. 발굴로 찾은 패턴이 자길 뽑아준 데이터로 곧장 ' +
+    "'검증됨'까지 가는 걸 막으려고, 검증 구간을 그 패턴이 등록된 다음부터로 잡도록 바꿨어. " +
+    '그래서 전체 패턴을 한 번 다시 검증했어.';
+  const demotionLine =
+    s.demoted > 0
+      ? `그동안 '검증됨'으로 보던 ${s.demoted}개는 실데이터로 따질 수 있는 구간이 아직 짧아서 '검증 중'으로 내렸어.`
+      : "이번엔 '검증됨'에서 내려온 패턴은 없어.";
+  const reassure =
+    '기준이 빡세진 게 아니라 측정이 정확해진 거야. 데이터 쌓이면 똑같은 기준으로 다시 올라와 — ' +
+    '내려간 건 틀렸다는 게 아니라 아직 판단 보류라는 뜻이야.';
+  const foot = `재검증 ${s.total}개 · 현재 검증됨 ${s.reconfirmed}개.`;
+  return [
+    { type: 'section', text: { type: 'mrkdwn', text: `${head}\n${body}` } },
+    { type: 'section', text: { type: 'mrkdwn', text: `${demotionLine}\n${reassure}` } },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: foot }] },
+  ];
+};
+
 /**
  * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
  * 검증중(emerging)은 e-value 진행바로 "쌓이는 중"을 정직하게 프레이밍(ADR-0035). discovery는 P5.
