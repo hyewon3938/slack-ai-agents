@@ -146,6 +146,8 @@ export interface LinkVerification {
   windowStart: string | null;
   /** BH-FDR 가족 (관측성 → 주간 로그 가족별 m 추적). #523 P0. */
   family: FdrFamily;
+  /** 전·후반 효과 부호 일치(표시용, 게이트 아님) → test_detail + 프로필 셀. #523 P1, §2-6. */
+  stability: boolean | null;
   verdict: Verdict;
   nextStatus: LinkLifecycleStatus;
 }
@@ -390,6 +392,38 @@ export const buildDaySequence = (
     seq.push({ active: activation.get(date) ?? false, pass });
   }
   return seq;
+};
+
+/**
+ * daySeq 전·후반 효과 부호(발현일 pass율 − 비발현일 pass율) 일치 여부 — 비정상성/단일국면 의존 표시 플래그
+ * (#523 P1, §2-6). 게이트 아님(노출용 stability). 각 반에 발현·비발현 양쪽 관측이 있어야 부호 산출 가능 —
+ * 한쪽이라도 결측이면 null(판정 보류). 길이 < minPerHalf*2 면 null. 입력 순서 고정 = SET 리플레이 불변(ADR-0034).
+ */
+export const splitHalvesConsistent = (
+  daySeq: ReadonlyArray<DayObservation>,
+  minPerHalf = 4,
+): boolean | null => {
+  if (daySeq.length < minPerHalf * 2) return null;
+  const mid = Math.floor(daySeq.length / 2);
+  const effectSign = (seq: ReadonlyArray<DayObservation>): number | null => {
+    let a = 0;
+    let b = 0;
+    let c = 0;
+    let d = 0;
+    for (const o of seq) {
+      if (o.active) {
+        if (o.pass) a++;
+        else b++;
+      } else if (o.pass) c++;
+      else d++;
+    }
+    if (a + b === 0 || c + d === 0) return null; // 한쪽 결측 → 부호 산출 불가
+    return Math.sign(a / (a + b) - c / (c + d));
+  };
+  const s1 = effectSign(daySeq.slice(0, mid));
+  const s2 = effectSign(daySeq.slice(mid));
+  if (s1 === null || s2 === null) return null;
+  return s1 === s2;
 };
 
 /** 2×2 → Fisher p + rate ratio + Beta-Binomial posterior. */
@@ -859,6 +893,7 @@ export const verifyUserLinks = async (
         blockP: blockPermutationP(daySeq, V.blockLen, V.blockPermIters),
         mannWhitney,
         eValue: evalueTestMartingale(daySeq),
+        stability: splitHalvesConsistent(daySeq),
         lastMatchedAt: lastActivationDate(activation),
       };
     })
@@ -909,6 +944,7 @@ export const verifyUserLinks = async (
       lastMatchedAt: x.lastMatchedAt,
       windowStart: x.windowStart,
       family: x.family,
+      stability: x.stability,
       verdict,
       nextStatus: statusForVerdict(verdict, x.row.status, x.eValue),
     };

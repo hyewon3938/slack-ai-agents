@@ -13,7 +13,7 @@
  */
 
 import type { App } from '@slack/bolt';
-import { query } from '../shared/db.js';
+import { query, withTransaction } from '../shared/db.js';
 import { getKSTDayOfWeek, getTodayISO } from '../shared/kst.js';
 import { postBlockMessage } from '../shared/slack.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
@@ -25,7 +25,12 @@ import {
 } from '../shared/pattern-verification.js';
 import { flagConfounds, type ConfoundData, type ConfoundResult } from '../shared/confound.js';
 import { posteriorMean, credibleInterval } from '../shared/bayesian-posterior.js';
-import { loadActiveSeeds } from '../shared/pattern-match.js';
+import { loadActiveSeeds, loadNatalContext, buildNameIdMap } from '../shared/pattern-match.js';
+import {
+  buildResponseProfile,
+  type ProfileLink,
+  type ResponseCell,
+} from '../shared/response-profile.js';
 import { seedLabel } from '../shared/insight-labels.js';
 import { runSaturationSweep, type SaturationSweepResult } from '../shared/seed-saturation.js';
 import {
@@ -68,6 +73,8 @@ export const persistLinkVerification = async (l: LinkVerification): Promise<void
     signal_kind: l.signalKind,
     value_type: l.valueType,
     verdict: l.verdict,
+    // 전·후반 효과 부호 일치(표시용, 게이트 아님) — response_profile 셀 stability 입력. #523 P1.
+    stability: l.stability,
     // 클립 합성 윈도우 시작(데이터-존재 + enrollment) — 관측성. discovery/llm은 등록 익일 이상이어야 정상.
     window_start: l.windowStart,
     // P3: p_value 컬럼 = block-perm p(자기상관 보정). Fisher·MW·e-value는 참고용 보존.
@@ -269,6 +276,142 @@ const loadSeedInfluence = async (userId: number, topN: number): Promise<SeedInfl
   return rows.slice(0, topN);
 };
 
+/** saju_response_profile INSERT 컬럼(user_id 제외 — 행마다 $1 공유). */
+const RESPONSE_PROFILE_COLS = [
+  'axis_level',
+  'axis_key',
+  'element',
+  'domain',
+  'tier',
+  'alpha',
+  'beta',
+  'shrunk_effect',
+  'n_links',
+  'n_active_days',
+  'stability',
+  'source_link_ids',
+] as const;
+
+/** 파생 셀 user당 full-replace — DELETE → 다중 INSERT를 한 트랜잭션으로(원자적, ADR-0049). */
+const replaceResponseProfile = async (userId: number, cells: ResponseCell[]): Promise<void> => {
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM saju_response_profile WHERE user_id = $1', [userId]);
+    if (cells.length === 0) return;
+    const params: unknown[] = [userId];
+    const valueRows: string[] = [];
+    for (const c of cells) {
+      const b = params.length; // 다음 placeholder = $(b+1)
+      params.push(
+        c.axisLevel,
+        c.axisKey,
+        c.element,
+        c.domain,
+        c.tier,
+        c.alpha,
+        c.beta,
+        c.shrunkEffect,
+        c.nLinks,
+        c.nActiveDays,
+        c.stability,
+        JSON.stringify(c.sourceLinkIds),
+      );
+      valueRows.push(
+        `($1, $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, ` +
+          `$${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}::jsonb)`,
+      );
+    }
+    await client.query(
+      `INSERT INTO saju_response_profile (user_id, ${RESPONSE_PROFILE_COLS.join(', ')})
+       VALUES ${valueRows.join(', ')}`,
+      params,
+    );
+  });
+};
+
+interface ProfileLinkRow {
+  link_id: number;
+  seed_id: number;
+  status: string;
+  domain: string | null;
+  posterior_alpha: string | null;
+  posterior_beta: string | null;
+  posterior_p: string | null;
+  hit_count: number;
+  miss_count: number;
+  test_detail: Record<string, unknown> | null;
+  confound: ConfoundData | null;
+}
+
+/**
+ * confirmed+active 링크 → saju_response_profile 집계 후 user당 full-replace (#523 P1, ADR-0049).
+ * processUser 말미 격리 호출 — 실패해도 검증 카드·발굴 무탈(파생 레이어). confirmed는 sticky라
+ * verifyUserLinks 결과에 없으므로 여기서 DB로 직접 로드(active+confirmed 둘 다, 교정된 Phase 0 수치).
+ */
+const persistResponseProfile = async (userId: number): Promise<void> => {
+  const natal = await loadNatalContext(userId);
+  if (!natal) {
+    console.warn(`[ResponseProfile] user=${userId} 원국 없음 — 집계 생략`);
+    return;
+  }
+  const [stemNameToId, branchNameToId] = await Promise.all([
+    buildNameIdMap('stems_master'),
+    buildNameIdMap('branches_master'),
+  ]);
+  const stemNameById = new Map([...stemNameToId].map(([name, id]) => [id, name] as const));
+  const branchNameById = new Map([...branchNameToId].map(([name, id]) => [id, name] as const));
+  const seeds = await loadActiveSeeds(userId);
+  const seedById = new Map(seeds.map((s) => [s.id, s]));
+
+  const linkRes = await query<ProfileLinkRow>(
+    `SELECT l.id AS link_id, l.seed_id, l.status, s.domain,
+            l.posterior_alpha, l.posterior_beta, l.posterior_p,
+            l.hit_count, l.miss_count, l.test_detail, l.confound
+       FROM pattern_links l
+       JOIN signal_defs s ON s.id = l.signal_id
+       JOIN pattern_catalog c ON c.id = l.seed_id
+      WHERE l.user_id = $1 AND l.status IN ('active', 'confirmed')
+        AND s.status = 'active' AND c.active = true
+      ORDER BY l.id`,
+    [userId],
+  );
+
+  const links: ProfileLink[] = [];
+  for (const r of linkRes.rows) {
+    if (!r.domain) continue; // 도메인 없는 신호는 셀 분할 불가 — 제외
+    const td: Record<string, unknown> = r.test_detail ?? {};
+    const rateOff = typeof td['rate_off'] === 'number' ? (td['rate_off'] as number) : NaN;
+    const stabilityRaw = td['stability'];
+    const confound = r.confound;
+    const att = confound?.adjusted?.find((a) => a.verdict === 'attenuated');
+    links.push({
+      linkId: r.link_id,
+      seedId: r.seed_id,
+      status: r.status === 'confirmed' ? 'confirmed' : 'active',
+      domain: r.domain,
+      posteriorAlpha: Number(r.posterior_alpha),
+      posteriorBeta: Number(r.posterior_beta),
+      posteriorP: r.posterior_p === null ? NaN : Number(r.posterior_p),
+      rateOff,
+      nActive: r.hit_count + r.miss_count,
+      stability: typeof stabilityRaw === 'boolean' ? stabilityRaw : null,
+      explainedAway: confound?.explainedAway === true,
+      attenuatedEffect: att && Number.isFinite(att.adjEffect) ? att.adjEffect : null,
+    });
+  }
+
+  const cells = buildResponseProfile(
+    links,
+    seedById,
+    natal.dayMaster,
+    stemNameById,
+    branchNameById,
+  );
+  await replaceResponseProfile(userId, cells);
+  console.warn(
+    `[ResponseProfile] user=${userId} 셀 ${cells.length} (입력 링크 ${links.length}) full-replace`,
+  );
+};
+
 const processUser = async (
   app: App,
   userId: number,
@@ -409,6 +552,14 @@ const processUser = async (
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Discovery] user=${userId} 발굴 실패: ${msg}`);
+  }
+
+  // 개인화 가중치 집계(#523 P1) — 파생 레이어 격리. 실패해도 검증·발굴 무탈(Phase 2·3가 소비).
+  try {
+    await persistResponseProfile(userId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[ResponseProfile] user=${userId} 집계 실패: ${msg}`);
   }
 };
 
