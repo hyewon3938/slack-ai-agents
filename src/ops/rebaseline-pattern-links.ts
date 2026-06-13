@@ -9,19 +9,21 @@
  * 스냅샷·교란·발굴·강도컷은 건너뛴다 — 비월요일 실행 시 week_start 시맨틱 오염 방지(다음 월요일
  * 정기 run이 자연 충전). 이 스크립트는 pattern_links 본체(counters·status·test_detail)만 갱신.
  *
- * 실행: yarn tsx scripts/rebaseline-pattern-links.ts [--user N]
- *   배포(머지된 새 측정 코드) 후 실행. 운영 절차: docs/ops/verification-rebaseline.md
+ * 실행(prod): ssh oracle-prod "docker exec slack-ai-agents node dist/ops/rebaseline-pattern-links.js [--user N]"
+ * 실행(dev):  yarn tsx src/ops/rebaseline-pattern-links.ts [--user N]
+ *   배포(머지된 새 측정 코드) 후 실행. 컨테이너 env(DATABASE_URL·SLACK_BOT_TOKEN) 사용.
+ *   운영 절차: docs/ops/verification-rebaseline.md
  */
 
 import { WebClient } from '@slack/web-api';
-import { CONFIG } from '../src/shared/config.js';
-import { connectDB, disconnectDB, query } from '../src/shared/db.js';
-import { getTodayISO } from '../src/shared/kst.js';
-import { verifyUserLinks } from '../src/shared/pattern-verification.js';
-import { persistLinkVerification } from '../src/cron/weekly-verification.js';
-import { postBlockMessage } from '../src/shared/slack.js';
-import { buildRebaselineNotice } from '../src/agents/insight/hypothesis-cards.js';
-import { DEFAULT_USER_ID, queryAllUserMappings } from '../src/shared/user-resolver.js';
+import { CONFIG } from '../shared/config.js';
+import { connectDB, disconnectDB, query } from '../shared/db.js';
+import { getTodayISO } from '../shared/kst.js';
+import { verifyUserLinks } from '../shared/pattern-verification.js';
+import { persistLinkVerification } from '../cron/weekly-verification.js';
+import { postBlockMessage } from '../shared/slack.js';
+import { buildRebaselineNotice } from '../agents/insight/hypothesis-cards.js';
+import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 
 interface CliArgs {
   /** null = 전체 매핑(없으면 DEFAULT_USER_ID). */

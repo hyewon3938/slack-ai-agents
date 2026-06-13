@@ -4,7 +4,7 @@
 
 검증 엔진의 **측정 로직이 바뀌면** 한 번 실행하는 1회성 운영 절차다. 확정(`confirmed`) 링크는 sticky라 정기 주간 검증이 재검정하지 않으므로(ADR-0034·ADR-0048), 측정 기준이 바뀐 뒤에도 옛 기준의 등급이 동결된다. 재기준선은 confirmed를 강등한 뒤 **새 측정 로직으로 전체를 한 번 강제 재검증**한다.
 
-- 스크립트: `scripts/rebaseline-pattern-links.ts` (멱등 — 반복 실행해도 같은 종착 상태)
+- 스크립트: `src/ops/rebaseline-pattern-links.ts` → 빌드 시 `dist/ops/rebaseline-pattern-links.js` (멱등 — 반복 실행해도 같은 종착 상태)
 - 결정 근거: [ADR-0048](../adr/0048-enrollment-clip-and-rebaseline.md)
 
 ---
@@ -26,26 +26,24 @@
 
 ### 2.1 사전 조건
 
-스크립트는 검증 엔진 전체(`verifyUserLinks` 등 `src/` 모듈)에 의존하므로 **소스 + devDependencies(tsx)** 가 필요하다. 프로덕션 컨테이너(`slack-ai-agents`)는 `dist`만 담고 `tsx`·`src`·`scripts`가 없어 **컨테이너 안에서는 직접 실행되지 않는다.**
+스크립트는 `src/ops/`에 있어 앱과 함께 `dist/ops/`로 컴파일돼 **프로덕션 이미지에 포함**된다. 따라서 앱 컨테이너(`slack-ai-agents`) 안에서 `node`로 바로 실행한다 — 컨테이너가 이미 가진 env(`DATABASE_URL`·`SLACK_BOT_TOKEN`)와 DB 네트워크를 그대로 쓴다. 별도 터널·로컬 secret 불필요.
 
-실행 환경에 다음이 있어야 한다:
-
-- 이 저장소 체크아웃 + `yarn install`(devDeps 포함)
-- `DATABASE_URL` — 프로덕션 DB에 닿는 값 (VM 내부 실행이거나 SSH 터널)
-- `SLACK_BOT_TOKEN` — 공지 카드 발송용 (없으면 카드만 생략, 재검증은 진행)
-- (선택) `INSIGHT_CHANNEL_ID` — 공지 카드 채널
+- **선행**: 측정 로직을 바꾼 PR이 **머지·배포 완료**(GitHub Actions Deploy → `dist`에 새 코드 반영)된 상태여야 한다. 배포 전 실행은 옛 코드로 재검증하는 셈이라 무의미.
+- `SLACK_BOT_TOKEN`이 없으면 공지 카드만 생략하고 재검증은 진행한다.
 
 ### 2.2 명령
 
 ```bash
 # 기본: 매핑된 전체 유저 (없으면 기본 유저)
-yarn tsx scripts/rebaseline-pattern-links.ts
+ssh oracle-prod "docker exec slack-ai-agents node dist/ops/rebaseline-pattern-links.js"
 
 # 특정 유저만
-yarn tsx scripts/rebaseline-pattern-links.ts --user 1
+ssh oracle-prod "docker exec slack-ai-agents node dist/ops/rebaseline-pattern-links.js --user 1"
 ```
 
 콘솔 요약: `강등 N · 재검증 M (persist M) · 재확정 K · reject R`.
+
+> 로컬 개발 중 검증만 할 땐 `yarn tsx src/ops/rebaseline-pattern-links.ts`(로컬 `.env`의 DB 기준).
 
 ### 2.3 스킵하는 것 (의도)
 

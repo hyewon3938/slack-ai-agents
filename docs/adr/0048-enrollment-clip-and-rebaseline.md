@@ -33,7 +33,7 @@ windowStart = max(시드 데이터-존재 시작, 신호 데이터-존재 시작
 
 ### D2 — 측정 로직 변경 시 재기준선 (sticky 유지)
 
-confirmed sticky는 **유지**한다(1년 미만 데이터에서 decay 검출력이 없어 별도 decay 모니터링·reaper는 만들지 않는다). 대신 **측정 로직이 바뀌면** 1회성 재기준선 스크립트(`scripts/rebaseline-pattern-links.ts`)로 confirmed를 active로 강등한 뒤 전체를 새 기준으로 강제 재검증한다. 같은 게이트(q + effect + nActive + e≥1/α)를 통과하면 자동 재확정된다. 운영 트리거·절차·검증 쿼리는 `docs/ops/verification-rebaseline.md`.
+confirmed sticky는 **유지**한다(1년 미만 데이터에서 decay 검출력이 없어 별도 decay 모니터링·reaper는 만들지 않는다). 대신 **측정 로직이 바뀌면** 1회성 재기준선 스크립트(`src/ops/rebaseline-pattern-links.ts` → 컨테이너에서 `node dist/ops/...`)로 confirmed를 active로 강등한 뒤 전체를 새 기준으로 강제 재검증한다. 같은 게이트(q + effect + nActive + e≥1/α)를 통과하면 자동 재확정된다. 운영 트리거·절차·검증 쿼리는 `docs/ops/verification-rebaseline.md`.
 
 재기준선 시 사용자에게 정직 공지 카드를 보낸다 — **강등은 낙인이 아니라 측정 정확도의 결과이며 기준은 불변**, 데이터 쌓이면 같은 기준으로 재승격됨을 명시한다.
 
