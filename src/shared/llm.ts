@@ -128,6 +128,24 @@ export const createDiaryMetaLLMClient = async (): Promise<LLMClient> => {
   return createCronLLMClient();
 };
 
+/**
+ * 기간 운세 서사 전용 LLM 클라이언트 (Opus 최신).
+ * 월/세/대운 해석 서사는 절기/입춘 전환 시에만 호출(저빈도) — 품질 우선이라 Opus.
+ * #533: Sonnet 한계 보강. 나머지 크론 메시지는 createCronLLMClient(Sonnet) 유지.
+ */
+export const createPeriodLLMClient = async (): Promise<LLMClient> => {
+  const { CONFIG } = await import('./config.js');
+
+  if (CONFIG.llm.anthropicApiKey) {
+    // eslint-disable-next-line no-console
+    console.log('[LLM] 기간 운세 서사용 Opus 클라이언트 생성');
+    return new ClaudeLLMClient(CONFIG.llm.anthropicApiKey, 'claude-opus-4-8');
+  }
+
+  // Anthropic 키 없으면 크론 클라이언트로 폴백
+  return createCronLLMClient();
+};
+
 // ---- Claude 변환 함수 (테스트 가능하도록 export) ----
 
 export function toClaudeMessages(messages: LLMMessage[]): {

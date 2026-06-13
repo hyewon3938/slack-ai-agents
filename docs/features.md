@@ -84,8 +84,7 @@
 | `#life` | `백로그` | 밀린 일정 조회 |
 | `#insight` | `일운` / `오늘 일운` | 오늘 일운 조회 |
 | `#insight` | `내일 일운` | 내일 일운 조회 |
-| `#insight` | `월운` / `세운` / `대운` (정확 일치) | 기간 해석 조회 — `period_interpretations` 최신 행 결정론 렌더. 월운/세운은 예측 장부(`period_forecasts`) 동봉 (LLM 0회, #529·#531) |
-| `#insight` | `월운 보여줘` · `이번 달 월운` 등 (접미·접두형) | `fortune_analyses` 교과서 레이어 (하위 호환) |
+| `#insight` | `월운` / `세운` / `대운` (정확일치·접미·접두형 전부) | 기간 해석 조회 — `period_interpretations` 최신 행 결정론 렌더. 월운/세운은 예측 장부(`period_forecasts`) 동봉 (LLM 0회, #529·#531·#533 단일화) |
 | `#insight` | `오늘 일기` | 오늘 일기 조회 |
 | `#insight` | `사주 시드 보기` | 활성 시드 + hit rate 목록 (Phase 3) |
 | `#insight` | `사주 시드 모두 보기` | 비활성 포함 전체 시드 (Phase 3) |
