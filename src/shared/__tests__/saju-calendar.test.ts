@@ -9,6 +9,9 @@ import {
   getRelations,
   getJijanggan,
   calculateFortuneRange,
+  getIpchunDate,
+  getJeolgiMonthRange,
+  isJeolgiTransitionDay,
 } from '../saju-calendar.js';
 import type { Cheongan, Jiji } from '../saju-calendar.js';
 
@@ -238,7 +241,7 @@ describe('getRelations', () => {
     // 하지만 getRelations는 일운 vs 원국을 비교
     // 일운 지지=술이면 원국 묘와 합
     const relations = getRelations(wonkukStems, wonkukBranches, '갑', '술');
-    expect(relations.jijiHap.some(s => s.includes('묘') && s.includes('술'))).toBe(true);
+    expect(relations.jijiHap.some((s) => s.includes('묘') && s.includes('술'))).toBe(true);
   });
 });
 
@@ -306,25 +309,33 @@ describe('암합 탐지', () => {
   it('인축 암합(토) 감지 — 인의 정기 갑 + 축의 정기 기 = 갑기합', () => {
     const wonkukBranches: readonly Jiji[] = ['술', '묘', '술', '축'];
     const relations = getRelations(wonkukStems, wonkukBranches, '병', '인');
-    expect(relations.amhap.some(s => s.includes('인-축') && s.includes('토') && s.includes('갑-기'))).toBe(true);
+    expect(
+      relations.amhap.some((s) => s.includes('인-축') && s.includes('토') && s.includes('갑-기')),
+    ).toBe(true);
   });
 
   it('묘신 암합(금) 감지 — 묘의 정기 을 + 신의 정기 경 = 을경합', () => {
     const wonkukBranches: readonly Jiji[] = ['술', '신', '술', '해'];
     const relations = getRelations(wonkukStems, wonkukBranches, '갑', '묘');
-    expect(relations.amhap.some(s => s.includes('묘-신') && s.includes('금') && s.includes('을-경'))).toBe(true);
+    expect(
+      relations.amhap.some((s) => s.includes('묘-신') && s.includes('금') && s.includes('을-경')),
+    ).toBe(true);
   });
 
   it('사유 암합(수) 감지 — 사의 정기 병 + 유의 정기 신 = 병신합', () => {
     const wonkukBranches: readonly Jiji[] = ['술', '유', '술', '해'];
     const relations = getRelations(wonkukStems, wonkukBranches, '무', '사');
-    expect(relations.amhap.some(s => s.includes('사-유') && s.includes('수') && s.includes('병-신'))).toBe(true);
+    expect(
+      relations.amhap.some((s) => s.includes('사-유') && s.includes('수') && s.includes('병-신')),
+    ).toBe(true);
   });
 
   it('오해 암합(목) 감지 — 오의 정기 정 + 해의 정기 임 = 정임합', () => {
     const wonkukBranches: readonly Jiji[] = ['술', '묘', '술', '해'];
     const relations = getRelations(wonkukStems, wonkukBranches, '갑', '오');
-    expect(relations.amhap.some(s => s.includes('오-해') && s.includes('목') && s.includes('정-임'))).toBe(true);
+    expect(
+      relations.amhap.some((s) => s.includes('오-해') && s.includes('목') && s.includes('정-임')),
+    ).toBe(true);
   });
 
   it('암합 없는 조합 — 빈 배열', () => {
@@ -349,18 +360,136 @@ describe('calculateFortuneRange', () => {
     const wonkukStems: readonly Cheongan[] = ['갑', '정', '경', '정'];
     const wonkukBranches: readonly Jiji[] = ['술', '묘', '술', '해'];
 
-    const results = calculateFortuneRange(
-      '2026-03-09', 7, dayMaster, wonkukStems, wonkukBranches,
-    );
+    const results = calculateFortuneRange('2026-03-09', 7, dayMaster, wonkukStems, wonkukBranches);
     expect(results).toHaveLength(7);
     expect(results[0].date).toBe('2026-03-09');
     expect(results[6].date).toBe('2026-03-15');
 
     // 일주 index 연속성 확인
     for (let i = 1; i < results.length; i++) {
-      expect(results[i].dayPillar.index).toBe(
-        (results[i - 1].dayPillar.index + 1) % 60,
-      );
+      expect(results[i].dayPillar.index).toBe((results[i - 1].dayPillar.index + 1) % 60);
     }
+  });
+});
+
+// ─── 절기 테이블 연장 (2029-2033) + 시한폭탄 위치 ──────────
+
+describe('절기 테이블 연장 (2029-2033)', () => {
+  it('2029년 (입춘 후) = 기유(己酉) — 연장 연도 년주', () => {
+    // Wikipedia Lichun 표가 2029년을 己酉로 표기 → 교차검증
+    expect(getYearPillar('2029-06-01').hangul).toBe('기유');
+  });
+
+  it('2029 입춘 당일(02-03) = 기유, 전날(02-02) = 무신(戊申)', () => {
+    expect(getYearPillar('2029-02-03').hangul).toBe('기유');
+    expect(getYearPillar('2029-02-02').hangul).toBe('무신');
+  });
+
+  it('2030=경술 2031=신해 2032=임자 2033=계축 — 연장 년주 연속', () => {
+    expect(getYearPillar('2030-06-01').hangul).toBe('경술');
+    expect(getYearPillar('2031-06-01').hangul).toBe('신해');
+    expect(getYearPillar('2032-06-01').hangul).toBe('임자');
+    expect(getYearPillar('2033-06-01').hangul).toBe('계축');
+  });
+
+  it('2029 입춘 당일 월주 = 병인(丙寅) — 기유년 인월', () => {
+    expect(getMonthPillar('2029-02-03').hangul).toBe('병인');
+  });
+
+  it('2029-01-01 (2028 대설 이후 자월) = 갑자(甲子) — 무신년 자월', () => {
+    expect(getMonthPillar('2029-01-01').hangul).toBe('갑자');
+  });
+
+  it('2033년 각 절기 월주 계산 throw 없음', () => {
+    expect(() => getMonthPillar('2033-03-10')).not.toThrow();
+    expect(() => getMonthPillar('2033-12-20')).not.toThrow();
+  });
+
+  it('⚠️ 시한폭탄: 2034년 월주/년주는 throw (테이블 미수록)', () => {
+    expect(() => getYearPillar('2034-06-01')).toThrow(/지원 범위: 2024-2033/);
+    expect(() => getMonthPillar('2034-06-01')).toThrow(/지원 범위: 2024-2033/);
+  });
+
+  it('일주는 2034년에도 throw 없음 (절기 테이블 무관, 산술 기반)', () => {
+    expect(() => getDayPillar('2034-06-01')).not.toThrow();
+    expect(() => getDayPillar('2050-01-01')).not.toThrow();
+  });
+});
+
+// ─── getIpchunDate ──────────────────────────────────────
+
+describe('getIpchunDate', () => {
+  it('2024-2028 기존 + 2029-2033 연장 입춘일', () => {
+    expect(getIpchunDate(2026)).toBe('2026-02-04');
+    expect(getIpchunDate(2029)).toBe('2029-02-03');
+    expect(getIpchunDate(2030)).toBe('2030-02-04');
+    expect(getIpchunDate(2031)).toBe('2031-02-04');
+    expect(getIpchunDate(2032)).toBe('2032-02-04');
+    expect(getIpchunDate(2033)).toBe('2033-02-03');
+  });
+
+  it('범위 밖은 throw', () => {
+    expect(() => getIpchunDate(2034)).toThrow(/지원 범위: 2024-2033/);
+  });
+});
+
+// ─── getJeolgiMonthRange ────────────────────────────────
+
+describe('getJeolgiMonthRange', () => {
+  it('절기월 중간 날짜 — [절기 시작, 다음 절기 전날] + 월지', () => {
+    // 2029 소서(07-07) ~ 입추(08-07) → 미월
+    const r = getJeolgiMonthRange('2029-07-10');
+    expect(r.start).toBe('2029-07-07');
+    expect(r.end).toBe('2029-08-06');
+    expect(r.jiji).toBe('미');
+  });
+
+  it('절기 전환일 자체가 시작일', () => {
+    // 2029 입추(08-07) → 신월
+    const r = getJeolgiMonthRange('2029-08-07');
+    expect(r.start).toBe('2029-08-07');
+    expect(r.end).toBe('2029-09-06');
+    expect(r.jiji).toBe('신');
+  });
+
+  it('자월: 대설 이후 날짜 — 연 경계 넘어 익년 소한 전날까지', () => {
+    // 2029 대설(12-07) ~ 2030 소한(01-05) → 자월
+    const r = getJeolgiMonthRange('2029-12-20');
+    expect(r.start).toBe('2029-12-07');
+    expect(r.end).toBe('2030-01-04');
+    expect(r.jiji).toBe('자');
+  });
+
+  it('자월: 익년 초 소한 전 날짜도 동일 구간(전년 대설 시작)', () => {
+    const r = getJeolgiMonthRange('2030-01-02');
+    expect(r.start).toBe('2029-12-07');
+    expect(r.end).toBe('2030-01-04');
+    expect(r.jiji).toBe('자');
+  });
+
+  it('월지가 getMonthPillar 지지와 일치 (교차검증)', () => {
+    for (const date of ['2029-07-10', '2030-03-15', '2031-11-20', '2033-05-05']) {
+      expect(getJeolgiMonthRange(date).jiji).toBe(getMonthPillar(date).jiji);
+    }
+  });
+});
+
+// ─── isJeolgiTransitionDay ──────────────────────────────
+
+describe('isJeolgiTransitionDay', () => {
+  it('절기 전환일이면 true (입춘 포함)', () => {
+    expect(isJeolgiTransitionDay('2029-02-03')).toBe(true); // 입춘
+    expect(isJeolgiTransitionDay('2029-07-07')).toBe(true); // 소서
+    expect(isJeolgiTransitionDay('2029-01-05')).toBe(true); // 소한
+  });
+
+  it('전환일이 아니면 false', () => {
+    expect(isJeolgiTransitionDay('2029-07-08')).toBe(false);
+    expect(isJeolgiTransitionDay('2029-02-04')).toBe(false);
+  });
+
+  it('KST 23시 이후 익일로 넘어간 절기(2031 입동=11-08)도 정확히 인식', () => {
+    expect(isJeolgiTransitionDay('2031-11-08')).toBe(true); // 입동 (KST 익일)
+    expect(isJeolgiTransitionDay('2031-11-07')).toBe(false);
   });
 });
