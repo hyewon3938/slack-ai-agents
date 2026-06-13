@@ -48,6 +48,27 @@ export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   return getPool().query<T>(text, params);
 };
 
+/**
+ * 트랜잭션 헬퍼 — 콜백 내 client.query들을 BEGIN/COMMIT으로 감싸고 예외 시 ROLLBACK.
+ * 파생 테이블 user당 full-replace(DELETE → 다중 INSERT) 등 원자적 다중 쓰기용 (#523 P1).
+ */
+export const withTransaction = async <T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> => {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {
+      /* 무시 */
+    });
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 /** SQL 쿼리 실행 후 첫 번째 행 반환 (없으면 null) */
 export const queryOne = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,

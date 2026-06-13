@@ -46,6 +46,7 @@ const makeLink = (overrides: Partial<LinkVerification> = {}): LinkVerification =
   lastMatchedAt: '2026-06-01',
   windowStart: '2026-03-10',
   family: 'baseline',
+  stability: true,
   verdict: 'confirm',
   nextStatus: 'active',
   ...overrides,

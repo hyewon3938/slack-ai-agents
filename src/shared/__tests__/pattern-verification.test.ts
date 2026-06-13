@@ -14,6 +14,7 @@ import {
   seedDataStart,
   maxDate,
   enrollmentStart,
+  splitHalvesConsistent,
   type DaySeries,
   type UserDataStarts,
 } from '../pattern-verification.js';
@@ -534,5 +535,60 @@ describe('enrollment 클립이 검정 시퀀스에서 등록 전 일자를 제�
       { active: true, pass: false }, // 01-06
       { active: false, pass: true }, // 01-07
     ]);
+  });
+});
+
+// ─── splitHalvesConsistent (#523 P1, stability 플래그) ─────
+
+describe('splitHalvesConsistent', () => {
+  const o = (active: boolean, pass: boolean): { active: boolean; pass: boolean } => ({
+    active,
+    pass,
+  });
+
+  it('전·후반 효과 부호 같음 → true', () => {
+    const seq = [
+      o(true, true),
+      o(false, false),
+      o(true, true),
+      o(false, false), // 전반: active 우세(+)
+      o(true, true),
+      o(false, false),
+      o(true, true),
+      o(false, false), // 후반: active 우세(+)
+    ];
+    expect(splitHalvesConsistent(seq)).toBe(true);
+  });
+
+  it('전·후반 부호 뒤집힘 → false', () => {
+    const seq = [
+      o(true, true),
+      o(false, false),
+      o(true, true),
+      o(false, false), // 전반: active 우세(+)
+      o(true, false),
+      o(false, true),
+      o(true, false),
+      o(false, true), // 후반: active 열세(−)
+    ];
+    expect(splitHalvesConsistent(seq)).toBe(false);
+  });
+
+  it('한 반에 발현·비발현 한쪽만 → null(판정 보류)', () => {
+    const seq = [
+      o(true, true),
+      o(true, false),
+      o(true, true),
+      o(true, false), // 전반: 전부 발현 → off 없음
+      o(true, true),
+      o(false, false),
+      o(true, true),
+      o(false, false),
+    ];
+    expect(splitHalvesConsistent(seq)).toBeNull();
+  });
+
+  it('너무 짧으면(<minPerHalf*2) null', () => {
+    expect(splitHalvesConsistent([o(true, true), o(false, false)])).toBeNull();
   });
 });

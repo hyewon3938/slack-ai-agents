@@ -2036,6 +2036,44 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 
 거친 측정 채널(고정 임계 누적)을 이미 존재하는 정밀 채널(상대 분위수 강도 밴드)로 은퇴·위임한 게 핵심 — 신규 통계 코어 0. 측정 불가능성(off-day 0)을 큐레이션 판단(ADR-0039 사람 게이트)과 분리해 자동·양방향 위생으로 환원: 사람은 "믿을지"만, 기계는 "검정 가능한지"를 판정. 설계 중 사용자가 archive-only의 빈틈(1년 뒤 탈포화 시드 영구 사장)을 지적 → 부활 대칭 추가. 빌드 중 `BEHAVIOR_DOMAIN`(데이터-존재 윈도우, #504)이 `slotGap`/`weekComparison`을 schedule로 매핑하는 오기를 발견(④는 `insights.ts` 진실 사용, #504 맵 교정은 후속).
 
+### 37. 세운·대운 확장 + 검증 엔진 교정 — Phase 1 (개인화 가중치 집계, #523, ADR-0049)
+
+링크 단위 증거(검증된·검증중 pattern_links)를 사주 축으로 모아 "이 사람은 어떤 십성·오행에 어떻게 반응하는가"의 개인화 프로필을 만든다(#408 5-B 구체화). Phase 2(기간 해석)·Phase 3(예측 장부)가 기간 pillar(월운/세운/대운)에 조인할 원료. 측정 교정(Phase 0)된 confirmed+active 링크만 입력.
+
+#### 데이터 모델 (migration 088)
+
+`saju_response_profile` — **파생 테이블**(진실 아님, pattern_links에서 재생성 가능). 주간 검증 엔진(`weekly-verification.ts` `processUser` 말미, 격리)이 user당 full-replace(트랜잭션).
+
+| 컬럼 | 의미 |
+|------|------|
+| `axis_level` | `char_stem`(천간글자)·`char_branch`(지지글자)·`sipsung`(십성)·`group`(십성그룹)·`element_band`(오행 강밴드) |
+| `axis_key` | 갑/자(글자)·비견(십성)·비겁(그룹)·목(오행) |
+| `element` | 오행 별칭(char/group/element_band) — sipsung은 NULL |
+| `domain` | 신호 도메인(셀 분할 축) |
+| `tier` | `verified`(confirmed 포함) / `emerging`(nActive·효과 게이트) |
+| `alpha`/`beta` | Σ posterior(롤업 합산) |
+| `shrunk_effect` | shrunk(posterior_p/rate_off)의 nActive 가중평균 — winner's curse 차단(D3) |
+| `n_links`/`n_active_days` | 기여 링크 수 / Σ 발현일 |
+| `stability` | 전·후반 효과 부호 일치(표시용, 비게이트) |
+| `source_link_ids` | provenance |
+
+UNIQUE(user_id, axis_level, axis_key, domain).
+
+#### 이중계산 구조적 차단 (D4) — `response-profile.ts`
+
+- **원천 기여 = 링크당 정확히 1 source 셀**: stem→천간글자, branch→지지글자(단일만), hwa_sipsung→십성그룹 직접, strength_band 강×오행→element_band. relation·sibiunsung·element_density·life_signal·일간/약/적정 밴드는 비편입(v1).
+- **결정론 롤업**: 글자 셀이 자기 십성(`getSipsung`/`getJijiSipsung`)·그룹으로 α/β·nActive 합산해 올라감. 그룹 셀 = (십성 롤업) + (hwa 직접).
+- **천간/지지 글자 분리**: 한글 동음이의(천간 辛 vs 지지 申='신')가 다른 십성으로 가므로 `char_stem`/`char_branch` 별도 축(병합 금지). 오행은 그룹 셀 별칭(일간 고정 시 동형 → 별도 레벨 없음).
+- **읽기 = 단일 레벨 resolution**(`resolveHierarchyCell`/`resolveElementBandCell`, Phase 2·3 공용): 글자 셀이 게이트 통과(verified 또는 nActive≥15)면 정지, 미달이면 십성→그룹 fallback. **두 레벨을 절대 합산하지 않음.**
+
+#### 효과·교란 (D3)
+
+효과는 raw rate ratio가 아니라 `shrunk = posterior_p / rate_off`(영속값). explained_away 교란 링크는 제외, attenuated는 `min(shrunk, 조정 RR)`. 셀 효과는 링크 shrunk의 nActive 가중평균.
+
+#### DoD
+
+주간 run 후 `SELECT axis_level, count(*), sum(n_links) FROM saju_response_profile GROUP BY 1;` — char 레벨 sum(n_links) = stem+branch 편입 링크 수 일치, provenance spot check. Phase 0 직후 confirmed 0 → 당분간 셀은 거의 emerging.
+
 ## 파일 구조
 
 ```
@@ -2055,6 +2093,7 @@ src/shared/
 ├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger + P5b runLlmSignalSql(게이트 #2)
 ├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
 ├── confound.ts                    # #477 P6 교란 플래그(marginal 탐지, ADR-0041) + P7 다변량 분리(MH 층화 조정 → confound.adjusted/explainedAway → 노출 soft-demote, ADR-0042)
+├── response-profile.ts            # #523 P1 개인화 가중치 집계(글자→십성→그룹 단일레벨 롤업 + element_band, 이중계산 차단 + shrunk 효과, resolveCell Phase 2·3 공용, ADR-0049)
 ├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
 ├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
 ├── saju-hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹

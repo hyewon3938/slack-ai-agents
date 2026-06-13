@@ -111,4 +111,9 @@ export const INSIGHT_THRESHOLDS = {
     minStratumCell: 5, // joint 층 viability — 각 층 n_k 최소(미달 시 가장 강한 단일 Z fallback)
     elasticNetEnabled: false, // 교란이 층화 한계 초과 시 elastic-net 조정(후속 노브, 기본 off)
   },
+  // #523 Phase 1 개인화 가중치 집계(saju_response_profile, ADR-0049) — 셀 emerging 게이트.
+  // 효과 하한은 patternVerification.emergingMinEffect(1.3) 승계, 발현일 하한만 여기서.
+  responseProfile: {
+    cellMinActive: 15, // 셀 emerging tier·단일레벨 resolution 정지 최소 합산 발현일(= emergingMinActive 승계)
+  },
 } as const;
