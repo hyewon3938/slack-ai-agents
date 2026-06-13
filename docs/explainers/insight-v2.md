@@ -516,7 +516,8 @@ flowchart LR
 | [docs/domains/insight.md](../domains/insight.md) | 도메인 상세 (스키마·API·로직·SQL 본문) |
 | [docs/design-notebook/metric-first-verification.md](../design-notebook/metric-first-verification.md) | 마스터 #477 서사 (자체 헌장 4개 + Phase 1\~7 결정 흐름 + 회고) |
 | [docs/design-notebook/personal-pattern-discovery.md](../design-notebook/personal-pattern-discovery.md) | 마스터 #434 서사 (5어휘 원형 + Phase 1\~8) |
-| [사주 부록](insight-v2-saju.md) | 사주 시드가 어떻게 정의되는지 (사주 모르는 사람도 따라올 수 있는 미니 101 포함) |
+| [docs/design-notebook/period-extension.md](../design-notebook/period-extension.md) | 마스터 #523 서사 (검증가능성 사다리 + 기간 해석 + 예측 장부, Phase 0\~3) |
+| [사주 부록](insight-v2-saju.md) | 사주 시드 정의 + 기간 해석·사다리·예측 장부(§7). 사주 모르는 사람용 미니 101 포함 |
 
 ### 12-1. 핵심 설계 결정 (ADR)
 
