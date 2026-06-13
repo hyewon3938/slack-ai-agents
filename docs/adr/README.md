@@ -156,6 +156,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0047](0047-discovery-recommendation-cadence.md) | 발굴 후보 재추천 — 데일리 반응형 cadence (전용 슬롯 + pattern_links 파생 상태, 묶음 전부 패스 시 다음 best) | Accepted | 2026-06-08 | insight, architecture, process |
 | [0048](0048-enrollment-clip-and-rebaseline.md) | enrollment 클립 + 측정 로직 변경 시 재기준선 (발굴 선택 편향 차단 + sticky confirmed 재검증 경로) | Accepted | 2026-06-13 | insight, statistics, process |
 | [0049](0049-response-profile-aggregation.md) | 개인화 가중치 집계 레이어 — saju_response_profile (글자→십성→그룹 단일레벨 + element_band, 이중계산 구조적 차단 + shrunk 효과) | Accepted | 2026-06-13 | insight, statistics, architecture, saju |
+| [0050](0050-verifiability-ladder-and-forecast-ledger.md) | 검증가능성 사다리 + 예측 장부 — 상위 주기(월/세/대운) 해석의 인식 지위 (일운 실증 / 월운 축적-실증 / 세운 장부한정 / 대운 비실증, 전이 가설 미검증 라벨) | Accepted | 2026-06-13 | insight, statistics, saju, architecture |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 

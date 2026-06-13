@@ -2074,6 +2074,70 @@ UNIQUE(user_id, axis_level, axis_key, domain).
 
 주간 run 후 `SELECT axis_level, count(*), sum(n_links) FROM saju_response_profile GROUP BY 1;` — char 레벨 sum(n_links) = stem+branch 편입 링크 수 일치, provenance spot check. Phase 0 직후 confirmed 0 → 당분간 셀은 거의 emerging.
 
+### 38. 세운·대운 확장 + 검증 엔진 교정 — Phase 2 (기간 해석 엔진 + 주기 리포트 + fast path, #529, ADR-0050)
+
+일운 집계 레이어(§37 `saju_response_profile`)를 월운·세운·대운 **해석**으로 잇는다. 핵심은 "검증할 수 없는 층에서 검증된 척하지 않으면서 출력은 끊지 않는" 인식 지위의 아키텍처다.
+
+**검증가능성 사다리** (헌법, [ADR-0050](../adr/0050-verifiability-ladder-and-forecast-ledger.md)) — 단위가 커질수록 표본이 기하급수로 줄어 통계 확정이 불가능해진다. 각 층의 지위를 다르게 두고 출력에 라벨로 동반:
+
+| 층 | 단위 | 지위 |
+|---|---|---|
+| 일운 | 일 | 실증 (off-day 2×2 + e-value + 가족 BH) |
+| 월운 | 절기월 | 축적-실증 (누적 기술통계 + 예측 장부) |
+| 세운 | 입춘년 | 장부 한정 약실증 (평생 n=1\~2) |
+| 대운 | 10년 | 비실증 추론 (검증 불가 명시) |
+
+**전이 가설**(일 단위 반응이 상위 단위에 같은 방향으로 보존)은 **미검증 가정** — 모든 상위 출력에 hedge 라벨 동반(통계 주장 금지).
+
+**데이터 모델** — `period_interpretations`(마이그 089):
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `period_type` | `TEXT CHECK IN (wolun/seun/daeun)` | 기간 종류 |
+| `period_start` / `period_end` | `DATE` | 절기월 시작/끝 · 입춘일/다음입춘 전날 · 대운 전환일/NULL |
+| `pillar` | `TEXT` | 기간 간지 한글 2자 |
+| `structured` | `JSONB` | `{measuredCells, textbookCells, descriptiveStats}` |
+| `narrative` | `TEXT` | LLM 서사 (생성 시점 동결, fast path는 이걸 렌더) |
+
+UNIQUE(user_id, period_type, period_start) — cron 재실행 중복 차단 + fast path 최신행 조회 커버. `fortune_analyses`(외부 weekly-fortune routine 소유, 교과서 레이어)와 **소유권 분리**.
+
+**트리거 슬롯** — `periodFortune`(마이그 090, 08:20, Life Cron 8→9개). 데일리 게이트(`period-fortune.ts` `decidePeriodTriggers`)는 **독립 3검사**(else-if 아님):
+
+| 검사 | 조건 | 산출 |
+|------|------|------|
+| 절기 전환 | `isJeolgiTransitionDay(today)` | 월운 (pillar = `getMonthPillar`, range = `getJeolgiMonthRange`) |
+| 입춘 | `today === getIpchunDate(year)` | 세운 (pillar = `getYearPillar`) |
+| 대운 전환 | 어제 대운 ≠ 오늘 대운 | 대운 (pillar = `getDaeunPillar(today)`) |
+
+**입춘은 인월 전환이자 새해 시작 → 월운+세운이 같은 날 동시 발사**(독립 검사라 둘 다 잡힘). 전환 없는 평일은 no-op. 대운 "정보 없어" 안내는 cron이 아니라 조회(fast path) 책임(만 나이 단조 → cron 대운 pillar는 항상 유효).
+
+**해석 흐름**(`period-interpretation.ts`):
+
+```
+derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십성·오행·합충
+  → buildInterpretationPayload(...)        ← resolveHierarchyCell/resolveElementBandCell 조인
+        measuredCells   : profileIndex(§37) 출신 (불변식)
+        textbookCells   : 측정 안 된 십성·합충의 교과서 일반론 (미검증 라벨)
+        descriptiveStats: 누적 기술통계 inline SQL (수면/루틴/일기)
+  → composeNarrative(llm, ...)             ← 측정/교과서 분리 발화 + 전이 hedge (cron 생성 시점만)
+  → renderInterpretationBlocks(record)     ← 결정론, cron·fast path 공용
+```
+
+`descriptiveStats`: wolun = 과거 동일 월지 절기월들 누적(`getJeolgiMonthRange` walk, 백스톱 5구간), seun/daeun = 기간 시작\~오늘. 지출 금액은 집계 제외(수면 avg·루틴 완료율·일기 수만). **measuredCells=0도 항상 발송**(D8 출력 연속성) — 빈 카드 대신 "측정된 반응 아직 없어" 명시 + 교과서 + 누적 기록으로 채우는 일급 경로.
+
+**조회 명령**(`insight/index.ts`):
+
+| 명령 | 경로 | 동작 |
+|------|------|------|
+| `월운` / `세운` / `대운` (정확 일치) | period_interpretations | 최신 행 결정론 렌더 (LLM 미호출), 행 없으면 안내 |
+| `월운 보여줘` · `이번 달 월운` 등 (접미·접두형) | fortune_analyses | 기존 교과서 레이어 (하위 호환) |
+
+⚠️ **평가 순서 의존**: 기존 `MONTHLY_FORTUNE_RE` 등이 맨말 "월운"도 매칭하므로, 정확일치(`^월운$`)를 **반드시 먼저** 평가해야 갈래가 갈린다.
+
+**절기 테이블 연장**(`saju-calendar.ts`) — `JEOLGI_TABLE` 2029\~2033 추가. 미연장 시 2029-01-01부터 `getYearPillar`/`getMonthPillar`(→ 일일 매칭 포함) 전체 throw였던 시한폭탄 해소. 데이터는 NASA DE441 기반 절기 시각을 **KST 환산**(UTC+8→+9, 23시 이후는 익일) 후 날짜 추출, Wikipedia UTC 표 + 기존 2028행 재대조로 교차검증. 폭탄은 사라지지 않고 **2034-01로 이동**(테이블 구동 본질) — 갱신 절차는 ADR-0050. 신규 export: `getIpchunDate`(승격) · `getJeolgiMonthRange` · `isJeolgiTransitionDay`.
+
+> 예측 장부(`period_forecasts`, 마이그 091)는 Phase 3 — ADR-0050에 스키마 설계만, 코드는 후속. 구현 회고: [design-notebook period-extension §Phase 2](../design-notebook/period-extension.md#phase-2--기간-해석-엔진--주기-리포트--fast-path-진행-529).
+
 ## 파일 구조
 
 ```
@@ -2094,6 +2158,8 @@ src/shared/
 ├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
 ├── confound.ts                    # #477 P6 교란 플래그(marginal 탐지, ADR-0041) + P7 다변량 분리(MH 층화 조정 → confound.adjusted/explainedAway → 노출 soft-demote, ADR-0042)
 ├── response-profile.ts            # #523 P1 개인화 가중치 집계(글자→십성→그룹 단일레벨 롤업 + element_band, 이중계산 차단 + shrunk 효과, resolveCell Phase 2·3 공용, ADR-0049)
+├── period-interpretation.ts       # #523 P2 기간 해석 엔진(derive→payload→narrative→render, 측정/교과서 분리, measured=0 일급 경로) + period_interpretations DB 헬퍼, ADR-0050
+├── saju-calendar.ts               # 만세력 — 절기 테이블 2024~2033(#523 P2 연장) + getDayPillar/getMonthPillar/getYearPillar + getJeolgiMonthRange·isJeolgiTransitionDay·getIpchunDate + 십성·합충 유틸
 ├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
 ├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
 ├── saju-hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
@@ -2108,6 +2174,7 @@ src/cron/
 ├── daily-pattern-matching.ts              # 07:00 사주 일일 매칭 → seed_daily_activations transient 기록 (#477 P2: 검증·백필·발송 제거)
 ├── diary-meta-extract.ts                  # 일기 → enum 태그 추출 cron (Phase 3, Opus)
 ├── weekly-verification.ts                 # 월 06:00 주간 off-day 검증 엔진 (#477 P2/P3: e-value persist + 주간 스냅샷 + 3-tier 카드, P5a 발굴, P6 교란 플래그)
+├── period-fortune.ts                      # 08:20 주기 운세 게이트 (#523 P2: 절기/입춘/대운 독립 3검사 → 월운/세운/대운 카드, 입춘 double-trigger, 평일 no-op)
 └── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5, #477 P2 seed_daily_activations 재배선)
 
 scripts/

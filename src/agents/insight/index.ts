@@ -1,12 +1,18 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
-import { sendMessage } from '../../shared/slack.js';
+import { sendMessage, sendBlockMessage } from '../../shared/slack.js';
 import { query, queryOne } from '../../shared/db.js';
 import { getTodayISO, getEffectiveTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import { saveDiaryEntry, pickDiaryConfirmation, naturalDelay } from './diary-fast-path.js';
 import { tryPatternSeedFastPath } from './pattern-seed-fast-path.js';
 import { formatFortuneText } from '../../shared/fortune-format.js';
+import {
+  loadLatestInterpretation,
+  renderInterpretationBlocks,
+  PERIOD_LABEL,
+  type PeriodType,
+} from '../../shared/period-interpretation.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
@@ -20,6 +26,14 @@ const YEARLY_FORTUNE_RE = /^(올해\s*)?세운(\s*(보여줘|보여|알려줘|�
 const TOMORROW_FORTUNE_RE = /^내일\s*일운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
 /** 대운 조회 */
 const MAJOR_FORTUNE_RE = /^(내\s*)?대운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
+/**
+ * 기간 해석 정확 일치 조회 (#529 Phase 2) — period_interpretations 경로.
+ * 정확히 "월운/세운/대운"만. 접미·접두형("월운 보여줘"·"이번 달 월운")은 기존 RE → fortune_analyses(하위 호환).
+ * ⚠️ 순서 의존: tryPeriodInterpretationFastPath를 tryFortuneFastPath보다 먼저 평가해야 정확일치가 신규 경로로 간다.
+ */
+const EXACT_WOLUN_RE = /^월운$/;
+const EXACT_SEUN_RE = /^세운$/;
+const EXACT_DAEUN_RE = /^대운$/;
 /** 오늘 일기 조회 */
 const TODAY_DIARY_RE = /^오늘\s*일기/;
 /** LLM 매트릭 pending 목록 조회 (ADR-0030 디버깅·놓친 카드 재확인용) */
@@ -35,6 +49,42 @@ interface FortuneRow {
   recommendations: unknown;
   advice: string | null;
 }
+
+/**
+ * 기간 해석 정확일치 fast path (#529 Phase 2) — 저장된 해석을 LLM 없이 즉시 렌더.
+ * 매칭되면 응답 전송 후 true. 행 없으면 안내(다음 전환 때 생성됨) 후 true.
+ */
+const tryPeriodInterpretationFastPath = async (
+  trimmed: string,
+  say: Parameters<AgentHandler>[1],
+  userId: number,
+): Promise<boolean> => {
+  let periodType: PeriodType;
+  if (EXACT_WOLUN_RE.test(trimmed)) periodType = 'wolun';
+  else if (EXACT_SEUN_RE.test(trimmed)) periodType = 'seun';
+  else if (EXACT_DAEUN_RE.test(trimmed)) periodType = 'daeun';
+  else return false;
+
+  const label = PERIOD_LABEL[periodType];
+  try {
+    const record = await loadLatestInterpretation(userId, periodType);
+    if (!record) {
+      const when =
+        periodType === 'wolun'
+          ? '다음 절기 전환'
+          : periodType === 'seun'
+            ? '다음 입춘'
+            : '다음 대운 전환';
+      await sendMessage(say, `아직 ${label} 해석이 없어. ${when} 때 만들어서 보내줄게.`);
+      return true;
+    }
+    await sendBlockMessage(say, `${label} (${record.pillar})`, renderInterpretationBlocks(record));
+  } catch (error: unknown) {
+    console.error(`[Insight Agent] ${label} 해석 fast path 오류:`, error);
+    await sendMessage(say, `${label} 조회 중 오류가 발생했어.`);
+  }
+  return true;
+};
 
 /** fast path 운세 조회 시도. 매칭되면 응답 전송 후 true 반환. */
 const tryFortuneFastPath = async (
@@ -180,7 +230,10 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
     }
     const userId = resolvedUserId ?? DEFAULT_USER_ID;
 
-    // ── fast path: 운세 조회 ──
+    // ── fast path: 기간 해석 정확일치 (월운/세운/대운) — 접미형보다 먼저 (#529) ──
+    if (await tryPeriodInterpretationFastPath(trimmed, say, userId)) return;
+
+    // ── fast path: 운세 조회 (접미·접두형 → fortune_analyses 하위 호환) ──
     if (await tryFortuneFastPath(trimmed, say, userId)) return;
 
     // ── fast path: 사주 시드 토글 ──

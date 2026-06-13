@@ -336,13 +336,17 @@ export const JIJI_CHUNG_PAIRS: readonly (readonly [Jiji, Jiji])[] = JIJI_CHUNG.m
   JIJI_LIST[b],
 ]);
 
-// ─── 상수: 절기 테이블 (2024-2028) ──────────────────────
+// ─── 상수: 절기 테이블 (2024-2033) ──────────────────────
 
 /**
- * 월 전환 절기 날짜 (MM-DD).
+ * 월 전환 절기 날짜 (MM-DD, KST 기준).
  * 순서: [소한, 입춘, 경칩, 청명, 입하, 망종, 소서, 입추, 백로, 한로, 입동, 대설]
  * 대응 월지: [축, 인, 묘, 진, 사, 오, 미, 신, 유, 술, 해, 자]
- * 출처: uncle.tools (NASA DE441 데이터 기반)
+ * 출처: NASA DE441 기반 절기 시각(UTC+8) → KST(UTC+9) 환산 후 날짜 추출.
+ *   2024-2028: uncle.tools. 2029-2033(#523 Phase 2): 동일 데이터셋 교차검증
+ *   (Wikipedia UTC 표 + 2028행 일치 확인). 절기 시각이 KST 23시 이후면 익일로 넘어감
+ *   (예: 2031 입동은 23:05 CST=KST 익일 → 11-08).
+ * ⚠️ 2033까지만 수록 — 2034-01부터 getYearPillar/getMonthPillar가 throw(갱신 필요). ADR-0050 참조.
  */
 const JEOLGI_TABLE: Record<number, readonly string[]> = {
   2024: [
@@ -415,6 +419,76 @@ const JEOLGI_TABLE: Record<number, readonly string[]> = {
     '11-07',
     '12-06',
   ],
+  2029: [
+    '01-05',
+    '02-03',
+    '03-05',
+    '04-04',
+    '05-05',
+    '06-05',
+    '07-07',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-07',
+  ],
+  2030: [
+    '01-05',
+    '02-04',
+    '03-05',
+    '04-05',
+    '05-05',
+    '06-05',
+    '07-07',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-07',
+  ],
+  2031: [
+    '01-05',
+    '02-04',
+    '03-06',
+    '04-05',
+    '05-06',
+    '06-06',
+    '07-07',
+    '08-08',
+    '09-08',
+    '10-08',
+    '11-08',
+    '12-07',
+  ],
+  2032: [
+    '01-06',
+    '02-04',
+    '03-05',
+    '04-04',
+    '05-05',
+    '06-05',
+    '07-06',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-06',
+  ],
+  2033: [
+    '01-05',
+    '02-03',
+    '03-05',
+    '04-04',
+    '05-05',
+    '06-05',
+    '07-07',
+    '08-07',
+    '09-07',
+    '10-08',
+    '11-07',
+    '12-07',
+  ],
 };
 
 /** 절기 → 월지 매핑 (index 0-11 → 지지) */
@@ -484,9 +558,9 @@ export const getYearPillar = (dateStr: string): Pillar => {
 };
 
 /** 해당 년도 입춘 날짜 (YYYY-MM-DD) */
-const getIpchunDate = (year: number): string => {
+export const getIpchunDate = (year: number): string => {
   const table = JEOLGI_TABLE[year];
-  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2028)`);
+  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
   return `${year}-${table[1]}`; // index 1 = 입춘
 };
 
@@ -527,7 +601,7 @@ const getJeolgiMonth = (
 
   // 현재 년도 절기 테이블
   const table = JEOLGI_TABLE[year];
-  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2028)`);
+  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
 
   // 절기 구간 역순 탐색: 마지막으로 지난 절기 찾기
   for (let i = 11; i >= 0; i--) {
@@ -543,12 +617,74 @@ const getJeolgiMonth = (
 
   // mmdd가 소한보다 이전 → 전년 대설 이후 (자월)
   const prevTable = JEOLGI_TABLE[year - 1];
-  if (!prevTable) throw new Error(`절기 데이터 없음: ${year - 1}년 (지원 범위: 2024-2028)`);
+  if (!prevTable) throw new Error(`절기 데이터 없음: ${year - 1}년 (지원 범위: 2024-2033)`);
   return {
     jiji: '자',
     monthOffset: 10,
     sajuYear: year - 1,
   };
+};
+
+/**
+ * 날짜가 속한 절기월의 [시작일, 끝일] + 월지 반환.
+ * 시작일 = 해당 절기 전환일, 끝일 = 다음 절기 전환 전날.
+ * 자월(대설→소한)은 연 경계를 넘으므로 전년 대설 / 익년 소한을 참조.
+ * @param date YYYY-MM-DD
+ */
+export const getJeolgiMonthRange = (date: string): { start: string; end: string; jiji: Jiji } => {
+  const year = Number(date.slice(0, 4));
+  const mmdd = date.slice(5);
+  const table = JEOLGI_TABLE[year];
+  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
+
+  // 당년 절기 중 date 이하의 마지막 전환 찾기
+  let idx = -1;
+  for (let i = 11; i >= 0; i--) {
+    if (mmdd >= table[i]) {
+      idx = i;
+      break;
+    }
+  }
+
+  if (idx === -1) {
+    // date가 당년 소한보다 이전 → 전년 대설에 시작된 자월
+    const prev = JEOLGI_TABLE[year - 1];
+    if (!prev) throw new Error(`절기 데이터 없음: ${year - 1}년 (지원 범위: 2024-2033)`);
+    return {
+      start: `${year - 1}-${prev[11]}`, // 전년 대설
+      end: addDays(`${year}-${table[0]}`, -1), // 당년 소한 전날
+      jiji: JEOLGI_JIJI[11], // 자
+    };
+  }
+
+  if (idx === 11) {
+    // 대설 → 자월, 끝 = 익년 소한 전날
+    const next = JEOLGI_TABLE[year + 1];
+    if (!next) throw new Error(`절기 데이터 없음: ${year + 1}년 (지원 범위: 2024-2033)`);
+    return {
+      start: `${year}-${table[11]}`,
+      end: addDays(`${year + 1}-${next[0]}`, -1),
+      jiji: JEOLGI_JIJI[11],
+    };
+  }
+
+  return {
+    start: `${year}-${table[idx]}`,
+    end: addDays(`${year}-${table[idx + 1]}`, -1),
+    jiji: JEOLGI_JIJI[idx],
+  };
+};
+
+/**
+ * 해당 날짜가 절기 전환일(월 전환 12절기 중 하나)인지 여부.
+ * 입춘일도 true(입춘 = 인월 전환).
+ * @param date YYYY-MM-DD
+ */
+export const isJeolgiTransitionDay = (date: string): boolean => {
+  const year = Number(date.slice(0, 4));
+  const table = JEOLGI_TABLE[year];
+  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
+  return table.includes(date.slice(5));
 };
 
 // ─── 십성 계산 (범용) ───────────────────────────────────
