@@ -13,6 +13,7 @@ import {
   signalDataStart,
   seedDataStart,
   maxDate,
+  enrollmentStart,
   type DaySeries,
   type UserDataStarts,
 } from '../pattern-verification.js';
@@ -456,5 +457,82 @@ describe('데이터-존재 시작일 헬퍼 (#504)', () => {
     expect(maxDate(null, '2026-03-05')).toBe('2026-03-05');
     expect(maxDate('2026-03-05', null)).toBe('2026-03-05');
     expect(maxDate(null, null)).toBeNull();
+  });
+});
+
+// ─── enrollment 클립 (#523 Phase 0, D1, ADR-0048) ────────
+describe('enrollmentStart — 발굴/제안 링크 선택 편향 클립', () => {
+  it('manual(카탈로그=선험 가설)은 클립 없음(null)', () => {
+    expect(enrollmentStart('manual', '2026-05-01')).toBeNull();
+    expect(enrollmentStart('manual', null)).toBeNull();
+  });
+
+  it('discovery/llm은 등록(created_at KST) 다음 날부터', () => {
+    expect(enrollmentStart('discovery', '2026-05-01')).toBe('2026-05-02');
+    expect(enrollmentStart('llm', '2026-05-01')).toBe('2026-05-02');
+    expect(enrollmentStart('discovery', '2026-12-31')).toBe('2027-01-01'); // 연 경계
+  });
+
+  it('createdDate 결측이면 클립 없음(보수적)', () => {
+    expect(enrollmentStart('discovery', null)).toBeNull();
+    expect(enrollmentStart('llm', null)).toBeNull();
+  });
+});
+
+describe('windowStart 3중 maxDate 합성 (#523 Phase 0)', () => {
+  // verifyUserLinks의 합성식: max(시드 데이터-존재, 신호 데이터-존재, enrollment).
+  const compose = (
+    seedStart: string | null,
+    signalStart: string | null,
+    source: string,
+    createdKst: string | null,
+  ): string | null => maxDate(maxDate(seedStart, signalStart), enrollmentStart(source, createdKst));
+
+  it('manual: enrollment null → 데이터-존재 max만 (발굴 클립 무영향)', () => {
+    expect(compose('2026-01-01', '2026-03-10', 'manual', '2026-05-01')).toBe('2026-03-10');
+  });
+
+  it('discovery: 등록 익일이 데이터-존재보다 늦으면 등록 익일이 지배', () => {
+    expect(compose('2026-01-01', '2026-03-10', 'discovery', '2026-05-01')).toBe('2026-05-02');
+  });
+
+  it('discovery: 데이터-존재가 등록 익일보다 늦으면 데이터-존재가 지배', () => {
+    expect(compose('2026-01-01', '2026-06-01', 'discovery', '2026-05-01')).toBe('2026-06-01');
+  });
+});
+
+describe('enrollment 클립이 검정 시퀀스에서 등록 전 일자를 제외 (#523 Phase 0)', () => {
+  // 발굴 링크 created_at=01-05. 활성·발현이 그 전부터 있어도 등록 익일(01-06)부터만 검정에 든다.
+  const windowDates = ['2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07'];
+  const act = new Map<string, boolean>([
+    ['2026-01-04', true],
+    ['2026-01-05', true],
+    ['2026-01-06', true],
+    ['2026-01-07', false],
+  ]);
+  const sig: DaySeries = new Map([
+    ['2026-01-04', true],
+    ['2026-01-05', true],
+    ['2026-01-06', false],
+    ['2026-01-07', true],
+  ]);
+
+  it('discovery 등록 익일(01-06) 클립 → 그 전 발현(01-04·05)이 시퀀스에서 빠짐', () => {
+    const windowStart = enrollmentStart('discovery', '2026-01-05');
+    expect(windowStart).toBe('2026-01-06');
+    expect(buildDaySequence(act, sig, windowDates, windowStart)).toEqual([
+      { active: true, pass: false }, // 01-06
+      { active: false, pass: true }, // 01-07
+    ]);
+  });
+
+  it('manual은 클립 없음 → 전체 윈도우 유지', () => {
+    const windowStart = enrollmentStart('manual', '2026-01-05'); // null
+    expect(buildDaySequence(act, sig, windowDates, windowStart)).toEqual([
+      { active: true, pass: true }, // 01-04
+      { active: true, pass: true }, // 01-05
+      { active: true, pass: false }, // 01-06
+      { active: false, pass: true }, // 01-07
+    ]);
   });
 });
