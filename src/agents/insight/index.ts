@@ -13,6 +13,7 @@ import {
   PERIOD_LABEL,
   type PeriodType,
 } from '../../shared/period-interpretation.js';
+import { loadLedger } from '../../shared/period-forecast.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
@@ -78,7 +79,16 @@ const tryPeriodInterpretationFastPath = async (
       await sendMessage(say, `아직 ${label} 해석이 없어. ${when} 때 만들어서 보내줄게.`);
       return true;
     }
-    await sendBlockMessage(say, `${label} (${record.pillar})`, renderInterpretationBlocks(record));
+    // 장부 동봉(Phase 3) — wolun/seun만. daeun은 비편입(ledger undefined → 기존 동작).
+    const ledger =
+      periodType === 'wolun' || periodType === 'seun'
+        ? await loadLedger(userId, periodType)
+        : undefined;
+    await sendBlockMessage(
+      say,
+      `${label} (${record.pillar})`,
+      renderInterpretationBlocks(record, ledger),
+    );
   } catch (error: unknown) {
     console.error(`[Insight Agent] ${label} 해석 fast path 오류:`, error);
     await sendMessage(say, `${label} 조회 중 오류가 발생했어.`);

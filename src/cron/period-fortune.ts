@@ -35,6 +35,11 @@ import {
   type ResponseProfileIndex,
   type PeriodInterpretationRecord,
 } from '../shared/period-interpretation.js';
+import {
+  scoreForecasts,
+  generateForecasts,
+  type LedgerCardData,
+} from '../shared/period-forecast.js';
 import { postBlockMessage } from '../shared/slack.js';
 import type { LLMClient } from '../shared/llm.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
@@ -136,7 +141,32 @@ const generateAndPost = async (
     narrative,
   };
   await upsertInterpretation(userId, record);
-  const blocks = renderInterpretationBlocks(record);
+
+  // 예측 장부(Phase 3) — wolun/seun만. ①직전 open 채점 → ③이번 기간 사전등록 → ④카드 장부 섹션.
+  // 장부 실패는 격리(해석 카드는 항상 발송 — 출력 연속성 D8). daeun·세운 끝미정(periodEnd null)은 비편입.
+  let ledger: LedgerCardData | undefined;
+  if (
+    (trigger.periodType === 'wolun' || trigger.periodType === 'seun') &&
+    trigger.periodEnd !== null
+  ) {
+    const ledgerType = trigger.periodType;
+    const periodEnd = trigger.periodEnd;
+    try {
+      const scored = await scoreForecasts(userId, ledgerType, today);
+      const forecasts = await generateForecasts(
+        userId,
+        ledgerType,
+        { start: trigger.periodStart, end: periodEnd },
+        payload.measuredCells,
+      );
+      ledger = { periodType: ledgerType, scored, forecasts };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Period Fortune] user=${userId} ${ledgerType} 장부 실패: ${msg}`);
+    }
+  }
+
+  const blocks = renderInterpretationBlocks(record, ledger);
   await postBlockMessage(
     app.client,
     channelId,

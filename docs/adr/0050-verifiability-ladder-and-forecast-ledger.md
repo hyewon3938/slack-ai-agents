@@ -59,6 +59,14 @@ CREATE TABLE period_forecasts (
 );
 ```
 
+> **구현 reconcile (Phase 3, #531):** 위 SQL은 최초 스케치다. 실제 구현(`db/migrations/091`)은
+> `forecasts`/`outcome` JSONB 배열 대신 **신호당 1행으로 정규화**했다 — `status`(open/scored/unmeasurable/no_call)
+> + 동결 `baseline_rate` + `predicted_direction` + `measured_rate`/`measured_delta` + `direction_hit`
+> + `source_cell` JSONB + `UNIQUE(user_id, period_type, period_start, signal_id)` + no_call partial unique index.
+> 정규화 사유: 채점 대상 추출(`WHERE status='open' AND period_end<=today`)·dedup·멱등 INSERT가 SQL로 직접
+> 표현된다. **네 규율(top-3, no_call 사전등록, baseline 동결, 방향적중+실측delta·Brier 금지)과 wolun+seun
+> 한정(대운 비편입)은 그대로 유지** — 결정 변경 없음, 저장 표현만 정규화. 상세 [insight §39](../domains/insight.md).
+
 규율: ① top-3만 예측하고 나머지는 **no-call**(예측 안 함을 명시) — 모든 걸 예측한 척 금지. ② baseline은 생성 시점에 동결(사후 조정 차단). ③ 채점은 방향 적중 + 실측 delta만(확률점수 금지). ④ 과거 대운 retro-fitting 금지(확증편향 기계).
 
 ### 4. Phase 2 구현 범위 (이 PR)
@@ -111,7 +119,7 @@ CREATE TABLE period_forecasts (
 
 ### 후속 작업
 
-- [ ] Phase 3: `period_forecasts`(마이그 091) 구현 — 사전등록 + 채점 cron.
+- [x] Phase 3: `period_forecasts`(마이그 091) 구현 — 사전등록 + 채점(절기 시간게이트 무인). #531, [insight §39](../domains/insight.md).
 - [ ] 2033 만료 전 절기 테이블 갱신 (또는 천문 계산식 전환 검토).
 - [ ] weekly-fortune SKILL(repo 밖): period_interpretations 등장 후 fortune_analyses 교과서 레이어 존속/통합 판단.
 
