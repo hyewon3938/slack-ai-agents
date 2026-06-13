@@ -14,6 +14,7 @@ import {
 } from '../period-interpretation.js';
 import { indexCells, type ResponseCell } from '../response-profile.js';
 import { makePillar, type Cheongan, type Jiji } from '../saju-calendar.js';
+import type { LedgerCardData, ForecastSourceCell } from '../period-forecast.js';
 
 const NATAL = {
   dayMaster: '갑' as Cheongan,
@@ -165,6 +166,7 @@ describe('renderInterpretationBlocks', () => {
               tier: 'emerging',
               shrunkEffect: 1.5,
               nActiveDays: 20,
+              sourceLinkIds: [1],
             },
           ],
         }),
@@ -199,5 +201,78 @@ describe('renderInterpretationBlocks', () => {
     const txt = JSON.stringify(blocks);
     expect(txt).toContain('대운');
     expect(txt).toContain('검증');
+  });
+
+  // ─── 예측 장부 섹션 (Phase 3) ──────────────────────────
+  const srcCell = (axisKey: string, signalId: number): ForecastSourceCell => ({
+    domain: 'sleep',
+    via: 'stem',
+    resolvedLevel: 'char_stem',
+    axisKey,
+    element: '화',
+    tier: 'emerging',
+    shrunkEffect: 1.5,
+    nActiveDays: 20,
+    signalId,
+  });
+
+  it('ledger 주입 — 지난 채점 결과(적중+delta %p) + 이번 예측 섹션 노출', () => {
+    const ledger: LedgerCardData = {
+      periodType: 'wolun',
+      scored: [
+        {
+          signalId: 1,
+          status: 'scored',
+          predictedDirection: 'up',
+          baselineRate: 0.3,
+          measuredRate: 0.7,
+          measuredDelta: 0.4,
+          directionHit: true,
+          sourceCell: srcCell('병', 1),
+        },
+      ],
+      forecasts: [
+        {
+          signalId: 2,
+          status: 'open',
+          predictedDirection: 'up',
+          baselineRate: 0.4,
+          sourceCell: srcCell('정', 2),
+        },
+      ],
+    };
+    const txt = JSON.stringify(renderInterpretationBlocks(record(payloadWith({})), ledger));
+    expect(txt).toContain('지난 기간 장부 결과');
+    expect(txt).toContain('적중');
+    expect(txt).toContain('+40%p');
+    expect(txt).toContain('이번 기간 예측');
+    // baseline 원수치(0.3/0.4 → 30%/40%)는 비노출 (§9)
+    expect(txt).not.toContain('30%)');
+  });
+
+  it('ledger no_call — 예측 안 함도 명시(D8, 침묵 금지)', () => {
+    const ledger: LedgerCardData = {
+      periodType: 'seun',
+      scored: [],
+      forecasts: [
+        {
+          signalId: null,
+          status: 'no_call',
+          predictedDirection: null,
+          baselineRate: null,
+          sourceCell: { reason: '측정된 반응이 아직 없어' },
+        },
+      ],
+    };
+    const txt = JSON.stringify(renderInterpretationBlocks(record(payloadWith({})), ledger));
+    expect(txt).toContain('이번 기간 예측');
+    expect(txt).toContain('예측 안 함');
+    expect(txt).toContain('측정된 반응이 아직 없어');
+  });
+
+  it('ledger 미주입 — 장부 섹션 없음(기존 동작 보존)', () => {
+    const txt = JSON.stringify(renderInterpretationBlocks(record(payloadWith({}))));
+    expect(txt).not.toContain('이번 기간 예측');
+    expect(txt).not.toContain('지난 기간 장부 결과');
   });
 });

@@ -756,6 +756,27 @@ const toSignalDef = (row: SignalDefRow): SignalDef => ({
   domain: row.domain,
 });
 
+/** signal_defs(active만) id 집합 → 행. SELECT 단일 위치 — verifyUserLinks(라벨까지)·loadSignalDefsByIds 공용. */
+const querySignalDefRows = async (ids: number[]): Promise<SignalDefRow[]> => {
+  if (ids.length === 0) return [];
+  const res = await query<SignalDefRow>(
+    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain, description
+       FROM signal_defs
+      WHERE id = ANY($1::int[]) AND status = 'active'`,
+    [ids],
+  );
+  return res.rows;
+};
+
+/**
+ * 신호 id 집합 → SignalDef 맵(active만). verifyUserLinks·scoreForecasts(예측 장부 채점, #531) 공용.
+ * toSignalDef가 SignalDef 단일 진실 — 채점 측은 라벨 불요라 SignalDef만 받는다.
+ */
+export const loadSignalDefsByIds = async (ids: number[]): Promise<Map<number, SignalDef>> => {
+  const rows = await querySignalDefRows(ids);
+  return new Map(rows.map((r) => [r.id, toSignalDef(r)]));
+};
+
 interface ActiveLinkRow {
   link_id: number;
   seed_id: number;
@@ -789,16 +810,11 @@ export const verifyUserLinks = async (
   const seedById = new Map(seeds.map((s) => [s.id, s]));
 
   const signalIds = [...new Set(linkRes.rows.map((r) => r.signal_id))];
-  const signalRes = await query<SignalDefRow>(
-    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain, description
-       FROM signal_defs
-      WHERE id = ANY($1::int[]) AND status = 'active'`,
-    [signalIds],
-  );
-  const signalById = new Map(signalRes.rows.map((r) => [r.id, toSignalDef(r)]));
+  const signalRows = await querySignalDefRows(signalIds);
+  const signalById = new Map(signalRows.map((r) => [r.id, toSignalDef(r)]));
   // 카드용 신호 라벨 — 룰(seed) / 자작 description(llm). 로드 지점에서 1회 계산해 문자열로 운반.
   const signalLabelById = new Map(
-    signalRes.rows.map((r) => [
+    signalRows.map((r) => [
       r.id,
       signalLabel({
         name: r.name,

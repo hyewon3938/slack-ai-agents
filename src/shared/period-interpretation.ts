@@ -43,6 +43,8 @@ import {
 import { query } from './db.js';
 import { addDays } from './kst.js';
 import type { LLMClient, LLMMessage } from './llm.js';
+// type-only(런타임 순환 0) — 장부 데이터는 period-forecast.ts가 산출, 여기선 렌더만.
+import type { LedgerCardData, ForecastSourceCell, NoCallReason } from './period-forecast.js';
 
 export type PeriodType = 'wolun' | 'seun' | 'daeun';
 
@@ -99,6 +101,8 @@ export interface MeasuredCell {
   tier: CellTier;
   shrunkEffect: number | null;
   nActiveDays: number;
+  /** 셀 기여 링크 ids(ResponseCell 승계) — Phase 3 예측 장부가 대표 신호 해소에 사용(#531). */
+  sourceLinkIds: number[];
 }
 
 /** 교과서 일반론 후보(라벨 = 미검증) — 측정 증거 없는 십성·관계에서 결정론 도출. */
@@ -206,6 +210,7 @@ const resolveMeasuredCells = (
       tier: c.tier,
       shrunkEffect: c.shrunkEffect,
       nActiveDays: c.nActiveDays,
+      sourceLinkIds: c.sourceLinkIds,
     });
   };
 
@@ -513,11 +518,72 @@ const section = (text: string): KnownBlock => ({
   text: { type: 'mrkdwn', text },
 });
 
+// ─── 장부 섹션(Phase 3) — ledger는 caller(cron/fast path)가 주입. 데이터는 period-forecast.ts. ──
+
+const TIER_LABEL_SHORT: Record<string, string> = {
+  verified: '검증됨',
+  emerging: '탐색적·검증중',
+};
+const DIR_ARROW: Record<string, string> = { up: '↑', down: '↓' };
+
+/** delta → 부호 강조 %p. 원 pass율(baseline/measured)은 비노출 — §9 보안(delta 부호·크기만). */
+const fmtDelta = (delta: number | null): string => {
+  if (delta === null) return '';
+  const pp = Math.round(delta * 100);
+  const sign = pp > 0 ? '+' : pp < 0 ? '-' : '±';
+  return ` _(실측 *${sign}${Math.abs(pp)}%p*)_`;
+};
+
+const cellLabel = (cell: ForecastSourceCell): string =>
+  `${DOMAIN_LABEL[cell.domain] ?? cell.domain} — *${cell.axisKey}*`;
+
+/**
+ * 예측 장부 섹션 — 지난 기간 채점 결과 + 이번 기간 예측. baseline 원수치 비노출(delta·tier만, §9).
+ * no_call도 '예측 안 함' 명시(D8 — 침묵 금지). scored 비면(첫 기간) 생략, forecasts는 generate가 항상 ≥1 보장.
+ */
+const renderLedgerBlocks = (ledger: LedgerCardData): KnownBlock[] => {
+  const blocks: KnownBlock[] = [];
+
+  if (ledger.scored.length > 0) {
+    const lines = ledger.scored.map((s) => {
+      const dir = s.predictedDirection ? DIR_ARROW[s.predictedDirection] : '';
+      if (s.status === 'unmeasurable') {
+        return `• ${cellLabel(s.sourceCell)} 측정불가 _(예측 ${dir}, 데이터 부족)_`;
+      }
+      const hit = s.directionHit ? '적중' : '빗나감';
+      return `• ${cellLabel(s.sourceCell)} *${hit}* _(예측 ${dir})_${fmtDelta(s.measuredDelta)}`;
+    });
+    blocks.push(section(`*지난 기간 장부 결과*\n${lines.join('\n')}`));
+  }
+
+  const openLines: string[] = [];
+  const noCallLines: string[] = [];
+  for (const f of ledger.forecasts) {
+    if (f.status === 'no_call' || 'reason' in f.sourceCell) {
+      noCallLines.push(`예측 안 함 — ${(f.sourceCell as NoCallReason).reason}`);
+      continue;
+    }
+    const cell = f.sourceCell as ForecastSourceCell;
+    const dir = f.predictedDirection ? DIR_ARROW[f.predictedDirection] : '';
+    const tier = TIER_LABEL_SHORT[cell.tier] ?? cell.tier;
+    openLines.push(`• ${cellLabel(cell)} ${dir} _(근거: ${tier})_`);
+  }
+  const body =
+    openLines.length > 0 ? openLines.join('\n') : noCallLines.map((l) => `• ${l}`).join('\n');
+  blocks.push(section(`*이번 기간 예측* _(다음 전환 때 채점)_\n${body}`));
+
+  return blocks;
+};
+
 /**
  * 저장된 해석 → Block Kit 카드(결정론). cron·fast path 공용.
  * measuredCells=0 케이스도 일급 경로(D8) — 빈 카드 금지, 교과서+누적기록으로 채운다.
+ * ledger(Phase 3): 있으면 사다리 footer 앞에 예측 장부 섹션 삽입(wolun/seun만 주입, daeun은 undefined).
  */
-export const renderInterpretationBlocks = (record: PeriodInterpretationRecord): KnownBlock[] => {
+export const renderInterpretationBlocks = (
+  record: PeriodInterpretationRecord,
+  ledger?: LedgerCardData,
+): KnownBlock[] => {
   const { payload, periodType } = record;
   const blocks: KnownBlock[] = [];
 
@@ -555,6 +621,9 @@ export const renderInterpretationBlocks = (record: PeriodInterpretationRecord): 
 
   // 서사 (LLM 동결)
   if (record.narrative.trim().length > 0) blocks.push(section(record.narrative));
+
+  // 예측 장부 섹션 (Phase 3) — wolun/seun에만 주입됨
+  if (ledger) blocks.push(...renderLedgerBlocks(ledger));
 
   // 사다리 지위 + 전이 가설 (context)
   blocks.push({

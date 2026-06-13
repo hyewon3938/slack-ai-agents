@@ -116,4 +116,10 @@ export const INSIGHT_THRESHOLDS = {
   responseProfile: {
     cellMinActive: 15, // 셀 emerging tier·단일레벨 resolution 정지 최소 합산 발현일(= emergingMinActive 승계)
   },
+  // #523 Phase 3 예측 장부(period_forecasts, ADR-0050) — 생성·채점 노브.
+  periodForecast: {
+    topK: 3, // 기간당 최대 예측 행(top-3, §5 D5)
+    minMeasurableDays: 10, // 채점 최소 측정가능일(미달 → unmeasurable, 강제판정 금지). 절기월(~30일)에서 최소 10일 요구, 세운(~365일)은 자동 충족. 첫 몇 주기 튜닝 노브(헌장 ⑤)
+    baselineLeadInDays: 28, // above_avg/below_avg 신호 채점 시 rolling baseline 워밍업 lead-in (= patternVerification.baselineWindowDays)
+  },
 } as const;

@@ -2138,6 +2138,49 @@ derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십�
 
 > 예측 장부(`period_forecasts`, 마이그 091)는 Phase 3 — ADR-0050에 스키마 설계만, 코드는 후속. 구현 회고: [design-notebook period-extension §Phase 2](../design-notebook/period-extension.md#phase-2--기간-해석-엔진--주기-리포트--fast-path-진행-529).
 
+### 39. 세운·대운 확장 + 검증 엔진 교정 — Phase 3 (예측 장부 `period_forecasts`, #531, ADR-0050)
+
+월운·세운 해석을 **사전등록 → 사후 채점** 장부로 잇는다. 검증 불가 층(세운은 평생 표본 1\~2회, 대운은 수명초과)에 확증편향 차단 규율을 코드로 심는 게 목적. 절기/입춘 시간 게이트만으로 무인 생성·채점되는 **자기검증 메커니즘** — "메커니즘을 완성해두면 시간이 흐르며 스스로 검증된다".
+
+**데이터 모델** (마이그 091, `period_forecasts`) — 신호당 1행(정규화):
+
+| 컬럼 | 의미 |
+|------|------|
+| `period_type` | `wolun` \| `seun` (대운 비편입 — CHECK 제약) |
+| `period_start` / `period_end` | 절기월/입춘년 구간. `period_end`가 채점 시점 |
+| `signal_id` | 근거 셀의 대표 신호(no_call이면 NULL) |
+| `status` | `open`(예측) → `scored`/`unmeasurable`, 또는 `no_call`(예측 안 함) |
+| `predicted_direction` | `up`/`down` — 셀 shrunkEffect 부호 |
+| `baseline_rate` | **생성 시점 동결**(대표 링크 `rate_off`). 채점이 재계산 안 함 |
+| `source_cell` JSONB | 근거 셀 provenance(via·axis·tier·shrunk·nActive·signalId) / no_call이면 사유 |
+| `measured_rate`/`measured_delta`/`direction_hit` | 채점 산출(미채점이면 NULL) |
+
+제약: `UNIQUE(user_id, period_type, period_start, signal_id)` + `no_call` partial unique(기간당 1행) + `open` 부분 인덱스(채점 대상 추출 가속). **Brier 등 확률점수 금지** — 표본 없는 층에서 확률은 과대주장이라 방향 적중 + 실측 delta만 기록.
+
+**스키마 reconcile**: ADR-0050 §3 예시 SQL은 `forecasts`/`outcome` JSONB 배열(period당 1행)이었으나, 실제 구현은 신호당 1행으로 **정규화**. 사유 — 채점 대상 추출(`WHERE status='open' AND period_end<=today`)·dedup·멱등 INSERT가 SQL로 직접 표현된다. ADR의 네 규율(top-3·no_call 사전등록·baseline 동결·방향적중+실측delta·Brier 금지)과 wolun+seun 한정은 불변(ADR에 erratum 주석).
+
+**예측 단위 = 도메인 셀 → 대표 신호**(§5-A): measuredCells는 도메인 레벨(롤업), 예측 행은 신호 레벨. 한 셀의 `sourceLinkIds` 중 발현일(nActive) 최대 링크의 signal을 대표로 채택(타이=min signal_id). baseline은 그 링크의 `rate_off`(발현-부재 비율) 동결 — 전이 가설의 올바른 null(기간 = feature 켜진 연장 구간 → 그 pass율이 발현-부재 baseline을 넘는가). signal_id 충돌은 dedup(상위 셀 유지).
+
+**자기검증 메커니즘** (5요소 — 수동 트리거 0):
+
+| 요소 | 코드 실현 |
+|------|----------|
+| 시간 구동 | 생성·채점 모두 `periodFortune`(08:20) `decidePeriodTriggers` 절기/입춘 게이트에서만 발화. 별도 스크립트 없음 |
+| 멱등 | 생성: `(user,type,start)` 행 존재 시 재생성 안 함(첫 등록만 유효 = baseline 동결 무결성). 채점: `status='open'` 가드 → 재채점 0 |
+| 자가 회수 | 채점은 `period_end <= today`(== 아님) — 전환일 cron 1회 실패해도 다음 전환이 밀린 open 자동 회수 |
+| 동결 = 봉인 | `baseline_rate`는 등록 시 캡처, 채점이 절대 재계산 안 함(확증편향 차단의 구조적 코드화). 테스트로 불변식 고정 |
+| 결과 노출 | 채점 결과는 다음 기간 카드(cron) + fast path `월운`/`세운` 둘 다 같은 행을 읽음 — 수동 조회 없이 누적 |
+
+유일 수동 지점은 절기 테이블 갱신(2034 만료)이나, `decidePeriodTriggers`가 try/catch라 만료 후엔 "틀린 장부"가 아니라 "빈 장부"로 degrade. **reaper·decay 모니터는 일부러 미추가**(D2/D7) — 메커니즘은 순수 이벤트(전환) 구동.
+
+**통합점**: `period-forecast.ts`(신규 — `generateForecasts`/`scoreForecasts`/`loadLedger`) + `period-fortune.ts` `generateAndPost`(wolun/seun에서 ①채점 → ③생성 → ④카드 장부 섹션, 장부 실패는 격리) + `period-interpretation.ts` `renderInterpretationBlocks(record, ledger?)`(`MeasuredCell`에 `sourceLinkIds` 추가) + `insight/index.ts` fast path `loadLedger` 동봉 + `pattern-verification.ts` `loadSignalDefsByIds` named export 추출(SignalDef 단일 진실).
+
+**채점**: `computeSignalSeries` 재사용 → 기간 한정 집계(period 일자만, lead-in `baselineLeadInDays`는 above_avg 워밍업 전용). 측정가능일 < `minMeasurableDays`(10) → `unmeasurable`(강제판정 금지). `direction_hit`은 방향 일치(동률=미적중). 노브: `periodForecast { topK:3, minMeasurableDays:10, baselineLeadInDays:28 }`.
+
+**카드 표시**: baseline 원수치는 비노출(개인 pass율 = 생활 패턴), delta `±%p` 부호·tier만(§9 보안). 지난 채점(적중/빗나감/측정불가) + 이번 예측(↑/↓·근거 tier) + no_call("예측 안 함" 명시 — D8 침묵 금지).
+
+**DoD**: 마이그 091 prod 적용(테이블 + 2 인덱스), 전환일 검증(직전 기간 open 0건 + 새 기간 open ≤3 또는 no_call 1), fast path LLM 미호출. 첫 실측 = 2026-07-07 소서(첫 예측 등록), 첫 채점 = 그다음 절기(≈8월 입추). 이로써 마스터 #523 사다리 4층(일운 실증 → 월운 축적실증 → 세운 장부약실증 → 대운 비실증) 완결. 회고: [design-notebook period-extension §Phase 3](../design-notebook/period-extension.md).
+
 ## 파일 구조
 
 ```
@@ -2158,7 +2201,8 @@ src/shared/
 ├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
 ├── confound.ts                    # #477 P6 교란 플래그(marginal 탐지, ADR-0041) + P7 다변량 분리(MH 층화 조정 → confound.adjusted/explainedAway → 노출 soft-demote, ADR-0042)
 ├── response-profile.ts            # #523 P1 개인화 가중치 집계(글자→십성→그룹 단일레벨 롤업 + element_band, 이중계산 차단 + shrunk 효과, resolveCell Phase 2·3 공용, ADR-0049)
-├── period-interpretation.ts       # #523 P2 기간 해석 엔진(derive→payload→narrative→render, 측정/교과서 분리, measured=0 일급 경로) + period_interpretations DB 헬퍼, ADR-0050
+├── period-interpretation.ts       # #523 P2 기간 해석 엔진(derive→payload→narrative→render, 측정/교과서 분리, measured=0 일급 경로) + period_interpretations DB 헬퍼 + P3 장부 섹션 렌더(renderInterpretationBlocks ledger 인자), ADR-0050
+├── period-forecast.ts             # #523 P3 예측 장부(generateForecasts/scoreForecasts/loadLedger) — 사전등록→사후채점, baseline 동결·방향적중+delta(Brier 금지)·대표신호 해소, 절기 시간게이트 무인 자기검증, ADR-0050
 ├── saju-calendar.ts               # 만세력 — 절기 테이블 2024~2033(#523 P2 연장) + getDayPillar/getMonthPillar/getYearPillar + getJeolgiMonthRange·isJeolgiTransitionDay·getIpchunDate + 십성·합충 유틸
 ├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
 ├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)

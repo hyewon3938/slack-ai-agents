@@ -2,7 +2,7 @@
 
 > 마스터 이슈: [#523](https://github.com/hyewon3938/slack-ai-agents/issues/523)
 > 시작: 2026-06-13
-> 상태: **Phase 0·1 머지+배포 완료 / Phase 2 진행([#529](https://github.com/hyewon3938/slack-ai-agents/issues/529))**
+> 상태: **Phase 0\~3 전부 머지 완료 — 마스터 #523 CLOSE.** 검증가능성 사다리 4층 완결(Phase 3 예측 장부 = [#531](https://github.com/hyewon3938/slack-ai-agents/issues/531))
 > 관계: [#408](https://github.com/hyewon3938/slack-ai-agents/issues/408)(월/세/대운)의 5-B를 구체화. 세운·대운 직접 통계검증 영구 기각은 #408 선언 유지.
 
 ## 개요
@@ -62,8 +62,8 @@
 |---|---|---|---|
 | **0 측정 교정** | enrollment 클립 + 일회성 재기준선 + 운영 절차 문서 + 정직 공지 | — | ✅ 머지+배포+재기준선 실행 ([#524](https://github.com/hyewon3938/slack-ai-agents/issues/524)) |
 | **1 집계 레이어** | `saju_response_profile` — 글자→십성→그룹 + element_band, 이중계산 차단 | 088 | ✅ 머지+배포 ([#527](https://github.com/hyewon3938/slack-ai-agents/issues/527) / PR #528) |
-| **2 해석 엔진** | 기간 해석(결정론 도출+payload+서사+렌더) + 주기 리포트 슬롯 + fast path 정확일치 3종 + 절기 테이블 연장 | 089·090 | 진행 ([#529](https://github.com/hyewon3938/slack-ai-agents/issues/529)) |
-| **3 예측 장부** | `period_forecasts` — 절기월/입춘년 사전등록, top-3, no-call, baseline 동결, 방향적중+실측delta | 091 | 미착수 |
+| **2 해석 엔진** | 기간 해석(결정론 도출+payload+서사+렌더) + 주기 리포트 슬롯 + fast path 정확일치 3종 + 절기 테이블 연장 | 089·090 | ✅ 머지+배포 ([#529](https://github.com/hyewon3938/slack-ai-agents/issues/529) / PR #530) |
+| **3 예측 장부** | `period_forecasts` — 절기월/입춘년 사전등록, top-3, no-call, baseline 동결, 방향적중+실측delta | 091 | ✅ 머지 ([#531](https://github.com/hyewon3938/slack-ai-agents/issues/531)) — 마스터 close |
 
 ## Phase 0 — 측정 교정 (완료)
 
@@ -81,7 +81,7 @@
 
 설계 대비 보정 한 건: char 레벨을 `char_stem`/`char_branch`로 분리했다. 한글 동음이의(천간 辛 vs 지지 申이 같은 '신')가 서로 다른 십성으로 가는데, 단일 'char' 축으로 병합하면 롤업 불변식이 깨진다 — 테스트가 잡아낸 실버그. 상세는 [insight 도메인 §37](../domains/insight.md) + ADR-0049.
 
-## Phase 2 — 기간 해석 엔진 + 주기 리포트 + fast path (진행, #529)
+## Phase 2 — 기간 해석 엔진 + 주기 리포트 + fast path (완료, #529)
 
 일운 집계 레이어를 월운·세운·대운 해석으로 잇는다. 결정론 도출(기간 pillar → 십성·오행·합충) → 개인화 프로필 조인으로 `{measuredCells, textbookCells, descriptiveStats}` payload → LLM 서사(측정/교과서 분리 발화 + 전이 가설 hedge) → 결정론 렌더(cron·fast path 공용). 절기 전환·입춘·대운 전환을 감지하는 전용 데일리 슬롯이 카드를 발송하고, 정확 일치 조회 명령(`^월운$`/`^세운$`/`^대운$`)이 저장된 해석을 LLM 없이 즉시 렌더한다(접미형 자연어 조회는 기존 교과서 레이어로 하위 호환).
 
@@ -102,3 +102,36 @@
 **기술적 의의.** 검증할 수 없는 층(세운 n=1\~2)에서도 "검증된 척"을 구조적으로 차단하면서 출력은 끊기지 않게 하는 인식 지위의 아키텍처 — measured/textbook 분리 발화 + 전이 가설 hedge + 사다리 라벨이 모든 상위 단위 출력을 따라다닌다. 상세 판단은 [ADR-0050](../adr/0050-verifiability-ladder-and-forecast-ledger.md), 도메인 사실은 [insight 도메인 §38](../domains/insight.md).
 
 > 예측 장부(`period_forecasts`, 마이그 091)는 Phase 3 — ADR-0050에 스키마 설계만 일괄 기록, 코드는 후속.
+
+## Phase 3 — 예측 장부 (완료, #531) · 마스터 마지막 phase
+
+검증할 수 없는 층(월운·세운)에 **사전등록 → 자동채점** 장부를 심는다. 통계로 확정 못 해도, 예측을 미리 박아두고 사후에 채점하면 확증편향을 차단하는 규율이 된다. 장부가 천천히 채점하는 대상은 전이 가설(일 단위 반응이 상위 주기로 보존되는가)이다.
+
+이 phase의 헤드라인은 **자기검증 메커니즘**이다. 사용자 원칙 — "지금 완결된 메커니즘을 다 만들어두고, 시간이 흐르면 그게 스스로 검증·작동되게" — 의 정수. 생성과 채점이 모두 절기/입춘 **시간 게이트**(기존 `periodFortune` 슬롯)만으로 무인 작동하고, 멱등(재실행 안전) + baseline 등록 시 봉인 + 놓친 전환 자가 회수로 1년을 그냥 굴려도 채점 결과가 안전하게 쌓인다. 수동 트리거 0.
+
+- **데이터 모델**(마이그 091): `period_forecasts` — 신호당 1행 정규화. ADR-0050 예시 SQL(JSONB 배열)을 정규화로 reconcile(채점 추출·dedup·멱등 INSERT의 SQL 직접 표현 — 원칙은 불변). wolun+seun만(대운 비편입).
+- **예측 단위 reconcile**: 셀은 도메인 레벨, 예측 행은 신호 레벨. 한 셀의 근거 링크 중 증거 최대(발현일) 링크의 신호를 대표로, baseline은 그 링크의 발현-부재 비율(`rate_off`) 동결.
+- **자기검증 5요소**: 시간 구동 / 멱등 / 자가 회수(`period_end ≤ today`) / baseline 봉인 / 결과 수동조회 없이 노출. reaper·decay 미추가(순수 이벤트 구동, D2/D7).
+- **통합**: `period-forecast.ts`(생성·채점·로드) + `period-fortune.ts`(①채점 ②해석 ③생성 ④카드 장부 섹션) + 해석 렌더 `ledger?` 인자 + fast path 동봉.
+
+### 구현 회고
+
+**스키마 reconcile이 곧 설계.** 계획서 §6는 "신호당 1행", ADR-0050 예시 SQL은 "period당 1행 + JSONB 배열"로 갈라져 있었다. 정규화를 택하니 `UNIQUE(user, type, start, signal_id)` + dedup이 필연적으로 따라왔고, 그게 "셀은 도메인 레벨인데 행은 신호 레벨"이라는 다리(§5-A 대표 신호)를 강제했다. 두 표현이 충돌한 게 오히려 예측 단위를 명확히 했다.
+
+**대표 신호 선택의 함정.** 측정 셀은 여러 신호를 롤업하지만 채점은 구체 시리즈(`computeSignalSeries`)가 필요하다. 그래서 셀의 `sourceLinkIds` 중 발현일(nActive) 최대 링크의 신호를 대표로 뽑되, 타이는 `min signal_id`로 결정론을 고정했다(테스트로 못박음). 카드가 보여준 "측정 셀"과 장부가 예측한 "셀"이 어긋나지 않게 `MeasuredCell`에 `sourceLinkIds`를 실어 payload를 생성의 단일 입력으로 만든 게 드리프트 0의 핵심.
+
+**baseline = 발현-부재 비율(`rate_off`) 동결.** 신호 전체 평균 pass율이 아니라 "그 feature가 꺼졌을 때 pass율"이 전이 가설의 올바른 null이다(기간 = feature 켜진 연장 구간 → 그 pass율이 발현-부재 baseline을 넘는가). 채점 윈도우에 `baselineLeadInDays`(28) 선행을 포함해 above_avg rolling baseline을 워밍업하되, 집계는 기간 내 일자만 — 같은 이진화 정의, 다른 날짜 집합이라 비교 가능.
+
+**자기검증을 "안 만든 것"으로 증명.** reaper도 decay 모니터도 일부러 안 넣었다. 채점을 `period_end == today`가 아니라 `<= today`로 잡으니 놓친 전환을 다음 전환이 자동 회수한다 — 별도 감시 프로세스 없이 self-heal. 멱등은 생성측(기간당 1회 가드 = baseline 동결 무결성)과 채점측(`status='open'` 가드)에 각각, no_call은 partial unique로 1행 보장. "채점 전후 baseline 불변" 불변식은 테스트로 고정했다(확증편향 차단의 구조적 증거).
+
+**D8 no_call도 일급 경로.** 예측할 셀이 0개여도 침묵하지 않고 `no_call` 1행을 박아 "예측 안 함 + 사유"를 카드에 띄운다. 무증거를 증거처럼 말하지도, 침묵하지도 않는 출력 연속성을 코드 경로로 강제.
+
+**순수 리팩토링으로 SignalDef 단일화.** 채점이 신호 정의를 필요로 해 `loadSignalDefsByIds`를 `pattern-verification.ts`에서 추출했다. `verifyUserLinks`가 같은 SELECT를 라벨 계산에도 쓰고 있어, SELECT를 private 헬퍼(`querySignalDefRows`) 한 곳으로 모으고 두 경로가 공유 — 검증 핫패스 동작 불변(896 테스트가 회귀 가드).
+
+**기술적 의의.** "지금 완결된 메커니즘을 만들어두면 시간이 스스로 검증한다"를 멱등·동결·자가회수·도메인시계로 분해해, 무인으로 1년을 굴려도 장부가 오염되지 않고(틀린 장부가 아니라 빈 장부로 degrade) 결과가 쌓이는 설계. 비자명 어필은 [portfolio-candidates](../_personal/portfolio-candidates.md), 도메인 사실은 [insight §39](../domains/insight.md), 결정은 [ADR-0050](../adr/0050-verifiability-ladder-and-forecast-ledger.md).
+
+### 마스터 완결
+
+Phase 0(측정 교정·재기준선) → 1(개인화 가중치 집계 `saju_response_profile`) → 2(기간 해석 엔진 + 주기 리포트 + fast path) → 3(예측 장부)로 **검증가능성 사다리 4층이 완성**됐다: 일운=실증 / 월운=축적-실증 / 세운=장부 한정 약실증 / 대운=비실증 추론. 각 층은 자기 인식 지위를 라벨로 동반하고(전이 가설 hedge + 사다리 footer), 검증 불가 층에는 사전등록 장부가 확증편향 차단 규율을 무인으로 굴린다. #408 5-B(상위 주기 확장)의 구체화이자, #523 master는 이 phase 머지로 **close**.
+
+> 첫 실측: 2026-07-07 소서(다음 절기)에 첫 월운 예측 등록, 첫 채점은 그다음 절기(≈8월 입추). weekly-fortune SKILL 교과서 레이어 존속/통합은 사용자 판단으로 남김(ADR-0050 후속).
