@@ -9,9 +9,10 @@
  */
 
 import type { App } from '@slack/bolt';
+import type { KnownBlock } from '@slack/types';
 import { query } from '../../shared/db.js';
 import { validateSignalSql } from '../../shared/signal-sql-guard.js';
-import { updateMessage } from '../../shared/slack.js';
+import { resolveActionCard, updateMessage } from '../../shared/slack.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {
   DISCOVERY_APPROVE_ACTION_ID,
@@ -38,6 +39,14 @@ const extractRawValue = (body: unknown): string | null => {
   if (!first || typeof first !== 'object') return null;
   const value = (first as { value?: unknown }).value;
   return typeof value === 'string' ? value : null;
+};
+
+/** Slack action body에서 원본 메시지 블록 안전 추출 (없으면 빈 배열). */
+export const extractMessageBlocks = (body: unknown): KnownBlock[] => {
+  if (!body || typeof body !== 'object') return [];
+  const message = (body as { message?: { blocks?: unknown } }).message;
+  if (!message || !Array.isArray(message.blocks)) return [];
+  return message.blocks as KnownBlock[];
 };
 
 // ─── 발굴 승인/패스 — pending pattern_link status 전이 (테스트 가능 코어) ──
@@ -151,12 +160,13 @@ export const registerInsightActions = (app: App): void => {
       }
       const { channelId, messageTs } = extractChannelTs(body);
       if (channelId && messageTs) {
+        const notice = '✅ 추적 시작함 — 다음 주간 검증부터 off-day 대조로 진짜인지 가린다.';
         await updateMessage(
           client,
           channelId,
           messageTs,
-          '추적 시작 — 다음 주간 검증부터 off-day 대조로 진짜인지 가린다.',
-          [],
+          notice,
+          resolveActionCard(extractMessageBlocks(body), notice),
         );
       }
     } catch (error: unknown) {
@@ -176,7 +186,14 @@ export const registerInsightActions = (app: App): void => {
       await dismissDiscoveryLink(userId, payload.linkId);
       const { channelId, messageTs } = extractChannelTs(body);
       if (channelId && messageTs) {
-        await updateMessage(client, channelId, messageTs, '_후보 패스함 — 추적 안 함._', []);
+        const notice = '패스함 — 추적 안 함.';
+        await updateMessage(
+          client,
+          channelId,
+          messageTs,
+          notice,
+          resolveActionCard(extractMessageBlocks(body), notice),
+        );
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -200,21 +217,24 @@ export const registerInsightActions = (app: App): void => {
       const { channelId, messageTs } = extractChannelTs(body);
       if (!channelId || !messageTs) return;
       if (signalId === null) {
+        const notice = '검증 실패 또는 이미 처리됨 — 활성화 안 됨.';
         await updateMessage(
           client,
           channelId,
           messageTs,
-          '_검증 실패 또는 이미 처리됨 — 활성화 안 됨._',
-          [],
+          notice,
+          resolveActionCard(extractMessageBlocks(body), notice),
         );
         return;
       }
+      const notice =
+        '✅ 측정 시작함 — 매일 이 신호를 재고, 다음 발굴에서 시드와 연결되면 off-day로 검정한다.';
       await updateMessage(
         client,
         channelId,
         messageTs,
-        '측정 시작 — 매일 이 신호를 재고, 다음 발굴에서 시드와 연결되면 off-day로 검정한다.',
-        [],
+        notice,
+        resolveActionCard(extractMessageBlocks(body), notice),
       );
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -233,7 +253,14 @@ export const registerInsightActions = (app: App): void => {
       await rejectLlmSignal(userId, payload.signalId);
       const { channelId, messageTs } = extractChannelTs(body);
       if (channelId && messageTs) {
-        await updateMessage(client, channelId, messageTs, '_신호 반려함 — 측정 안 함._', []);
+        const notice = '반려함 — 측정 안 함.';
+        await updateMessage(
+          client,
+          channelId,
+          messageTs,
+          notice,
+          resolveActionCard(extractMessageBlocks(body), notice),
+        );
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);

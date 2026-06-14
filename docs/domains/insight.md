@@ -1732,6 +1732,7 @@ P4a·P4b가 evidence-only로 남긴 결정론 feature 시드(강도 밴드·관�
 
 - `approveDiscoveryLink`/`dismissDiscoveryLink`(`WHERE id=$1 AND user_id=$2 AND status='pending'` 가드) 테스트 가능 코어. (P5a 시점엔 LLM 매트릭 승인 `METRIC_*`이 suspended였고, P5b [### 30](#30-매트릭-중심-패턴-검증--phase-5b-llm-신호-제안--검증실행-격리-491)에서 `signal_defs(source='llm')` 모델로 재구현됨.)
 - **노출 vs 믿음 분리**: 사람은 *진실*을 판정하지 않는다 — 게이트하는 건 노출·큐레이션("추적할 가치 있나"), 믿음("진짜인가")은 끝까지 e-value 트랙. 게이트 없이 느슨한 q 발견을 자동 활성하면 미검증 연관이 emerging tier로 조기 노출되므로, 사람 게이트가 그 노출만 막는다.
+- **카드 갱신 — 클릭 후 표시**: 승인/패스 모두 제안 본문 블록은 보존하고 `actions`(버튼) 블록만 제거한 뒤 처리 결과 안내 context를 덧붙인다(`resolveActionCard`, [slack.ts](../../src/shared/slack.ts)). 버튼 클릭 후에도 어떤 제안이었는지 카드에 남게 — DB 전이는 불변, 표시만 변경(#535). P5b LLM 신호 카드도 같은 헬퍼 재사용.
 
 **주간 cron 통합** ([weekly-verification.ts](../../src/cron/weekly-verification.ts) `surfaceDiscoveries`): 검증·persist·카드 발송 후 발굴 단계(검증과 독립 try-catch 격리 — 발굴 실패가 검증 결과를 막지 않게). 월요일 06:00 KST만 실행(`weeklyVerificationTask` 가드 상속).
 

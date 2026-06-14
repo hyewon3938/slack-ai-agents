@@ -38,10 +38,16 @@ export const updateMessage = async (
   await client.chat.update({ channel, ts, text, blocks });
 };
 
-export const sendMessage = async (
-  say: SayFn,
-  text: string,
-): Promise<void> => {
+/**
+ * 인터랙션 카드 갱신용 — actions(버튼) 블록만 제거하고 처리 결과 안내 context를 덧붙인다.
+ * 제안 본문(section/context 등) 블록은 보존해 버튼 클릭 후에도 어떤 제안이었는지 남는다.
+ */
+export const resolveActionCard = (blocks: KnownBlock[], noticeText: string): KnownBlock[] => {
+  const kept = blocks.filter((b) => b.type !== 'actions');
+  return [...kept, { type: 'context', elements: [{ type: 'mrkdwn', text: noticeText }] }];
+};
+
+export const sendMessage = async (say: SayFn, text: string): Promise<void> => {
   await say(text);
 };
 
