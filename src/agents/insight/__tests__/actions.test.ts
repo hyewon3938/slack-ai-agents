@@ -19,8 +19,13 @@ vi.mock('../../../shared/db.js', () => ({
   }),
 }));
 
-const { approveDiscoveryLink, dismissDiscoveryLink, approveLlmSignal, rejectLlmSignal } =
-  await import('../actions.js');
+const {
+  approveDiscoveryLink,
+  dismissDiscoveryLink,
+  approveLlmSignal,
+  rejectLlmSignal,
+  extractMessageBlocks,
+} = await import('../actions.js');
 
 beforeEach(() => {
   captured = [];
@@ -108,5 +113,28 @@ describe('rejectLlmSignal — pending → rejected', () => {
   it('해당 없음(0행)이면 null', async () => {
     nextRows = [];
     expect(await rejectLlmSignal(1, 99)).toBeNull();
+  });
+});
+
+describe('extractMessageBlocks — body.message.blocks 안전 추출', () => {
+  it('정상 body면 원본 blocks 배열을 반환한다', () => {
+    const blocks = [{ type: 'section', text: { type: 'mrkdwn', text: '제안 본문' } }];
+    expect(extractMessageBlocks({ message: { blocks } })).toEqual(blocks);
+  });
+
+  it('message가 없으면 []', () => {
+    expect(extractMessageBlocks({})).toEqual([]);
+  });
+
+  it('message.blocks가 배열이 아니면 []', () => {
+    expect(extractMessageBlocks({ message: { blocks: 'nope' } })).toEqual([]);
+    expect(extractMessageBlocks({ message: {} })).toEqual([]);
+  });
+
+  it('null·undefined·비객체 body면 [] (폴백)', () => {
+    expect(extractMessageBlocks(null)).toEqual([]);
+    expect(extractMessageBlocks(undefined)).toEqual([]);
+    expect(extractMessageBlocks('str')).toEqual([]);
+    expect(extractMessageBlocks(42)).toEqual([]);
   });
 });
