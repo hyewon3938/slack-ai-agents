@@ -12,6 +12,12 @@ import {
   type DiscoveryCardInput,
 } from '../hypothesis-cards.js';
 import type { LinkVerification, Verdict } from '../../../shared/pattern-verification.js';
+import type {
+  ConfoundData,
+  SuspectedConfounder,
+  AdjustedConfounder,
+  ConfoundVerdict,
+} from '../../../shared/confound.js';
 
 const makeLink = (overrides: Partial<LinkVerification> = {}): LinkVerification => ({
   linkId: 1,
@@ -87,26 +93,30 @@ describe('buildVerificationBlocks — 빈 링크', () => {
 });
 
 describe('buildVerificationBlocks — verified (검증됨)', () => {
-  it('confirmed 링크는 ✅ + 검증됨 + off-day 대조(자연어) + 보조 줄(확신도) 노출', () => {
+  it('confirmed 링크는 ✅ 확정 + 핵심 2줄(효과·표본·확신) — 변수명·진행바·q·CI 미노출', () => {
     const blocks = buildVerificationBlocks(
       '2026-06-01',
       [makeLink({ nextStatus: 'confirmed' })],
       [],
     );
-    const t = sectionTexts(blocks).find((x) => x.includes('✅'));
+    // 요약 줄에도 ✅가 들어가므로 본문 고유 키워드(평소보다)로 항목 섹션을 집는다.
+    const t = sectionTexts(blocks).find((x) => x.includes('평소보다'));
     expect(t).toBeDefined();
+    expect(t).toContain('✅');
     expect(t).toContain('[사주]');
     expect(t).toContain('밤잠 평소보다 많음'); // signalLabel
     expect(t).toContain('일운 천간 갑목(편재)'); // seedLabel
     expect(t).not.toContain('sleep_night_minutes'); // 변수명 미노출 (#504)
     expect(t).not.toContain('S1_갑목_편재_천간');
-    expect(t).toContain('검증됨');
-    expect(t).toContain('25일 중 20일'); // 발현 = 분수(표본 작음 정직하게)
-    expect(t).toContain('평소 20%'); // 비발현 = 비율
-    expect(t).toContain('4.0배');
-    // 이탤릭 보조 줄: 확정 증거 + 확신도(credibleInterval 재사용, 표시 파생)
-    expect(t).toContain('확정 증거');
-    expect(t).toContain('확신도 78%');
+    expect(t).toContain('확정'); // tier 결론
+    expect(t).toContain('평소보다 4.0배'); // 효과크기
+    expect(t).toContain('(20/25일)'); // 표본 = 발현 분수(작은 표본 정직하게)
+    expect(t).toContain('확신 78%'); // 확신도(단일값)
+    // 압축으로 제거된 요소
+    expect(t).not.toContain('확정 증거'); // e-value 보조 줄 제거
+    expect(t).not.toContain('░'); // 진행바 제거
+    expect(t).not.toContain('우연 가능성'); // q값 제거
+    expect(t).not.toContain('%]'); // 추정범위(CI) 제거 ([사주] 라벨의 '['와 구분)
   });
 
   it('verified가 있으면 tier 범례 컨텍스트가 붙는다', () => {
@@ -124,39 +134,35 @@ describe('buildVerificationBlocks — verified (검증됨)', () => {
 });
 
 describe('buildVerificationBlocks — emerging (검증중)', () => {
-  it('active + effect leaning + n충분 → 🌱 + 확정까지 진행바 + 보조 줄(확신도)', () => {
+  it('active + effect leaning + n충분 → 🌱 + 핵심 2줄(효과·표본·확신), 진행바·추세 없음', () => {
     const blocks = buildVerificationBlocks(
       '2026-06-01',
       [makeLink({ nextStatus: 'active', eValue: 7 })],
       [],
     );
-    const t = sectionTexts(blocks).find((x) => x.includes('🌱'));
+    const t = sectionTexts(blocks).find((x) => x.includes('평소보다'));
     expect(t).toBeDefined();
-    expect(t).toContain('검증중');
-    expect(t).toContain('확정까지');
-    expect(t).toContain('7.0/20');
-    expect(t).toContain('확신도'); // 이탤릭 보조 줄
+    expect(t).toContain('🌱');
+    expect(t).toContain('평소보다 4.0배');
+    expect(t).toContain('(20/25일)');
+    expect(t).toContain('확신 78%');
+    // 압축으로 제거된 요소
+    expect(t).not.toContain('확정까지'); // 진행바 라벨 제거
+    expect(t).not.toContain('░'); // 진행바 제거
+    expect(t).not.toContain('/20'); // e-value 분모 제거
+    expect(t).not.toContain('지난주'); // 주간추세 제거
   });
 
-  it('prevEValues 있으면 주간대비 추세(오르는 중) 표기', () => {
-    const prev = new Map<number, number>([[1, 3.1]]);
-    const blocks = buildVerificationBlocks(
-      '2026-06-01',
-      [makeLink({ nextStatus: 'active', eValue: 7 })],
-      [],
-      prev,
-    );
-    const t = sectionTexts(blocks).find((x) => x.includes('🌱'));
-    expect(t).toContain('지난주 3.1 → 오르는 중');
-  });
-
-  it('effect 약하면(emerging 미달) 🌱 안 뜸', () => {
+  it('effect 약하면(emerging 미달) 항목 안 뜸 — 판정 보류로 카운트', () => {
     const blocks = buildVerificationBlocks(
       '2026-06-01',
       [makeLink({ nextStatus: 'active', effect: 1.0, verdict: 'inconclusive' })],
       [],
     );
-    expect(sectionTexts(blocks).some((x) => x.includes('🌱'))).toBe(false);
+    // 요약 줄 이모지와 구분 위해 항목 본문 키워드(평소보다)로 검사
+    expect(sectionTexts(blocks).some((x) => x.includes('평소보다'))).toBe(false);
+    const summary = sectionTexts(blocks).find((t) => t.includes('패턴 검증'));
+    expect(summary).toContain('나머지 1');
   });
 });
 
@@ -179,9 +185,81 @@ describe('buildVerificationBlocks — 요약 + reject', () => {
     expect(summary).toContain('검증됨 1');
     expect(summary).toContain('검증중 1');
     expect(summary).toContain('기각 1');
-    const rejectText = texts.find((t) => t.includes('✗'));
+    // 요약 줄에도 ✗가 들어가므로 reject 본문 고유 키워드(차이 없음)로 집는다.
+    const rejectText = texts.find((t) => t.includes('차이 없음'));
     expect(rejectText).toContain('총 지출 평소보다 많음');
     expect(rejectText).not.toContain('expense_total');
+  });
+});
+
+describe('buildVerificationBlocks — 교란 caveat (inline, 압축)', () => {
+  const susp = (seedId: number): SuspectedConfounder => ({
+    seedId,
+    seedName: `Z${seedId}`,
+    overlap: 0.6,
+    effectZX: 1.5,
+    nCofire: 12,
+  });
+  const adj = (verdict: ConfoundVerdict): AdjustedConfounder => ({
+    seedId: 99,
+    adjEffect: 1.1,
+    nCofire: 35,
+    verdict,
+  });
+  // emerging으로 뜨는 링크(effect 4.0·nActive 25·active) — 항목 둘째 줄 끝에 caveat가 붙음
+  const cardText = (cf: Map<number, ConfoundData>, kind: 'saju' | 'life_signal' = 'saju') =>
+    sectionTexts(
+      buildVerificationBlocks(
+        '2026-06-01',
+        [makeLink({ nextStatus: 'active', patternKind: kind })],
+        [],
+        cf,
+      ),
+    ).find((x) => x.includes('평소보다'));
+
+  it('suspected만(조정 게이트 미달) → "다른 기운과 겹침" (시드 이름 미노출)', () => {
+    const cf = new Map<number, ConfoundData>([
+      [1, { scannedAt: '2026-06-01', suspected: [susp(2), susp(3)] }],
+    ]);
+    const t = cardText(cf);
+    expect(t).toContain('⚠️ 다른 기운과 겹침');
+    expect(t).not.toContain('Z2'); // 교란 시드 이름 일반화(노출 0)
+  });
+
+  it('explained_away → "겹친 기운 빼면 효과 사라짐"', () => {
+    const cf = new Map<number, ConfoundData>([
+      [
+        1,
+        {
+          scannedAt: '2026-06-01',
+          suspected: [susp(2)],
+          adjusted: [adj('explained_away')],
+          explainedAway: true,
+        },
+      ],
+    ]);
+    expect(cardText(cf)).toContain('⚠️ 겹친 기운 빼면 효과 사라짐');
+  });
+
+  it('attenuated → "겹친 기운 빼면 약해짐"', () => {
+    const cf = new Map<number, ConfoundData>([
+      [1, { scannedAt: '2026-06-01', suspected: [susp(2)], adjusted: [adj('attenuated')] }],
+    ]);
+    expect(cardText(cf)).toContain('⚠️ 겹친 기운 빼면 약해짐');
+  });
+
+  it('survives(조정 후 유지)는 긍정이라 caveat 생략 — ⚠️ 없음', () => {
+    const cf = new Map<number, ConfoundData>([
+      [1, { scannedAt: '2026-06-01', suspected: [susp(2)], adjusted: [adj('survives')] }],
+    ]);
+    expect(cardText(cf)).not.toContain('⚠️');
+  });
+
+  it('life_signal 시드는 "기운" 대신 "요인"', () => {
+    const cf = new Map<number, ConfoundData>([
+      [1, { scannedAt: '2026-06-01', suspected: [susp(2)] }],
+    ]);
+    expect(cardText(cf, 'life_signal')).toContain('⚠️ 다른 요인과 겹침');
   });
 });
 
