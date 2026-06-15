@@ -11,7 +11,6 @@ import type { LinkVerification } from '../../shared/pattern-verification.js';
 import type { ConfoundData } from '../../shared/confound.js';
 import type { DiscoveryCandidate } from './hypothesis-discovery.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
-import { credibleInterval } from '../../shared/bayesian-posterior.js';
 
 const KIND_LABEL: Record<'saju' | 'life_signal', string> = {
   saju: '[사주]',
@@ -70,14 +69,6 @@ const offDayPhrase = (nActive: number, hit: number, rateOff: number, effect: num
  */
 const activationClause = (seedLabel: string): string =>
   /[날일](\s*\([^)]*\))?$/.test(seedLabel) ? seedLabel : `${seedLabel} 켜진 날`;
-
-/** 확신도 보조 절: "확신도 78% [62%–89%]" — CI는 credibleInterval 재사용(표시 파생, 검증 로직 무관). */
-const confidencePhrase = (alpha: number, beta: number, p: number): string => {
-  const ci = credibleInterval(alpha, beta);
-  const lo = formatPosterior(ci.lower);
-  const hi = formatPosterior(ci.upper);
-  return `확신도 ${formatPosterior(p)} [${lo}–${hi}]`;
-};
 
 // ─── P5a 발굴 후보 카드 빌더 ──────────────────────────────
 
@@ -183,81 +174,59 @@ export const isEmerging = (l: LinkVerification): boolean =>
   l.effect >= V.emergingMinEffect &&
   l.nActive >= V.emergingMinActive;
 
-/** e-value 진행바 (0 → threshold). */
-const evalueBar = (e: number, threshold: number): string => {
-  const ratio = Number.isFinite(e) ? Math.max(0, Math.min(1, e / threshold)) : 0;
-  const filled = Math.round(ratio * 7);
-  return '█'.repeat(filled) + '░'.repeat(7 - filled);
-};
+/**
+ * 검증중/검증됨 공통 둘째 줄(들여쓰기) — 핵심 3개만: 효과크기·표본·확신도.
+ * 진행바·우연확률(q)·추정범위(CI)·주간추세는 가독성 위해 카드에서 제외(DB·주간 스냅샷엔 보존).
+ */
+const statLine = (l: LinkVerification): string =>
+  `   평소보다 ${mult(l.effect)} (${l.a}/${l.nActive}일) · 확신 ${formatPosterior(l.posteriorP)}`;
 
-/** verified(검증됨) 한 줄 — 결론 위주(자연어 본문) + 이탤릭 보조 줄(확정 증거·우연 가능성·확신도). */
-const verifiedLine = (l: LinkVerification): string =>
-  `• ✅ ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} *${l.signalLabel}* — ` +
-  `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증됨\n` +
-  `_확정 증거 e ${l.eValue.toFixed(1)} (20 넘어 확정) · 우연 가능성 q ${formatPValue(l.qValue)} · ` +
-  `${confidencePhrase(l.posteriorAlpha, l.posteriorBeta, l.posteriorP)}_`;
+/** verified(검증됨) — 첫 줄 결론(확정) + 둘째 줄 핵심 통계 + 교란 caveat(있으면 inline). */
+const verifiedLine = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string =>
+  `✅ ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} → *${l.signalLabel}* · 확정\n` +
+  statLine(l) +
+  confoundCaveat(l, confoundByLink);
 
-/** emerging(검증중) 한 줄 — 진행도 강조(자연어 본문) + 이탤릭 보조 줄(확정까지 진행바·추세·우연·확신도). */
-const emergingLine = (l: LinkVerification, prevE: number | undefined): string => {
-  const bar = evalueBar(l.eValue, V.evalueThreshold);
-  const cur = l.eValue;
-  let trend = '';
-  if (prevE !== undefined && Number.isFinite(prevE)) {
-    if (cur > prevE) trend = ` (지난주 ${prevE.toFixed(1)} → 오르는 중)`;
-    else if (cur < prevE) trend = ` (지난주 ${prevE.toFixed(1)} → 주춤)`;
-    else trend = ` (지난주 ${prevE.toFixed(1)} → 그대로)`;
-  }
-  return (
-    `• 🌱 ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} *${l.signalLabel}* — ` +
-    `${offDayPhrase(l.nActive, l.a, l.rateOff, l.effect)}. 검증중\n` +
-    `_확정까지 ${bar} ${cur.toFixed(1)}/${V.evalueThreshold}${trend} · ` +
-    `우연 가능성 q ${formatPValue(l.qValue)} · ` +
-    `${confidencePhrase(l.posteriorAlpha, l.posteriorBeta, l.posteriorP)}_`
-  );
-};
+/** emerging(검증중) — 첫 줄 패턴 + 둘째 줄 핵심 통계 + 교란 caveat(있으면 inline). */
+const emergingLine = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string =>
+  `🌱 ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} → *${l.signalLabel}*\n` +
+  statLine(l) +
+  confoundCaveat(l, confoundByLink);
 
 const rejectLine = (l: LinkVerification): string =>
-  `• ✗ ${KIND_LABEL[l.patternKind]} ${l.seedLabel} × ${l.signalLabel} — ` +
-  `켜진 날이나 아닌 날이나 비슷 (${mult(l.effect)}). 기각`;
+  `✗ ${KIND_LABEL[l.patternKind]} ${l.seedLabel} × ${l.signalLabel} — 차이 없음`;
 
 /**
- * 교란 caveat 한 줄(있으면) — P6 marginal 플래그(ADR-0041) → P7 다변량 조정(ADR-0042).
- * - adjusted 있음(게이트 통과·조정함): verdict별(explained_away 어부지리 / attenuated 약화 / survives 유지).
- * - adjusted 없음(게이트 미달): P6 marginal 공존 의심.
- * 조정 교란 이름은 suspected(seedName 보유)에서 seedId로 join. verified/emerging 라인에만 덧붙임.
+ * 교란 caveat(inline, 압축) — 둘째 줄 끝에 " · ⚠️ …" 한 구절로 append.
+ * P6 marginal 플래그(ADR-0041) → P7 다변량 조정(ADR-0042). verdict별:
+ * - explained_away(어부지리)·attenuated(약화)만 ⚠️ 노출. survives(유지)는 긍정이라 압축 모드 생략.
+ * - 조정 게이트 미달(adjusted 없고 suspected만)이면 공존 의심.
+ * 시드 이름은 노출하지 않고 일반화("다른 기운/요인") — 카드 폭 방어 + 변수명 누출 0(#504 P2).
  */
-const confoundCaveat = (
-  l: LinkVerification,
-  confoundByLink: Map<number, ConfoundData>,
-  seedLabelById: Map<number, string>,
-): string => {
+const confoundCaveat = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string => {
   const data = confoundByLink.get(l.linkId);
   if (!data) return '';
   const { suspected, adjusted } = data;
-  // 교란 시드도 변수명 대신 라벨로 (#504 P2). 미상이면 중립 표현(raw 이름·시드#id 미노출).
-  const labelOf = (seedId: number): string => seedLabelById.get(seedId) ?? '다른 시드';
-
+  const noun = l.patternKind === 'saju' ? '기운' : '요인';
   if (adjusted && adjusted.length > 0) {
-    const uniq = [...new Set(adjusted.map((a) => labelOf(a.seedId)))].join(', ');
     switch (adjusted[0]?.verdict) {
       case 'explained_away':
-        return `\n  ⚠️ ${uniq} 시드가 같이 켜지는 날이 많아서, 그거 빼고 보면 효과 사라짐 (어부지리 의심)`;
+        return ` · ⚠️ 겹친 ${noun} 빼면 효과 사라짐`;
       case 'attenuated':
-        return `\n  ⚠️ ${uniq} 같이 켜지는 영향 빼면 효과 약해짐`;
+        return ` · ⚠️ 겹친 ${noun} 빼면 약해짐`;
       default:
-        return `\n  · ${uniq} 같이 켜져도 효과 유지`;
+        return ''; // survives — 긍정, 압축 모드에선 생략
     }
   }
-
   if (suspected.length === 0) return '';
-  return `\n  ⚠️ ${suspected.map((s) => labelOf(s.seedId)).join(', ')} 시드가 자주 같이 켜져서 영향 섞였을 수 있음`;
+  return ` · ⚠️ 다른 ${noun}과 겹침`;
 };
 
 const TIER_LEGEND =
-  '_✅ 검증됨 = 증거 충분해 확정(우연 아님, 단 연관이지 인과 아님) · ' +
-  '🌱 검증중 = 경향은 보이나 확정 전(확정까지 진행도 표시) · ' +
-  '✗ 기각 = 켜진 날이나 아닌 날이나 비슷 · ' +
-  '⚠️ 교란 = 같이 켜지는 다른 시드 영향 의심_';
+  '_✅ 검증됨 = 우연 아님(연관이지 인과 아님) · ' +
+  '🌱 검증중 = 경향 있지만 확정 전 · ' +
+  '✗ 기각 = 차이 없음 · ' +
+  '⚠️ = 다른 패턴과 겹쳐 효과 불확실_';
 
 /**
  * 포화 시드 양방향 가드 알림(#508 ③, ADR-0046) — 주간 카드 말미 context 한 줄.
@@ -321,15 +290,14 @@ export const buildRebaselineNotice = (s: RebaselineSummary): KnownBlock[] => {
 
 /**
  * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
- * 검증중(emerging)은 e-value 진행바로 "쌓이는 중"을 정직하게 프레이밍(ADR-0035). discovery는 P5.
+ * 항목은 핵심 2줄(첫 줄 결론 + 둘째 줄 효과크기·표본·확신도·교란). 진행바·q·CI·주간추세는
+ * 가독성 위해 카드에서 제외(DB·주간 스냅샷엔 보존). discovery는 P5.
  */
 export const buildVerificationBlocks = (
   weekStart: string,
   links: LinkVerification[],
   seedInfluence: SeedInfluenceRow[],
-  prevEValues: Map<number, number> = new Map(),
   confoundByLink: Map<number, ConfoundData> = new Map(),
-  seedLabelById: Map<number, string> = new Map(),
 ): KnownBlock[] => {
   const blocks: KnownBlock[] = [
     {
@@ -357,16 +325,16 @@ export const buildVerificationBlocks = (
   const others = links.length - verified.length - emerging.length - rejects.length;
 
   const summaryParts = [
-    `검증됨 ${verified.length}`,
-    `검증중 ${emerging.length}`,
-    `기각 ${rejects.length}`,
+    `🌱 검증중 ${emerging.length}`,
+    `✅ 검증됨 ${verified.length}`,
+    `✗ 기각 ${rejects.length}`,
   ];
-  if (others > 0) summaryParts.push(`판정 보류 ${others}`);
+  if (others > 0) summaryParts.push(`나머지 ${others} 데이터 모으는 중`);
   blocks.push({
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*이번 주 패턴 검증 (가설 ${links.length}개)*\n${summaryParts.join(' · ')}`,
+      text: `*이번 주 패턴 검증* · 가설 ${links.length}개\n${summaryParts.join(' · ')}`,
     },
   });
 
@@ -375,9 +343,7 @@ export const buildVerificationBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: verified
-          .map((l) => verifiedLine(l) + confoundCaveat(l, confoundByLink, seedLabelById))
-          .join('\n'),
+        text: verified.map((l) => verifiedLine(l, confoundByLink)).join('\n\n'),
       },
     });
   }
@@ -387,13 +353,7 @@ export const buildVerificationBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: emerging
-          .map(
-            (l) =>
-              emergingLine(l, prevEValues.get(l.linkId)) +
-              confoundCaveat(l, confoundByLink, seedLabelById),
-          )
-          .join('\n'),
+        text: emerging.map((l) => emergingLine(l, confoundByLink)).join('\n\n'),
       },
     });
   }

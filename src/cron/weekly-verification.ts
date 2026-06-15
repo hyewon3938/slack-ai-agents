@@ -191,25 +191,6 @@ const persistConfound = async (userId: number, r: ConfoundResult): Promise<void>
   ]);
 };
 
-/** 직전 주(들) 링크별 e_value — emerging 진행바 "지난주 → 이번주" delta용 (link당 최신 1행). */
-const loadPrevWeekEValues = async (
-  userId: number,
-  weekStart: string,
-): Promise<Map<number, number>> => {
-  const res = await query<{ link_id: number; e_value: string | null }>(
-    `SELECT DISTINCT ON (link_id) link_id, e_value
-       FROM link_weekly_stats
-      WHERE user_id = $1 AND week_start < $2
-      ORDER BY link_id, week_start DESC`,
-    [userId, weekStart],
-  );
-  const m = new Map<number, number>();
-  for (const r of res.rows) {
-    if (r.e_value !== null) m.set(r.link_id, Number(r.e_value));
-  }
-  return m;
-};
-
 /**
  * 시드 영향력 top N (credible interval lower bound 정렬).
  * pattern_summary(시드 메타 + active 여부) + pattern_links(α/β 합산, active|confirmed)에서 산출.
@@ -430,15 +411,6 @@ const processUser = async (
 
   const results = await verifyUserLinks(userId, today);
 
-  // 직전 주 e_value 먼저 로드(이번 주 스냅샷 쓰기 전 — delta가 과거만 반영하게).
-  let prevEValues = new Map<number, number>();
-  try {
-    prevEValues = await loadPrevWeekEValues(userId, weekStart);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Verification] 직전주 e_value 로드 실패 user=${userId}: ${msg}`);
-  }
-
   let persisted = 0;
   for (const l of results) {
     // per-link 격리(#434 Phase 8a) — 한 링크 UPDATE 실패가 전체를 막지 않게.
@@ -511,26 +483,7 @@ const processUser = async (
     console.error(`[Confound] user=${userId} 교란 플래그 실패: ${msg}`);
   }
 
-  // 교란 caveat용 시드 라벨 맵(#504 P2, ADR-0045) — 실패해도 카드는 무탈(빈 맵 → 중립 표현).
-  let seedLabelById = new Map<number, string>();
-  try {
-    const allSeeds = await loadActiveSeeds(userId);
-    seedLabelById = new Map(
-      allSeeds.map((s) => [s.id, seedLabel({ name: s.name, description: s.description })]),
-    );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Verification] 시드 라벨 맵 로드 실패 user=${userId}: ${msg}`);
-  }
-
-  const blocks = buildVerificationBlocks(
-    weekStart,
-    results,
-    seedInfluence,
-    prevEValues,
-    confoundByLink,
-    seedLabelById,
-  );
+  const blocks = buildVerificationBlocks(weekStart, results, seedInfluence, confoundByLink);
   // 포화 가드 알림을 카드 말미에 append(#508 ③) — 변수명 미노출 라벨.
   blocks.push(
     ...buildHygieneNotice(
