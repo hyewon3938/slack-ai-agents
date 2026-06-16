@@ -446,16 +446,18 @@ function AssetItem({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [togglingDefault, setTogglingDefault] = useState(false);
-  const [balance, setBalance] = useState(String(asset.balance));
-  const [available, setAvailable] = useState(String(asset.available_amount ?? asset.balance));
+  // 자금 단일화 (#539): 잔액·가용액을 단일 '자금'(현금 유동자금)으로 입력.
+  const [value, setValue] = useState(String(asset.available_amount ?? asset.balance));
+
+  const valueLabel = asset.is_emergency ? '잔액' : '자금';
 
   const handleSave = async () => {
-    const b = Number(balance);
-    const a = Number(available);
-    if (isNaN(b) || isNaN(a)) return;
+    const v = Number(value);
+    if (isNaN(v)) return;
     setSaving(true);
     try {
-      await onUpdate(asset.id, b, a);
+      // 단일 필드 — balance·available_amount를 같은 값으로 저장.
+      await onUpdate(asset.id, v, v);
       setEditing(false);
     } finally {
       setSaving(false);
@@ -477,21 +479,14 @@ function AssetItem({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-700">{asset.name}</span>
-          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
-            {asset.type}
-          </span>
           {asset.is_emergency && (
             <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-600">비상금</span>
-          )}
-          {asset.is_default && (
-            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">기본</span>
           )}
         </div>
         {!editing && (
           <button
             onClick={() => {
-              setBalance(String(asset.balance));
-              setAvailable(String(asset.available_amount ?? asset.balance));
+              setValue(String(asset.available_amount ?? asset.balance));
               setEditing(true);
             }}
             className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
@@ -504,32 +499,28 @@ function AssetItem({
       {editing ? (
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-2">
-            <label className="w-16 text-xs text-gray-400">잔액</label>
+            <label className="w-16 text-xs text-gray-400">{valueLabel}</label>
             <input
               type="number"
-              value={balance}
-              onChange={(e) => setBalance(e.target.value)}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
               className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <label className="w-16 text-xs text-gray-400">사용가능</label>
-            <input
-              type="number"
-              value={available}
-              onChange={(e) => setAvailable(e.target.value)}
-              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-xs text-gray-500">
-            <input
-              type="checkbox"
-              checked={asset.is_default}
-              disabled={asset.is_emergency || togglingDefault}
-              onChange={() => void handleToggleDefault()}
-            />
-            기본 자산 (자동 차감 우선순위)
-          </label>
+          {!asset.is_emergency && (
+            <p className="text-[10px] text-gray-400">통장 잔액 − 지난 결제 대금 = 현금 유동자금</p>
+          )}
+          {!asset.is_emergency && (
+            <label className="flex items-center gap-2 text-xs text-gray-500">
+              <input
+                type="checkbox"
+                checked={asset.is_default}
+                disabled={togglingDefault}
+                onChange={() => void handleToggleDefault()}
+              />
+              기본 자산 (자동 차감 우선순위)
+            </label>
+          )}
           <div className="flex justify-end gap-1.5">
             <button
               onClick={() => setEditing(false)}
@@ -548,19 +539,11 @@ function AssetItem({
           </div>
         </div>
       ) : (
-        <div className="mt-1 flex items-center gap-4 text-sm">
-          <span>
-            <span className="text-xs text-gray-400">잔액 </span>
-            <span className="font-semibold text-gray-800">{formatAmount(asset.balance)}</span>
+        <div className="mt-1 text-sm">
+          <span className="text-xs text-gray-400">{valueLabel} </span>
+          <span className="font-semibold text-gray-800">
+            {formatAmount(asset.available_amount ?? asset.balance)}
           </span>
-          {asset.available_amount !== null && asset.available_amount !== asset.balance && (
-            <span>
-              <span className="text-xs text-gray-400">사용가능 </span>
-              <span className="font-semibold text-gray-800">
-                {formatAmount(asset.available_amount)}
-              </span>
-            </span>
-          )}
         </div>
       )}
     </div>
@@ -1023,7 +1006,8 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
 
         <div className="border-t border-gray-100 px-4 py-2.5">
           <p className="text-xs text-gray-400">
-            잔액 업데이트 시 이후 지출/수입 내역이 자동으로 차감·가산되어 런웨이에 반영됩니다.
+            자금은 현금 유동자금(통장 잔액 − 지난 결제 대금) 기준으로 입력합니다. 결제 주기 정산 때
+            자동으로 차감·가산되고, 자잘한 차이는 수기로 한 번 더 보정하면 됩니다.
           </p>
         </div>
       </div>
