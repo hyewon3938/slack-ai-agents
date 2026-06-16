@@ -1,4 +1,4 @@
-import { getBillingCycle, getBillingRange, calcCycleDays } from './billing/cycle';
+import { getBillingCycle, getBillingRange, calcCycleDays, addBillingMonths } from './billing/cycle';
 import { calcAllocatedDays } from './allocator/proration';
 import { allocateMonthlyBudgets } from './allocator/month-allocator';
 import { allocateTodayBudget } from './allocator/day-allocator';
@@ -11,13 +11,14 @@ import {
   applyAssetIncrease,
 } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
-import { readActiveInstallments } from './repository/installments-repo';
+import { readInstallmentLockByMonth } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
 import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
 import {
   readFlexibleSpent,
   readExcludedSpent,
   readTodayFlexSpent,
+  readTotalCycleSpent,
   readAvgVariableMonthly,
 } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
@@ -74,23 +75,22 @@ export async function getMonthlyAllocation(
 ): Promise<MonthAllocatorResult> {
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
-  const [totalAvailable, fixedMonthly, installments, targetMonth, currentMonthOnlyIncome] =
-    await Promise.all([
-      computeTotalAvailable(userId, todayStr),
-      readFixedCostsMonthlyTotal(userId),
-      readActiveInstallments(userId, cycle.yearMonth),
-      readTargetMonth(userId),
-      readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
-    ]);
-  const planned = await readPlannedExpenses(
-    userId,
-    cycle.yearMonth,
-    targetMonth ?? cycle.yearMonth,
-  );
+  const [totalAvailable, fixedMonthly, targetMonth, currentMonthOnlyIncome] = await Promise.all([
+    computeTotalAvailable(userId, todayStr),
+    readFixedCostsMonthlyTotal(userId),
+    readTargetMonth(userId),
+    readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
+  ]);
+  // 묶인 돈 창 = [현재 결제월, target_date]. target 없으면 현재월만.
+  const windowEnd = targetMonth ?? cycle.yearMonth;
+  const [planned, installmentLockByMonth] = await Promise.all([
+    readPlannedExpenses(userId, cycle.yearMonth, windowEnd),
+    readInstallmentLockByMonth(userId, cycle.yearMonth, windowEnd),
+  ]);
   return allocateMonthlyBudgets({
     totalAvailable,
     fixedMonthly,
-    installments,
+    installmentLockByMonth,
     plannedExpenses: planned,
     currentBillingMonth: cycle.yearMonth,
     targetMonth,
@@ -150,11 +150,10 @@ export async function getRunwayProjection(
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
 
-  const [monthly, avgVariableMonthly, fixedMonthly, installments, targetDate] = await Promise.all([
+  const [monthly, avgVariableMonthly, fixedMonthly, targetDate] = await Promise.all([
     getMonthlyAllocation(userId, now),
     readAvgVariableMonthly(userId, 3),
     readFixedCostsMonthlyTotal(userId),
-    readActiveInstallments(userId, cycle.yearMonth),
     readTargetMonth(userId),
   ]);
 
@@ -166,16 +165,18 @@ export async function getRunwayProjection(
     // target 있음 → allocator 결과 재사용 (정합성 보장)
     projResult = projectFromAllocator(totalAvailable, monthly.monthlyBudgets, cycle.yearMonth);
   } else {
-    // target 없음 → 평균 지출 기반 시뮬레이션
-    const planned = await readPlannedExpenses(userId, cycle.yearMonth, cycle.yearMonth);
+    // target 없음 → 평균 지출 기반 시뮬레이션. 할부 burn은 billing_month별 락 맵으로 조회
+    // (창 상한 없음 — 시뮬레이션 maxMonths(120)를 넉넉히 덮음).
+    const projectionWindowEnd = addBillingMonths(cycle.yearMonth, 120);
+    const [planned, installmentLockByMonth] = await Promise.all([
+      readPlannedExpenses(userId, cycle.yearMonth, cycle.yearMonth),
+      readInstallmentLockByMonth(userId, cycle.yearMonth, projectionWindowEnd),
+    ]);
     projResult = projectRunway({
       billingMonth: cycle.yearMonth,
       totalAvailable,
       fixedMonthly,
-      installments: installments.map((inst) => ({
-        monthlyAmount: inst.monthlyAmount,
-        remainingCount: inst.remainingCount,
-      })),
+      installmentLockByMonth,
       plannedExpenses: planned,
       freePerMonthEstimate: avgVariableMonthly,
     });
@@ -204,18 +205,21 @@ export async function getBudgetPreview(
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
 
-  const [totalAvailable, fixedMonthly, installments, currentMonthOnlyIncome] = await Promise.all([
+  const [totalAvailable, fixedMonthly, currentMonthOnlyIncome] = await Promise.all([
     computeTotalAvailable(userId, todayStr),
     readFixedCostsMonthlyTotal(userId),
-    readActiveInstallments(userId, cycle.yearMonth),
     readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
   ]);
-  const planned = await readPlannedExpenses(userId, cycle.yearMonth, targetDate);
+  // 프리뷰 창 = [현재 결제월, 프리뷰 target]
+  const [planned, installmentLockByMonth] = await Promise.all([
+    readPlannedExpenses(userId, cycle.yearMonth, targetDate),
+    readInstallmentLockByMonth(userId, cycle.yearMonth, targetDate),
+  ]);
 
   const result = allocateMonthlyBudgets({
     totalAvailable,
     fixedMonthly,
-    installments,
+    installmentLockByMonth,
     plannedExpenses: planned,
     currentBillingMonth: cycle.yearMonth,
     targetMonth: targetDate,
@@ -251,10 +255,11 @@ export async function runSettlementIfDue(
   const targetMonth = trigger.targetMonth;
   const range = getBillingRange(targetMonth);
 
-  const [flex, excluded, income] = await Promise.all([
+  const [flex, excluded, income, totalSpent] = await Promise.all([
     readFlexibleSpent(userId, targetMonth, range.to),
     readExcludedSpent(userId, targetMonth),
     readIncomeTotal(userId, targetMonth),
+    readTotalCycleSpent(userId, targetMonth),
   ]);
 
   // 정산 대상 월 기준 allocator 재실행 — T12:00:00Z = KST 21:00 (15일 이내)
@@ -268,7 +273,10 @@ export async function runSettlementIfDue(
   const prevSnapshot = await readLatestSnapshot(userId);
   const availableAtStart =
     prevSnapshot?.available_at_end ?? (await readDistributableAssetBalance(userId));
-  const availableAtEnd = availableAtStart + income - flex - excluded;
+  // depletion 일원화 (#539, ADR 0051): 그 주기 전체 결제분을 자금에서 차감.
+  // 장부(available_at_end → 다음 주기 시작값)도 전체 결제분 기준이라야 실제 자금과 어긋나지 않음.
+  // flex/excluded는 snapshot 분해 표시용으로만 별도 기록.
+  const availableAtEnd = availableAtStart + income - totalSpent;
 
   const snapshot = buildSettlementSnapshot({
     yearMonth: targetMonth,
@@ -282,9 +290,9 @@ export async function runSettlementIfDue(
   const result = await saveSnapshotIfAbsent(userId, snapshot);
 
   // snapshot 신규 저장 시에만 자산 변동 (UNIQUE(user, year_month)로 재실행 시 중복 차감 방지).
-  // 자유+제외 지출은 default 자산에서 차감, 수입은 default 자산에 증액.
+  // 등록 시점 차감을 폐지했으므로 할부 회차는 결제(이 주기)될 때 비로소 자금에서 빠진다.
   if (result.saved) {
-    await applyAssetDeduction(userId, flex + excluded);
+    await applyAssetDeduction(userId, totalSpent);
     await applyAssetIncrease(userId, income);
   }
 

@@ -1,7 +1,6 @@
 import { addBillingMonths, getBillingRange, calcCycleDays } from '../billing/cycle';
 import type {
   BillingCycle,
-  InstallmentInput,
   MonthAllocatorInput,
   MonthAllocatorResult,
   MonthlyBudget,
@@ -13,7 +12,7 @@ interface MonthEntryInput {
   currentBillingMonth: string;
   currentAllocatedDays: number;
   fixedMonthly: number;
-  installments: InstallmentInput[];
+  installmentLockByMonth: Map<string, number>;
   plannedExpenses: PlannedInput[];
 }
 
@@ -23,14 +22,10 @@ function buildMonthEntry(p: MonthEntryInput): { entry: MonthlyBudget; locked: nu
   const cycleDays = calcCycleDays(from, to);
   const allocatedDays = p.index === 0 ? p.currentAllocatedDays : cycleDays;
 
-  // 미래 결제주기 할부(p.index >= 1)는 INSERT 즉시 자산에서 차감되므로 monthBudget 락에서 제외.
-  // 현재 월의 신규 할부(isNew=true)는 자유지출로 잡혀있어 락에서 제외 — 이중 카운트 방지.
-  const installmentSum =
-    p.index === 0
-      ? p.installments
-          .filter((inst) => inst.remainingCount > 0 && !inst.isNew)
-          .reduce((s, inst) => s + inst.monthlyAmount, 0)
-      : 0;
+  // 묶인 돈 = 그 달 billing_month 할부 락 (#539, ADR 0051).
+  // 현재월/미래월 동일 규칙 — 1회차(현재월)도 현재월 락에 귀속되어 현재 주기 자유 예산을 깎음.
+  // 창 밖(target 이후) 회차는 락 맵에 애초에 없어 자동 제외 (이중 카운트 없음).
+  const installmentSum = p.installmentLockByMonth.get(month) ?? 0;
   const plannedSum = p.plannedExpenses
     .filter((e) => e.yearMonth === month)
     .reduce((s, e) => s + e.amount, 0);
@@ -87,7 +82,7 @@ export function allocateMonthlyBudgets(input: MonthAllocatorInput): MonthAllocat
       currentBillingMonth: input.currentBillingMonth,
       currentAllocatedDays,
       fixedMonthly: input.fixedMonthly,
-      installments: input.installments,
+      installmentLockByMonth: input.installmentLockByMonth,
       plannedExpenses: input.plannedExpenses,
     });
     monthlyBudgets.push(entry);
