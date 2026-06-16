@@ -66,7 +66,14 @@ ADR [0051](../adr/0051-budget-model-simplification-runway-locked.md):
 
 > 자세한 어필 표현·면접 답변 초안은 portfolio-candidates(비공개)에.
 
+### 결과 (구현 완료)
+
+- 4경로 → 1경로 수렴 완료. 묶인 돈 = `[현재월, target]` 창 안 `billing_month`별 할부 락(`readInstallmentLockByMonth`), depletion = 정산 시 전체 결제분(`readTotalCycleSpent`).
+- 자금 단일화 마이그레이션 `092_consolidate_funds_asset.sql` (플래그 기반·이름/금액 하드코딩 없음). 적용 후 자금 1회 재입력.
+- 토글 UI·자산 보정 4함수·변경 모달 대량 삭제. `distribute_to_runway`는 데드 컬럼으로 보존(드롭 안 함).
+- 전체 269 테스트 통과. reservation/depletion 분리·이중카운트 부재를 테스트로 고정.
+
 ### 미해결 / 후속
 
-- 목표 기간 만료 임박 경고 UI 디테일.
+- 목표 기간 만료 임박 경고 UI 디테일 (현재 배너만).
 - 향후 지출 로직 재설계(별도 트랙) 진입 시 헌장 1\~4 재확인.
