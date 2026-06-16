@@ -6,7 +6,11 @@
  *   1) active pattern_links 전부 off-day 대조 재계산 (verifyUserLinks — raw 윈도우 재계산 + e-value)
  *   2) 링크별 pattern_links UPDATE (counters + p/q/effect/posterior/e_value/test_detail + status 전이)
  *   3) 링크별 주간 스냅샷 link_weekly_stats write (마틴게일 trail·emerging 진행바·주간대비)
- *   4) 시드 영향력 top 5 + 검증 현황(verified / 검증중 / reject) 카드 → #insight
+ *   4) 교란 플래그 · 포화 가드 · 발굴 후보 · 개인화 프로파일 집계 (전부 DB write)
+ *
+ * #542(ADR-0052): 사용자-facing 검증 현황 카드는 발송 은퇴 — routine(weekly-saju-review-v2)
+ * 통합 카드가 검증 현황을 흡수해 단독 발송한다. 이 엔진은 카드 생성 없이 DB만 갱신(검증·발굴 그대로).
+ * weeklyReviewFallbackTask(월 10:00)가 routine 미발송 주에 "수동 실행" 알림만 발송(출력 연속성).
  *
  * P3: 확정 게이트 = e_value ≥ 1/α(=20) → status='confirmed'(verified tier). reject만 추가로 DB 반영.
  * confirmed는 sticky(verifyUserLinks가 active만 재검증). 등급 노출은 saju_influence_summary(080).
@@ -15,7 +19,7 @@
 import type { App } from '@slack/bolt';
 import { query, withTransaction } from '../shared/db.js';
 import { getKSTDayOfWeek, getTodayISO } from '../shared/kst.js';
-import { postBlockMessage } from '../shared/slack.js';
+import { postToChannel } from '../shared/slack.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 import {
   verifyUserLinks,
@@ -24,24 +28,15 @@ import {
   type StrengthCutpoint,
 } from '../shared/pattern-verification.js';
 import { flagConfounds, type ConfoundData, type ConfoundResult } from '../shared/confound.js';
-import { posteriorMean, credibleInterval } from '../shared/bayesian-posterior.js';
 import { loadActiveSeeds, loadNatalContext, buildNameIdMap } from '../shared/pattern-match.js';
 import {
   buildResponseProfile,
   type ProfileLink,
   type ResponseCell,
 } from '../shared/response-profile.js';
-import { seedLabel } from '../shared/insight-labels.js';
 import { runSaturationSweep, type SaturationSweepResult } from '../shared/seed-saturation.js';
-import {
-  buildVerificationBlocks,
-  buildHygieneNotice,
-  type SeedInfluenceRow,
-} from '../agents/insight/hypothesis-cards.js';
 import { recommendDiscoveries } from './discovery-recommend.js';
 import type { LifeCronConfig } from './life-cron.js';
-
-const SEED_INFLUENCE_TOP_N = 5;
 
 /** 오늘이 월요일이라는 전제 — 전주 월요일(=7일 전) ISO 반환 (카드 라벨용). */
 export const previousMondayISO = (todayIso: string): string => {
@@ -189,72 +184,6 @@ const persistConfound = async (userId: number, r: ConfoundResult): Promise<void>
     r.linkId,
     userId,
   ]);
-};
-
-/**
- * 시드 영향력 top N (credible interval lower bound 정렬).
- * pattern_summary(시드 메타 + active 여부) + pattern_links(α/β 합산, active|confirmed)에서 산출.
- * P3: confirmed(verified) 링크도 합산해 확정된 시드가 영향력 top에서 사라지지 않게(pattern_summary와 일관).
- */
-const loadSeedInfluence = async (userId: number, topN: number): Promise<SeedInfluenceRow[]> => {
-  const summaryRes = await query<{
-    pattern_id: string;
-    pattern_kind: 'saju' | 'life_signal';
-    pattern_name: string;
-    pattern_description: string | null;
-    total_hits: string;
-    total_misses: string;
-  }>(
-    `SELECT pattern_id::TEXT, pattern_kind, pattern_name, pattern_description,
-            total_hits::TEXT, total_misses::TEXT
-       FROM pattern_summary
-      WHERE user_id = $1 AND active AND aggregate_posterior_p IS NOT NULL`,
-    [userId],
-  );
-  if (summaryRes.rows.length === 0) return [];
-
-  const abRes = await query<{
-    pattern_id: string;
-    sum_alpha: string | null;
-    sum_beta: string | null;
-  }>(
-    `SELECT seed_id::TEXT AS pattern_id,
-            SUM(posterior_alpha)::TEXT AS sum_alpha,
-            SUM(posterior_beta)::TEXT  AS sum_beta
-       FROM pattern_links
-      WHERE user_id = $1 AND status IN ('active', 'confirmed')
-      GROUP BY seed_id`,
-    [userId],
-  );
-  const abMap = new Map<string, { alpha: number; beta: number }>();
-  for (const row of abRes.rows) {
-    const alpha = row.sum_alpha === null ? NaN : Number(row.sum_alpha);
-    const beta = row.sum_beta === null ? NaN : Number(row.sum_beta);
-    abMap.set(row.pattern_id, { alpha, beta });
-  }
-
-  const rows: SeedInfluenceRow[] = [];
-  for (const r of summaryRes.rows) {
-    const ab = abMap.get(r.pattern_id);
-    if (!ab || !Number.isFinite(ab.alpha) || !Number.isFinite(ab.beta)) continue;
-    const mean = posteriorMean(ab.alpha, ab.beta);
-    const { lower, upper } = credibleInterval(ab.alpha, ab.beta);
-    if (!Number.isFinite(lower)) continue;
-    rows.push({
-      patternId: Number(r.pattern_id),
-      patternKind: r.pattern_kind,
-      signalName: r.pattern_name,
-      description: r.pattern_description,
-      seedLabel: seedLabel({ name: r.pattern_name, description: r.pattern_description }),
-      totalHits: Math.max(0, Math.round(Number(r.total_hits))),
-      totalMisses: Math.max(0, Math.round(Number(r.total_misses))),
-      posteriorP: mean,
-      ciLower: lower,
-      ciUpper: upper,
-    });
-  }
-  rows.sort((a, b) => b.ciLower - a.ciLower);
-  return rows.slice(0, topN);
 };
 
 /** saju_response_profile INSERT 컬럼(user_id 제외 — 행마다 $1 공유). */
@@ -425,21 +354,13 @@ const processUser = async (
   }
 
   // 포화 시드 양방향 가드(#508 ③, ADR-0046) — 검정 불가 시드 자동 archive ⟷ 탈포화 부활.
-  // 검증/발굴과 독립 격리: 실패해도 검증 카드는 무탈(빈 결과). 발굴 surface 전(부활 시드 재페어링 위해).
+  // 검증/발굴과 독립 격리: 실패해도 검증·발굴은 무탈(빈 결과). 발굴 surface 전(부활 시드 재페어링 위해).
   let hygiene: SaturationSweepResult = { archived: [], revived: [] };
   try {
     hygiene = await runSaturationSweep(userId, today);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Saturation] user=${userId} sweep 실패: ${msg}`);
-  }
-
-  let seedInfluence: SeedInfluenceRow[] = [];
-  try {
-    seedInfluence = await loadSeedInfluence(userId, SEED_INFLUENCE_TOP_N);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Verification] 시드 영향력 로드 실패 user=${userId}: ${msg}`);
   }
 
   const verified = results.filter((l) => l.nextStatus === 'confirmed').length;
@@ -456,8 +377,7 @@ const processUser = async (
     `[Verification] user=${userId} 가족별 링크 ${[...familyTally].map(([f, n]) => `${f}=${n}`).join(' ') || '없음'}`,
   );
 
-  // 교란 플래그(P6, ADR-0041) — 검증/발굴과 독립 격리. 실패해도 검증 카드는 무탈(빈 맵).
-  const confoundByLink = new Map<number, ConfoundData>();
+  // 교란 플래그(P6, ADR-0041) — DB(pattern_links.confound)에 persist. 카드 은퇴(#542)로 노출은 없음.
   try {
     const cr = await flagConfounds(userId, today);
     let flagged = 0;
@@ -466,7 +386,6 @@ const processUser = async (
     for (const r of cr) {
       try {
         await persistConfound(userId, r);
-        confoundByLink.set(r.linkId, r.confound);
         if (r.confound.suspected.length > 0) flagged += 1;
         if (r.confound.adjusted && r.confound.adjusted.length > 0) adjusted += 1;
         if (r.confound.explainedAway) explainedAway += 1;
@@ -483,23 +402,16 @@ const processUser = async (
     console.error(`[Confound] user=${userId} 교란 플래그 실패: ${msg}`);
   }
 
-  const blocks = buildVerificationBlocks(weekStart, results, seedInfluence, confoundByLink);
-  // 포화 가드 알림을 카드 말미에 append(#508 ③) — 변수명 미노출 라벨.
-  blocks.push(
-    ...buildHygieneNotice(
-      hygiene.archived.map((s) => s.label),
-      hygiene.revived.map((s) => s.label),
-    ),
-  );
-  const fallback = `패턴 검증 주간 리포트 (${weekStart} ~) — 링크 ${results.length}건`;
-  try {
-    await postBlockMessage(app.client, channelId, fallback, blocks);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Verification] 카드 전송 실패 user=${userId}: ${msg}`);
+  // #542(ADR-0052): 검증 현황 카드 발송 은퇴 — routine 통합 카드가 단독 발송. 엔진은 DB만 갱신.
+  // 포화 가드(#508 ③) 사용자 노출이 사라져 로그로 강등(통합 카드 노출은 후속 — ADR-0052 §후속).
+  if (hygiene.archived.length > 0 || hygiene.revived.length > 0) {
+    console.warn(
+      `[Saturation] user=${userId} archive ${hygiene.archived.length} (${hygiene.archived.map((s) => s.label).join(', ') || '-'}) · ` +
+        `revive ${hygiene.revived.length} (${hygiene.revived.map((s) => s.label).join(', ') || '-'})`,
+    );
   }
 
-  // 검증 후 발굴 단계 — 검증 결과를 막지 않게 격리(검증은 이미 완료·발송됨).
+  // 검증 후 발굴 단계 — 검증 결과를 막지 않게 격리(검증은 이미 완료, 카드는 routine이 발송).
   try {
     await recommendDiscoveries(app, userId, channelId, today);
   } catch (err) {
@@ -540,6 +452,60 @@ export const weeklyVerificationTask = async (app: App, config: LifeCronConfig): 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Verification] user=${mapping.userId} 처리 실패: ${msg}`);
+    }
+  }
+};
+
+/**
+ * 주간 리뷰 누락 fallback 알림 (#542 ADR-0052, 월 10:00) — 출력 연속성 보장.
+ * routine(weekly-saju-review-v2, 월 08:04)이 통합 카드를 발송하면 saju_weekly_reviews에
+ * (user_id, week_start=이번주 월요일) row가 남는다. 10:00에 그 row가 없으면(=미발송) "수동 실행해줘"
+ * 알림만 #insight에 발송 — 봇이 카드를 대신 만들지 않는다(반쪽 카드 방지, ADR-0052 Alt B 기각).
+ *
+ * week_start는 SKILL과 동일하게 "오늘(이번 주 월요일)"을 쓴다 — weekly-verification의
+ * previousMondayISO(지난주 월요일)와 다름에 주의(SKILL idempotency row 키와 일치해야 조회됨).
+ */
+export const weeklyReviewFallbackTask = async (app: App, config: LifeCronConfig): Promise<void> => {
+  if (getKSTDayOfWeek() !== 1) return; // 월요일만 (매일 등록, 내부 가드)
+  const today = getTodayISO(); // 이번 주 월요일 = SKILL의 week_start
+  const insightFallback = process.env['INSIGHT_CHANNEL_ID'] ?? config.channelId;
+
+  const notifyIfMissing = async (userId: number, channelId: string): Promise<void> => {
+    const res = await query<{ exists: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM saju_weekly_reviews WHERE user_id = $1 AND week_start = $2
+       ) AS exists`,
+      [userId, today],
+    );
+    if (res.rows[0]?.exists) return; // 이미 발송됨 — no-op
+    await postToChannel(
+      app.client,
+      channelId,
+      '🔔 이번 주 주간 인사이트가 아직 안 왔어. 클로드 앱 routines에서 weekly-saju-review-v2 수동 실행해줘.',
+    );
+    console.warn(`[WeeklyReviewFallback] user=${userId} 미발송 — 수동 실행 알림 전송`);
+  };
+
+  const mappings = await queryAllUserMappings();
+  if (mappings.length === 0) {
+    if (!insightFallback) return;
+    try {
+      await notifyIfMissing(DEFAULT_USER_ID, insightFallback);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[WeeklyReviewFallback] 폴백 실행 실패: ${msg}`);
+    }
+    return;
+  }
+
+  for (const mapping of mappings) {
+    const channelId = mapping.insightChannelId ?? insightFallback;
+    if (!channelId) continue;
+    try {
+      await notifyIfMissing(mapping.userId, channelId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[WeeklyReviewFallback] user=${mapping.userId} 처리 실패: ${msg}`);
     }
   }
 };

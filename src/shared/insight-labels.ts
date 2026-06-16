@@ -8,7 +8,8 @@
  *
  * 라벨 비대칭(ADR-0045 §2):
  *  - 시드 = description tail-strip. 시드 description은 hand-authored라 접두가 곧 활성조건
- *    ("일운 천간 갑목(편재) → 일정/지출 폭증" → "일운 천간 갑목(편재)"). 첫 →/— 앞만 취함.
+ *    ("일운 천간 갑목(편재) → 일정/지출 폭증" → "갑목(편재)"). 첫 →/— 앞만 취하고
+ *    "일운 천간/지지" 접두는 제거(#542 카드 폭 축소).
  *  - 신호 = name+domain+direction 룰. 신호 description은 깨진 provenance라 못 쓰고 metadata로 생성.
  *
  * 불변식: 미매핑 신호(미래 LLM 신호 등)도 도메인 명사 fallback으로 끝내 raw 변수명을 노출하지 않는다.
@@ -60,9 +61,9 @@ export const SEED_LABEL_OVERRIDES: Record<string, string> = {
   pool_강도_수_강: '수 기운 강한 날',
   pool_강도_수_약: '수 기운 약한 날',
   pool_강도_수_적정: '수 기운 적정한 날',
-  pool_강도_일간_강: '일간 기운 강한 날(신강)',
-  pool_강도_일간_약: '일간 기운 약한 날(신약)',
-  pool_강도_일간_적정: '일간 기운 균형인 날',
+  pool_강도_일간_강: '신강한 날',
+  pool_강도_일간_약: '신약한 날',
+  pool_강도_일간_적정: '일간 균형인 날',
   // ── 합화십성 ("합화 변환 결과 효과적 십성 = X 발현일" → 평어) ──
   pool_합화십성_재성: '합화로 재성 기운 도는 날',
   pool_합화십성_비겁: '합화로 비겁 기운 도는 날',
@@ -73,6 +74,18 @@ export const SEED_LABEL_OVERRIDES: Record<string, string> = {
 
 /** 활성조건과 예측/설명을 가르는 구분자 — 첫 등장 앞만 라벨로 취한다(( 는 십성 주석이라 제외). */
 const SEED_DELIMITERS = ['→', '—', '–'];
+
+/**
+ * 천간·지지 시드 접두("일운 천간 "/"일운 지지 ") 제거 — "갑목(편재)"만 남겨 카드 폭 축소(#542).
+ * 귀문 등 "지지 귀문 발현일"은 "일운 지지 "로 시작하지 않아 영향 없음.
+ */
+const SEED_PREFIXES = ['일운 천간 ', '일운 지지 '] as const;
+const stripSeedPrefix = (s: string): string => {
+  for (const p of SEED_PREFIXES) {
+    if (s.startsWith(p)) return s.slice(p.length);
+  }
+  return s;
+};
 
 const firstDelimiterIndex = (s: string): number => {
   let min = -1;
@@ -94,7 +107,7 @@ export const seedLabel = ({ name, description }: SeedLabelInput): string => {
   if (!desc) return name;
   const idx = firstDelimiterIndex(desc);
   const head = (idx >= 0 ? desc.slice(0, idx) : desc).trim();
-  return head || name;
+  return stripSeedPrefix(head) || name;
 };
 
 // ─── 신호 라벨 (name+domain+direction 룰) ─────────────────
@@ -207,9 +220,9 @@ const directionPhrase = (
 ): string => {
   switch (direction) {
     case 'above_avg':
-      return `${measure} 평소보다 ${hi}`;
+      return `${measure} ${hi}`;
     case 'below_avg':
-      return `${measure} 평소보다 ${lo}`;
+      return `${measure} ${lo}`;
     case 'above_abs':
       return (threshold ?? 1) <= 1 ? `${measure} 있음` : `${measure} ${threshold}회 이상`;
     case 'below_abs':

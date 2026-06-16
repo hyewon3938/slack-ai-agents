@@ -68,7 +68,6 @@ vi.mock('../pattern-match.js', async (importOriginal) => {
 
 const { isSaturated, isDesaturated, SATURATION_REASON, runSaturationSweep } =
   await import('../seed-saturation.js');
-const { buildHygieneNotice } = await import('../../agents/insight/hypothesis-cards.js');
 
 const TODAY = '2026-06-08';
 
@@ -202,19 +201,5 @@ describe('runSaturationSweep — revive (saturation 스코프만, 재계산)', (
   });
 });
 
-describe('buildHygieneNotice — 카드 말미 알림 (#508 ③)', () => {
-  it('archive·revive 둘 다 있으면 두 줄 context, 변수명 미노출', () => {
-    const blocks = buildHygieneNotice(['화 기운 강한 날'], ['목 기운 약한 날']);
-    expect(blocks).toHaveLength(1);
-    const text = JSON.stringify(blocks);
-    expect(text).toContain('🧹 포화 시드 1개 정리');
-    expect(text).toContain('🌱 부활 1개');
-    // 전달한 평어 라벨이 그대로 렌더(변수명은 호출부 seedLabel이 책임 — 여기선 join만).
-    expect(text).toContain('화 기운 강한 날');
-    expect(text).toContain('목 기운 약한 날');
-  });
-
-  it('둘 다 없으면 빈 블록(미추가)', () => {
-    expect(buildHygieneNotice([], [])).toEqual([]);
-  });
-});
+// buildHygieneNotice(포화 가드 카드 말미 알림)는 #542(ADR-0052) 카드 발송 은퇴로 제거됨 —
+// 포화 archive/revive는 weekly-verification.ts에서 로그로만 강등(사용자 노출 없음).
