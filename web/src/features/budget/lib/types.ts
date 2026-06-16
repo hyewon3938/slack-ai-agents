@@ -18,13 +18,6 @@ export interface ExpenseRow {
   exclude_from_budget: boolean;
   /** 수입을 전체 기간에 분배할지 여부 (type='income'에서만 사용) */
   distribute_to_budget: boolean;
-  /**
-   * 할부 자산 차감 범위 토글 (ADR 0018).
-   * - true (default): 2+회차 전부 INSERT 즉시 자산 차감 (ADR 0015 그대로)
-   * - false: 2회차부터 target_date 이내 회차만 차감, 이후 회차는 결제주기 cron에서 자유지출로 처리
-   * 할부가 아닌 일반 지출/수입에서는 의미 없음 (default true 저장).
-   */
-  distribute_to_runway: boolean;
 }
 
 export interface PlannedExpenseRow {

@@ -12,10 +12,7 @@ import { PlusIcon, XMarkIcon } from '@/components/ui/icons';
 import { formatAmount } from '@/lib/types';
 import { Input, Select } from '@/components/ui/input';
 import { getTodayISO } from '@/lib/kst';
-import {
-  getBillingMonthForExpense,
-  computeLastInstallmentBillingMonth,
-} from '@/features/budget/lib/billing/card-billing';
+import { getBillingMonthForExpense } from '@/features/budget/lib/billing/card-billing';
 
 interface ExpenseFormProps {
   onAdd: (data: {
@@ -29,7 +26,6 @@ interface ExpenseFormProps {
     installment_months?: number;
     exclude_from_budget?: boolean;
     distribute_to_budget?: boolean;
-    distribute_to_runway?: boolean;
   }) => Promise<ExpenseRow>;
   /** 현재 보고 있는 결제주기 월 (예정 지출 목록용) */
   yearMonth?: string;
@@ -52,8 +48,6 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const [installmentMonths, setInstallmentMonths] = useState<number>(1);
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
   const [distributeToBudget, setDistributeToBudget] = useState(false);
-  const [distributeToRunway, setDistributeToRunway] = useState(true);
-  const [targetDate, setTargetDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,16 +59,6 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
       .then((d: { data?: PlannedExpenseRow[] }) => setPlannedExpenses(d.data ?? []))
       .catch(() => setPlannedExpenses([]));
   }, [yearMonth]);
-
-  // target_date 로드 — 할부 토글 조건부 노출 판단용
-  useEffect(() => {
-    void fetch('/api/budget/settings')
-      .then((r) => r.json())
-      .then((d: { data?: { target_date: string | null } }) => {
-        setTargetDate(d.data?.target_date ?? null);
-      })
-      .catch(() => setTargetDate(null));
-  }, []);
 
   const handleTypeChange = (type: 'expense' | 'income') => {
     setEntryType(type);
@@ -119,10 +103,6 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
           entryType === 'expense' && paymentMethod !== '현금' ? installmentMonths : undefined,
         exclude_from_budget: entryType === 'expense' ? excludeFromBudget : false,
         distribute_to_budget: entryType === 'income' ? distributeToBudget : false,
-        distribute_to_runway:
-          entryType === 'expense' && paymentMethod !== '현금' && installmentMonths > 1
-            ? distributeToRunway
-            : undefined,
       });
       setAmountStr('');
       setDescription('');
@@ -131,7 +111,6 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
       setInstallmentMonths(1);
       setExcludeFromBudget(BUDGET_EXCLUDED_CATEGORIES.has(EXPENSE_CATEGORIES[0]));
       setDistributeToBudget(false);
-      setDistributeToRunway(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : '추가 실패');
     } finally {
@@ -157,17 +136,6 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
 
   // 귀속 월 계산 (지출 모드에서 실시간 표시)
   const billingMonthNum = parseInt(getBillingMonthForExpense(date, paymentMethod).slice(5), 10);
-
-  // 할부 자산 차감 범위 토글 노출 조건 (ADR 0018):
-  // 마지막 회차 billing_month > target_date 일 때만 의미 있는 분기.
-  const lastInstallmentBillingMonth =
-    entryType === 'expense' && paymentMethod !== '현금' && installmentMonths >= 2
-      ? computeLastInstallmentBillingMonth(date, installmentMonths, paymentMethod)
-      : null;
-  const showRunwayToggle =
-    lastInstallmentBillingMonth !== null &&
-    targetDate !== null &&
-    lastInstallmentBillingMonth > targetDate;
 
   return (
     <form
@@ -337,45 +305,6 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
             </div>
           </div>
         </div>
-      )}
-
-      {/* 할부 자산 차감 범위 토글 (ADR 0018) — 마지막 회차가 target_date를 넘을 때만 노출 */}
-      {showRunwayToggle && (
-        <fieldset className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <legend className="px-1 text-xs text-amber-700">
-            마지막 회차({lastInstallmentBillingMonth})는 목표 기간({targetDate}) 이후입니다
-          </legend>
-          <label className="flex cursor-pointer items-start gap-2 py-1 text-xs text-gray-700">
-            <input
-              type="radio"
-              name="distribute-to-runway"
-              checked={distributeToRunway}
-              onChange={() => setDistributeToRunway(true)}
-              className="mt-0.5"
-            />
-            <span>
-              <strong>지금 자산에서 전부 미리 차감</strong>
-              <span className="block text-[10px] text-gray-500">
-                목표 기간 이후 회차도 즉시 자산에서 빠집니다. 확실하게 잡고 가고 싶을 때.
-              </span>
-            </span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-2 py-1 text-xs text-gray-700">
-            <input
-              type="radio"
-              name="distribute-to-runway"
-              checked={!distributeToRunway}
-              onChange={() => setDistributeToRunway(false)}
-              className="mt-0.5"
-            />
-            <span>
-              <strong>목표 기간 이후 회차는 그때의 자금으로 갚을 예정</strong>
-              <span className="block text-[10px] text-gray-500">
-                목표 기간 안의 회차만 지금 자산에서 빠지고, 이후 회차는 결제될 때 처리합니다.
-              </span>
-            </span>
-          </label>
-        </fieldset>
       )}
 
       {/* 수입 전체 분배 토글 (수입 모드 전용) */}

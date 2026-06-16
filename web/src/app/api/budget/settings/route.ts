@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getBudgetPreview } from '@/features/budget/lib/facade';
-import {
-  readTargetMonth,
-  analyzeTargetDateChange,
-  applyTargetDateChange,
-} from '@/features/budget/lib/repository/settings-repo';
+import { readTargetMonth, upsertTargetDate } from '@/features/budget/lib/repository/settings-repo';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,31 +32,24 @@ export async function GET(request: Request) {
 }
 
 /**
- * target_date 변경 — preview/apply 분기 (ADR 0018).
+ * target_date 변경 — 단순 저장 (#539, ADR 0051).
  *
- * ?preview=true: 영향 분석만 반환 (DB 미변경)
- * (없음): OFF 할부 자산 보정 + budget_settings UPDATE
- *
- * 응답: TargetDateChangePreview { oldTargetDate, newTargetDate, affectedGroups, totalDelta }
+ * 묶인 돈이 목표 기간 창 라이브 계산으로 바뀌어, 변경 시점 자산 보정·영향 분석이 불필요해졌다.
+ * 그냥 budget_settings를 upsert하면 다음 예산 조회에서 새 창이 자동 반영된다.
  */
 export async function PUT(request: Request) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { searchParams } = new URL(request.url);
-    const previewMode = searchParams.get('preview') === 'true';
-
     const body = (await request.json()) as { target_date?: string | null };
     const td = body.target_date ?? null;
     if (!isValidTargetDate(td)) {
       return NextResponse.json({ error: 'target_date 형식: YYYY-MM' }, { status: 400 });
     }
 
-    const result = previewMode
-      ? await analyzeTargetDateChange(userId, td)
-      : await applyTargetDateChange(userId, td);
-    return NextResponse.json({ data: result });
+    await upsertTargetDate(userId, td);
+    return NextResponse.json({ data: { target_date: td } });
   } catch (err) {
     console.error('[Budget API] settings PUT', err);
     return NextResponse.json({ error: '설정 저장 실패' }, { status: 500 });

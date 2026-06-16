@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import type { ExpenseRow, PlannedExpenseRow } from '@/features/budget/lib/types';
 import { ALL_EXPENSE_CATEGORIES, BUDGET_EXCLUDED_CATEGORIES } from '@/features/budget/lib/types';
-import { computeLastInstallmentBillingMonth } from '@/features/budget/lib/billing/card-billing';
 import { formatAmount } from '@/lib/types';
 import { XMarkIcon } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
@@ -22,7 +21,6 @@ interface ExpenseEditModalProps {
       description: string | null;
       exclude_from_budget: boolean;
       planned_expense_id: number | null;
-      distribute_to_runway?: boolean;
     },
   ) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -46,48 +44,8 @@ export function ExpenseEditModal({
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpenseRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // ADR 0018: 할부 자산 차감 범위 토글 (그룹 전체에 적용)
-  const [distributeToRunway, setDistributeToRunway] = useState(expense.distribute_to_runway);
-  const [targetDate, setTargetDate] = useState<string | null>(null);
 
   const showPlannedSelect = yearMonth && !expense.is_installment && expense.type !== 'income';
-
-  // target_date 로드 — 할부 토글 조건부 노출 판단용
-  useEffect(() => {
-    if (!expense.is_installment) return;
-    void fetch('/api/budget/settings')
-      .then((r) => r.json())
-      .then((d: { data?: { target_date: string | null } }) =>
-        setTargetDate(d.data?.target_date ?? null),
-      )
-      .catch(() => setTargetDate(null));
-  }, [expense.is_installment]);
-
-  // 이 회차로부터 첫 회차 date 역산 후 마지막 회차 billing_month 계산
-  const lastInstallmentBillingMonth =
-    expense.is_installment &&
-    expense.installment_num != null &&
-    expense.installment_total != null &&
-    expense.payment_method
-      ? (() => {
-          const baseDate = new Date(`${expense.date}T00:00:00`);
-          baseDate.setMonth(baseDate.getMonth() - (expense.installment_num - 1));
-          const firstDate = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
-          return computeLastInstallmentBillingMonth(
-            firstDate,
-            expense.installment_total,
-            expense.payment_method,
-          );
-        })()
-      : null;
-
-  const showRunwayToggle =
-    expense.is_installment &&
-    expense.type !== 'income' &&
-    !expense.exclude_from_budget &&
-    targetDate !== null &&
-    lastInstallmentBillingMonth !== null &&
-    lastInstallmentBillingMonth > targetDate;
 
   useEffect(() => {
     if (!showPlannedSelect) return;
@@ -117,15 +75,6 @@ export function ExpenseEditModal({
       return;
     }
 
-    // 할부 자산 차감 범위 변경은 그룹 전체에 적용 — 사용자 확인
-    const runwayChanged = showRunwayToggle && distributeToRunway !== expense.distribute_to_runway;
-    if (runwayChanged) {
-      const msg = distributeToRunway
-        ? '자산 차감 범위를 "전체 회차 즉시 차감"으로 변경합니다.\n같은 할부 그룹의 모든 회차에 적용되며, 자산이 추가로 차감됩니다.\n계속할까요?'
-        : '자산 차감 범위를 "목표 기간 이내만"으로 변경합니다.\n같은 할부 그룹의 모든 회차에 적용되며, 목표 기간 이후 회차분이 자산에 환원됩니다.\n계속할까요?';
-      if (!confirm(msg)) return;
-    }
-
     setLoading(true);
     try {
       await onSave(expense.id, {
@@ -135,7 +84,6 @@ export function ExpenseEditModal({
         description: description || null,
         exclude_from_budget: excludeFromBudget,
         planned_expense_id: selectedPlanned,
-        ...(runwayChanged ? { distribute_to_runway: distributeToRunway } : {}),
       });
       onClose();
     } catch (err) {
@@ -221,80 +169,35 @@ export function ExpenseEditModal({
             placeholder="메모"
           />
 
-          {/* 예산 포함/제외 토글 */}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">예산</label>
-            <div className="flex rounded-lg border border-gray-200 p-0.5 w-fit">
-              <button
-                type="button"
-                onClick={() => setExcludeFromBudget(false)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  !excludeFromBudget
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                포함
-              </button>
-              <button
-                type="button"
-                onClick={() => setExcludeFromBudget(true)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  excludeFromBudget ? 'bg-gray-500 text-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                제외
-              </button>
+          {/* 예산 포함/제외 토글 — 일반 지출만 (할부는 항상 묶인 돈, #539) */}
+          {!expense.is_installment && (
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">예산</label>
+              <div className="flex rounded-lg border border-gray-200 p-0.5 w-fit">
+                <button
+                  type="button"
+                  onClick={() => setExcludeFromBudget(false)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    !excludeFromBudget
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  포함
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExcludeFromBudget(true)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    excludeFromBudget
+                      ? 'bg-gray-500 text-white'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  제외
+                </button>
+              </div>
             </div>
-            {expense.is_installment && (
-              <p className="mt-1 text-[10px] text-gray-500">
-                할부 그룹 전체에 적용 (모든 회차 동시 변경 + 자산 보정)
-              </p>
-            )}
-          </div>
-
-          {/* 할부 자산 차감 범위 토글 (ADR 0018) — 마지막 회차가 target_date 이후일 때만 노출 */}
-          {showRunwayToggle && (
-            <fieldset className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-              <legend className="px-1 text-[11px] font-medium text-amber-700">
-                자산 차감 범위 (할부 그룹 전체에 적용)
-              </legend>
-              <p className="mb-2 text-[10px] text-amber-700">
-                마지막 회차({lastInstallmentBillingMonth})는 목표 기간({targetDate}) 이후입니다.
-              </p>
-              <label className="mb-1 flex cursor-pointer items-start gap-2 text-xs text-gray-700">
-                <input
-                  type="radio"
-                  name="distribute_to_runway"
-                  checked={distributeToRunway}
-                  onChange={() => setDistributeToRunway(true)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <strong>지금 자산에서 전부 미리 차감</strong>
-                  <br />
-                  <span className="text-[10px] text-gray-500">
-                    모든 회차 금액을 즉시 자산에서 빼고 매달 잊는다
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-2 text-xs text-gray-700">
-                <input
-                  type="radio"
-                  name="distribute_to_runway"
-                  checked={!distributeToRunway}
-                  onChange={() => setDistributeToRunway(false)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <strong>목표 기간 이후 회차는 그때의 자금으로</strong>
-                  <br />
-                  <span className="text-[10px] text-gray-500">
-                    목표 기간 이내 회차만 자산에서 차감, 이후는 매달 예산에서 분배
-                  </span>
-                </span>
-              </label>
-            </fieldset>
           )}
 
           {/* 예정 지출 연결 (일시불 지출만, 할부/수입 제외) */}

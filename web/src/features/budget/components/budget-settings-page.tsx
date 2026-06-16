@@ -7,6 +7,7 @@ import {
   FIXED_COST_CATEGORIES,
   ALL_EXPENSE_CATEGORIES,
 } from '@/features/budget/lib/types';
+import { getCurrentBillingMonth } from '@/features/budget/lib/billing/cycle';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 
@@ -583,21 +584,6 @@ interface BudgetPreviewData {
   month_breakdown: MonthBreakdownItem[];
 }
 
-// ADR 0018: target_date 변경 영향 — OFF 할부 자산 보정 미리보기
-interface TargetDateChangeGroup {
-  groupId: string;
-  description: string | null;
-  /** 자산 변화량. 양수=추가 차감, 음수=환원 */
-  deltaAmount: number;
-}
-
-interface TargetDateChangePreview {
-  oldTargetDate: string | null;
-  newTargetDate: string | null;
-  affectedGroups: TargetDateChangeGroup[];
-  totalDelta: number;
-}
-
 function TargetDateCard({
   savedTarget,
   onSaved,
@@ -610,7 +596,6 @@ function TargetDateCard({
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showAllMonths, setShowAllMonths] = useState(false);
-  const [changePreview, setChangePreview] = useState<TargetDateChangePreview | null>(null);
 
   // 초기 프리뷰 로드 (저장된 목표가 있으면)
   useEffect(() => {
@@ -643,40 +628,18 @@ function TargetDateCard({
     }
   };
 
-  /** target_date 실제 저장 (확정 단계 — DB 변경) */
-  const applyTargetDate = async (target: string) => {
-    const res = await fetch('/api/budget/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_date: target }),
-    });
-    if (res.ok) {
-      onSaved(target);
-      setChangePreview(null);
-    }
-  };
-
+  // target_date 저장 — 단순 upsert (#539, ADR 0051).
+  // 묶인 돈이 목표 기간 창 라이브 계산으로 바뀌어, 변경 시 자산 보정·영향 분석이 불필요해졌다.
   const handleSave = async () => {
     if (!inputValue || !/^\d{4}-\d{2}$/.test(inputValue)) return;
     setSaving(true);
     try {
-      // 1단계: 영향 분석 (DB 미변경)
-      const previewRes = await fetch('/api/budget/settings?preview=true', {
+      const res = await fetch('/api/budget/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_date: inputValue }),
       });
-      if (!previewRes.ok) return;
-      const { data } = (await previewRes.json()) as { data: TargetDateChangePreview };
-
-      // 영향 받는 OFF 할부 그룹이 없으면 즉시 적용
-      if (data.affectedGroups.length === 0) {
-        await applyTargetDate(inputValue);
-        return;
-      }
-
-      // 영향이 있으면 확인 모달 표시
-      setChangePreview(data);
+      if (res.ok) onSaved(inputValue);
     } finally {
       setSaving(false);
     }
@@ -686,6 +649,14 @@ function TargetDateCard({
   const displayMonths = showAllMonths
     ? preview?.month_breakdown
     : preview?.month_breakdown.slice(0, 4);
+
+  // 목표 기간 만료/임박 경고 (#539) — 자동 롤링 없이 수동 연장이라 미리 알려준다.
+  const targetMonthsLeft = (() => {
+    if (!savedTarget || !/^\d{4}-\d{2}$/.test(savedTarget)) return null;
+    const [ty, tm] = savedTarget.split('-').map(Number);
+    const [cy, cm] = getCurrentBillingMonth(new Date()).split('-').map(Number);
+    return (ty - cy) * 12 + (tm - cm);
+  })();
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -711,6 +682,18 @@ function TargetDateCard({
         <p className="mb-3 text-xs text-gray-400">
           현재 설정: <span className="font-medium text-gray-600">{savedTarget}</span>
         </p>
+      )}
+
+      {targetMonthsLeft !== null && targetMonthsLeft < 0 && (
+        <div className="mb-3 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
+          목표 기간이 지났어. 새 목표를 정해줘 — 안 그러면 예산 계산이 멈춰.
+        </div>
+      )}
+      {targetMonthsLeft !== null && targetMonthsLeft >= 0 && targetMonthsLeft <= 1 && (
+        <div className="mb-3 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
+          목표 기간이 거의 다 됐어{targetMonthsLeft === 0 ? ' (이번 달)' : ' (다음 달)'}. 미리 새로
+          정해두면 일 예산이 출렁이는 걸 막을 수 있어.
+        </div>
       )}
 
       {/* 프리뷰 */}
@@ -775,81 +758,6 @@ function TargetDateCard({
         <p className="text-xs text-gray-400">
           목표 기간을 설정하면 월별 예산과 일일 자유 예산을 미리 확인할 수 있습니다.
         </p>
-      )}
-
-      {/* 목표 기간 변경 영향 모달 (ADR 0018) */}
-      {changePreview && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setChangePreview(null);
-          }}
-        >
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800">목표 기간 변경 영향</h3>
-            <p className="mb-3 text-xs text-gray-500">
-              {changePreview.oldTargetDate ?? '미설정'} →{' '}
-              <span className="font-medium text-gray-700">
-                {changePreview.newTargetDate ?? '미설정'}
-              </span>
-            </p>
-
-            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="mb-2 text-xs text-amber-700">
-                "목표 기간 이내만" 모드로 등록된 할부 그룹의 자산 차감이 다음과 같이 조정됩니다:
-              </p>
-              <div className="max-h-40 overflow-y-auto divide-y divide-amber-100">
-                {changePreview.affectedGroups.map((g) => (
-                  <div key={g.groupId} className="flex items-center justify-between py-1.5 text-xs">
-                    <span className="truncate text-gray-700">{g.description ?? '내역 없음'}</span>
-                    <span
-                      className={`ml-2 whitespace-nowrap font-medium ${g.deltaAmount > 0 ? 'text-red-600' : 'text-blue-600'}`}
-                    >
-                      {g.deltaAmount > 0 ? '추가 차감' : '환원'}{' '}
-                      {formatAmount(Math.abs(g.deltaAmount))}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 flex items-center justify-between border-t border-amber-200 pt-2 text-xs">
-                <span className="font-medium text-gray-700">총 자산 변화</span>
-                <span
-                  className={`font-bold ${changePreview.totalDelta > 0 ? 'text-red-600' : changePreview.totalDelta < 0 ? 'text-blue-600' : 'text-gray-500'}`}
-                >
-                  {changePreview.totalDelta > 0
-                    ? `-${formatAmount(changePreview.totalDelta)} (차감)`
-                    : changePreview.totalDelta < 0
-                      ? `+${formatAmount(-changePreview.totalDelta)} (환원)`
-                      : '변화 없음'}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setChangePreview(null)}
-                disabled={saving}
-                className="rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => {
-                  if (changePreview.newTargetDate) {
-                    setSaving(true);
-                    void applyTargetDate(changePreview.newTargetDate).finally(() =>
-                      setSaving(false),
-                    );
-                  }
-                }}
-                disabled={saving}
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-blue-700"
-              >
-                {saving ? '적용 중...' : '확인하고 적용'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
