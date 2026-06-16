@@ -1,6 +1,6 @@
 # 0015. 자산 자동 차감 정책 — 결제주기 종료 cron + 할부 미래 회차 즉시 반영
 
-- Status: Accepted
+- Status: Superseded by ADR 0051
 - Date: 2026-05-14
 - Related: #397
 - Tags: data, budget
