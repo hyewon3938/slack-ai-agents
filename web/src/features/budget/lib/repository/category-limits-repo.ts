@@ -3,7 +3,7 @@ import type { CategoryLimitRow, CategoryLimitWithUsage } from '../types';
 
 /**
  * 카테고리 한도 + 현재 주기 사용 횟수 조회.
- * used_count는 expenses에서 live 집계 — 할부는 1회차만 카운트, income 제외.
+ * used_count는 expenses에서 live 집계 — 할부는 1회차만 카운트, income 제외, 예산 미포함(exclude) 제외.
  */
 export async function readCategoryLimitsWithUsage(
   userId: number,
@@ -20,6 +20,7 @@ export async function readCategoryLimitsWithUsage(
            AND e.billing_month = $2
            AND e.category = cl.category
            AND e.type = 'expense'
+           AND COALESCE(e.exclude_from_budget, false) = false
            AND (e.is_installment = false OR e.installment_num = 1)
        ), 0) AS used_count
      FROM category_limits cl

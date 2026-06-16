@@ -43,6 +43,8 @@ describe('category-limits-repo', () => {
       expect(sql).toMatch(/COUNT/i);
       expect(sql).toMatch(/billing_month/);
       expect(sql).toMatch(/is_installment = false OR e\.installment_num = 1/);
+      // 예산 미포함(exclude_from_budget=true) 건은 카운트 제외
+      expect(sql).toMatch(/COALESCE\(e\.exclude_from_budget, false\) = false/);
       // userId, billingMonth 파라미터 전달 확인
       expect(vi.mocked(query).mock.calls[0]![1]).toEqual([1, '2026-05']);
     });
