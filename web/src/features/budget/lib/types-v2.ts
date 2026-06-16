@@ -9,13 +9,6 @@ export interface BillingCycle {
 
 // ─── 월별 분배 ──────────────────────────────────────────────────
 
-export interface InstallmentInput {
-  monthlyAmount: number;
-  remainingCount: number;
-  /** 이번 달 신규 할부 — 현재 월 locked 제외 (이미 자유 지출에 반영됨) */
-  isNew?: boolean;
-}
-
 export interface PlannedInput {
   yearMonth: string;
   amount: number;
@@ -24,7 +17,11 @@ export interface PlannedInput {
 export interface MonthAllocatorInput {
   totalAvailable: number;
   fixedMonthly: number;
-  installments: InstallmentInput[];
+  /**
+   * 목표 기간 창 안 할부 락 — billing_month별 합계 (#539, ADR 0051).
+   * 각 달의 묶인 돈(할부 reservation). 창 밖 회차는 애초에 조회되지 않아 제외됨.
+   */
+  installmentLockByMonth: Map<string, number>;
   plannedExpenses: PlannedInput[];
   currentBillingMonth: string;
   targetMonth: string | null;

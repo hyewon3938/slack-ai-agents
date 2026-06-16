@@ -5,7 +5,7 @@ import type { MonthAllocatorInput } from '../../types-v2';
 const BASE: MonthAllocatorInput = {
   totalAvailable: 90000,
   fixedMonthly: 0,
-  installments: [],
+  installmentLockByMonth: new Map(),
   plannedExpenses: [],
   currentBillingMonth: '2026-04',
   targetMonth: '2026-06', // 3개월: Apr, May, Jun
@@ -13,41 +13,43 @@ const BASE: MonthAllocatorInput = {
 };
 
 describe('F. 엣지 케이스', () => {
-  describe('F-1. 신규 할부 (isNew) — 현재 월 locked 제외, 미래 월만 포함', () => {
-    it('isNew=false → 현재 월도 전액 포함 (ratio=1)', () => {
+  describe('F-1. 묶인 돈 — 창 안 현재/미래 월 모두 reservation (#539)', () => {
+    it('현재월 할부 → 현재 월 전액 포함 (ratio=1)', () => {
       const result = allocateMonthlyBudgets({
         ...BASE,
-        installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: false }],
+        installmentLockByMonth: new Map([['2026-04', 10000]]),
       });
       const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
-      // round(10000 * 1) = 10000
       expect(apr.installments).toBe(10000);
     });
 
-    it('isNew=true → 현재 월/미래 월 모두 installments=0 (ADR 0015: 미래 월 INSERT 즉시 자산 차감)', () => {
+    it('창 안 미래월 할부 → 그 달에 reservation (등록시점 차감 특례 폐지)', () => {
       const result = allocateMonthlyBudgets({
         ...BASE,
-        installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: true }],
+        installmentLockByMonth: new Map([
+          ['2026-04', 10000],
+          ['2026-05', 10000],
+          ['2026-06', 10000],
+        ]),
       });
       const apr = result.monthlyBudgets.find((m) => m.yearMonth === '2026-04')!;
       const may = result.monthlyBudgets.find((m) => m.yearMonth === '2026-05')!;
       const jun = result.monthlyBudgets.find((m) => m.yearMonth === '2026-06')!;
-      expect(apr.installments).toBe(0); // 현재 월 isNew=true 제외 (자유지출에 잡힘)
-      expect(may.installments).toBe(0); // 미래 월 — ADR 0015로 자산 차감 완료
-      expect(jun.installments).toBe(0); // 미래 월 — ADR 0015로 자산 차감 완료
+      expect(apr.installments).toBe(10000);
+      expect(may.installments).toBe(10000);
+      expect(jun.installments).toBe(10000);
     });
 
-    it('isNew=true vs isNew=false — totalLocked 차이는 현재 월 할부 전액 (미래 월은 양쪽 모두 0)', () => {
-      const rOld = allocateMonthlyBudgets({
+    it('totalLocked = 창 안 모든 할부 합 (현재월+미래월)', () => {
+      const result = allocateMonthlyBudgets({
         ...BASE,
-        installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: false }],
+        installmentLockByMonth: new Map([
+          ['2026-04', 10000],
+          ['2026-05', 10000],
+        ]),
       });
-      const rNew = allocateMonthlyBudgets({
-        ...BASE,
-        installments: [{ monthlyAmount: 10000, remainingCount: 3, isNew: true }],
-      });
-      // 현재 월: isNew=false→10000, isNew=true→0. 미래 월: 양쪽 모두 0.
-      expect(rOld.totalLocked - rNew.totalLocked).toBe(10000);
+      // 현재월 10000 + 미래월 10000 (fixed/planned 0)
+      expect(result.totalLocked).toBe(20000);
     });
   });
 

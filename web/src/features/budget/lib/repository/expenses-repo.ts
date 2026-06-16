@@ -7,7 +7,7 @@ function subtractOneDay(dateStr: string): string {
 }
 
 // 자유 지출 = directFlex + plannedOverflow.
-// directFlex: 비할부 + 신규 할부 1회차, 예정지출 연결 건 제외.
+// directFlex: 비할부만 (할부는 전부 묶인 돈으로 분리 — #539, ADR 0051), 예정지출 연결 건 제외.
 // plannedOverflow: 예정지출 예산 초과분 (capped 금액은 예정 락에 귀속).
 // 두 정의가 통합되어야 화면/정산/일별 로그가 정합.
 export async function readFlexibleSpent(
@@ -25,15 +25,27 @@ export async function readFlexibleSpent(
          AND planned_expense_id IS NULL
          AND billing_month = $2
          AND date <= $3
-         AND (
-           is_installment = false
-           OR (is_installment = true AND installment_num = 1)
-         )`,
+         AND is_installment = false`,
       [userId, billingMonth, upToDate],
     ),
     readPlannedOverflow(userId, billingMonth, upToDate),
   ]);
   return Number(directResult.rows[0]?.total ?? 0) + overflow;
+}
+
+// 결제주기 전체 결제분 — 그 billing_month의 모든 type=expense 합 (#539, ADR 0051).
+// 정산(depletion) 시 자금에서 차감할 금액. 할부 회차·고정비·예정·자유 전부 포함
+// (실제 통장에서 빠져나간 총액). 자유 지출의 plannedOverflow 보정과 무관한 raw 합.
+export async function readTotalCycleSpent(userId: number, billingMonth: string): Promise<number> {
+  const result = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS total
+     FROM expenses
+     WHERE user_id = $1
+       AND COALESCE(type, 'expense') = 'expense'
+       AND billing_month = $2`,
+    [userId, billingMonth],
+  );
+  return Number(result.rows[0]?.total ?? 0);
 }
 
 export async function readExcludedSpent(userId: number, billingMonth: string): Promise<number> {
@@ -68,11 +80,8 @@ export async function readTodayFlexSpent(
          AND exclude_from_budget = false
          AND planned_expense_id IS NULL
          AND date = $2::date
-         AND (
-           is_installment = false
-           OR (is_installment = true AND installment_num = 1 AND billing_month = $3)
-         )`,
-      [userId, today, billingMonth],
+         AND is_installment = false`,
+      [userId, today],
     ),
     readPlannedOverflow(userId, billingMonth, today),
     readPlannedOverflow(userId, billingMonth, yesterday),

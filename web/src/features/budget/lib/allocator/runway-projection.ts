@@ -1,11 +1,6 @@
 import { addBillingMonths } from '../billing/cycle';
 import type { MonthlyBudget } from '../types-v2';
 
-export interface ProjectionInstallmentInput {
-  monthlyAmount: number;
-  remainingCount: number;
-}
-
 export interface ProjectionPlannedInput {
   yearMonth: string;
   amount: number;
@@ -15,7 +10,8 @@ export interface RunwayProjectionInput {
   billingMonth: string;
   totalAvailable: number;
   fixedMonthly: number;
-  installments: ProjectionInstallmentInput[];
+  /** billing_month별 할부 락 (#539). 월별 .get(month)으로 그 달 할부 burn 조회. */
+  installmentLockByMonth: Map<string, number>;
   plannedExpenses: ProjectionPlannedInput[];
   /** freePerMonth ?? avgVariableMonthly */
   freePerMonthEstimate: number;
@@ -64,9 +60,14 @@ function computeProjection(
     remaining -= netBurn;
 
     projections.push({
-      month: b.month, fixed: b.fixed, installments: b.installments,
-      locked, free_budget: b.free, income: 0,
-      net_burn: netBurn, remaining: Math.max(remaining, 0),
+      month: b.month,
+      fixed: b.fixed,
+      installments: b.installments,
+      locked,
+      free_budget: b.free,
+      income: 0,
+      net_burn: netBurn,
+      remaining: Math.max(remaining, 0),
     });
   }
 
@@ -94,7 +95,7 @@ export function projectRunway(input: RunwayProjectionInput): RunwayProjectionRes
     billingMonth,
     totalAvailable,
     fixedMonthly,
-    installments,
+    installmentLockByMonth,
     plannedExpenses,
     freePerMonthEstimate,
     maxMonths = 120,
@@ -103,16 +104,17 @@ export function projectRunway(input: RunwayProjectionInput): RunwayProjectionRes
   const burns: MonthBurnBreakdown[] = [];
   for (let i = 0; i < maxMonths; i++) {
     const month = addBillingMonths(billingMonth, i);
-    const installmentSum = installments
-      .filter((inst) => inst.remainingCount > i)
-      .reduce((s, inst) => s + inst.monthlyAmount, 0);
+    const installmentSum = installmentLockByMonth.get(month) ?? 0;
     const plannedSum = plannedExpenses
       .filter((p) => p.yearMonth === month)
       .reduce((s, p) => s + p.amount, 0);
 
     burns.push({
-      month, fixed: fixedMonthly, installments: installmentSum,
-      planned: plannedSum, free: freePerMonthEstimate,
+      month,
+      fixed: fixedMonthly,
+      installments: installmentSum,
+      planned: plannedSum,
+      free: freePerMonthEstimate,
     });
   }
 
@@ -126,8 +128,11 @@ export function projectFromAllocator(
   billingMonth: string,
 ): RunwayProjectionResult {
   const burns: MonthBurnBreakdown[] = monthlyBudgets.map((mb) => ({
-    month: mb.yearMonth, fixed: mb.fixed, installments: mb.installments,
-    planned: mb.planned, free: mb.free,
+    month: mb.yearMonth,
+    fixed: mb.fixed,
+    installments: mb.installments,
+    planned: mb.planned,
+    free: mb.free,
   }));
   return computeProjection(totalAvailable, burns, billingMonth);
 }

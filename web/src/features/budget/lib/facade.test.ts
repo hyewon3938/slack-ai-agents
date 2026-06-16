@@ -11,7 +11,7 @@ vi.mock('./repository/assets-repo', () => ({
   applyAssetIncrease: vi.fn(),
 }));
 vi.mock('./repository/fixed-costs-repo', () => ({ readFixedCostsMonthlyTotal: vi.fn() }));
-vi.mock('./repository/installments-repo', () => ({ readActiveInstallments: vi.fn() }));
+vi.mock('./repository/installments-repo', () => ({ readInstallmentLockByMonth: vi.fn() }));
 vi.mock('./repository/planned-repo', () => ({ readPlannedExpenses: vi.fn() }));
 vi.mock('./repository/incomes-repo', () => ({
   readIncomeTotal: vi.fn(),
@@ -21,6 +21,7 @@ vi.mock('./repository/expenses-repo', () => ({
   readFlexibleSpent: vi.fn(),
   readExcludedSpent: vi.fn(),
   readTodayFlexSpent: vi.fn(),
+  readTotalCycleSpent: vi.fn(),
   readAvgVariableMonthly: vi.fn(),
 }));
 vi.mock('./repository/settings-repo', () => ({
@@ -42,13 +43,14 @@ import {
   applyAssetIncrease,
 } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
-import { readActiveInstallments } from './repository/installments-repo';
+import { readInstallmentLockByMonth } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
 import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
 import {
   readFlexibleSpent,
   readExcludedSpent,
   readTodayFlexSpent,
+  readTotalCycleSpent,
   readAvgVariableMonthly,
 } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
@@ -60,12 +62,13 @@ function setupCommonMocks() {
   vi.mocked(readLatestSnapshot).mockResolvedValue(null);
   vi.mocked(readDistributableAssetBalance).mockResolvedValue(0);
   vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
-  vi.mocked(readActiveInstallments).mockResolvedValue([]);
+  vi.mocked(readInstallmentLockByMonth).mockResolvedValue(new Map());
   vi.mocked(readTargetMonth).mockResolvedValue('2026-04');
   vi.mocked(readPlannedExpenses).mockResolvedValue([]);
   vi.mocked(readFlexibleSpent).mockResolvedValue(0);
   vi.mocked(readExcludedSpent).mockResolvedValue(0);
   vi.mocked(readTodayFlexSpent).mockResolvedValue(0);
+  vi.mocked(readTotalCycleSpent).mockResolvedValue(0);
   vi.mocked(readAvgVariableMonthly).mockResolvedValue(0);
   vi.mocked(readIncomeTotal).mockResolvedValue(0);
   vi.mocked(readCurrentMonthOnlyIncome).mockResolvedValue(0);
@@ -175,7 +178,7 @@ describe('runSettlementIfDue', () => {
     expect(result.snapshot?.year_month).toBe('2026-04');
   });
 
-  it('available_at_end = availableAtStart + income - flex - excluded (자산 미참조)', async () => {
+  it('available_at_end = availableAtStart + income - totalSpent (전체 결제분, 자산 미참조)', async () => {
     const settlementNow = new Date('2026-04-15T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
@@ -183,17 +186,18 @@ describe('runSettlementIfDue', () => {
     vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
     vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
     vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
     vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
 
     const result = await runSettlementIfDue(1, settlementNow);
 
     // availableAtStart = 5_000_000 (자산 fallback)
-    // availableAtEnd = 5_000_000 + 200_000 - 300_000 - 50_000 = 4_850_000
+    // availableAtEnd = 5_000_000 + 200_000 - 350_000(totalSpent) = 4_850_000
     expect(result.snapshot?.available_at_end).toBe(4_850_000);
     expect(result.snapshot?.available_at_start).toBe(5_000_000);
   });
 
-  it('snapshot 신규 저장 시 자산 자동 차감/증액 호출 (flex + excluded, income 분리)', async () => {
+  it('snapshot 신규 저장 시 자산 차감 = 전체 결제분(totalSpent), 증액 = income (분리)', async () => {
     const settlementNow = new Date('2026-04-15T12:00:00Z');
 
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
@@ -201,12 +205,36 @@ describe('runSettlementIfDue', () => {
     vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
     vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
     vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
     vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
 
     await runSettlementIfDue(1, settlementNow);
 
-    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 350_000); // flex + excluded
+    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 350_000); // totalSpent
     expect(applyAssetIncrease).toHaveBeenCalledWith(1, 200_000); // income
+  });
+
+  it('정산 차감액은 flex+excluded가 아니라 전체 결제분(totalSpent) — 할부 회차 결제 포함', async () => {
+    const settlementNow = new Date('2026-04-15T12:00:00Z');
+
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
+    vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
+    vi.mocked(readIncomeTotal).mockResolvedValue(0);
+    // totalSpent(500_000) > flex+excluded(350_000): 할부 회차 등 150_000이 이 주기에 결제됨
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(500_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    const result = await runSettlementIfDue(1, settlementNow);
+
+    // 차감은 totalSpent 기준 (등록시점 차감 폐지 → 결제 시 한 번만 빠짐)
+    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 500_000);
+    // 장부도 totalSpent 기준: 5_000_000 + 0 - 500_000 = 4_500_000
+    expect(result.snapshot?.available_at_end).toBe(4_500_000);
+    // snapshot 분해 필드는 여전히 flex/excluded 분리 기록
+    expect(result.snapshot?.flexible_spent).toBe(300_000);
+    expect(result.snapshot?.excluded_spent).toBe(50_000);
   });
 
   it('snapshot 재실행(saved=false) 시 자산 변동 호출 없음 — idempotency', async () => {
@@ -349,9 +377,13 @@ describe('getRunwayProjection', () => {
   it('고정비/할부 있어도 target 정확히 일치', async () => {
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(500_000);
-    vi.mocked(readActiveInstallments).mockResolvedValue([
-      { monthlyAmount: 100_000, remainingCount: 3, isNew: false },
-    ]);
+    vi.mocked(readInstallmentLockByMonth).mockResolvedValue(
+      new Map([
+        ['2026-04', 100_000],
+        ['2026-05', 100_000],
+        ['2026-06', 100_000],
+      ]),
+    );
     vi.mocked(readTargetMonth).mockResolvedValue('2026-08');
 
     const result = await getRunwayProjection(1, DEFAULT_NOW);

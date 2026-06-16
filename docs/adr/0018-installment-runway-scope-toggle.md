@@ -1,6 +1,6 @@
 # 0018. 할부 자산 차감 범위 토글 — `distribute_to_runway` 분기
 
-- Status: Accepted
+- Status: Superseded by ADR 0051
 - Date: 2026-05-20
 - Related: #411
 - Tags: data, budget
