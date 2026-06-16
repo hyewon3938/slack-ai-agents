@@ -1577,11 +1577,11 @@ P2(주간 off-day 검증 엔진)에 ADR-0032 통계 풀스택을 얹는다. 핵�
 | tier | 게이트 | metric_value | 노출 |
 |------|--------|-------------|------|
 | **verified** "검증됨" | `status='confirmed'` (e≥20) | posterior_p | 인과 단언 가능(단 연관, 인과 아님) |
-| **emerging** "검증중" | active + `effect≥1.3` + 발현일≥15 | 발현일 pass율 | hedged + e-value 진행바. naive accumulating **대체** |
+| **emerging** "검증중" | active + `effect≥1.3` + 발현일≥15 | 발현일 pass율 | hedged(효과·표본·확신 노출). naive accumulating **대체** |
 | **recent** "오늘 발현" | 최근 7일 발현 | match_count | 현황만 |
 
 - **emerging이 핵심 수정**: 옛 accumulating은 발현일 pass율 55%↑만 봐서 off-day 대조를 안 했다(헌장 ② "기분탓" 노출 위험). emerging은 off-day 효과(`effect = 발현/비발현 rate ratio`)로 게이트 → 헌장 ② 정합 회복.
-- **e_value 진행바**: 주간 카드(🌱) 보조 줄이 `확정까지 ███░░░░ 4.2/20 (지난주 3.1 → 오르는 중)`로 누적도 노출 → 반복 노출이 "아직 멀었다"를 상기시켜 peeking 심리 방어. (#501에서 라벨 `검증중 e X/20` → `확정까지 X/20`로 자연어화 — 바 기준 `e/20` 불변.)
+- **카드 표현(#537 가독성 개선)**: 주간 카드(🌱/✅) 항목은 핵심 2줄 — 첫 줄 `패턴 → *신호*`(검증됨은 ` · 확정`), 둘째 줄 `평소보다 N배 (발현/표본일) · 확신 X%` + 교란 caveat(inline). e-value 진행바·우연확률(q)·추정범위(CI)·주간추세는 카드 표시에서 제외(DB·`link_weekly_stats`엔 보존). emerging "검증중" 라벨 + 효과크기 노출이 "아직 확정 전"을 전달해 peeking 방어 의도는 유지. (이력: 진행바 `확정까지 X/20`는 ADR-0035 도입 → #537에서 가독성 위해 카드에서 제외, 확정 게이트 `e/20`은 불변.)
 - 소비: daily-insight(#insight)가 view tier로 분기(`emerging` 라벨 동기화는 배포 직후 SKILL — repo 밖). 주간 카드는 ✅검증됨/🌱검증중/✗기각.
 
 #### 통계 스택 꼬리
@@ -1594,7 +1594,7 @@ P2(주간 off-day 검증 엔진)에 ADR-0032 통계 풀스택을 얹는다. 핵�
 #### 데이터 모델
 
 - `pattern_links`: `e_value` 채움(077 선언만 → P3 populate). `status='confirmed'` 실제 승격(`statusForVerdict` e≥20).
-- `link_weekly_stats` 신규(080): 링크당 주 1행 스냅샷(e_value·2×2·posterior·p/q/effect, `UNIQUE(link_id, week_start)` 멱등) — 마틴게일 trail·emerging 진행바·주간대비.
+- `link_weekly_stats` 신규(080): 링크당 주 1행 스냅샷(e_value·2×2·posterior·p/q/effect, `UNIQUE(link_id, week_start)` 멱등) — 마틴게일 trail·emerging 추세 데이터·주간대비(카드 표시엔 미사용 #537, 감사·데이터용 보존).
 - view: `saju_influence_summary` 3-tier 재정의 + `e_value` 컬럼 추가(컬럼 계약 앞 11개 보존). `pattern_summary`·시드 영향력 합산에 `confirmed` 포함(verified 시드가 영향력 top에서 사라지는 P2 트랩 방지).
 - 임계 외부화(`insight-thresholds.ts`): `evalueAlpha`·`evalueThreshold`·`emergingMinEffect/Active`·`discoverQ`·`blockLen`·`blockPermIters`. emerging 바는 ADR-0035 튜닝 노브(첫 몇 달 calibration). view의 1.3/15 하드코딩은 TS 상수와 동기화(변경 시 migration).
 
