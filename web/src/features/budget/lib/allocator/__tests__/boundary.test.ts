@@ -6,7 +6,7 @@ import type { MonthAllocatorInput } from '../../types-v2';
 const BASE: MonthAllocatorInput = {
   totalAvailable: 36000,
   fixedMonthly: 0,
-  installments: [],
+  installmentLockByMonth: new Map(),
   plannedExpenses: [],
   currentBillingMonth: '2026-04',
   targetMonth: '2026-05',
