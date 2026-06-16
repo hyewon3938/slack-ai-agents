@@ -1,16 +1,17 @@
 /**
- * 검증 Block Kit 카드 빌더 — #477 P2/P3 (주간 검증 리포트) + P5a 발굴 승인 카드(ADR-0039).
+ * 인사이트 Block Kit 카드 빌더 — P5a 발굴 승인 카드(ADR-0039) + 재기준선 공지(#523 P0, ADR-0048).
  *
- * - 주간 검증 리포트: 시드 영향력 top 5 + off-day 검증 현황(verified / emerging / reject)
  * - 발굴 승인 카드: 여집합 발굴 후보(pending 링크)를 맥락 풍부 카드로 → [추적 시작]/[패스].
  *   사람은 노출·큐레이션만 게이트, 믿음(진짜인지)은 끝까지 e-value 트랙(ADR-0039 §3).
+ * - 재기준선 공지: 측정 정밀화 후 전체 재검증 1회성 안내.
+ *
+ * 주간 검증 리포트 카드(buildVerificationBlocks 등)는 #542(ADR-0052)에서 발송 은퇴 —
+ * 사용자-facing 검증 현황은 routine(weekly-saju-review-v2) 통합 카드가 단독 발송한다.
+ * 검증 엔진(weekly-verification.ts)은 그대로 — 카드 생성만 사라짐.
  */
 
 import type { KnownBlock } from '@slack/types';
-import type { LinkVerification } from '../../shared/pattern-verification.js';
-import type { ConfoundData } from '../../shared/confound.js';
 import type { DiscoveryCandidate } from './hypothesis-discovery.js';
-import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 
 const KIND_LABEL: Record<'saju' | 'life_signal', string> = {
   saju: '[사주]',
@@ -49,9 +50,6 @@ const pct = (v: number): string => (Number.isFinite(v) ? `${Math.round(v * 100)}
 const mult = (v: number): string => (Number.isFinite(v) ? `${v.toFixed(1)}배` : '—');
 
 const formatPValue = (v: number): string => (Number.isFinite(v) ? v.toFixed(3) : '—');
-
-const formatPosterior = (v: number): string =>
-  Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—';
 
 /**
  * off-day 대조 자연어: 발현=분수(작은 표본을 정직하게 드러냄), 평소=비율(큰 baseline 표본 왜곡 없이).
@@ -113,144 +111,7 @@ export const buildDiscoveryCandidateCard = (c: DiscoveryCardInput): KnownBlock[]
   ];
 };
 
-// ─── 시드 영향력 섹션 (주간 리포트 상단) ─────────────────
-
-/** 시드 영향력 — credible interval lower bound 정렬. */
-export interface SeedInfluenceRow {
-  patternId: number;
-  patternKind: 'saju' | 'life_signal';
-  signalName: string;
-  description: string | null;
-  /** 카드용 자연어 라벨 — 변수명(signalName=시드명) 대체 (#504 P2, ADR-0045). */
-  seedLabel: string;
-  totalHits: number;
-  totalMisses: number;
-  posteriorP: number;
-  ciLower: number;
-  ciUpper: number;
-}
-
-const POSTERIOR_LEGEND =
-  '_본인 패턴일 가능성: 50%=우연, 80%↑=강함 · 괄호는 추정 범위(좁을수록 정확)_';
-
-export const buildSeedInfluenceSection = (rows: SeedInfluenceRow[]): KnownBlock[] => {
-  if (rows.length === 0) return [];
-  const lines = rows.map((r) => {
-    const kindLabel = KIND_LABEL[r.patternKind];
-    const verifyCount = r.totalHits + r.totalMisses;
-    return (
-      `• ${kindLabel} *${r.seedLabel}* (검증 ${verifyCount}개)` +
-      ` — 본인 패턴일 가능성 ${formatPosterior(r.posteriorP)} ` +
-      `(추정 ${formatPosterior(r.ciLower)}–${formatPosterior(r.ciUpper)})`
-    );
-  });
-  return [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*이번 주 영향력 시드 top ${rows.length}*\n${lines.join('\n')}`,
-      },
-    },
-    {
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: POSTERIOR_LEGEND }],
-    },
-    { type: 'divider' },
-  ];
-};
-
-// ─── off-day 검증 현황 섹션 (P3 3-tier: 검증됨 / 검증중 / 기각) ──
-
-const V = INSIGHT_THRESHOLDS.patternVerification;
-
-/** verified = e≥20 확정 승격(nextStatus='confirmed'). */
-export const isVerified = (l: LinkVerification): boolean => l.nextStatus === 'confirmed';
-
-/** emerging = active 유지 + off-day effect leaning + 최소 발현일(검증중). view 술어와 일치. */
-export const isEmerging = (l: LinkVerification): boolean =>
-  l.nextStatus === 'active' &&
-  Number.isFinite(l.effect) &&
-  l.effect >= V.emergingMinEffect &&
-  l.nActive >= V.emergingMinActive;
-
-/**
- * 검증중/검증됨 공통 둘째 줄(들여쓰기) — 핵심 3개만: 효과크기·표본·확신도.
- * 진행바·우연확률(q)·추정범위(CI)·주간추세는 가독성 위해 카드에서 제외(DB·주간 스냅샷엔 보존).
- */
-const statLine = (l: LinkVerification): string =>
-  `   평소보다 ${mult(l.effect)} (${l.a}/${l.nActive}일) · 확신 ${formatPosterior(l.posteriorP)}`;
-
-/** verified(검증됨) — 첫 줄 결론(확정) + 둘째 줄 핵심 통계 + 교란 caveat(있으면 inline). */
-const verifiedLine = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string =>
-  `✅ ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} → *${l.signalLabel}* · 확정\n` +
-  statLine(l) +
-  confoundCaveat(l, confoundByLink);
-
-/** emerging(검증중) — 첫 줄 패턴 + 둘째 줄 핵심 통계 + 교란 caveat(있으면 inline). */
-const emergingLine = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string =>
-  `🌱 ${KIND_LABEL[l.patternKind]} ${activationClause(l.seedLabel)} → *${l.signalLabel}*\n` +
-  statLine(l) +
-  confoundCaveat(l, confoundByLink);
-
-const rejectLine = (l: LinkVerification): string =>
-  `✗ ${KIND_LABEL[l.patternKind]} ${l.seedLabel} × ${l.signalLabel} — 차이 없음`;
-
-/**
- * 교란 caveat(inline, 압축) — 둘째 줄 끝에 " · ⚠️ …" 한 구절로 append.
- * P6 marginal 플래그(ADR-0041) → P7 다변량 조정(ADR-0042). verdict별:
- * - explained_away(어부지리)·attenuated(약화)만 ⚠️ 노출. survives(유지)는 긍정이라 압축 모드 생략.
- * - 조정 게이트 미달(adjusted 없고 suspected만)이면 공존 의심.
- * 시드 이름은 노출하지 않고 일반화("다른 기운/요인") — 카드 폭 방어 + 변수명 누출 0(#504 P2).
- */
-const confoundCaveat = (l: LinkVerification, confoundByLink: Map<number, ConfoundData>): string => {
-  const data = confoundByLink.get(l.linkId);
-  if (!data) return '';
-  const { suspected, adjusted } = data;
-  const noun = l.patternKind === 'saju' ? '기운' : '요인';
-  if (adjusted && adjusted.length > 0) {
-    switch (adjusted[0]?.verdict) {
-      case 'explained_away':
-        return ` · ⚠️ 겹친 ${noun} 빼면 효과 사라짐`;
-      case 'attenuated':
-        return ` · ⚠️ 겹친 ${noun} 빼면 약해짐`;
-      default:
-        return ''; // survives — 긍정, 압축 모드에선 생략
-    }
-  }
-  if (suspected.length === 0) return '';
-  return ` · ⚠️ 다른 ${noun}과 겹침`;
-};
-
-const TIER_LEGEND =
-  '_✅ 검증됨 = 우연 아님(연관이지 인과 아님) · ' +
-  '🌱 검증중 = 경향 있지만 확정 전 · ' +
-  '✗ 기각 = 차이 없음 · ' +
-  '⚠️ = 다른 패턴과 겹쳐 효과 불확실_';
-
-/**
- * 포화 시드 양방향 가드 알림(#508 ③, ADR-0046) — 주간 카드 말미 context 한 줄.
- * archive=늘 켜져 검정 불가라 정리, revive=탈포화로 부활. 라벨은 seedLabel() 통과(변수명 노출 0).
- * 둘 다 없으면 빈 배열(블록 미추가). buildVerificationBlocks 결과에 호출부가 append.
- */
-export const buildHygieneNotice = (
-  archivedLabels: readonly string[],
-  revivedLabels: readonly string[],
-): KnownBlock[] => {
-  const lines: string[] = [];
-  if (archivedLabels.length > 0) {
-    lines.push(
-      `🧹 포화 시드 ${archivedLabels.length}개 정리 (늘 켜져 검정 불가): ${archivedLabels.join(', ')}`,
-    );
-  }
-  if (revivedLabels.length > 0) {
-    lines.push(
-      `🌱 부활 ${revivedLabels.length}개 (이제 안 켜지는 날 생김): ${revivedLabels.join(', ')}`,
-    );
-  }
-  if (lines.length === 0) return [];
-  return [{ type: 'context', elements: [{ type: 'mrkdwn', text: lines.join('\n') }] }];
-};
+// ─── 재기준선 1회성 공지 (#523 P0, ADR-0048) ─────────────
 
 /** 재기준선 1회성 공지 카드 입력 — 건수만(구체 패턴 라벨 미노출, §9). */
 export interface RebaselineSummary {
@@ -286,88 +147,4 @@ export const buildRebaselineNotice = (s: RebaselineSummary): KnownBlock[] => {
     { type: 'section', text: { type: 'mrkdwn', text: `${demotionLine}\n${reassure}` } },
     { type: 'context', elements: [{ type: 'mrkdwn', text: foot }] },
   ];
-};
-
-/**
- * 주간 검증 리포트 — 시드 영향력 + 3-tier 검증 현황(검증됨/검증중/기각).
- * 항목은 핵심 2줄(첫 줄 결론 + 둘째 줄 효과크기·표본·확신도·교란). 진행바·q·CI·주간추세는
- * 가독성 위해 카드에서 제외(DB·주간 스냅샷엔 보존). discovery는 P5.
- */
-export const buildVerificationBlocks = (
-  weekStart: string,
-  links: LinkVerification[],
-  seedInfluence: SeedInfluenceRow[],
-  confoundByLink: Map<number, ConfoundData> = new Map(),
-): KnownBlock[] => {
-  const blocks: KnownBlock[] = [
-    {
-      type: 'header',
-      text: { type: 'plain_text', text: `패턴 검증 주간 리포트 (${weekStart} ~)` },
-    },
-  ];
-
-  blocks.push(...buildSeedInfluenceSection(seedInfluence));
-
-  if (links.length === 0) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: '_아직 검증할 가설이 없어 — 데이터가 더 쌓이면 자동으로 검증 시작해._',
-      },
-    });
-    return blocks;
-  }
-
-  const verified = links.filter(isVerified);
-  const emerging = links.filter(isEmerging);
-  const rejects = links.filter((l) => l.verdict === 'reject');
-  const others = links.length - verified.length - emerging.length - rejects.length;
-
-  const summaryParts = [
-    `🌱 검증중 ${emerging.length}`,
-    `✅ 검증됨 ${verified.length}`,
-    `✗ 기각 ${rejects.length}`,
-  ];
-  if (others > 0) summaryParts.push(`나머지 ${others} 데이터 모으는 중`);
-  blocks.push({
-    type: 'section',
-    text: {
-      type: 'mrkdwn',
-      text: `*이번 주 패턴 검증* · 가설 ${links.length}개\n${summaryParts.join(' · ')}`,
-    },
-  });
-
-  if (verified.length > 0) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: verified.map((l) => verifiedLine(l, confoundByLink)).join('\n\n'),
-      },
-    });
-  }
-
-  if (emerging.length > 0) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: emerging.map((l) => emergingLine(l, confoundByLink)).join('\n\n'),
-      },
-    });
-  }
-
-  if (rejects.length > 0) {
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: rejects.map(rejectLine).join('\n') },
-    });
-  }
-
-  if (verified.length > 0 || emerging.length > 0) {
-    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: TIER_LEGEND }] });
-  }
-
-  return blocks;
 };

@@ -46,7 +46,7 @@ import { pickMorningNudges, pickNightNudges } from '../shared/insights.js';
 import { weeklyReportTask } from './weekly-report.js';
 import { dailyPatternMatchingTask } from './daily-pattern-matching.js';
 import { diaryMetaExtractTask } from './diary-meta-extract.js';
-import { weeklyVerificationTask } from './weekly-verification.js';
+import { weeklyVerificationTask, weeklyReviewFallbackTask } from './weekly-verification.js';
 import { discoveryRecommendTask } from './discovery-recommend.js';
 import { periodFortuneTask } from './period-fortune.js';
 import { buildLifeContext } from '../shared/life-context.js';
@@ -603,6 +603,7 @@ const SLOT_TASKS: Record<string, CronTaskFn> = {
   dailySajuMatching: dailyPatternMatchingTask,
   diaryMetaExtract: diaryMetaExtractTask,
   weeklyVerification: weeklyVerificationTask,
+  weeklyReviewFallback: weeklyReviewFallbackTask, // 월 10:00 — routine 미발송 시 수동 실행 알림 (#542 ADR-0052)
   discoveryRecommend: discoveryRecommendTask, // 07:30 데일리 — 묶음 전부 패스 시 다음 best (#512 ADR-0047)
   periodFortune: periodFortuneTask, // 08:20 데일리 — 절기/입춘/대운 전환 시 주기 운세 카드 (#529 ADR-0050)
   // pillarLevelDistributionReview 은퇴(#508 ADR-0046) — 누적 시드 강도 밴드 위임으로 분포 리뷰 무의미.

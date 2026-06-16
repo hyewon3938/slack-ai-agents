@@ -10,13 +10,22 @@ import {
 const looksLikeIdentifier = (s: string): boolean => /[A-Za-z]|_/.test(s);
 
 describe('seedLabel — description tail-strip', () => {
-  it('→ 앞 활성조건만 취하고 십성 주석 (편재)은 보존', () => {
+  it('→ 앞 활성조건만 취하고 십성 주석 (편재) 보존 + "일운 천간" 접두 제거(#542)', () => {
     expect(
       seedLabel({
         name: 'S1_갑목_편재_천간',
         description: '일운 천간 갑목(편재) → 일정/지출 폭증 가능성',
       }),
-    ).toBe('일운 천간 갑목(편재)');
+    ).toBe('갑목(편재)');
+  });
+
+  it('"일운 지지" 접두도 제거(#542)', () => {
+    expect(
+      seedLabel({
+        name: 'N2_해수_식신_지지',
+        description: '일운 지지 해수(식신) → 요리/창작/대화',
+      }),
+    ).toBe('해수(식신)');
   });
 
   it('— (em dash) 앞 활성조건만 취함 (ganji 콤보·예측절 제거)', () => {
@@ -97,7 +106,7 @@ describe('seedLabel — override (jargon·오기 description 평어화)', () => 
   it('강도 밴드·합화십성 override 평어', () => {
     expect(
       seedLabel({ name: 'pool_강도_일간_약', description: '일간 실효 강도 약(신약 경향) — …' }),
-    ).toBe('일간 기운 약한 날(신약)');
+    ).toBe('신약한 날');
     expect(
       seedLabel({
         name: 'pool_합화십성_재성',
@@ -126,18 +135,18 @@ const sig = (over: Partial<SignalLabelInput> & { name: string }): SignalLabelInp
 });
 
 describe('signalLabel — sql seed 룰', () => {
-  it('above_avg → 측정 명사 + 평소보다 많음', () => {
+  it('above_avg → 측정 명사 + 많음 (#542: "평소보다" 제거)', () => {
     expect(
       signalLabel(sig({ name: 'sleep_night_minutes', domain: 'sleep', direction: 'above_avg' })),
-    ).toBe('밤잠 평소보다 많음');
+    ).toBe('밤잠 많음');
   });
 
-  it('below_avg → 평소보다 적음', () => {
+  it('below_avg → 적음', () => {
     expect(
       signalLabel(
         sig({ name: 'schedule_count_today', domain: 'schedule', direction: 'below_avg' }),
       ),
-    ).toBe('일정 수 평소보다 적음');
+    ).toBe('일정 수 적음');
   });
 
   it('율 신호는 높음/낮음 어휘', () => {
@@ -145,24 +154,24 @@ describe('signalLabel — sql seed 룰', () => {
       signalLabel(
         sig({ name: 'routine_completion_rate', domain: 'routine', direction: 'below_avg' }),
       ),
-    ).toBe('루틴 완료율 평소보다 낮음');
+    ).toBe('루틴 완료율 낮음');
     expect(
       signalLabel(
         sig({ name: 'schedule_completion_rate', domain: 'schedule', direction: 'above_avg' }),
       ),
-    ).toBe('일정 완료율 평소보다 높음');
+    ).toBe('일정 완료율 높음');
   });
 
   it('기상 시각은 늦음/이름 어휘', () => {
     expect(
       signalLabel(sig({ name: 'sleep_wake_hour', domain: 'sleep', direction: 'above_avg' })),
-    ).toBe('기상 시각 평소보다 늦음');
+    ).toBe('기상 시각 늦음');
   });
 
   it('한글접미 신호는 도메인 명사로 자연어화', () => {
     expect(
       signalLabel(sig({ name: 'expense_배달음식', domain: 'expense', direction: 'above_avg' })),
-    ).toBe('배달음식 지출 평소보다 많음');
+    ).toBe('배달음식 지출 많음');
   });
 
   it('above_abs threshold=1 → 있음', () => {
@@ -279,14 +288,14 @@ describe('signalLabel — 미매핑 fallback (불변식: raw 변수명 노출 0)
     const label = signalLabel(
       sig({ name: 'sleep_rem_ratio', domain: 'sleep', direction: 'above_avg' }),
     );
-    expect(label).toBe('수면 평소보다 많음');
+    expect(label).toBe('수면 많음');
     expect(looksLikeIdentifier(label)).toBe(false);
   });
 
   it('미매핑 한글접미 신호는 도메인 명사 + 접미 보존', () => {
     expect(
       signalLabel(sig({ name: 'expense_술', domain: 'expense', direction: 'above_avg' })),
-    ).toBe('지출 술 평소보다 많음');
+    ).toBe('지출 술 많음');
   });
 
   it('도메인까지 미상이면 지표 fallback (그래도 변수명 미노출)', () => {
@@ -307,6 +316,6 @@ describe('signalLabel — 미매핑 fallback (불변식: raw 변수명 노출 0)
       }),
     );
     expect(looksLikeIdentifier(label)).toBe(false);
-    expect(label).toBe('지출 평소보다 많음');
+    expect(label).toBe('지출 많음');
   });
 });

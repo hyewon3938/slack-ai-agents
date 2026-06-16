@@ -434,7 +434,7 @@ LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack
 
 #### Block Kit 카드 (`src/agents/insight/hypothesis-cards.ts`)
 
-> **이후 교체됨 (#477)**: `buildCandidateCard`·`buildWeeklyReviewBlocks`는 #477에서 은퇴. 현재 카드 빌더는 `buildVerificationBlocks`·`buildSeedInfluenceSection`(주간 검증) + `buildDiscoveryCandidateCard`(발굴 승인, action_id `discovery_approve`/`discovery_dismiss`). 상세는 ### 26. 아래는 Phase 4 시점 기록.
+> **이후 교체됨 (#477 → #542)**: `buildCandidateCard`·`buildWeeklyReviewBlocks`는 #477에서 은퇴. #477 카드 빌더(`buildVerificationBlocks`·`buildSeedInfluenceSection`)도 **#542(ADR-0052)에서 발송 은퇴**(검증 현황은 routine 통합 카드로 이관, ### 40). 현재 `hypothesis-cards.ts`에 남은 빌더는 `buildDiscoveryCandidateCard`(발굴 승인, action_id `discovery_approve`/`discovery_dismiss`)와 `buildRebaselineNotice`(재기준선 공지)뿐. 아래는 Phase 4 시점 기록.
 
 - **`buildCandidateCard`**: discoverCandidates 결과를 등록/폐기 버튼 카드로 변환. action_id: `hypothesis_register` / `hypothesis_dismiss`. payload는 type-safe JSON 인코딩.
 - **`buildWeeklyReviewBlocks`**: active 가설 표 (전주 대비 rate_ratio 변화 ▲▼─ 10% 임계) + 신규 후보 묶음.
@@ -1326,7 +1326,7 @@ Phase 7 (Bayesian update)에서 active 매트릭의 `posterior_alpha/beta/p`가 
 
 **UI 흐름**
 
-> **이후 교체됨 (#477)**: 아래 `buildCandidateCard` 카드는 #477에서 `buildVerificationBlocks`(주간 검증 카드, 자연어 카피)로 교체. 현재 카드 형식은 ### 26 참조.
+> **이후 교체됨 (#477 → #542)**: 아래 `buildCandidateCard` 카드는 #477에서 `buildVerificationBlocks`로 교체됐고, 그 `buildVerificationBlocks`도 #542(ADR-0052)에서 발송 은퇴 — 검증 현황은 routine 통합 카드가 단독 발송(### 40). 아래는 과거 기록.
 
 가설 카드(`buildCandidateCard`)는 frequentist(p/q)와 Bayesian(사후/CI)를 한 줄에 병기:
 
@@ -2265,5 +2265,47 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 ~/.claude/scheduled-tasks/  (Claude 앱 routines, repo 외부)
 ├── monthly-signal-suggest/SKILL.md              # #477 P5b 매월 09:30 LLM 신호 제안 (signal_defs source='llm' pending, 옛 monthly-metric-suggest 재정의)
-└── daily-insight/SKILL.md                       # 일일 종합 인사이트 매일 08:00 (마스터 A A3, #475)
+├── daily-insight/SKILL.md                       # 일일 종합 인사이트 매일 08:00 (마스터 A A3, #475)
+└── weekly-saju-review-v2/SKILL.md               # #542 주간 인사이트 통합 카드 단독 발송 월 08:04 (회고+메트릭+패턴 학습, 봇 검증 카드 은퇴)
 ```
+
+### 40. 주간 인사이트 단일 카드 통합 (#542, ADR-0052)
+
+매주 월요일 #insight에 따로 오던 두 카드(봇 06:00 패턴 검증 리포트 + routine 08:04 주간 사주 리뷰)를 **routine 단독 통합 카드 한 장**으로 합쳤다. 만드는 주체는 분리 유지 — 검증 통계 계산은 봇(결정론 엔진), 회고+표시는 routine(LLM).
+
+**통합 카드 구조** (`weekly-saju-review-v2` routine 발송):
+
+1. 회고 prose 4\~6줄 (사주 관점 + 라이프 메트릭 뒷받침, diary 원문 금지)
+2. `📊 이번 주` — 수면·루틴·일정·태그 한 줄 메트릭
+3. `🔬 패턴 학습` — 검증중/검증됨/기각/모으는 중 카운트 + 검증중·검증됨 항목(효과크기 내림차순)
+   - 항목 1줄: `{시드라벨} → {신호라벨} · 평소보다 {effect}배 ({hit}/{발현일}일){ ⚠️}`
+
+**봇 검증 카드 발송 은퇴** (`weekly-verification.ts`):
+
+- 제거: `buildVerificationBlocks`·`buildSeedInfluenceSection`·`buildHygieneNotice` 발송 경로 + `loadSeedInfluence`. `hypothesis-cards.ts`에서 검증 카드 빌더 일체 삭제 — **발굴 후보 카드·재기준선 공지만 잔존**.
+- 유지: 검증 엔진 전부 — `verifyUserLinks`·status 전이·`persistLinkVerification`·`link_weekly_stats` 스냅샷·포화 가드·교란 플래그·발굴 추천·`saju_response_profile` 집계. 카드 생성만 사라지고 DB write는 그대로.
+- 포화 가드(archive/revive) 사용자 노출이 사라져 로그로 강등(통합 카드 노출은 후속).
+
+**출력 연속성** (침묵 금지) — 신규 슬롯 `weeklyReviewFallback` (월 10:00, 마이그 093):
+
+- routine이 발송하면 `saju_weekly_reviews`에 row가 남는다 → 10:00에 없으면(미발송) "클로드 앱 routines에서 수동 실행해줘" **알림만** 발송. 봇이 반쪽 카드를 대신 만들지 않음(ADR-0052 Alt B 기각).
+- **week_start 주의**: fallback은 `오늘(이번 주 월요일)`로 조회 — SKILL idempotency row 키와 일치. 봇 검증 엔진의 `previousMondayISO`(지난주 월요일)와 다름.
+
+**idempotency 발송 성공 기준 보강**: routine이 발송 *전* INSERT하던 것을 → SELECT 체크(있으면 종료) + **발송 성공 후 INSERT**로 변경. 미발송 주는 항상 수동 재실행 가능.
+
+**posterior(`확신 N%`) 노출 제거**: 발현일 적중률(Beta-Binomial 사후평균)을 "확신"으로 오독시키고 표본(`hit/발현일`)과 중복 → 카드에서 뺌. 시드 영향력 top 섹션도 통합 카드 미포함.
+
+**라벨 단축** (`insight-labels.ts` 코드 + routine 표기 규칙 일관):
+
+| 종류 | 전 | 후 |
+|------|----|----|
+| 일간 강도 | 일간 기운 약한 날(신약) | `신약한 날` / `신강한 날` / `일간 균형인 날` |
+| 천간·지지 | 일운 천간 임수(식신) | `임수(식신)` (접두 제거) |
+| 오행 강도 | 화 기운 강한 날 | (유지) |
+| 신호 방향 | 밤잠 평소보다 많음 | `밤잠 많음` (above/below "평소보다" 제거) |
+
+발굴 후보 카드(봇 06:00 별도 유지)에도 일괄 적용 — 전 카드 라벨 일관.
+
+**검증 현황 쿼리** = `pattern_links` 직접 집계(누적): 검증됨=`confirmed`, 검증중=`active`+effect≥1.3+발현일≥15(봇 `isEmerging`과 동일 게이트), 기각=`rejected`, 모으는 중=나머지 `active`.
+
+관련 마이그레이션: `093_weekly_review_fallback_slot.sql`.
