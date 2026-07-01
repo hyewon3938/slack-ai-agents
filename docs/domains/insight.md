@@ -1777,7 +1777,7 @@ LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 
 
 **P5a vs P5b 경계** (겹침 없음): 발굴(P5a) = *기존 신호*를 시드와 off-day로 연결(가설 발견) / LLM(P5b) = *새 신호*를 생성(측정 정의). 둘 다 같은 승인 게이트(pending→active) + 통계가 심판(헌장 ①). LLM은 생성만, 판정은 통계.
 
-**월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-work-as-claude-app-routines.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency(이번 달 `source='llm'` 존재 시 종료) + cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
+**월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-work-as-claude-app-routines.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency = 최초 액션에서 `signal_suggest_runs` 원자적 클레임(`INSERT ... ON CONFLICT (user_id, month_start) DO NOTHING RETURNING` → 빈 결과면 후보 생성·발송 전에 즉시 종료). 재실행·스케줄러 중복 fire 어떤 원인이든 하나만 승리 — 마이그 [094](../../db/migrations/094_signal_suggest_runs.sql), 선택 근거·weekly(062) 대비 최초-클레임 이유는 [ADR-0053](../adr/0053-signal-suggest-idempotency.md). cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
 
 ### 31. 매트릭 중심 패턴 검증 — Phase 6 (교란 플래그: 공동발현 시드 marginal 탐지, #493)
 
