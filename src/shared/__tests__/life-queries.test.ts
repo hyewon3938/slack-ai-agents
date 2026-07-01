@@ -27,6 +27,7 @@ import {
   createRecord,
   completeRecord,
   queryTodaySchedules,
+  countOverdueTasks,
   updateScheduleStatus,
   postponeSchedule,
 } from '../life-queries.js';
@@ -123,7 +124,9 @@ describe('queryActiveTemplates', () => {
     const result = await queryActiveTemplates(TEST_USER_ID);
     expect(result).toHaveLength(1);
     expect(result[0]?.name).toBe('운동');
-    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('routine_templates'), [TEST_USER_ID]);
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('routine_templates'), [
+      TEST_USER_ID,
+    ]);
   });
 });
 
@@ -198,7 +201,10 @@ describe('completeRecord', () => {
   it('UPDATE completed = true 실행', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await completeRecord(42, TEST_USER_ID);
-    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('completed = true'), [42, TEST_USER_ID]);
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('completed = true'), [
+      42,
+      TEST_USER_ID,
+    ]);
   });
 });
 
@@ -223,6 +229,28 @@ describe('queryTodaySchedules', () => {
     const result = await queryTodaySchedules('2026-03-08', TEST_USER_ID);
     expect(result).toHaveLength(1);
     expect(result[0]?.title).toBe('회의');
+  });
+});
+
+describe('countOverdueTasks', () => {
+  it('task 타입만 집계하는 정식 정의로 밀린 일정 수 반환 (회귀 가드)', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: '3' }] });
+
+    const count = await countOverdueTasks('2026-03-08', TEST_USER_ID);
+    expect(count).toBe(3);
+
+    // 이번 버그 원인: task 타입 필터 누락 → event 타입이 밀린 일정에 무한 편입.
+    // 이 필터가 SQL에서 사라지면 재발하므로 명시적으로 가드한다.
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("COALESCE(c.type, p.type, 'task') = 'task'");
+    expect(sql).toContain("s.status = 'todo'");
+    expect(sql).toContain('s.date < $1');
+    expect(params).toEqual(['2026-03-08', TEST_USER_ID]);
+  });
+
+  it('결과 행이 없으면 0', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await countOverdueTasks('2026-03-08', TEST_USER_ID)).toBe(0);
   });
 });
 

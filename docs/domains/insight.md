@@ -188,6 +188,8 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 | weeklyRegression | weekly | routine | 잔소리 | 지난주 ≥90% → 이번주 ≤60% |
 | spottyPattern | night | routine | 잔소리 | 7일 중 3\~4일 산발 빠짐 |
 
+> `overdueAlert`의 밀린 일정 수는 `src/shared/life-queries.ts`의 `countOverdueTasks`(task 타입만, event 제외)를 단일 소스로 계산 — #life 아침 잔소리·일정 맥락과 동일 정의. 상세는 [schedule.md](schedule.md) "밀린 일정" 참조.
+
 #### 동적 노출
 
 - 매일 morning(09:05) / night(23:55): priority ≥5인 패턴 최대 3개, 같은 도메인은 priority 최상위 1개만

@@ -235,6 +235,26 @@ export const queryBacklogSchedules = async (userId: number): Promise<ScheduleRow
     )
   ).rows;
 
+/**
+ * 밀린 일정(task 타입) 건수.
+ * 정식 정의: status='todo' + 과거 날짜(date < today, NULL 제외) + task 타입만.
+ * event 타입(약속·여행·정보 등, 완료 대상 아님)은 제외 — 무한 누적 방지.
+ * category_type은 child 우선(c.type), 없으면 parent(p.type), 둘 다 없으면 'task'.
+ * 아침 잔소리(detectOverdue)와 일정 맥락(queryScheduleContext) 공유 단일 소스.
+ */
+export const countOverdueTasks = async (today: string, userId: number): Promise<number> => {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM schedules s
+       LEFT JOIN categories c ON c.id = s.category_id
+       LEFT JOIN categories p ON p.id = c.parent_id
+      WHERE s.status = 'todo' AND s.date < $1 AND s.date IS NOT NULL AND s.user_id = $2
+        AND COALESCE(c.type, p.type, 'task') = 'task'`,
+    [today, userId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+};
+
 /** 일정을 특정 날짜로 이동 */
 export const moveScheduleToDate = async (
   id: number,
