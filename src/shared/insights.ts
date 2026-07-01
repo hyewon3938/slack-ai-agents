@@ -5,6 +5,7 @@
  */
 
 import { query } from './db.js';
+import { countOverdueTasks } from './life-queries.js';
 import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
 
 // ─── 타입 ───────────────────────────────────────────────
@@ -274,21 +275,10 @@ export const detectWeekComparison = async (
 
 // ─── 감지: 밀린 일정 ────────────────────────────────────
 
-interface OverdueRow {
-  overdue_count: number;
-}
-
 export const detectOverdue = async (today: string, userId: number): Promise<Insight | null> => {
   const { minCount } = INSIGHT_THRESHOLDS.overdueAlert;
   try {
-    const result = await query<OverdueRow>(
-      `SELECT COUNT(*)::int AS overdue_count
-       FROM schedules
-       WHERE status = 'todo' AND date < $1 AND date IS NOT NULL AND user_id = $2`,
-      [today, userId],
-    );
-
-    const count = result.rows[0]?.overdue_count ?? 0;
+    const count = await countOverdueTasks(today, userId);
     if (count < minCount) return null;
 
     return {

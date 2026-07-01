@@ -65,7 +65,7 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
     // slotGap: 시간대별 달성률
     'time_slot.*GROUP BY.*time_slot.*HAVING': [],
     // overdue: 밀린 일정
-    "status = 'todo'.*date < ": [{ overdue_count: 0 }],
+    "status = 'todo'.*date < ": [{ count: '0' }],
     // categorySkew: 카테고리 편향
     'window_schedules.*top_category': [],
     // drift: 수면 드리프트
@@ -331,7 +331,7 @@ describe('detectWeekComparison', () => {
 describe('detectOverdue', () => {
   it('밀린 일정 3건 이상이면 감지', async () => {
     setupQueryMock({
-      "status = 'todo'.*date < ": [{ overdue_count: 5 }],
+      "status = 'todo'.*date < ": [{ count: '5' }],
     });
 
     const result = defined(await detectOverdue('2026-03-15', 1));
@@ -343,7 +343,7 @@ describe('detectOverdue', () => {
 
   it('밀린 일정 2건이면 null', async () => {
     setupQueryMock({
-      "status = 'todo'.*date < ": [{ overdue_count: 2 }],
+      "status = 'todo'.*date < ": [{ count: '2' }],
     });
 
     const result = await detectOverdue('2026-03-15', 1);
@@ -352,7 +352,7 @@ describe('detectOverdue', () => {
 
   it('밀린 일정 0건이면 null', async () => {
     setupQueryMock({
-      "status = 'todo'.*date < ": [{ overdue_count: 0 }],
+      "status = 'todo'.*date < ": [{ count: '0' }],
     });
 
     const result = await detectOverdue('2026-03-15', 1);
@@ -602,7 +602,7 @@ describe('pickMorningNudges (priority threshold + domain dedupe + max items)', (
       // streak: morning, priority = streak * 2 = 10 (routine)
       'grp = 0': [{ name: '유산균 먹기', streak: '5' }],
       // overdue: morning, priority 7 (schedule)
-      "status = 'todo'.*date < ": [{ overdue_count: 4 }],
+      "status = 'todo'.*date < ": [{ count: '4' }],
     });
 
     const insights = await pickMorningNudges('2026-03-15', 1);
@@ -631,7 +631,7 @@ describe('pickMorningNudges (priority threshold + domain dedupe + max items)', (
   it('최대 3개만 반환 (도메인은 routine/sleep/schedule 3종)', async () => {
     setupQueryMock({
       'grp = 0': [{ name: '유산균 먹기', streak: '5' }], // routine, prio 10
-      "status = 'todo'.*date < ": [{ overdue_count: 5 }], // schedule, prio 7
+      "status = 'todo'.*date < ": [{ count: '5' }], // schedule, prio 7
     });
 
     const insights = await pickMorningNudges('2026-03-15', 1);

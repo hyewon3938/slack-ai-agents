@@ -150,6 +150,12 @@ features/schedule/
 - 별도 `use-backlog.ts` 훅으로 관리
 - 백로그에서 날짜 지정으로 이동 가능, 반대도 가능 (`handleMoveToBacklog`)
 
+### 밀린 일정 (overdue)
+- 정의: `status='todo'` + 과거 날짜(`date < today`, `date IS NULL` 제외) + **task 타입만**
+- event 타입(약속·여행·정보 등)은 완료 체크 대상이 아니라 `status='todo'`로 영구 잔존 → 날짜만 과거로 밀려 무한 카운트됨. 따라서 밀린 일정 집계에서 제외
+- `category_type`은 child 우선(`c.type`), 없으면 parent(`p.type`), 둘 다 없으면 `'task'` (`COALESCE(c.type, p.type, 'task') = 'task'`)
+- **단일 소스**: `src/shared/life-queries.ts`의 `countOverdueTasks(today, userId)` — 아침 크론 잔소리(insights `detectOverdue`)와 일정 맥락(`queryScheduleContext`)이 공유. 정의가 두 곳에 갈라져 event 타입이 오집계되던 문제를 헬퍼 단일화로 해소
+
 ## 관련 Slack 에이전트
 
 - **채널**: #life

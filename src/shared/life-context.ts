@@ -5,6 +5,7 @@
  */
 
 import { query } from './db.js';
+import { countOverdueTasks } from './life-queries.js';
 import { getTodayISO, getYesterdayISO } from './kst.js';
 
 // ─── 타입 ───────────────────────────────────────────────
@@ -276,17 +277,8 @@ const queryScheduleContext = async ({ today, userId }: DateParams): Promise<stri
     parts.push(`내일 ${tomorrowCount}건`);
   }
 
-  // 밀린 일정 (어제 이전 + todo 상태 + task 타입만)
-  const overdueResult = await query<ScheduleCountRow>(
-    `SELECT COUNT(*)::text as count
-     FROM schedules s
-     LEFT JOIN categories c ON c.id = s.category_id
-     LEFT JOIN categories p ON p.id = c.parent_id
-     WHERE s.status = 'todo' AND s.date < $2 AND s.date IS NOT NULL AND s.user_id = $1
-       AND COALESCE(c.type, p.type, 'task') = 'task'`,
-    [userId, today],
-  );
-  const overdueCount = Number(overdueResult.rows[0]?.count ?? 0);
+  // 밀린 일정 (task 타입만) — 공유 헬퍼 countOverdueTasks로 단일화
+  const overdueCount = await countOverdueTasks(today, userId);
   if (overdueCount > 0) {
     parts.push(`밀린 일정 ${overdueCount}건`);
   }
