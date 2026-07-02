@@ -6,6 +6,7 @@ vi.mock('@/lib/db', () => ({
 
 import { query } from '@/lib/db';
 import {
+  readExcludedSpent,
   readFlexibleSpent,
   readPlannedOverflow,
   readTodayFlexSpent,
@@ -286,5 +287,32 @@ describe('readTotalCycleSpent (#539)', () => {
   it('행 없음 → 0', async () => {
     vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
     expect(await readTotalCycleSpent(1, '2026-04')).toBe(0);
+  });
+});
+
+describe('readExcludedSpent (#549)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('제외 지출은 일반(비할부) 지출만 — is_installment=false 필터 포함', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [{ total: '20000' }] } as Any);
+
+    const result = await readExcludedSpent(1, '2026-04');
+
+    expect(result).toBe(20000);
+    const sql = vi.mocked(query).mock.calls[0]![0] as string;
+    const params = vi.mocked(query).mock.calls[0]![1] as unknown[];
+    // 할부는 묶인 돈으로 따로 집계되므로 제외 지출에서 빠져야 함
+    expect(sql).toMatch(/is_installment\s*=\s*false/i);
+    expect(sql).toMatch(/exclude_from_budget\s*=\s*true/i);
+    expect(sql).toMatch(/billing_month\s*=\s*\$2/i);
+    expect(sql).toMatch(/type.*expense/i);
+    expect(params).toEqual([1, '2026-04']);
+  });
+
+  it('행 없음 → 0', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
+    expect(await readExcludedSpent(1, '2026-04')).toBe(0);
   });
 });

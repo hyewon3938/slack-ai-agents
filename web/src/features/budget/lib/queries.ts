@@ -294,22 +294,24 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
     count: Number(r.count),
   }));
 
-  // 자유 지출 합계 (exclude_from_budget=false인 것만)
+  // 자유 지출 합계 (exclude_from_budget=false인 비할부만).
+  // 할부는 묶인 돈이라 자유지출·일평균(daily_avg)에서 분리 (#539/ADR 0051, #549).
   const variableResult = await queryOne<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND billing_month = $2
        AND exclude_from_budget = false
+       AND is_installment = false
        AND COALESCE(type, 'expense') = 'expense'`,
     [userId, yearMonth],
   );
   const variableTotal = Number(variableResult?.total ?? 0);
 
-  // 할부 합계 (예산 포함인 것 중 is_installment=true)
+  // 할부 합계 (is_installment=true인 것 전부 — 락 계산 readInstallmentLockByMonth와 동일 집합).
+  // exclude 필터 없음: 할부는 예외 없이 묶인 돈이라 표시가 실제 락과 어긋나면 안 됨 (#549).
   const installmentResult = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
      WHERE user_id = $1 AND billing_month = $2
        AND is_installment = true
-       AND exclude_from_budget = false
        AND COALESCE(type, 'expense') = 'expense'`,
     [userId, yearMonth],
   );
