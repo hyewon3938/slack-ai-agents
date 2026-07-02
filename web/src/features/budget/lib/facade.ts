@@ -42,6 +42,7 @@ export interface TodayAllocationResult extends DayAllocatorResult {
 }
 
 export interface RunwayProjectionResponse {
+  // 하위호환: actual_* / projections 는 (target ? 계획 : 페이스) — 기존 의미 불변.
   actual_runway_months: number;
   actual_runway_date: string;
   free_per_month: number | null;
@@ -50,6 +51,12 @@ export interface RunwayProjectionResponse {
   avg_variable_monthly: number;
   target_date: string | null;
   projections: MonthProjection[];
+  // 신규: 페이스 전망은 target 유무와 무관하게 항상 계산 (최근 실지출 기반).
+  pace_runway_months: number;
+  pace_runway_date: string;
+  // 신규: 계획 전망은 target 있을 때만 (allocator 배분 기준). 없으면 null.
+  plan_projections: MonthProjection[] | null;
+  pace_projections: MonthProjection[];
 }
 
 export interface BudgetPreviewResponse {
@@ -157,47 +164,54 @@ export async function getRunwayProjection(
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
 
-  const [monthly, avgVariableMonthly, fixedMonthly, targetDate] = await Promise.all([
-    getMonthlyAllocation(userId, now),
-    readAvgVariableMonthly(userId, 3),
-    readFixedCostsMonthlyTotal(userId),
-    readTargetMonth(userId),
-  ]);
+  // 페이스 전망용 창: [현재 결제월, +120] — 시뮬레이션 maxMonths(120)를 넉넉히 덮음.
+  // target 유무와 무관하게 항상 조회 (페이스 전망은 target 너머까지 이어짐).
+  const paceWindowEnd = addBillingMonths(cycle.yearMonth, 120);
+  const [monthly, avgVariableMonthly, fixedMonthly, targetDate, pacePlanned, paceInstallmentLock] =
+    await Promise.all([
+      getMonthlyAllocation(userId, now),
+      readAvgVariableMonthly(userId, 3, cycle.yearMonth),
+      readFixedCostsMonthlyTotal(userId),
+      readTargetMonth(userId),
+      readPlannedExpenses(userId, cycle.yearMonth, paceWindowEnd),
+      readInstallmentLockByMonth(userId, cycle.yearMonth, paceWindowEnd),
+    ]);
 
   const totalAvailable = await computeTotalAvailable(userId, todayStr);
   const freePerMonth = monthly.freePerMonth;
 
-  let projResult;
-  if (targetDate && monthly.monthlyBudgets.length > 0) {
-    // target 있음 → allocator 결과 재사용 (정합성 보장)
-    projResult = projectFromAllocator(totalAvailable, monthly.monthlyBudgets, cycle.yearMonth);
-  } else {
-    // target 없음 → 평균 지출 기반 시뮬레이션. 할부 burn은 billing_month별 락 맵으로 조회
-    // (창 상한 없음 — 시뮬레이션 maxMonths(120)를 넉넉히 덮음).
-    const projectionWindowEnd = addBillingMonths(cycle.yearMonth, 120);
-    const [planned, installmentLockByMonth] = await Promise.all([
-      readPlannedExpenses(userId, cycle.yearMonth, cycle.yearMonth),
-      readInstallmentLockByMonth(userId, cycle.yearMonth, projectionWindowEnd),
-    ]);
-    projResult = projectRunway({
-      billingMonth: cycle.yearMonth,
-      totalAvailable,
-      fixedMonthly,
-      installmentLockByMonth,
-      plannedExpenses: planned,
-      freePerMonthEstimate: avgVariableMonthly,
-    });
-  }
+  // 페이스 전망 (항상): 최근 실지출(avgVariableMonthly)을 자유 지출 추정치로 소진 시뮬레이션.
+  const paceResult = projectRunway({
+    billingMonth: cycle.yearMonth,
+    totalAvailable,
+    fixedMonthly,
+    installmentLockByMonth: paceInstallmentLock,
+    plannedExpenses: pacePlanned,
+    freePerMonthEstimate: avgVariableMonthly,
+  });
+
+  // 계획 전망 (target 있을 때만): allocator 배분 결과 재사용 (정합성 보장 — target월에 잔액 0 수렴).
+  const planResult =
+    targetDate && monthly.monthlyBudgets.length > 0
+      ? projectFromAllocator(totalAvailable, monthly.monthlyBudgets, cycle.yearMonth)
+      : null;
+
+  // 하위호환: actual_* / projections = target 있으면 계획, 없으면 페이스 (기존 의미 유지).
+  const primary = planResult ?? paceResult;
 
   return {
-    actual_runway_months: projResult.actualRunwayMonths,
-    actual_runway_date: projResult.actualRunwayDate,
+    actual_runway_months: primary.actualRunwayMonths,
+    actual_runway_date: primary.actualRunwayDate,
     free_per_month: freePerMonth,
     effective_available: totalAvailable,
     fixed_monthly: fixedMonthly,
     avg_variable_monthly: avgVariableMonthly,
     target_date: targetDate,
-    projections: projResult.projections,
+    projections: primary.projections,
+    pace_runway_months: paceResult.actualRunwayMonths,
+    pace_runway_date: paceResult.actualRunwayDate,
+    plan_projections: planResult ? planResult.projections : null,
+    pace_projections: paceResult.projections,
   };
 }
 

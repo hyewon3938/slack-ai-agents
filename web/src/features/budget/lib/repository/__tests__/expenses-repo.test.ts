@@ -6,6 +6,7 @@ vi.mock('@/lib/db', () => ({
 
 import { query } from '@/lib/db';
 import {
+  readAvgVariableMonthly,
   readExcludedSpent,
   readFlexibleSpent,
   readPlannedOverflow,
@@ -314,5 +315,53 @@ describe('readExcludedSpent (#549)', () => {
   it('행 없음 → 0', async () => {
     vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
     expect(await readExcludedSpent(1, '2026-04')).toBe(0);
+  });
+});
+
+describe('readAvgVariableMonthly (#552)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('완결된 결제주기 범위 [current-N, current)를 파라미터로 전달', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [{ avg_monthly: '0' }] } as Any);
+
+    // current='2026-07', months=3 → windowStart='2026-04', upper bound(exclusive)='2026-07'
+    await readAvgVariableMonthly(1, 3, '2026-07');
+
+    const params = vi.mocked(query).mock.calls[0]![1] as unknown[];
+    expect(params).toEqual([1, '2026-04', '2026-07']);
+    const sql = vi.mocked(query).mock.calls[0]![0] as string;
+    // 진행 중 주기는 제외 (< current), 하한은 포함 (>= windowStart)
+    expect(sql).toMatch(/billing_month\s*>=\s*\$2/i);
+    expect(sql).toMatch(/billing_month\s*<\s*\$3/i);
+  });
+
+  it('할부·예정연결 제외 + billing_month 단위 집계 (이중 계상 방지)', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [{ avg_monthly: '0' }] } as Any);
+
+    await readAvgVariableMonthly(1, 3, '2026-07');
+
+    const sql = vi.mocked(query).mock.calls[0]![0] as string;
+    // 할부 회차는 예측 시 락 맵으로 따로 burn → 평균에서 제외
+    expect(sql).toMatch(/is_installment\s*=\s*false/i);
+    // 예정지출 연결분도 예측에서 planned로 따로 반영 → 제외
+    expect(sql).toMatch(/planned_expense_id\s+IS\s+NULL/i);
+    // 달력월 DATE_TRUNC가 아니라 billing_month 기준 그룹핑
+    expect(sql).toMatch(/GROUP BY billing_month/i);
+    expect(sql).not.toMatch(/DATE_TRUNC/i);
+    // 기본 필터 유지
+    expect(sql).toMatch(/exclude_from_budget\s*=\s*false/i);
+    expect(sql).toMatch(/type.*expense/i);
+  });
+
+  it('AVG 결과를 반올림해 반환', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [{ avg_monthly: '123456.7' }] } as Any);
+    expect(await readAvgVariableMonthly(1, 3, '2026-07')).toBe(123457);
+  });
+
+  it('행 없음 → 0', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
+    expect(await readAvgVariableMonthly(1, 3, '2026-07')).toBe(0);
   });
 });

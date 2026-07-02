@@ -11,6 +11,13 @@ function barHeight(projection: MonthProjection, maxRemaining: number): number {
   return Math.max(2, Math.round((projection.remaining / maxRemaining) * 100));
 }
 
+/** target 대비 gap(개월) — 양수면 여유, 음수면 부족. 두 인자 모두 'YYYY-MM'. */
+function monthsGap(runwayDate: string, targetDate: string): number {
+  const [ty, tm] = targetDate.split('-').map(Number);
+  const [ry, rm] = runwayDate.split('-').map(Number);
+  return Math.round(((ry - ty) * 12 + (rm - tm)) * 10) / 10;
+}
+
 export function RunwayCard() {
   const [runway, setRunway] = useState<RunwayProjectionResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,45 +65,68 @@ export function RunwayCard() {
     }
   }
 
-  // 실제 런웨이 vs 목표 비교
   const targetDate = runway.target_date;
-  let targetGapMonths: number | null = null;
-  if (targetDate) {
-    const [ty, tm] = targetDate.split('-').map(Number);
-    const [ry, rm] = runway.actual_runway_date.split('-').map(Number);
-    targetGapMonths = Math.round(((ry - ty) * 12 + (rm - tm)) * 10) / 10;
-  }
+  // 목표 대비 비교는 페이스 전망 기준 — 계획 전망은 배분상 항상 목표월에 수렴(동어반복)이라 정보가 없음.
+  const paceGapMonths = targetDate ? monthsGap(runway.pace_runway_date, targetDate) : null;
 
   return (
     <div className="space-y-3">
-      {/* 1. 실제 런웨이 카드 */}
+      {/* 1. 전망 카드 — 계획(목표 있을 때) / 페이스(항상) 병기 */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="mb-1 flex items-center gap-1.5">
+        <div className="mb-2 flex items-center gap-1.5">
           <ArrowTrendingDownIcon size={15} />
-          <span className="text-xs font-semibold text-gray-500">실제 런웨이</span>
+          <span className="text-xs font-semibold text-gray-500">지출 전망</span>
         </div>
-        <div className="flex items-end gap-2 mb-1">
-          <span className="text-3xl font-bold text-gray-900">{runway.actual_runway_months}개월</span>
-          <span className="mb-0.5 text-sm text-gray-500">({runway.actual_runway_date}까지)</span>
-        </div>
+
+        {/* 계획 전망 (목표 있을 때만) */}
         {targetDate && (
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-gray-400">목표 {targetDate}</span>
-            {targetGapMonths !== null && (
-              <span className={`text-xs font-semibold ${targetGapMonths > 0 ? 'text-green-600' : targetGapMonths < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                {targetGapMonths > 0 ? `+${targetGapMonths}개월 여유` : targetGapMonths < 0 ? `${targetGapMonths}개월 부족` : '목표 달성'}
+          <div className="mb-3">
+            <div className="text-[11px] text-gray-400">계획 전망 · 목표 기간까지 배분 기준</div>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-bold text-gray-900">
+                {runway.actual_runway_months}개월
               </span>
-            )}
+              <span className="mb-0.5 text-xs text-gray-500">
+                ({runway.actual_runway_date}까지)
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 페이스 전망 (항상) */}
+        <div>
+          <div className="text-[11px] text-gray-400">페이스 전망 · 최근 실지출 기준</div>
+          <div className="flex items-end gap-2">
+            <span className={`font-bold text-gray-900 ${targetDate ? 'text-2xl' : 'text-3xl'}`}>
+              {runway.pace_runway_months}개월
+            </span>
+            <span className="mb-0.5 text-xs text-gray-500">({runway.pace_runway_date}까지)</span>
+          </div>
+        </div>
+
+        {/* 목표 대비 — 페이스 기준 */}
+        {targetDate && paceGapMonths !== null && (
+          <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-2">
+            <span className="text-xs text-gray-400">목표 {targetDate}</span>
+            <span
+              className={`text-xs font-semibold ${paceGapMonths > 0 ? 'text-green-600' : paceGapMonths < 0 ? 'text-red-500' : 'text-gray-500'}`}
+            >
+              {paceGapMonths > 0
+                ? `페이스 +${paceGapMonths}개월 여유`
+                : paceGapMonths < 0
+                  ? `페이스 ${paceGapMonths}개월 부족`
+                  : '페이스 목표 도달'}
+            </span>
           </div>
         )}
         {!targetDate && (
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-2 text-xs text-gray-400">
             설정 탭에서 목표 기간을 설정하면 월별 예산이 자동 산정됩니다.
           </p>
         )}
       </div>
 
-      {/* 2. 월별 시뮬레이션 */}
+      {/* 2. 월별 시뮬레이션 — 목표 있으면 계획 배분, 없으면 페이스 */}
       {projections.length > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <button
@@ -105,6 +135,9 @@ export function RunwayCard() {
           >
             월별 시뮬레이션 {showProjections ? '접기' : '펼치기'} ({projections.length}개월)
           </button>
+          <p className="mb-2 text-[10px] text-gray-400">
+            {targetDate ? '목표 기간 배분 기준' : '최근 실지출 페이스 기준'}
+          </p>
 
           {/* 미니 바 차트 */}
           {!showProjections && (
@@ -152,8 +185,12 @@ export function RunwayCard() {
                           </span>
                         )}
                       </td>
-                      <td className="px-2 py-1.5 text-right text-gray-500">{formatAmount(p.free_budget)}</td>
-                      <td className="px-2 py-1.5 text-right font-medium text-gray-700">{formatAmount(p.remaining)}</td>
+                      <td className="px-2 py-1.5 text-right text-gray-500">
+                        {formatAmount(p.free_budget)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-medium text-gray-700">
+                        {formatAmount(p.remaining)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -172,8 +209,10 @@ export function RunwayCard() {
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
           <div>
-            <div className="text-gray-400">실시간 가용자금</div>
-            <div className="font-medium text-gray-700">{formatAmount(runway.effective_available)}</div>
+            <div className="text-gray-400">자금 (수기 기준)</div>
+            <div className="font-medium text-gray-700">
+              {formatAmount(runway.effective_available)}
+            </div>
           </div>
           <div>
             <div className="text-gray-400">월 고정비</div>
@@ -186,8 +225,10 @@ export function RunwayCard() {
             </div>
           )}
           <div>
-            <div className="text-gray-400">3개월 평균 지출</div>
-            <div className="font-medium text-gray-700">{formatAmount(runway.avg_variable_monthly)}</div>
+            <div className="text-gray-400">최근 3주기 평균 변동지출</div>
+            <div className="font-medium text-gray-700">
+              {formatAmount(runway.avg_variable_monthly)}
+            </div>
           </div>
         </div>
       </div>
