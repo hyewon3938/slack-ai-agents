@@ -68,7 +68,9 @@ export type LinkLifecycleStatus =
   | 'rejected'
   | 'archived';
 
-export type Verdict = 'confirm' | 'reject' | 'insufficient' | 'inconclusive';
+// direction_mismatch(#555): 충분한 표본에서 명확한 역방향(effect ≤ directionMismatchMaxEffect).
+// reject(무연관)와 lifecycle은 같이 'rejected'로 종결하되 사유를 분리 — reject=무연관, direction_mismatch=역방향.
+export type Verdict = 'confirm' | 'reject' | 'insufficient' | 'inconclusive' | 'direction_mismatch';
 
 /** 신호 일자 시리즈: pass=true / fail=false / 측정불가=null(2×2에서 제외). */
 export type DaySeries = Map<string, boolean | null>;
@@ -453,10 +455,14 @@ export const verifyContingency = (cont: Contingency): ContingencyVerification =>
 
 /**
  * verdict 분류 (provisional). confirm은 P3 e-value 전까지 승격 안 함(statusForVerdict 참조).
- *   confirm:      nActive≥MIN & q≤CONFIRM_Q & effect≥MIN_RATE_RATIO
- *   reject:       nActive≥MIN & effect∈[REJECT_LOW, REJECT_HIGH] (연관 없음)
- *   insufficient: nActive<MIN 또는 effect 산출 불가(off일 0)
- *   inconclusive: 그 외(데이터는 충분하나 판정 보류)
+ *   confirm:            nActive≥MIN & q≤CONFIRM_Q & effect≥MIN_RATE_RATIO
+ *   direction_mismatch: nActive≥MIN & effect≤DIRECTION_MISMATCH_MAX (명확한 역방향 — #555)
+ *   reject:             nActive≥MIN & effect∈[REJECT_LOW, REJECT_HIGH] (연관 없음)
+ *   insufficient:       nActive<MIN 또는 effect 산출 불가(off일 0)
+ *   inconclusive:       그 외(데이터는 충분하나 판정 보류)
+ *
+ * direction_mismatch는 reject 밴드보다 먼저 판정한다(#555). 게이트(≤0.77)와 reject 밴드(0.95~1.05)는
+ * 겹치지 않지만, 역방향은 "무연관"이 아니라 "반대 방향 신호"이므로 사유를 분리해 종결한다.
  */
 export const classifyVerdict = (
   v: Pick<ContingencyVerification, 'nActive' | 'effect'>,
@@ -464,13 +470,15 @@ export const classifyVerdict = (
 ): Verdict => {
   if (v.nActive < V.minActiveDays || !Number.isFinite(v.effect)) return 'insufficient';
   if (Number.isFinite(q) && q <= V.confirmQ && v.effect >= V.minRateRatio) return 'confirm';
+  if (v.effect <= V.directionMismatchMaxEffect) return 'direction_mismatch';
   if (v.effect >= V.rejectRatioLow && v.effect <= V.rejectRatioHigh) return 'reject';
   return 'inconclusive';
 };
 
 /**
  * P3 status 전이 정책 (ADR-0034 e-value 게이트). verified tier = status='confirmed'.
- *   - reject(반증, 충분한 데이터) → 'rejected' (정당한 제거).
+ *   - reject·direction_mismatch(충분한 데이터의 종결) → 'rejected' (정당한 제거).
+ *     둘 다 rejected lifecycle이지만 사유는 test_detail.verdict로 구분(별도 status enum·DB CHECK 불변, #555).
  *   - confirm & e_value ≥ 1/α(=20) → 'confirmed' (verified tier 승격). optional stopping 안전.
  *   - 그 외(confirm이나 e<20, inconclusive, insufficient) → 'active' 유지(emerging은 view가 분류).
  *   - confirmed는 sticky — verifyUserLinks가 active만 재검증하므로 한번 승격되면 동결(금딱지).
@@ -482,9 +490,103 @@ export const statusForVerdict = (
   eValue: number,
 ): LinkLifecycleStatus => {
   if (current !== 'active') return current;
-  if (verdict === 'reject') return 'rejected';
+  if (verdict === 'reject' || verdict === 'direction_mismatch') return 'rejected';
   if (verdict === 'confirm' && eValue >= V.evalueThreshold) return 'confirmed';
   return 'active';
+};
+
+// ─── 거울 신호 보장 (#555) ────────────────────────────────
+// 역방향 종결(direction_mismatch)로 링크를 버릴 때 정보까지 버리지 않도록, 반대 방향 신호 "정의"를
+// 보장한다. 신호 정의 생성은 측정 정의일 뿐 믿음이 아니다(ADR-0039 2층 분리) — 링크 생성·검증은
+// 발굴 엔진(P5a)의 기존 게이트가 담당하므로 여기서 pattern_links는 만들지 않는다. 다음 주 발굴 스캔이
+// (시드 × 거울신호) 쌍을 자연히 후보로 집어 올린다.
+
+/** above_avg ↔ below_avg 반전. 그 외 direction은 반전 대상 아님(null). */
+const mirrorDirection = (direction: SignalDirection | null): SignalDirection | null => {
+  if (direction === 'above_avg') return 'below_avg';
+  if (direction === 'below_avg') return 'above_avg';
+  return null;
+};
+
+export type MirrorSignalOutcome = 'created' | 'exists' | 'skipped_rejected' | 'ineligible';
+
+export interface MirrorSignalResult {
+  outcome: MirrorSignalOutcome;
+  /** 생성됐을 때만 non-null — 새 signal_defs.id. */
+  mirrorSignalId: number | null;
+}
+
+/**
+ * 종결된 링크의 신호에 대해 반대 방향(above_avg↔below_avg) 신호 정의를 보장한다 (#555).
+ *   - 대상: kind='sql' AND direction ∈ {above_avg, below_avg} 인 신호만.
+ *     (above_abs/below_abs는 절대 임계라 반전이 임계 의미와 일치하지 않고, tag/flag_present는 방향이 없다 → ineligible.)
+ *   - 거울 = 같은 (name, sql_body, threshold, domain, kind, source='seed')에 direction만 반전한 행.
+ *   - 거울이 status IN ('active','pending')으로 이미 있으면 no-op('exists').
+ *   - 기각 이력만 있으면(active/pending 없음) 생성 스킵('skipped_rejected', 로그) — 재기각을 되살리지 않는다.
+ *   - 없으면 status='active'로 INSERT('created'). pattern_links는 만들지 않는다(발굴 엔진 위임).
+ * INSERT 컬럼 구성은 signal_defs 기존 생성 경로(마이그 086 등)를 따른다.
+ * user_id 가드 — 교차 유저 신호 생성 차단.
+ */
+export const ensureMirrorSignalDef = async (
+  userId: number,
+  signalId: number,
+): Promise<MirrorSignalResult> => {
+  const res = await query<SignalDefRow>(
+    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain, description
+       FROM signal_defs
+      WHERE id = $1 AND user_id = $2`,
+    [signalId, userId],
+  );
+  const row = res.rows[0];
+  if (!row) return { outcome: 'ineligible', mirrorSignalId: null };
+
+  const mirror = mirrorDirection(row.direction);
+  if (row.kind !== 'sql' || row.source !== 'seed' || mirror === null || row.sql_body === null) {
+    return { outcome: 'ineligible', mirrorSignalId: null };
+  }
+
+  // 같은 측정 정의(name·sql·threshold·domain) + 반전 direction 행 조회. NULL threshold/domain은 IS NOT DISTINCT FROM으로 매칭.
+  const existing = await query<{ status: string }>(
+    `SELECT status FROM signal_defs
+      WHERE user_id = $1 AND kind = 'sql' AND source = 'seed' AND name = $2
+        AND sql_body = $3 AND direction = $4
+        AND threshold IS NOT DISTINCT FROM $5
+        AND domain IS NOT DISTINCT FROM $6`,
+    [userId, row.name, row.sql_body, mirror, row.threshold, row.domain],
+  );
+  if (existing.rows.some((r) => r.status === 'active' || r.status === 'pending')) {
+    return { outcome: 'exists', mirrorSignalId: null };
+  }
+  if (existing.rows.length > 0) {
+    // active/pending은 없고 rejected 이력만 존재 — 되살리지 않는다(재기각 방지).
+    console.warn(
+      `[MirrorSignal] user=${userId} signal=${signalId} 거울(${row.name} ${mirror}) 기각 이력만 존재 — 생성 스킵`,
+    );
+    return { outcome: 'skipped_rejected', mirrorSignalId: null };
+  }
+
+  const ins = await query<{ id: number }>(
+    `INSERT INTO signal_defs
+        (user_id, name, kind, sql_body, value_type, direction, threshold, domain, window_days, description, source, status)
+     VALUES ($1, $2, 'sql', $3, $4, $5, $6, $7, $8, $9, 'seed', 'active')
+     RETURNING id`,
+    [
+      userId,
+      row.name,
+      row.sql_body,
+      row.value_type,
+      mirror,
+      row.threshold,
+      row.domain,
+      row.window_days,
+      row.description ?? '',
+    ],
+  );
+  const mirrorSignalId = ins.rows[0]?.id ?? null;
+  console.warn(
+    `[MirrorSignal] user=${userId} signal=${signalId} 거울 신호 생성(${row.name} ${row.direction}→${mirror}) id=${mirrorSignalId}`,
+  );
+  return { outcome: 'created', mirrorSignalId };
 };
 
 // ─── FDR 가족 분리 (#477 P4a, ADR-0037) ──────────────────

@@ -1,4 +1,50 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ─── db mock — ensureMirrorSignalDef만 query를 사용(그 외 테스트는 순수 함수라 미접근) ──
+interface FakeSignalRow {
+  id: number;
+  name: string;
+  kind: 'sql' | 'tag';
+  source: 'seed' | 'llm';
+  sql_body: string | null;
+  value_type: 'binary' | 'continuous' | null;
+  direction: string | null;
+  threshold: string | null;
+  tag_name: string | null;
+  window_days: number | null;
+  domain: string | null;
+  description: string | null;
+}
+let signalRow: FakeSignalRow | null; // id로 조회되는 대상 신호
+let mirrorRows: Array<{ status: string }>; // 거울 존재 조회 결과
+let inserts: Array<{ sql: string; params: readonly unknown[] }>;
+let nextInsertId: number;
+
+const resetDb = (): void => {
+  signalRow = null;
+  mirrorRows = [];
+  inserts = [];
+  nextInsertId = 999;
+};
+resetDb();
+
+vi.mock('../db.js', () => ({
+  query: vi.fn(async (sql: string, params?: readonly unknown[]) => {
+    const s = sql.trim();
+    if (/^INSERT INTO signal_defs/i.test(s)) {
+      inserts.push({ sql: s, params: params ?? [] });
+      return { rows: [{ id: nextInsertId }] };
+    }
+    if (/FROM signal_defs/i.test(s) && /WHERE id = \$1 AND user_id = \$2/i.test(s)) {
+      return { rows: signalRow ? [signalRow] : [] }; // 대상 신호 로드
+    }
+    if (/FROM signal_defs/i.test(s) && /direction = \$4/i.test(s)) {
+      return { rows: mirrorRows }; // 거울 존재 조회
+    }
+    throw new Error(`[fixture] unexpected SQL: ${s.slice(0, 60)}`);
+  }),
+}));
+
 import {
   buildWindowDates,
   binarizeSqlSeries,
@@ -8,6 +54,7 @@ import {
   verifyContingency,
   classifyVerdict,
   statusForVerdict,
+  ensureMirrorSignalDef,
   familyOf,
   bhFdrByFamily,
   signalDataStart,
@@ -189,6 +236,23 @@ describe('classifyVerdict', () => {
   it('effect 충분하나 q 비유의 → inconclusive (confirm 아님)', () => {
     expect(classifyVerdict({ nActive: 40, effect: 2.0 }, 0.5)).toBe('inconclusive');
   });
+
+  // ── direction_mismatch (#555) ──
+  it('nActive ≥ 30 & effect ≤ 0.77(명확한 역방향) → direction_mismatch', () => {
+    expect(classifyVerdict({ nActive: 40, effect: 0.5 }, 0.5)).toBe('direction_mismatch');
+  });
+
+  it('effect 0.77 경계 → direction_mismatch (이하 포함)', () => {
+    expect(classifyVerdict({ nActive: 40, effect: 0.77 }, 0.5)).toBe('direction_mismatch');
+  });
+
+  it('effect 0.9(게이트 위·reject 밴드 밖) → inconclusive (역방향 아님)', () => {
+    expect(classifyVerdict({ nActive: 40, effect: 0.9 }, 0.5)).toBe('inconclusive');
+  });
+
+  it('nActive < 30 이면 역방향이어도 insufficient 우선', () => {
+    expect(classifyVerdict({ nActive: 20, effect: 0.3 }, 0.5)).toBe('insufficient');
+  });
 });
 
 // ─── buildDaySequence ────────────────────────────────────
@@ -225,6 +289,14 @@ describe('buildDaySequence', () => {
 describe('statusForVerdict', () => {
   it('active + reject → rejected (e 무관, 정당한 제거)', () => {
     expect(statusForVerdict('reject', 'active', 1)).toBe('rejected');
+  });
+
+  it('active + direction_mismatch → rejected (역방향 종결, #555)', () => {
+    expect(statusForVerdict('direction_mismatch', 'active', 1)).toBe('rejected');
+  });
+
+  it('confirmed는 direction_mismatch에도 sticky (엔진이 재검증 안 함)', () => {
+    expect(statusForVerdict('direction_mismatch', 'confirmed', 1)).toBe('confirmed');
   });
 
   it('active + confirm & e≥20 → confirmed (verified 승격)', () => {
@@ -590,5 +662,101 @@ describe('splitHalvesConsistent', () => {
 
   it('너무 짧으면(<minPerHalf*2) null', () => {
     expect(splitHalvesConsistent([o(true, true), o(false, false)])).toBeNull();
+  });
+});
+
+// ─── ensureMirrorSignalDef (#555) ────────────────────────
+
+describe('ensureMirrorSignalDef', () => {
+  const sqlSignal = (over: Partial<FakeSignalRow> = {}): FakeSignalRow => ({
+    id: 10,
+    name: 'sig_above',
+    kind: 'sql',
+    source: 'seed',
+    sql_body: 'SELECT 1',
+    value_type: 'continuous',
+    direction: 'above_avg',
+    threshold: null,
+    tag_name: null,
+    window_days: 28,
+    domain: 'sleep',
+    description: '설명',
+    ...over,
+  });
+
+  beforeEach(() => resetDb());
+
+  it('above_avg 신호 & 거울 없음 → below_avg 신호 생성', async () => {
+    signalRow = sqlSignal({ direction: 'above_avg' });
+    mirrorRows = [];
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('created');
+    expect(res.mirrorSignalId).toBe(999);
+    expect(inserts).toHaveLength(1);
+    // INSERT는 direction만 반전(below_avg), status='active', pattern_links 생성 없음.
+    expect(inserts[0]?.params).toContain('below_avg');
+    expect(inserts[0]?.sql).toMatch(/INSERT INTO signal_defs/);
+    expect(inserts[0]?.sql).not.toMatch(/pattern_links/);
+  });
+
+  it('below_avg 신호 → above_avg 방향으로 반전 생성', async () => {
+    signalRow = sqlSignal({ name: 'sig_below', direction: 'below_avg' });
+    mirrorRows = [];
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('created');
+    expect(inserts[0]?.params).toContain('above_avg');
+  });
+
+  it('거울이 active로 이미 존재 → no-op(exists)', async () => {
+    signalRow = sqlSignal();
+    mirrorRows = [{ status: 'active' }];
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('exists');
+    expect(res.mirrorSignalId).toBeNull();
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('거울이 pending으로 존재 → no-op(exists)', async () => {
+    signalRow = sqlSignal();
+    mirrorRows = [{ status: 'pending' }];
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('exists');
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('기각 이력만 존재(active/pending 없음) → 생성 스킵(skipped_rejected)', async () => {
+    signalRow = sqlSignal();
+    mirrorRows = [{ status: 'rejected' }];
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('skipped_rejected');
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('above_abs 신호 → 반전 대상 아님(ineligible)', async () => {
+    signalRow = sqlSignal({ direction: 'above_abs' });
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('ineligible');
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('tag 신호 → 방향 없음(ineligible)', async () => {
+    signalRow = sqlSignal({ kind: 'tag', direction: null, sql_body: null, tag_name: 'flow' });
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('ineligible');
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('llm 출신 신호 → 대상 아님(ineligible, seed만 거울 보장)', async () => {
+    signalRow = sqlSignal({ source: 'llm' });
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('ineligible');
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('신호 없음(교차 유저·삭제) → ineligible', async () => {
+    signalRow = null;
+    const res = await ensureMirrorSignalDef(1, 10);
+    expect(res.outcome).toBe('ineligible');
+    expect(inserts).toHaveLength(0);
   });
 });

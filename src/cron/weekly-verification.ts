@@ -24,6 +24,7 @@ import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.j
 import {
   verifyUserLinks,
   computeStrengthCutpoints,
+  ensureMirrorSignalDef,
   type LinkVerification,
   type StrengthCutpoint,
 } from '../shared/pattern-verification.js';
@@ -351,6 +352,16 @@ const processUser = async (
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Verification] 링크 persist 실패 link=${l.linkId}: ${msg}`);
     }
+    // 역방향 종결(#555) — 반대 방향 신호 정의 보장(발굴 엔진 위임). persist와 독립 격리:
+    // 거울 보장 실패가 다른 링크·검증을 막지 않게(신호 정의는 없어도 검증은 무탈). 링크는 만들지 않음.
+    if (l.verdict === 'direction_mismatch' && l.nextStatus === 'rejected') {
+      try {
+        await ensureMirrorSignalDef(userId, l.signalId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[MirrorSignal] user=${userId} link=${l.linkId} 거울 보장 실패: ${msg}`);
+      }
+    }
   }
 
   // 포화 시드 양방향 가드(#508 ③, ADR-0046) — 검정 불가 시드 자동 archive ⟷ 탈포화 부활.
@@ -365,8 +376,9 @@ const processUser = async (
 
   const verified = results.filter((l) => l.nextStatus === 'confirmed').length;
   const rejects = results.filter((l) => l.verdict === 'reject').length;
+  const dirMismatch = results.filter((l) => l.verdict === 'direction_mismatch').length; // 역방향 종결(#555)
   console.warn(
-    `[Verification] user=${userId} 링크 ${results.length} (persist ${persisted}) verified ${verified} reject ${rejects}`,
+    `[Verification] user=${userId} 링크 ${results.length} (persist ${persisted}) verified ${verified} reject ${rejects} 역방향 ${dirMismatch}`,
   );
   // 가족별 BH 집합 크기(m) 관측 — 발굴 승인 누적에 따른 가족 m-인플레이션 추적(#523 P0, §2-5).
   const familyTally = results.reduce<Map<string, number>>(
