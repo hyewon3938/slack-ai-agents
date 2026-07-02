@@ -23,6 +23,10 @@ import {
   verifyContingency,
   computeSignalSeries,
   computeSeedActivationSeries,
+  computeUserDataStarts,
+  signalDataStart,
+  seedDataStart,
+  maxDate,
   type SignalDef,
   type SignalDirection,
   type DaySeries,
@@ -102,14 +106,18 @@ export interface ConfoundCandidate {
 /**
  * S 발현일 대비 Z 공동발현 비율 + 공동발현일 수.
  * overlap = |{d: actS[d] ∧ actZ[d]}| / |{d: actS[d]}|. S 발현 0이면 {0, 0}.
+ * windowStart(#556): 데이터-존재 구간 시작 이전 날은 빈 과거라 집계 제외
+ * (검증 엔진 buildContingency와 동일 클립 — S·Z 둘 다 데이터를 가진 구간만).
  */
 export const computeOverlap = (
   actS: Map<string, boolean>,
   actZ: Map<string, boolean>,
+  windowStart: string | null = null,
 ): { overlap: number; nCofire: number } => {
   let sActive = 0;
   let inter = 0;
   for (const [date, active] of actS) {
+    if (windowStart !== null && date < windowStart) continue; // 데이터-존재 윈도우 밖(빈 과거)
     if (!active) continue;
     sActive++;
     if (actZ.get(date)) inter++;
@@ -122,6 +130,10 @@ export const computeOverlap = (
  * 후보 Z(≠ S)가 둘 다 만족하면 의심: (a) overlap≥minOverlap ∧ nCofire≥minCofireDays(노이즈 바닥),
  * (b) Z↔X 연관 effectZX≥minEffectZX (기존 2×2 재사용). overlap 내림차순 정렬 후 topN cap.
  * (a)만으론 신호와 무관한 겹침 시드까지 다 잡혀 노이즈 폭발 → (b) 필수(ADR-0041 §2).
+ *
+ * 데이터-존재 윈도우(#556, 검증 엔진 #504 ADR-0044와 동일 클립): overlap·nCofire(Z×S)와 Z×X 2×2는
+ * Z가 끼는 계산이라 windowStart = max(baseStart, seedStart_Z)로 클립(각 후보의 시드 데이터 시작일을
+ * baseStart에 합성). baseStart = max(seedStart_S, signalStart_X). seedStartById에 시작일 없으면 클립 없음.
  */
 export const flagConfoundersForLink = (
   seedId: number,
@@ -130,13 +142,16 @@ export const flagConfoundersForLink = (
   candidates: ConfoundCandidate[],
   today: string,
   t: ConfoundThresholds,
+  baseStart: string | null = null,
+  seedStartById: Map<number, string | null> = new Map(),
 ): ConfoundData => {
   const suspected: SuspectedConfounder[] = [];
   for (const z of candidates) {
     if (z.seedId === seedId) continue; // 자기 제외
-    const { overlap, nCofire } = computeOverlap(actS, z.act);
+    const zStart = maxDate(baseStart, seedStartById.get(z.seedId) ?? null);
+    const { overlap, nCofire } = computeOverlap(actS, z.act, zStart);
     if (overlap < t.minOverlap || nCofire < t.minCofireDays) continue;
-    const v = verifyContingency(buildContingency(z.act, sigX));
+    const v = verifyContingency(buildContingency(z.act, sigX, zStart));
     if (!Number.isFinite(v.effect) || v.effect < t.minEffectZX) continue;
     suspected.push({
       seedId: z.seedId,
@@ -156,14 +171,17 @@ export const flagConfoundersForLink = (
  * 게이트 통과 교란들의 값 조합으로 윈도우 일자를 층으로 나눠 각 층의 (시드 S × 신호 X) 2×2 산출.
  * confounders k개 → 최대 2^k 층(발현 조합별, 빈 조합은 생성 안 됨). actS 부분집합에 buildContingency
  * 호출 = P6와 같은 프리미티브 재사용(새 통계 코어 0).
+ * windowStart(#556): 빈 과거 일자는 층 배정 전에 제외(검증 엔진 buildContingency와 동일 클립).
  */
 export const buildStrata = (
   actS: Map<string, boolean>,
   sigX: DaySeries,
   confounders: ConfoundCandidate[],
+  windowStart: string | null = null,
 ): Contingency[] => {
   const byKey = new Map<string, Map<string, boolean>>();
   for (const [date, active] of actS) {
+    if (windowStart !== null && date < windowStart) continue; // 데이터-존재 윈도우 밖(빈 과거)
     const key = confounders.map((z) => (z.act.get(date) ? '1' : '0')).join('');
     let sub = byKey.get(key);
     if (!sub) {
@@ -172,7 +190,7 @@ export const buildStrata = (
     }
     sub.set(date, active);
   }
-  return [...byKey.values()].map((sub) => buildContingency(sub, sigX));
+  return [...byKey.values()].map((sub) => buildContingency(sub, sigX, windowStart));
 };
 
 /** 층 viability — 각 층 n_k ≥ minCell AND S발현·S비발현 양쪽 존재(MH 풀링이 서는 데이터). */
@@ -211,11 +229,13 @@ const selectStrata = (
   sigX: DaySeries,
   pairs: { g: SuspectedConfounder; z: ConfoundCandidate }[],
   t: ConfoundAdjustThresholds,
+  windowStart: string | null = null,
 ): StrataSelection | undefined => {
   const jointStrata = buildStrata(
     actS,
     sigX,
     pairs.map((p) => p.z),
+    windowStart,
   );
   if (allStrataViable(jointStrata, t.minStratumCell)) {
     return { strata: jointStrata, controlled: pairs.map((p) => p.g) };
@@ -226,19 +246,25 @@ const selectStrata = (
   for (const p of pairs) {
     if (p.g.overlap * p.g.effectZX > best.g.overlap * best.g.effectZX) best = p;
   }
-  const singleStrata = buildStrata(actS, sigX, [best.z]);
+  const singleStrata = buildStrata(actS, sigX, [best.z], windowStart);
   if (allStrataViable(singleStrata, t.minStratumCell)) {
     return { strata: singleStrata, controlled: [best.g] };
   }
   return undefined;
 };
 
-/** P7 조정 패스 입력 — flagConfoundersForLink 결과 + 후보 활성 시리즈 색인(시리즈 in-hand 공유). */
+/**
+ * P7 조정 패스 입력 — flagConfoundersForLink 결과 + 후보 활성 시리즈 색인(시리즈 in-hand 공유).
+ * 데이터-존재 윈도우(#556): baseStart = max(seedStart_S, signalStart_X). seedStartById로 게이트 통과 Z의
+ * 시드 시작일을 층화 windowStart 합성에 사용(둘 다 없으면 클립 없음 = 기존 동작).
+ */
 export interface AdjustInput {
   actS: Map<string, boolean>;
   sigX: DaySeries;
   suspected: SuspectedConfounder[];
   candById: Map<number, ConfoundCandidate>;
+  baseStart?: string | null;
+  seedStartById?: Map<number, string | null>;
 }
 
 /**
@@ -261,10 +287,16 @@ export const adjustConfounders = (
     .filter((p): p is { g: SuspectedConfounder; z: ConfoundCandidate } => p.z !== undefined);
   if (pairs.length === 0) return undefined;
 
-  // marginal(조정 전) rate ratio — 같은 2×2 프리미티브.
-  const marginal = verifyContingency(buildContingency(input.actS, input.sigX)).effect;
+  // 데이터-존재 윈도우(#556): 층화·marginal은 Z가 끼므로 baseStart에 통제 Z의 시드 시작일도 max 합성.
+  const baseStart = input.baseStart ?? null;
+  const seedStartById = input.seedStartById ?? new Map<number, string | null>();
+  let windowStart = baseStart;
+  for (const p of pairs) windowStart = maxDate(windowStart, seedStartById.get(p.g.seedId) ?? null);
 
-  const sel = selectStrata(input.actS, input.sigX, pairs, t);
+  // marginal(조정 전) rate ratio — 같은 2×2 프리미티브(같은 windowStart로 클립).
+  const marginal = verifyContingency(buildContingency(input.actS, input.sigX, windowStart)).effect;
+
+  const sel = selectStrata(input.actS, input.sigX, pairs, t, windowStart);
   if (!sel) return undefined;
 
   const rr = mantelHaenszelRR(sel.strata);
@@ -342,8 +374,13 @@ export const flagConfounds = async (userId: number, today: string): Promise<Conf
     buildNameIdMap('branches_master'),
   ]);
 
+  // 데이터-존재 윈도우(#556, 검증 엔진 #504 ADR-0044와 동일 클립): 유저 라이프 테이블별 첫 기록일 1회 산출.
+  // 신호·시드별 데이터 시작일을 여기서 계산해 두면 링크마다 max로 합성 → 빈 과거를 비발현/fail로 세지 않음.
+  const dataStarts = await computeUserDataStarts(userId);
+
   // 후보 = 모든 active 시드. 활성 시리즈는 시드당 1회(strength_band 2-pass 캐시 공유).
   const seeds = await loadActiveSeeds(userId);
+  const seedStartById = new Map(seeds.map((s) => [s.id, seedDataStart(s, dataStarts)]));
   const ctxCache = new Map<string, DailyContext | null>();
   const strengthCache = new Map<string, Map<string, number>>();
   const cutCache = new Map<string, BandCuts>();
@@ -374,9 +411,9 @@ export const flagConfounds = async (userId: number, today: string): Promise<Conf
     }
   }
 
-  // 링크에 등장한 신호 시리즈(신호당 1회).
-  // TODO(#504 후속): 데이터-존재 윈도우(computeUserDataStarts) 미적용 — P7 교란 조정은 dormant
-  // (annotate-only, verdict 불변)라 라이브 영향 없음. 활성화 전 verifyUserLinks와 동일 클립 경유 필요.
+  // 링크에 등장한 신호 시리즈(신호당 1회). 검증 엔진과 동일하게 각 신호를 자기 도메인 데이터 시작일
+  // 기준으로 계산 → 빈 과거의 COALESCE 0이 "발현 안 함=fail"로 새거나 rolling baseline을 오염시키는
+  // 측정 아티팩트 차단(#556 — #504 ADR-0044 데이터-존재 클립을 교란 엔진 P6/P7에도 적용).
   const signalIds = [...new Set(linkRes.rows.map((r) => r.signal_id))];
   const signalRes = await query<SignalDefRow>(
     `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain
@@ -384,9 +421,13 @@ export const flagConfounds = async (userId: number, today: string): Promise<Conf
       WHERE user_id = $1 AND id = ANY($2::int[]) AND status = 'active'`,
     [userId, signalIds],
   );
+  const signalStartById = new Map<number, string | null>();
   const signalSeriesById = new Map<number, DaySeries>();
   for (const row of signalRes.rows) {
-    const r = await computeSignalSeries(userId, toSignalDef(row), windowDates);
+    const signal = toSignalDef(row);
+    const start = signalDataStart(signal.domain, dataStarts);
+    signalStartById.set(row.id, start);
+    const r = await computeSignalSeries(userId, signal, windowDates, start);
     signalSeriesById.set(row.id, r.series);
   }
 
@@ -395,9 +436,29 @@ export const flagConfounds = async (userId: number, today: string): Promise<Conf
     const actS = seedActById.get(row.seed_id);
     const sigX = signalSeriesById.get(row.signal_id);
     if (!actS || !sigX) continue;
+    // 데이터-존재 윈도우(#556): 링크(S×X) 기본 클립 = max(시드 S 데이터 시작, 신호 X 데이터 시작).
+    // Z가 끼는 계산(overlap·nCofire·Z×X·층화)은 flagConfoundersForLink/adjustConfounders 내부에서
+    // 각 후보 Z의 시드 시작일을 baseStart에 추가로 max 합성한다(enrollment 클립은 검증 확정 게이트
+    // 전용 — 교란 P6/P7은 annotate-only marginal이라 적용 안 함).
+    const baseStart = maxDate(
+      seedStartById.get(row.seed_id) ?? null,
+      signalStartById.get(row.signal_id) ?? null,
+    );
     // P6 플래그 → P7 조정(게이트 통과 시만). 시리즈 in-hand 공유(재계산 0).
-    const confound = flagConfoundersForLink(row.seed_id, actS, sigX, candidates, today, T);
-    const adj = adjustConfounders({ actS, sigX, suspected: confound.suspected, candById }, T);
+    const confound = flagConfoundersForLink(
+      row.seed_id,
+      actS,
+      sigX,
+      candidates,
+      today,
+      T,
+      baseStart,
+      seedStartById,
+    );
+    const adj = adjustConfounders(
+      { actS, sigX, suspected: confound.suspected, candById, baseStart, seedStartById },
+      T,
+    );
     if (adj) {
       confound.adjusted = adj.adjusted;
       confound.explainedAway = adj.explainedAway;
