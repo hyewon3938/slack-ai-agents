@@ -257,7 +257,7 @@ const MAX_CATCHUP_MONTHS = 3;
  * 정산이 필요한(=아직 스냅샷이 없는) 종료된 결제주기 목록을 오래된 순으로 반환.
  *
  * - `current`(진행 중 주기)는 아직 안 끝났으므로 제외.
- * - 최신 스냅샷이 있으면 그 다음 달부터 `current` 직전까지를 후보로 삼되, 최근 최대 3개월만 (cap).
+ * - 최신 스냅샷이 있으면 그 다음 달부터 `current` 직전까지를 후보로 삼되, 오래된 순 최대 3개월만 (cap).
  * - 스냅샷이 하나도 없으면 직전 종료 주기 1개만 (초회 대량 소급 방지 — 기존 동작 보존).
  */
 export async function listUnsettledMonths(userId: number, now: Date): Promise<string[]> {
@@ -280,8 +280,9 @@ export async function listUnsettledMonths(userId: number, now: Date): Promise<st
     cursor = addBillingMonths(cursor, 1);
   }
 
-  // cap: 가장 최근 MAX_CATCHUP_MONTHS 개만 (오래된 순 유지)
-  return months.slice(-MAX_CATCHUP_MONTHS);
+  // cap: 오래된 순 최대 MAX_CATCHUP_MONTHS 개 — 매일 실행되는 크론이 순서대로 따라잡는 자기치유 cap.
+  // (최신 우선으로 자르면 정산 후 latest가 잘린 옛 주기를 건너뛰어 영구 탈락 — 히스토리에 구멍)
+  return months.slice(0, MAX_CATCHUP_MONTHS);
 }
 
 /** 단일 결제주기 정산 — 고정비 보장 후 스냅샷 저장 + (신규 시) 자산 변동 */

@@ -287,15 +287,16 @@ describe('runSettlementIfDue', () => {
     expect(vi.mocked(saveSnapshotIfAbsent).mock.calls[0]?.[1]?.year_month).toBe('2026-02');
   });
 
-  it('(c-cap) 장기 미스라도 최대 3개월까지만 소급 (최근 3개, 오래된 순)', async () => {
+  it('(c-cap) 장기 미스라도 오래된 순 최대 3개월만 소급 — 다음 실행이 이어서 따라잡음', async () => {
     // 진행중=2026-04, 직전 종료=2026-03. 최신 스냅샷 2025-09 → 6개월 밀렸지만 cap=3.
     vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2025-09'));
     vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
 
     const result = await runSettlementIfDue(1, DEFAULT_NOW);
 
-    // 최근 3개월 = 2026-01, 2026-02, 2026-03
-    expect(result.snapshots.map((s) => s.year_month)).toEqual(['2026-01', '2026-02', '2026-03']);
+    // 오래된 순 3개월 = 2025-10, 2025-11, 2025-12.
+    // (최신 우선으로 자르면 정산 후 latest가 전진해 옛 주기가 영구 탈락 — 히스토리 구멍 방지)
+    expect(result.snapshots.map((s) => s.year_month)).toEqual(['2025-10', '2025-11', '2025-12']);
     expect(saveSnapshotIfAbsent).toHaveBeenCalledTimes(3);
   });
 
@@ -380,10 +381,11 @@ describe('listUnsettledMonths', () => {
     expect(months).toEqual(['2026-01', '2026-02', '2026-03']);
   });
 
-  it('cap 초과 → 최근 3개월만', async () => {
+  it('cap 초과 → 오래된 순 3개월만 (자기치유: 정산되면 latest 전진 → 다음 실행이 이어받음)', async () => {
+    // latest=2025-06, lastEnded=2026-03 → 9개월 밀림. 오래된 순으로 자른다.
     vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2025-06'));
     const months = await listUnsettledMonths(1, DEFAULT_NOW);
-    expect(months).toEqual(['2026-01', '2026-02', '2026-03']);
+    expect(months).toEqual(['2025-07', '2025-08', '2025-09']);
   });
 });
 
