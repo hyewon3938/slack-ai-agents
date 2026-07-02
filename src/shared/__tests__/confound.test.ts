@@ -45,6 +45,13 @@ describe('computeOverlap', () => {
   it('S 발현 0이면 {0, 0}', () => {
     expect(computeOverlap(act([]), act(['d0', 'd1']))).toEqual({ overlap: 0, nCofire: 0 });
   });
+
+  it('windowStart 이전 날은 분자·분모 양쪽에서 제외 (#556 데이터-존재 클립)', () => {
+    // S={d0..d3}, Z={d0,d1,d8}. windowStart='d1' → d0 제외 → S발현 {d1,d2,d3}=3, cofire {d1}=1.
+    const r = computeOverlap(act(['d0', 'd1', 'd2', 'd3']), act(['d0', 'd1', 'd8']), 'd1');
+    expect(r.nCofire).toBe(1); // {d1} (d0 클립)
+    expect(r.overlap).toBeCloseTo(1 / 3); // 1/3 (분모도 d0 제외)
+  });
 });
 
 // ─── flagConfoundersForLink ──────────────────────────────
@@ -127,6 +134,46 @@ describe('flagConfoundersForLink', () => {
   });
 });
 
+// ─── #556 데이터-존재 윈도우 클립 (검증 엔진 #504 ADR-0044와 동일) ────
+
+describe('flagConfoundersForLink 데이터-존재 클립', () => {
+  // 데이터 시작 이전(d0..d3)은 '빈 과거' — S·Z 비활성, X 비pass(fail)로만 채워져 Z↔X 2×2의
+  // 비발현·실패(d 셀)를 부풀린다 → rateOff 하락 → effectZX 인플레(가짜 교란 flag).
+  // 클립 후엔 데이터 구간(d4..d9)만으로 effectZX가 정직하게 낮아진다.
+  const S = act(['d4', 'd5', 'd6']); // S 발현 = 데이터 구간에만
+  const Z: ConfoundCandidate = { seedId: 9, seedName: 'Z', act: act(['d4', 'd5', 'd6', 'd7']) };
+  // X: Z 발현일 d4·d5·d6 pass, off일 중 d8만 pass(rateOff 유한하게). d0..d3(빈 과거)는 fail.
+  const X = sig(['d4', 'd5', 'd6', 'd8']);
+  // minEffectZX를 두 값 사이(2.0)로 → 클립 유무가 flag 판정을 뒤집는다.
+  const Tclip: ConfoundThresholds = {
+    minOverlap: 0.6,
+    minCofireDays: 3,
+    minEffectZX: 2.0,
+    topN: 3,
+  };
+
+  it('클립 없으면 빈 과거가 effectZX를 부풀려 flag(비교 기준)', () => {
+    // no clip: Z발현 a=3,b=1(d7 fail); Z off c=1(d8),d=5(d0..d3+d9) → rateOff=1/6 → effect≈4.5 ≥ 2.0.
+    const r = flagConfoundersForLink(1, S, X, [Z], 'today', Tclip);
+    expect(r.suspected).toHaveLength(1);
+    expect(r.suspected[0]?.effectZX).toBeCloseTo(4.5);
+  });
+
+  it('데이터 시작(d4) 클립 시 effectZX 정직화 → 미flag', () => {
+    // seedStartById로 Z의 데이터 시작 'd4' 주입: d0..d3 제외 → Z off {d8,d9} c=1,d=1 → rateOff=0.5 →
+    // effect=1.5 < 2.0 → 컷. overlap(=1.0)·nCofire(=3)는 양쪽 동일 → effectZX만 판정 뒤집음.
+    const seedStartById = new Map<number, string | null>([[9, 'd4']]);
+    const r = flagConfoundersForLink(1, S, X, [Z], 'today', Tclip, null, seedStartById);
+    expect(r.suspected).toHaveLength(0);
+  });
+
+  it('baseStart(신호·시드 데이터 시작 합성)로도 동일 클립', () => {
+    // baseStart='d4' 경로(신호 X 또는 시드 S 데이터 시작이 d4인 케이스) — seedStartById 없이도 컷.
+    const r = flagConfoundersForLink(1, S, X, [Z], 'today', Tclip, 'd4');
+    expect(r.suspected).toHaveLength(0);
+  });
+});
+
 // ─── P7 다변량 분리 (Mantel-Haenszel 조정 — ADR-0042) ────
 
 // 큰 윈도우 합성 빌더 — 게이트(nCofire≥30)·층 viability를 충족하도록 셀을 정확히 깐다.
@@ -205,6 +252,26 @@ describe('buildStrata', () => {
     expect(sum('c')).toBe(flat.c);
     expect(sum('d')).toBe(flat.d);
   });
+
+  it('windowStart 이전 날은 층 배정 전 제외 → 셀 합 = 클립된 2×2 (#556)', () => {
+    const b = buildN(8);
+    const aS = b.m([0, 3]);
+    const aZ = b.m([0, 1], [4, 5]);
+    const x = b.s([0, 2], [4, 6]);
+    // windowStart='d2' → d0,d1 제외. 층 합이 같은 windowStart로 클립한 flat 2×2와 일치해야 함.
+    const strata = buildStrata(aS, x, [cand(2, aZ)], 'd2');
+    const sum = (k: 'a' | 'b' | 'c' | 'd') => strata.reduce((acc, st) => acc + st[k], 0);
+    const flat = buildContingency(aS, x, 'd2');
+    expect(sum('a')).toBe(flat.a);
+    expect(sum('b')).toBe(flat.b);
+    expect(sum('c')).toBe(flat.c);
+    expect(sum('d')).toBe(flat.d);
+    // 클립 전(d0,d1 포함)과 셀 합이 실제로 다름을 확인(no-op 아님).
+    const flatNoClip = buildContingency(aS, x);
+    expect(flat.a + flat.b + flat.c + flat.d).toBeLessThan(
+      flatNoClip.a + flatNoClip.b + flatNoClip.c + flatNoClip.d,
+    );
+  });
 });
 
 describe('adjustConfounders', () => {
@@ -274,5 +341,43 @@ describe('adjustConfounders', () => {
     const adj = r?.adjusted ?? [];
     expect(adj).toHaveLength(1); // joint(2 교란) 포기 → 단일 Z
     expect(adj[0]?.seedId).toBe(1); // 가장 강한 Z1
+  });
+
+  it('baseStart 클립이 빈 과거를 marginal·층화에서 제거 (#556)', () => {
+    // explained_away 픽스처를 +20 시프트하고 d000..d019를 빈 과거(S·Z off, X fail)로 채운다.
+    // 프로덕션 날짜(ISO YYYY-MM-DD)는 zero-pad라 문자열 < 비교가 숫자 순서와 일치 → 라벨도 zero-pad(3자리).
+    // baseStart='d020'로 클립하면 시프트 안 한 원본과 동일한 explained_away RR≈1.0가 나와야 한다.
+    const N = 140;
+    const days = Array.from({ length: N }, (_, i) => `d${String(i).padStart(3, '0')}`);
+    const set = (...ranges: [number, number][]): Set<string> => {
+      const s = new Set<string>();
+      for (const [lo, hi] of ranges)
+        for (let i = lo; i <= hi; i++) s.add(`d${String(i).padStart(3, '0')}`);
+      return s;
+    };
+    const m = (...ranges: [number, number][]): Map<string, boolean> => {
+      const on = set(...ranges);
+      return new Map(days.map((d) => [d, on.has(d)]));
+    };
+    const s = (...ranges: [number, number][]): DaySeries => {
+      const on = set(...ranges);
+      return new Map(days.map((d) => [d, on.has(d)]));
+    };
+    const actZ = m([20, 79]); // 원본 [0,59] +20
+    const aS = m([20, 59], [80, 99]); // 원본 [0,39]∪[60,79] +20
+    const x = s([20, 55], [60, 77], [80, 81], [100, 103]); // 원본 [0,35]∪[40,57]∪[60,61]∪[80,83] +20
+    const candById = new Map([[2, cand(2, actZ)]]);
+    const seedStartById = new Map<number, string | null>([[2, 'd020']]);
+    const clipped = adjustConfounders(
+      { actS: aS, sigX: x, suspected: [susp(2, 40)], candById, baseStart: 'd020', seedStartById },
+      AT,
+    );
+    expect(clipped?.explainedAway).toBe(true);
+    expect(clipped?.adjusted[0]?.verdict).toBe('explained_away');
+    expect(clipped?.adjusted[0]?.adjEffect).toBeCloseTo(1.0);
+
+    // 클립 없이 돌리면 빈 과거(d000..d019)의 off·fail이 셀을 부풀려 RR이 1.0에서 벗어난다(no-op 아님 확인).
+    const noClip = adjustConfounders({ actS: aS, sigX: x, suspected: [susp(2, 40)], candById }, AT);
+    expect(noClip?.adjusted[0]?.adjEffect ?? NaN).not.toBeCloseTo(1.0);
   });
 });
