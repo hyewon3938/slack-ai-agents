@@ -48,6 +48,9 @@ export async function readTotalCycleSpent(userId: number, billingMonth: string):
   return Number(result.rows[0]?.total ?? 0);
 }
 
+// 제외 지출 = 일반(비할부) 지출 중 예산 미포함분만 (#539/ADR 0051, #549).
+// 할부는 exclude 대상이 아니라 묶인 돈으로 따로 집계되므로 여기서 제외해야
+// 정산 스냅샷 분해(총 결제분 = 자유 + 할부 + 제외)가 왜곡되지 않는다.
 export async function readExcludedSpent(userId: number, billingMonth: string): Promise<number> {
   const result = await query<{ total: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS total
@@ -55,6 +58,7 @@ export async function readExcludedSpent(userId: number, billingMonth: string): P
      WHERE user_id = $1
        AND COALESCE(type, 'expense') = 'expense'
        AND exclude_from_budget = true
+       AND is_installment = false
        AND billing_month = $2`,
     [userId, billingMonth],
   );
