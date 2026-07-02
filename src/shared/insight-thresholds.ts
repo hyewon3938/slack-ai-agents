@@ -69,6 +69,10 @@ export const INSIGHT_THRESHOLDS = {
     minRateRatio: 1.3, // confirm 최소 효과크기 (발현일 pass율 / 비발현일 pass율)
     rejectRatioLow: 0.95, // reject 효과크기 하한 (연관 없음 판정 밴드)
     rejectRatioHigh: 1.05, // reject 효과크기 상한
+    // #555: 역방향 종결 게이트. ≈ 1/minRateRatio(1.3). effect ≤ 이 값 & 발현일 ≥ minActiveDays →
+    // direction_mismatch 종결(reject 밴드도 confirm도 못 걸리던 사각지대 해소). 반대 방향 가설은 신호
+    // 정의 보장(ensureMirrorSignalDef)으로 발굴 엔진(P5a)에 위임 — 여기서 링크는 만들지 않음(ADR-0039 2층 분리).
+    directionMismatchMaxEffect: 0.77,
     // ── P3 통계 증강 (ADR-0034 e-value, ADR-0035 등급별 노출) ──
     evalueAlpha: 0.05, // e-value 확정 게이트 유의수준
     evalueThreshold: 20, // = 1/evalueAlpha. e_value ≥ 20 → 'confirmed' 승격(verified tier)
