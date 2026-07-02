@@ -14,7 +14,12 @@ export async function GET(request: Request) {
 
   const now = new Date();
   const userIds = await listAllUserIds();
-  const results: Array<{ userId: number; settled: boolean; yearMonth?: string; error?: string }> = [];
+  const results: Array<{
+    userId: number;
+    settled: boolean;
+    yearMonths?: string[];
+    error?: string;
+  }> = [];
 
   for (const userId of userIds) {
     try {
@@ -22,7 +27,9 @@ export async function GET(request: Request) {
       results.push({
         userId,
         settled: result.settled,
-        ...(result.snapshot && { yearMonth: result.snapshot.year_month }),
+        ...(result.snapshots.length > 0 && {
+          yearMonths: result.snapshots.map((s) => s.year_month),
+        }),
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

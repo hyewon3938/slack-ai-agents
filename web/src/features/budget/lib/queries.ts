@@ -2,9 +2,9 @@ import { query, queryOne } from '@/lib/db';
 import { getTodayISO } from '@/lib/kst';
 import { getTodayAllocation } from './facade';
 import { getCurrentBillingMonth, getBillingRange, calcCycleDays } from './billing/cycle';
-import { resolveFixedCostExpenseDate } from './billing/fixed-cost-date';
 import { getBillingMonthForExpense } from './billing/card-billing';
 import { readFlexibleSpent, readTodayFlexSpent } from './repository/expenses-repo';
+import { queryFixedCosts, ensureFixedCostExpenses } from './fixed-cost-ensure';
 import type {
   ExpenseRow,
   FixedCostRow,
@@ -14,6 +14,10 @@ import type {
   PlannedExpenseRow,
   DailyBudgetLog,
 } from './types';
+
+// 고정비 조회·자동기록은 순환 import(queries → facade → queries) 방지를 위해 별도 모듈로 이동.
+// 기존 import 경로 호환을 위해 여기서 재수출한다.
+export { queryFixedCosts, ensureFixedCostExpenses };
 
 // ─── 지출 CRUD ───────────────────────────────────────
 
@@ -362,16 +366,6 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
 
 // ─── 고정비 ───────────────────────────────────────────
 
-/** 고정비 목록 (active 먼저) */
-export async function queryFixedCosts(userId: number): Promise<FixedCostRow[]> {
-  const { rows } = await query<FixedCostRow>(
-    `SELECT id, name, amount, category, is_variable, day_of_month, active, memo
-     FROM fixed_costs WHERE user_id = $1 ORDER BY active DESC, category, name`,
-    [userId],
-  );
-  return rows;
-}
-
 /** 고정비 수정 */
 const FIXED_COST_COLUMNS = new Set([
   'name',
@@ -423,56 +417,6 @@ export async function deleteFixedCost(userId: number, id: number): Promise<boole
     userId,
   ]);
   return (result.rowCount ?? 0) > 0;
-}
-
-/**
- * 고정비 자동 기록: 결제일(day_of_month)이 설정된 활성 고정비에 대해
- * 해당 결제주기 내에 지출 기록이 없으면 자동 생성.
- */
-export async function ensureFixedCostExpenses(userId: number, yearMonth: string): Promise<number> {
-  const fixedCosts = await queryFixedCosts(userId);
-  const activeCostsWithDay = fixedCosts.filter((fc) => fc.active && fc.day_of_month);
-
-  if (activeCostsWithDay.length === 0) return 0;
-
-  const todayStr = getTodayISO();
-
-  const candidates = activeCostsWithDay
-    .map((fc) => {
-      const expenseDate = resolveFixedCostExpenseDate(yearMonth, fc.day_of_month!);
-      return { fc, expenseDate };
-    })
-    .filter((c) => c.expenseDate <= todayStr)
-    .map((c) => ({
-      ...c,
-      billingMonth: getBillingMonthForExpense(c.expenseDate, '현대카드'),
-    }));
-
-  if (candidates.length === 0) return 0;
-
-  const result = await query(
-    `INSERT INTO expenses
-       (user_id, date, amount, category, description, payment_method, source, memo, type, exclude_from_budget, billing_month)
-     SELECT $1, d.date, d.amount, d.category, d.description, '현대카드', 'fixed', d.memo, 'expense', true, d.billing_month
-     FROM UNNEST(
-       $2::date[], $3::numeric[], $4::text[], $5::text[], $6::text[], $7::text[]
-     ) AS d(date, amount, category, description, memo, billing_month)
-     WHERE NOT EXISTS (
-       SELECT 1 FROM expenses e
-       WHERE e.user_id = $1 AND e.source = 'fixed' AND e.date = d.date AND e.description = d.description
-     )`,
-    [
-      userId,
-      candidates.map((c) => c.expenseDate),
-      candidates.map((c) => c.fc.amount),
-      candidates.map((c) => c.fc.category ?? '기타'),
-      candidates.map((c) => c.fc.name),
-      candidates.map((c) => `고정비 자동 기록 (fixed_cost_id: ${c.fc.id})`),
-      candidates.map((c) => c.billingMonth),
-    ],
-  );
-
-  return result.rowCount ?? 0;
 }
 
 // ─── 자산 ─────────────────────────────────────────────
