@@ -30,6 +30,7 @@ import {
   getEffectiveTodayISO,
   getKSTTimeString,
   getKSTDayOfWeek,
+  addDays,
 } from '../shared/kst.js';
 import {
   DEFAULT_USER_ID,
@@ -258,13 +259,74 @@ export const createTodayRecords = async (
 
 // ─── 일별 예산 로그 자동 백필 (Vercel cron 누락 방어) ──
 
-/** 결제일 사이클(16일 시작)을 적용해 해당 날짜의 billing_month 'YYYY-MM' 반환 */
-const getBillingMonthForDate = (isoDate: string): string => {
+/**
+ * 예정지출별 누적 사용량이 예산을 초과한 부분의 합 (upToDate까지).
+ * Σ max(0, used(p) - p.amount). 웹 readPlannedOverflow(ADR-0007 SSOT)의 복제본.
+ */
+const queryPlannedOverflow = async (
+  userId: number,
+  billingMonth: string,
+  upToDate: string,
+): Promise<number> => {
+  const result = await query<{ overflow: string }>(
+    `SELECT COALESCE(SUM(GREATEST(used - budget, 0)), 0)::text AS overflow
+     FROM (
+       SELECT p.amount AS budget, COALESCE(SUM(e.amount), 0) AS used
+       FROM planned_expenses p
+       LEFT JOIN expenses e
+         ON e.planned_expense_id = p.id
+         AND e.user_id = p.user_id
+         AND e.billing_month = $2
+         AND e.date <= $3
+       WHERE p.user_id = $1
+       GROUP BY p.id, p.amount
+     ) sub`,
+    [userId, billingMonth, upToDate],
+  );
+  return Number(result.rows[0]?.overflow ?? 0);
+};
+
+/**
+ * 어제자 자유 지출 = directFlex(어제) + max(0, overflow(어제까지) - overflow(그제까지)).
+ * 웹 readTodayFlexSpent(ADR-0007 SSOT)의 복제본 — 할부 전액 제외, 예정지출 초과분만 일별 증가분으로 가산.
+ * 웹 정의 변경 시 이 함수 + queryPlannedOverflow + 테스트를 동기화할 것.
+ */
+export const calcYesterdayFlexSpent = async (
+  userId: number,
+  yesterday: string,
+  billingMonth: string,
+): Promise<number> => {
+  const dayBefore = addDays(yesterday, -1);
+  const [directResult, yesterdayOverflow, dayBeforeOverflow] = await Promise.all([
+    query<{ total: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS total
+       FROM expenses
+       WHERE user_id = $1
+         AND COALESCE(type, 'expense') = 'expense'
+         AND exclude_from_budget = false
+         AND planned_expense_id IS NULL
+         AND date = $2::date
+         AND is_installment = false`,
+      [userId, yesterday],
+    ),
+    queryPlannedOverflow(userId, billingMonth, yesterday),
+    queryPlannedOverflow(userId, billingMonth, dayBefore),
+  ]);
+  const direct = Number(directResult.rows[0]?.total ?? 0);
+  const dailyOverflow = Math.max(0, yesterdayOverflow - dayBeforeOverflow);
+  return direct + dailyOverflow;
+};
+
+/**
+ * 결제일 사이클(전월 15일 ~ 당월 14일)을 적용해 해당 날짜의 billing_month 'YYYY-MM' 반환.
+ * 웹 billing/cycle.ts getCurrentBillingMonth와 동일 규칙 (15일부터 다음 달) — 변경 시 양쪽 동기화.
+ */
+export const getBillingMonthForDate = (isoDate: string): string => {
   const [yStr, mStr, dStr] = isoDate.split('-');
   let year = Number(yStr);
   let month = Number(mStr);
   const day = Number(dStr);
-  if (day >= 16) {
+  if (day >= 15) {
     month += 1;
     if (month > 12) {
       month = 1;
@@ -276,8 +338,9 @@ const getBillingMonthForDate = (isoDate: string): string => {
 
 /**
  * 어제자 daily_budget_logs 누락 감지 → 직접 INSERT 백필.
- * - budget: 같은 billing_month의 직전 로그에서 복제 (allocation 로직 미복제)
- * - spent: 기존 saveDailyBudgetLog와 동일한 SQL로 직접 계산
+ * - budget: 같은 billing_month의 직전 로그에서 복제 (allocation 로직 미복제 — 웹 없이는 재현 불가)
+ * - spent: 웹 readTodayFlexSpent(ADR-0007 SSOT)의 복제본 = directFlex(비할부) + 일별 plannedOverflow 증가분.
+ *   웹 정의 변경 시 이 함수 + 테스트를 동기화할 것.
  * - 백필 발생 시 #project 채널로 Slack 알림
  */
 const backfillYesterdayBudgetLogIfMissing = async (app: App): Promise<void> => {
@@ -309,23 +372,7 @@ const backfillYesterdayBudgetLogIfMissing = async (app: App): Promise<void> => {
       }
       const budget = prevBudget.budget;
 
-      const budgetStartRow = await query<{ updated_at: string }>(
-        'SELECT updated_at::text FROM budget_settings WHERE user_id = $1',
-        [userId],
-      );
-      const budgetStartAt = budgetStartRow.rows[0]?.updated_at ?? '9999-12-31T00:00:00Z';
-
-      const spentRow = await query<{ spent: string }>(
-        `SELECT COALESCE(SUM(amount), 0)::text AS spent
-         FROM expenses
-         WHERE user_id = $1 AND date = $2
-           AND (is_installment = false OR (is_installment = true AND created_at >= $3))
-           AND exclude_from_budget = false
-           AND COALESCE(type, 'expense') = 'expense'
-           AND planned_expense_id IS NULL`,
-        [userId, yesterday, budgetStartAt],
-      );
-      const spent = Number(spentRow.rows[0]?.spent ?? 0);
+      const spent = await calcYesterdayFlexSpent(userId, yesterday, billingMonth);
       const saved = budget - spent;
 
       await query(
