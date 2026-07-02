@@ -28,6 +28,7 @@ vi.mock('./repository/settings-repo', () => ({
   readTargetMonth: vi.fn(),
   upsertTargetDate: vi.fn(),
 }));
+vi.mock('./fixed-cost-ensure', () => ({ ensureFixedCostExpenses: vi.fn() }));
 
 import {
   getMonthlyAllocation,
@@ -35,8 +36,10 @@ import {
   getRunwayProjection,
   getBudgetPreview,
   runSettlementIfDue,
+  listUnsettledMonths,
 } from './facade';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
+import { ensureFixedCostExpenses } from './fixed-cost-ensure';
 import {
   readDistributableAssetBalance,
   applyAssetDeduction,
@@ -75,6 +78,26 @@ function setupCommonMocks() {
   vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
   vi.mocked(applyAssetDeduction).mockResolvedValue([]);
   vi.mocked(applyAssetIncrease).mockResolvedValue([]);
+  vi.mocked(ensureFixedCostExpenses).mockResolvedValue(0);
+}
+
+// StoredSnapshot 최소 스텁 — readLatestSnapshot 반환값용 (year_month 만 실질적으로 참조됨)
+function storedSnapshot(yearMonth: string, availableAtEnd = 0) {
+  return {
+    id: 1,
+    user_id: 1,
+    year_month: yearMonth,
+    sealed_at: `${yearMonth}-16T00:00:00Z`,
+    allocated_budget: 0,
+    fixed_total: 0,
+    installment_total: 0,
+    planned_total: 0,
+    flexible_spent: 0,
+    excluded_spent: 0,
+    income_total: 0,
+    available_at_start: 0,
+    available_at_end: availableAtEnd,
+  };
 }
 
 describe('getMonthlyAllocation', () => {
@@ -151,19 +174,8 @@ describe('runSettlementIfDue', () => {
     setupCommonMocks();
   });
 
-  it('정산일(14일)이 아니면 settled=false', async () => {
-    const result = await runSettlementIfDue(1, DEFAULT_NOW); // April 10
-
-    expect(result.settled).toBe(false);
-    expect(saveSnapshotIfAbsent).not.toHaveBeenCalled();
-  });
-
-  it('정산일(14일)이고 스냅샷 신규 → settled=true + 스냅샷 반환', async () => {
-    // April 15 12:00 UTC = April 15 21:00 KST → yesterday=April 14 → shouldSettle=true, targetMonth='2026-04'
-    // range.to = '2026-04-14' (cycle 15→14 boundary)
-    // targetEnd = new Date('2026-04-14T12:00:00Z') = Apr 14 21:00 KST → billing cycle '2026-04' ✓
-    const settlementNow = new Date('2026-04-15T12:00:00Z');
-
+  // 스냅샷 없음(초회) 기준 — DEFAULT_NOW(4/10, 진행중 주기 2026-04)의 직전 종료 주기는 2026-03.
+  it('스냅샷 신규 → settled=true + snapshots 배열에 대상 월 반환', async () => {
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
@@ -171,16 +183,14 @@ describe('runSettlementIfDue', () => {
     vi.mocked(readIncomeTotal).mockResolvedValue(2_000_000);
     vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
 
-    const result = await runSettlementIfDue(1, settlementNow);
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
 
     expect(result.settled).toBe(true);
-    expect(result.snapshot).toBeDefined();
-    expect(result.snapshot?.year_month).toBe('2026-04');
+    expect(result.snapshots).toHaveLength(1);
+    expect(result.snapshots[0]?.year_month).toBe('2026-03');
   });
 
   it('available_at_end = availableAtStart + income - totalSpent (전체 결제분, 자산 미참조)', async () => {
-    const settlementNow = new Date('2026-04-15T12:00:00Z');
-
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
@@ -189,17 +199,15 @@ describe('runSettlementIfDue', () => {
     vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
     vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
 
-    const result = await runSettlementIfDue(1, settlementNow);
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
 
     // availableAtStart = 5_000_000 (자산 fallback)
     // availableAtEnd = 5_000_000 + 200_000 - 350_000(totalSpent) = 4_850_000
-    expect(result.snapshot?.available_at_end).toBe(4_850_000);
-    expect(result.snapshot?.available_at_start).toBe(5_000_000);
+    expect(result.snapshots[0]?.available_at_end).toBe(4_850_000);
+    expect(result.snapshots[0]?.available_at_start).toBe(5_000_000);
   });
 
   it('snapshot 신규 저장 시 자산 차감 = 전체 결제분(totalSpent), 증액 = income (분리)', async () => {
-    const settlementNow = new Date('2026-04-15T12:00:00Z');
-
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
@@ -208,15 +216,13 @@ describe('runSettlementIfDue', () => {
     vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
     vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
 
-    await runSettlementIfDue(1, settlementNow);
+    await runSettlementIfDue(1, DEFAULT_NOW);
 
     expect(applyAssetDeduction).toHaveBeenCalledWith(1, 350_000); // totalSpent
     expect(applyAssetIncrease).toHaveBeenCalledWith(1, 200_000); // income
   });
 
   it('정산 차감액은 flex+excluded가 아니라 전체 결제분(totalSpent) — 할부 회차 결제 포함', async () => {
-    const settlementNow = new Date('2026-04-15T12:00:00Z');
-
     vi.mocked(readLatestSnapshot).mockResolvedValue(null);
     vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
     vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
@@ -226,33 +232,160 @@ describe('runSettlementIfDue', () => {
     vi.mocked(readTotalCycleSpent).mockResolvedValue(500_000);
     vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
 
-    const result = await runSettlementIfDue(1, settlementNow);
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
 
     // 차감은 totalSpent 기준 (등록시점 차감 폐지 → 결제 시 한 번만 빠짐)
     expect(applyAssetDeduction).toHaveBeenCalledWith(1, 500_000);
     // 장부도 totalSpent 기준: 5_000_000 + 0 - 500_000 = 4_500_000
-    expect(result.snapshot?.available_at_end).toBe(4_500_000);
+    expect(result.snapshots[0]?.available_at_end).toBe(4_500_000);
     // snapshot 분해 필드는 여전히 flex/excluded 분리 기록
-    expect(result.snapshot?.flexible_spent).toBe(300_000);
-    expect(result.snapshot?.excluded_spent).toBe(50_000);
+    expect(result.snapshots[0]?.flexible_spent).toBe(300_000);
+    expect(result.snapshots[0]?.excluded_spent).toBe(50_000);
   });
 
-  it('snapshot 재실행(saved=false) 시 자산 변동 호출 없음 — idempotency', async () => {
-    const settlementNow = new Date('2026-04-15T12:00:00Z');
+  // ─── #551 catch-up 시나리오 ────────────────────────────
 
-    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
-    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
-    vi.mocked(readFlexibleSpent).mockResolvedValue(300_000);
-    vi.mocked(readExcludedSpent).mockResolvedValue(50_000);
-    vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
-    // 이미 같은 yearMonth 저장됨 — UNIQUE 제약으로 saved=false
-    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
+  it('(a) 정상 실행 — 최신 스냅샷이 직전 종료 주기면 무동작(settled=false)', async () => {
+    // DEFAULT_NOW(4/10) 진행중=2026-04, 직전 종료=2026-03. 이미 2026-03 스냅샷 존재 → 정산 대상 없음.
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-03'));
 
-    const result = await runSettlementIfDue(1, settlementNow);
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
 
     expect(result.settled).toBe(false);
+    expect(result.snapshots).toHaveLength(0);
+    expect(saveSnapshotIfAbsent).not.toHaveBeenCalled();
+    expect(ensureFixedCostExpenses).not.toHaveBeenCalled();
+  });
+
+  it('(b) 크론 미스 후 늦게 실행 → 밀린 주기 자동 보정', async () => {
+    // 진행중=2026-04, 직전 종료=2026-03. 최신 스냅샷은 2026-02(2026-03 정산이 누락됨).
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-02'));
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(result.settled).toBe(true);
+    expect(result.snapshots).toHaveLength(1);
+    expect(result.snapshots[0]?.year_month).toBe('2026-03');
+    // 정산 직전 고정비 보장 호출
+    expect(ensureFixedCostExpenses).toHaveBeenCalledWith(1, '2026-03');
+  });
+
+  it('(c) 두 달 연속 미스 → 오래된 순으로 순차 2건 보정', async () => {
+    // 진행중=2026-04, 직전 종료=2026-03. 최신 스냅샷은 2026-01 → 2026-02, 2026-03 두 주기 밀림.
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-01'));
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(result.snapshots.map((s) => s.year_month)).toEqual(['2026-02', '2026-03']);
+    expect(saveSnapshotIfAbsent).toHaveBeenCalledTimes(2);
+    // 각 월마다 고정비 보장 호출
+    expect(ensureFixedCostExpenses).toHaveBeenCalledWith(1, '2026-02');
+    expect(ensureFixedCostExpenses).toHaveBeenCalledWith(1, '2026-03');
+    // 오래된 순 보장 — 첫 저장이 2026-02
+    expect(vi.mocked(saveSnapshotIfAbsent).mock.calls[0]?.[1]?.year_month).toBe('2026-02');
+  });
+
+  it('(c-cap) 장기 미스라도 오래된 순 최대 3개월만 소급 — 다음 실행이 이어서 따라잡음', async () => {
+    // 진행중=2026-04, 직전 종료=2026-03. 최신 스냅샷 2025-09 → 6개월 밀렸지만 cap=3.
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2025-09'));
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
+
+    // 오래된 순 3개월 = 2025-10, 2025-11, 2025-12.
+    // (최신 우선으로 자르면 정산 후 latest가 전진해 옛 주기가 영구 탈락 — 히스토리 구멍 방지)
+    expect(result.snapshots.map((s) => s.year_month)).toEqual(['2025-10', '2025-11', '2025-12']);
+    expect(saveSnapshotIfAbsent).toHaveBeenCalledTimes(3);
+  });
+
+  it('(d) 재실행 멱등 — 이미 저장된 주기는 saved=false → 자산 이중 변동 없음', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-02'));
+    vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
+    // UNIQUE(user, year_month) 충돌 → saved=false
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
+
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(result.settled).toBe(false);
+    expect(result.snapshots).toHaveLength(0);
     expect(applyAssetDeduction).not.toHaveBeenCalled();
     expect(applyAssetIncrease).not.toHaveBeenCalled();
+  });
+
+  it('(e) 스냅샷 전무 → 직전 1개만 정산 (초회 대량 소급 방지)', async () => {
+    // 최신 스냅샷 없음. 직전 종료 주기(2026-03) 1개만.
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(result.snapshots).toHaveLength(1);
+    expect(result.snapshots[0]?.year_month).toBe('2026-03');
+    expect(saveSnapshotIfAbsent).toHaveBeenCalledTimes(1);
+  });
+
+  it('(f) 고정비 미생성 상태 → 정산 전 ensure 호출로 totalSpent 반영', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-02'));
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    // ensure 가 고정비 행을 생성한 뒤라야 readTotalCycleSpent 가 그 금액을 포함한다.
+    // ensure 호출 후 totalSpent 가 커지는 순서를 모의: ensure 를 총지출 조회의 선행 조건으로 검증.
+    let ensured = false;
+    vi.mocked(ensureFixedCostExpenses).mockImplementation(async () => {
+      ensured = true;
+      return 1;
+    });
+    vi.mocked(readTotalCycleSpent).mockImplementation(async () => (ensured ? 400_000 : 0));
+
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(ensureFixedCostExpenses).toHaveBeenCalledWith(1, '2026-03');
+    // ensure 후 조회되어 고정비 포함 총지출(400_000)이 차감에 반영
+    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 400_000);
+    expect(result.snapshots[0]?.year_month).toBe('2026-03');
+  });
+});
+
+describe('listUnsettledMonths', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setupCommonMocks();
+  });
+
+  it('스냅샷 전무 → 직전 종료 주기 1개', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    const months = await listUnsettledMonths(1, DEFAULT_NOW); // 진행중 2026-04
+    expect(months).toEqual(['2026-03']);
+  });
+
+  it('최신이 직전 종료 주기 → 빈 배열 (정산 대상 없음)', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-03'));
+    const months = await listUnsettledMonths(1, DEFAULT_NOW);
+    expect(months).toEqual([]);
+  });
+
+  it('최신이 직전 종료 주기보다 미래(방어) → 빈 배열', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-05'));
+    const months = await listUnsettledMonths(1, DEFAULT_NOW);
+    expect(months).toEqual([]);
+  });
+
+  it('여러 주기 밀림 → (latest, lastEnded] 오래된 순', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2025-12'));
+    const months = await listUnsettledMonths(1, DEFAULT_NOW);
+    // 2026-01, 2026-02, 2026-03 (cap 3 이내)
+    expect(months).toEqual(['2026-01', '2026-02', '2026-03']);
+  });
+
+  it('cap 초과 → 오래된 순 3개월만 (자기치유: 정산되면 latest 전진 → 다음 실행이 이어받음)', async () => {
+    // latest=2025-06, lastEnded=2026-03 → 9개월 밀림. 오래된 순으로 자른다.
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2025-06'));
+    const months = await listUnsettledMonths(1, DEFAULT_NOW);
+    expect(months).toEqual(['2025-07', '2025-08', '2025-09']);
   });
 });
 

@@ -1,9 +1,16 @@
-import { getBillingCycle, getBillingRange, calcCycleDays, addBillingMonths } from './billing/cycle';
+import {
+  getBillingCycle,
+  getBillingRange,
+  getCurrentBillingMonth,
+  calcCycleDays,
+  addBillingMonths,
+} from './billing/cycle';
 import { calcAllocatedDays } from './allocator/proration';
 import { allocateMonthlyBudgets } from './allocator/month-allocator';
 import { allocateTodayBudget } from './allocator/day-allocator';
 import { projectRunway, projectFromAllocator } from './allocator/runway-projection';
-import { detectSettlementTrigger, buildSettlementSnapshot } from './settlement/settle';
+import { buildSettlementSnapshot } from './settlement/settle';
+import { ensureFixedCostExpenses } from './fixed-cost-ensure';
 
 import {
   readDistributableAssetBalance,
@@ -243,16 +250,50 @@ export async function getBudgetPreview(
   };
 }
 
-/** 월 경계 정산 (Phase 4 cron 진입점) */
-export async function runSettlementIfDue(
-  userId: number,
-  now: Date,
-): Promise<{ settled: boolean; snapshot?: SettlementSnapshot }> {
-  const trigger = detectSettlementTrigger(now);
-  if (!trigger.shouldSettle || !trigger.targetMonth) {
-    return { settled: false };
+/** catch-up 정산 상한 — 크론 장기 미실행 시에도 한 번에 최대 이 개수까지만 소급 (폭주 방지) */
+const MAX_CATCHUP_MONTHS = 3;
+
+/**
+ * 정산이 필요한(=아직 스냅샷이 없는) 종료된 결제주기 목록을 오래된 순으로 반환.
+ *
+ * - `current`(진행 중 주기)는 아직 안 끝났으므로 제외.
+ * - 최신 스냅샷이 있으면 그 다음 달부터 `current` 직전까지를 후보로 삼되, 오래된 순 최대 3개월만 (cap).
+ * - 스냅샷이 하나도 없으면 직전 종료 주기 1개만 (초회 대량 소급 방지 — 기존 동작 보존).
+ */
+export async function listUnsettledMonths(userId: number, now: Date): Promise<string[]> {
+  const current = getCurrentBillingMonth(now);
+  const lastEnded = addBillingMonths(current, -1); // current 직전 = 마지막으로 끝난 주기
+
+  const latest = (await readLatestSnapshot(userId))?.year_month;
+
+  // 스냅샷 전무 → 직전 1개만
+  if (!latest) return [lastEnded];
+
+  // 이미 최신까지(또는 그 이상) 정산됨 → 없음
+  if (latest >= lastEnded) return [];
+
+  // (latest, lastEnded] 구간을 오래된 순으로 수집
+  const months: string[] = [];
+  let cursor = addBillingMonths(latest, 1);
+  while (cursor <= lastEnded) {
+    months.push(cursor);
+    cursor = addBillingMonths(cursor, 1);
   }
-  const targetMonth = trigger.targetMonth;
+
+  // cap: 오래된 순 최대 MAX_CATCHUP_MONTHS 개 — 매일 실행되는 크론이 순서대로 따라잡는 자기치유 cap.
+  // (최신 우선으로 자르면 정산 후 latest가 잘린 옛 주기를 건너뛰어 영구 탈락 — 히스토리에 구멍)
+  return months.slice(0, MAX_CATCHUP_MONTHS);
+}
+
+/** 단일 결제주기 정산 — 고정비 보장 후 스냅샷 저장 + (신규 시) 자산 변동 */
+async function settleMonth(
+  userId: number,
+  targetMonth: string,
+): Promise<SettlementSnapshot | null> {
+  // 정산 직전 고정비 자동 기록 보장 — 대시보드 조회 부수효과에 의존하지 않고 여기서 확정.
+  // (과거 월도 ensureFixedCostExpenses 의 expenseDate<=today 필터로 전부 생성됨)
+  await ensureFixedCostExpenses(userId, targetMonth);
+
   const range = getBillingRange(targetMonth);
 
   const [flex, excluded, income, totalSpent] = await Promise.all([
@@ -267,7 +308,8 @@ export async function runSettlementIfDue(
   const alloc = await getMonthlyAllocation(userId, targetEnd);
   const monthlyBudget = alloc.monthlyBudgets.find((m) => m.yearMonth === targetMonth);
   if (!monthlyBudget) {
-    return { settled: false };
+    console.warn(`[settlement] user ${userId} ${targetMonth}: allocator에 대상 월 없음 → skip`);
+    return null;
   }
 
   const prevSnapshot = await readLatestSnapshot(userId);
@@ -296,5 +338,37 @@ export async function runSettlementIfDue(
     await applyAssetIncrease(userId, income);
   }
 
-  return { settled: result.saved, snapshot };
+  // 금액 로그 금지 — 월·신규저장 여부(불리언)만 기록.
+  console.info(`[settlement] user ${userId} ${targetMonth}: saved=${result.saved}`);
+
+  return result.saved ? snapshot : null;
+}
+
+/**
+ * 월 경계 정산 (Phase 4 cron 진입점).
+ *
+ * 매일 실행되며, 아직 정산 안 된 종료 주기가 있으면 오래된 순으로 순차 정산한다(catch-up).
+ * 크론이 특정 날짜에 실패해도 다음 실행에서 자동 보정되며, `saveSnapshotIfAbsent` 멱등성으로
+ * 재실행 시 자산 이중 변동은 발생하지 않는다.
+ */
+export async function runSettlementIfDue(
+  userId: number,
+  now: Date,
+): Promise<{ settled: boolean; snapshots: SettlementSnapshot[] }> {
+  const targetMonths = await listUnsettledMonths(userId, now);
+  if (targetMonths.length === 0) {
+    return { settled: false, snapshots: [] };
+  }
+
+  const catchUp = targetMonths.length > 1;
+  console.info(`[settlement] user ${userId}: 대상 ${targetMonths.length}개월 catch-up=${catchUp}`);
+
+  const snapshots: SettlementSnapshot[] = [];
+  // 오래된 순 순차 처리 — available_at_start 체인이 직전 스냅샷의 available_at_end 를 참조하므로 순서 중요.
+  for (const targetMonth of targetMonths) {
+    const snapshot = await settleMonth(userId, targetMonth);
+    if (snapshot) snapshots.push(snapshot);
+  }
+
+  return { settled: snapshots.length > 0, snapshots };
 }
