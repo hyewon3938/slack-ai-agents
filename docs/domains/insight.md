@@ -376,6 +376,8 @@ Baseline 윈도우는 `BASELINE_WINDOW_DAYS = 28`. SQL 템플릿은 `$user_id`, 
 ### 11. 프로액티브 인사이트 v2 — Phase 4 (가설-검증 정량 파이프라인)
 
 > ⚠️ **#477 P1(### 24)에서 supersede**: `pattern_hypotheses`·`pattern_stats` DROP, `weeklyHypothesisReview`·confirmed 가설 라인 중단. 아래는 P1 이전 서사 — 현재 검증 단위는 (시드×신호) `pattern_links`(### 24), 주간 검증 엔진은 P2 재구축.
+>
+> **현행 로직 정정(아래 임계 표·lifecycle의 "최근 4주 평균 q"·"4주 연속" 서술은 폐기됨)**: 현재 검증은 **전 기간 누적 2×2**를 off-day 대조로 **매주 처음부터 재계산**(SET 리플레이, ### 25)한다. 4주 평균/연속 창은 쓰지 않는다. 확정 게이트는 누적 e-value `e ≥ 20`(### 26·[ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md)), 종결은 `reject`(무연관 밴드)·`direction_mismatch`(역방향, effect ≤ 0.77, ### 41)를 판정 즉시 `rejected`로 종결한다(4주 대기 없음).
 
 Phase 3까지는 11종 결정론 패턴 + 60갑자 일일 매칭으로 "기록"만 했다. Phase 4는 그 위에 통계적으로 검증된 가설만 잔소리로 노출하는 자동 파이프라인을 얹는다. 사람 직관(혹은 LLM 추측)이 아니라 누적 데이터의 효과량 + p-value로 active/confirmed/rejected를 판정.
 
@@ -1779,6 +1781,14 @@ LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 
 
 **월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-work-as-claude-app-routines.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency = 최초 액션에서 `signal_suggest_runs` 원자적 클레임(`INSERT ... ON CONFLICT (user_id, month_start) DO NOTHING RETURNING` → 빈 결과면 후보 생성·발송 전에 즉시 종료). 재실행·스케줄러 중복 fire 어떤 원인이든 하나만 승리 — 마이그 [094](../../db/migrations/094_signal_suggest_runs.sql), 선택 근거·weekly(062) 대비 최초-클레임 이유는 [ADR-0053](../adr/0053-signal-suggest-idempotency.md). cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
 
+**기각 이력 신호 재생성 가드** (#557): 동일 측정 정의가 기각→재등장→기각 루프를 돌며 승인 카드 피로 + 통계 가족 m-인플레이션을 만드는 것을 차단. 신호 자동 생성 직전 동일 정의를 판정하는 공통 헬퍼 `findEquivalentSignal`([signal-defs.ts](../../src/shared/signal-defs.ts)) 신설.
+
+- **매치 키**: `(name, direction, kind, threshold, tag_name)` + sql 신호는 `sql_body` 포함. NULL은 `IS NOT DISTINCT FROM`. `user_id` 격리 + `excludeId`(자기 제외).
+- **재사용 규칙**: active/pending 동일 정의 → 재사용(재생성 안 함) / **rejected만 있는 동일 정의 → 스킵**(기각 유지) / 없으면 생성 허용.
+- **`ensureMirrorSignalDef`(#555) 일원화**: 자체 기각-스킵 로직을 이 헬퍼로 통합.
+- **`approveLlmSignal` 최종 방어선**: 승격 직전에 `findEquivalentSignal` 가드 추가 — 다른 active/pending 동일 정의(중복)거나 rejected 동일 정의(재활성화)면 활성화 거부. routine(repo 밖) INSERT에 대한 봇 최종 방어.
+- **마이그 [099](../../db/migrations/099_signal_defs_pending_identity.sql)**: 085의 active-only 부분 unique 인덱스를 active/pending으로 확장(방어적 — 기존 중복 잔존 시 NOTICE만 내고 인덱스 생성 스킵, 롤백 없음).
+
 ### 31. 매트릭 중심 패턴 검증 — Phase 6 (교란 플래그: 공동발현 시드 marginal 탐지, #493)
 
 off-day 검증(P2)은 단일 시드의 **marginal 연관**만 본다 — 같은 날 공존하는 제3변수(요일·주말·월위치·계절 = 달력 주기, 또는 다른 사주 시드)가 시드와 신호 둘 다를 끌면 가짜 연관(교란·"어부지리")이 생긴다. P6는 claimable (시드 S × 신호 X) 링크마다 공동발현 교란 시드 Z를 탐지해 `pattern_links.confound`에 기록하고 주간 카드에 노출한다. 정본 [ADR-0041](../adr/0041-confound-cofiring-flag.md). **새 통계 코어 0, 마이그레이션 0**(077 `confound` 컬럼 재사용) — P4a/P4b/P5a 패턴 5연속.
@@ -1881,6 +1891,8 @@ saju_influence_summary 뷰 (verified 가드 + confound_note) → daily-insight �
 **P6 vs P7 경계**: P6 = marginal 플래그(노출, always-on). P7 = 다변량 분리(MH 층화로 Z 통제 후 S 독립 기여 = *조정*, 데이터 게이트 dormant). marginal 겹침만으로 임의 강등하면 진짜 패턴 살해 위험 → 조정은 데이터 충분할 때만, 강등도 노출 레이어에서만(status·e-value 불변).
 
 **노브** ([insight-thresholds.ts](../../src/shared/insight-thresholds.ts) `confound`, 헌장 ⑤): P6(`minOverlap`·`minCofireDays`·`minEffectZX`·`topN`) + P7 `adjustMinCofire`(30, flag floor 10보다 높게)·`explainAwayMaxEffect`(1.3, `minRateRatio` 승계)·`attenuatedMaxRatio`(0.8)·`minStratumCell`(5)·`elasticNetEnabled`(false, 후속). 첫 몇 주 calibration. 뷰의 explained_away 가드는 JSONB 플래그라 SQL 하드코딩 없음(노브는 TS 조정 단계에만).
+
+**데이터-존재 윈도우 클립** (#556, [ADR-0044](../adr/0044-discovery-measurement-validity.md) 연장): P6의 overlap·`nCofire`·Z×X 2×2와 P7의 층화·marginal 계산이 검증 엔진과 **같은 데이터-존재 윈도우**를 쓰도록 클립한다. 기록 시작 이전의 빈 과거가 비발현·실패일로 세어지던 입력 편향을 P7 조정이 데이터 게이트를 통과하기 전에 정렬. `flagConfounds`가 `computeUserDataStarts`를 1회 산출 → 신호별·시드별 데이터 시작일 합성, 신호 시리즈도 자기 도메인 시작일 기준으로 계산(baseline 오염 차단). 링크(S×X) 기본 클립 = `max(시드 S 시작, 신호 X 시작)`, Z가 끼는 계산은 후보 Z의 시드 시작일도 `max` 합성. **판정 로직·임계치는 불변 — 입력 창만 교정.** (은퇴 크론 슬롯 비활성화는 같은 PR 마이그 097.)
 
 ### 33. 발굴 엔진 측정 타당성 + 카드 UX — Phase 1 (측정 타당성, #504)
 
@@ -2311,3 +2323,37 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 **검증 현황 쿼리** = `pattern_links` 직접 집계(누적): 검증됨=`confirmed`, 검증중=`active`+effect≥1.3+발현일≥15(봇 `isEmerging`과 동일 게이트), 기각=`rejected`, 모으는 중=나머지 `active`.
 
 관련 마이그레이션: `093_weekly_review_fallback_slot.sql`.
+
+### 41. 역방향 링크 종결 규칙 + 반대 방향 가설 재제안 (#555)
+
+주간 검증 엔진 `classifyVerdict`의 판정 사각지대 해소. confirm(effect ≥ 1.3)도 무연관 밴드(0.95\~1.05)도 못 걸리던 **명확한 역방향 링크**(effect ≤ 0.77 & 발현일 충분)를 `direction_mismatch`로 종결하고, 버려지는 정보를 반대 방향 신호 정의로 살려 발굴 엔진이 다음 주 스캔에서 (시드 × 거울신호) 쌍을 자연히 집어 올리게 한다. **마이그레이션 없음**(새 status·통계 코어 0).
+
+**`direction_mismatch` 판정** ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `classifyVerdict`):
+
+- `verdict` 타입에 `direction_mismatch` 추가. 분기 순서상 **무연관 밴드(reject)보다 먼저** 검사: `effect ≤ directionMismatchMaxEffect`(0.77) & 발현일 `≥ minActiveDays`(30)이면 `direction_mismatch`. 그 다음에 `rejectRatioLow(0.95) ≤ effect ≤ rejectRatioHigh(1.05)` → `reject`.
+- `statusForVerdict`: `reject`와 `direction_mismatch` **둘 다 DB status `rejected`** — 기존 종결과 동일 lifecycle로 통합. 사유 구분은 `test_detail.verdict`에만 분리(status enum 불변).
+- 임계는 [insight-thresholds.ts](../../src/shared/insight-thresholds.ts): `directionMismatchMaxEffect`·`minActiveDays`.
+
+**거울 신호 정의 보장** (`ensureMirrorSignalDef`):
+
+- `above_avg ↔ below_avg`(baseline-상대 방향)만 대상. 반대 방향 신호 **정의**가 이미 있으면 no-op. 기각 이력만 있으면 스킵(#557 `findEquivalentSignal` 위임).
+- **링크는 만들지 않는다** — 정의만 확보. 실제 (시드 × 거울신호) 가설 수립은 발굴 엔진(P5a)이 다음 주간 스캔에서 off-day 대조로 판단([ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) 2층 분리 유지: 사람·발굴은 노출만, 믿음은 통계).
+- 호출: [weekly-verification.ts](../../src/cron/weekly-verification.ts) 종결 훅에서 `verdict === 'direction_mismatch' && nextStatus === 'rejected'`일 때. per-link try/catch 격리 + 관측 로그.
+
+## 부록 — e-value 게이트 설계 노트 (S-f)
+
+> [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) 본문은 불변(Accepted). 이 부록은 운영·후속 판단을 위한 **경계 조건 메모**로, ADR 결정을 바꾸지 않는다.
+
+### null 시뮬 게이트가 커버하는 것 / 안 하는 것
+
+e-value 빌드 게이트([stats.test.ts](../../src/shared/__tests__/stats.test.ts))는 무관 데이터 null 시뮬(p×activeProb 그리드 + **AR(1) ρ=0.8 자기상관** 케이스, 각 1500 trial)에서 거짓 확정율 `≤ α`(0.05)를 실측한다. AR(1) 케이스는 "pass가 streak를 갖는다"는 현실(1차 자기상관)에 대한 robustness — 통과 확인(문서 §26 기준 ρ=0.8에서 \~0.026).
+
+- **커버**: 1차(AR(1)) 자기상관. 풀링 기준율 r이 편향을 억제하는 게 핵심.
+- **미커버(구조적으로 탈상관됨)**: **요일 주기 구조**(주 7일 반복 패턴)는 AR(1) 시뮬이 직접 재현하지 않는다. 다만 사주 트리거는 천간 10일·지지 12일 주기로 발현하고, 두 주기 모두 7과 **서로소**(coprime)라 요일 격자와 구조적으로 정렬되지 않는다 — 발현일이 특정 요일에 고이지 않으므로 요일 주기가 만드는 가짜 상관이 구조적으로 탈상관된다. 즉 미커버지만 트리거의 산술 구조가 위험을 상쇄한다(논거 명문화, 후속 관측 대상).
+
+### windowCapDays(365) 도달 시점 예고
+
+검증 윈도우는 데이터-존재 구간이 1차이고 `windowCapDays = 365`([insight-thresholds.ts](../../src/shared/insight-thresholds.ts), #504 [ADR-0044](../adr/0044-discovery-measurement-validity.md))가 상한 백스톱이다. 데이터가 누적돼 이력이 365일을 넘기기 시작하면(대략 2027 중반) 윈도우 **시작이 앞으로 밀린다**. 그러면 e-value 시퀀스의 prefix가 잘려 **sup 단조·리플레이 불변** 전제([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md): 매주 전체 윈도우를 처음부터 리플레이 → 동일 마틴게일)가 약화된다(윈도우가 이동하면 "처음부터"의 기준점이 바뀜).
+
+- **판단 필요 시점**: 도달 전. 선택지 = ① 고정 앵커(윈도우 시작을 데이터 개시일에 고정 — cap을 사실상 무제한) vs ② cap 유지하되 confirmed의 sticky 처리를 앵커 이동에 견디게 재정의.
+- **처리**: 별도 후속 이슈로 다룰 것(현재는 도달 전이라 무영향, 여기 기록만).

@@ -71,7 +71,7 @@ chmod +x ~/slack-ai-agents/scripts/restore-db.sh
 ```bash
 cd ~/slack-ai-agents
 ./scripts/backup-db.sh
-tail -20 ~/.local/log/slack-ai-agents/backup.log
+tail -20 ~/slack-ai-agents-logs/backup.log
 rclone lsf r2:<백업 버킷명>/daily/
 ```
 
@@ -129,7 +129,7 @@ docker rm -f test-restore
 
 | 증상 | 원인 / 해결 |
 |------|------------|
-| Slack 알림 없는데 백업 누락 | crontab 미등록 확인 `crontab -l` / `~/.local/log/slack-ai-agents/backup.log` 확인 |
+| Slack 알림 없는데 백업 누락 | crontab 미등록 확인 `crontab -l` / `~/slack-ai-agents-logs/backup.log` 확인 |
 | `R2_REMOTE 필요` 에러 | `.env`에 `R2_REMOTE` 항목 누락 |
 | `permission denied` on script | `chmod +x scripts/backup-db.sh` |
 | dump 파일 너무 작음 에러 | DB 컨테이너 다운 상태 확인 `docker ps` / pg 권한 문제 |
