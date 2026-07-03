@@ -6,6 +6,8 @@ import {
   timeToCron,
   calcRoutineStats,
   getBillingMonthForDate,
+  getTargetExpiryDate,
+  buildTargetExpiryWarning,
   RELOAD_DEBOUNCE_MS,
 } from '../life-cron.js';
 
@@ -37,6 +39,58 @@ describe('getBillingMonthForDate — 결제주기 경계 15일', () => {
   });
 });
 
+// ── 목표 기간 만료 알림: 만료일 산식 + 문구 (#554) ──
+
+describe('getTargetExpiryDate — 만료일 산식 (15일-시작 규칙)', () => {
+  it('target 2026-08 → 만료일 2026-08-14', () => {
+    expect(getTargetExpiryDate('2026-08')).toBe('2026-08-14');
+  });
+
+  it('target 2026-12 → 만료일 2026-12-14', () => {
+    expect(getTargetExpiryDate('2026-12')).toBe('2026-12-14');
+  });
+});
+
+describe('buildTargetExpiryWarning — 날짜 픽스처 (만료일 2026-08-14 기준)', () => {
+  it('target_date 없음 → null (안내 없음)', () => {
+    expect(buildTargetExpiryWarning(null, '2026-07-03')).toBeNull();
+  });
+
+  it('43일 전 → null (아직 여유, 무음)', () => {
+    expect(buildTargetExpiryWarning('2026-08', '2026-07-02')).toBeNull();
+  });
+
+  it('42일 전(6주 경계) → 임박 안내 (N=42)', () => {
+    const msg = buildTargetExpiryWarning('2026-08', '2026-07-03');
+    expect(msg).toContain('42일 뒤에 끝나');
+    expect(msg).toContain('2026-08');
+  });
+
+  it('7일 전 → 임박 안내 (N=7)', () => {
+    const msg = buildTargetExpiryWarning('2026-08', '2026-08-07');
+    expect(msg).toContain('7일 뒤에 끝나');
+  });
+
+  it('만료 다음날 → 정지 안내', () => {
+    const msg = buildTargetExpiryWarning('2026-08', '2026-08-15');
+    expect(msg).toContain('지났어');
+    expect(msg).toContain('멈춰');
+  });
+
+  it('만료일 당일(남은 일수 0) → 정지 안내', () => {
+    const msg = buildTargetExpiryWarning('2026-08', '2026-08-14');
+    expect(msg).toContain('지났어');
+  });
+
+  it('문구에 금액·재정 표현 없음 (기간·일수만)', () => {
+    const warn = buildTargetExpiryWarning('2026-08', '2026-08-07');
+    const expired = buildTargetExpiryWarning('2026-08', '2026-08-15');
+    for (const m of [warn, expired]) {
+      expect(m).not.toMatch(/원|만원|잔액|런웨이|금액|자산/);
+    }
+  });
+});
+
 describe('calcRoutineStats', () => {
   it('빈 배열', () => {
     const stats = calcRoutineStats([]);
@@ -49,10 +103,13 @@ describe('calcRoutineStats', () => {
 // ── CronScheduler reload debounce/mutex 테스트 ──
 
 // vi.hoisted로 mock 함수 선언 (vi.mock 호이스팅 대응)
-const { mockSchedule, mockQuery, mockConnect } = vi.hoisted(() => ({
+const { mockSchedule, mockQuery, mockConnect, mockTodayISO, mockDayOfWeek } = vi.hoisted(() => ({
   mockSchedule: vi.fn(() => ({ stop: vi.fn() })),
   mockQuery: vi.fn(),
   mockConnect: vi.fn(),
+  // 목표 기간 만료 알림 테스트에서 요일/오늘 날짜를 제어하기 위한 mock (기본값 유지)
+  mockTodayISO: vi.fn(() => '2026-03-12'),
+  mockDayOfWeek: vi.fn(() => 4),
 }));
 
 // node-cron mock
@@ -71,10 +128,10 @@ vi.mock('pg', () => {
 });
 
 vi.mock('../../shared/kst.js', () => ({
-  getTodayISO: () => '2026-03-12',
+  getTodayISO: () => mockTodayISO(),
   getYesterdayISO: () => '2026-03-11',
   getKSTTimeString: () => '09:00',
-  getKSTDayOfWeek: () => 4,
+  getKSTDayOfWeek: () => mockDayOfWeek(),
   formatDateShort: (d: string) => d,
   addDays: (d: string, n: number) => {
     const date = new Date(`${d}T12:00:00+09:00`);
@@ -88,6 +145,7 @@ import {
   CronScheduler,
   createTodayRecords,
   calcYesterdayFlexSpent,
+  warnTargetExpiryIfNear,
   type LifeCronConfig,
 } from '../life-cron.js';
 import type { UserMapping } from '../../shared/user-resolver.js';
@@ -370,5 +428,114 @@ describe('calcYesterdayFlexSpent — 웹 SSOT 정합', () => {
     });
     const spent = await calcYesterdayFlexSpent(1, YESTERDAY, BILLING);
     expect(spent).toBe(3000); // max(0, 5000-8000)=0
+  });
+});
+
+// ── warnTargetExpiryIfNear: 월요일 게이트 + 채널 라우팅 (#554) ──
+
+describe('warnTargetExpiryIfNear — 월요일 게이트 + 채널 라우팅', () => {
+  const MONDAY = 1;
+  const TUESDAY = 2;
+
+  /** budget_settings.target_date + 매핑 mock */
+  const setupExpiryMock = (targetDate: string | null, mappings: UserMapping[]): void => {
+    mockQuery.mockImplementation((sql: string) => {
+      if (/budget_settings/.test(sql)) {
+        return Promise.resolve({ rows: [{ target_date: targetDate }] });
+      }
+      if (/slack_user_mappings/.test(sql)) {
+        return Promise.resolve({
+          rows: mappings.map((m) => ({
+            user_id: m.userId,
+            slack_user_id: m.slackUserId,
+            life_channel_id: m.lifeChannelId,
+            insight_channel_id: m.insightChannelId,
+          })),
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+  };
+
+  const config: LifeCronConfig = {
+    channelId: 'C_FALLBACK',
+    llmClient: {} as LifeCronConfig['llmClient'],
+  };
+
+  const mapping = (over: Partial<UserMapping> = {}): UserMapping => ({
+    userId: 1,
+    slackUserId: 'U1',
+    lifeChannelId: 'C_LIFE',
+    insightChannelId: 'C_INSIGHT',
+    ...over,
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockConnect.mockResolvedValue({ release: vi.fn() });
+    await connectDB('postgresql://test@localhost/test');
+    // 기본: 임박(만료 2026-08-14, 오늘 7일 전)
+    mockTodayISO.mockReturnValue('2026-08-07');
+    mockDayOfWeek.mockReturnValue(MONDAY);
+  });
+
+  afterEach(() => {
+    mockTodayISO.mockReturnValue('2026-03-12');
+    mockDayOfWeek.mockReturnValue(4);
+  });
+
+  it('화요일 → 무음 (DB 조회조차 안 함)', async () => {
+    mockDayOfWeek.mockReturnValue(TUESDAY);
+    setupExpiryMock('2026-08', [mapping()]);
+    const app = createMockApp() as { client: { chat: { postMessage: ReturnType<typeof vi.fn> } } };
+
+    await warnTargetExpiryIfNear(app as never, config);
+
+    expect(app.client.chat.postMessage).not.toHaveBeenCalled();
+    const budgetQueries = mockQuery.mock.calls.filter((c) =>
+      /budget_settings/.test(c[0] as string),
+    );
+    expect(budgetQueries).toHaveLength(0);
+  });
+
+  it('월요일 + 임박(7일 전) → life 채널로 전송', async () => {
+    setupExpiryMock('2026-08', [mapping()]);
+    const app = createMockApp() as { client: { chat: { postMessage: ReturnType<typeof vi.fn> } } };
+
+    await warnTargetExpiryIfNear(app as never, config);
+
+    expect(app.client.chat.postMessage).toHaveBeenCalledTimes(1);
+    const arg = app.client.chat.postMessage.mock.calls[0][0] as { channel: string; text: string };
+    expect(arg.channel).toBe('C_LIFE');
+    expect(arg.text).toContain('7일 뒤에 끝나');
+  });
+
+  it('월요일 + life 채널 없음 → slackUserId(DM)로 폴백', async () => {
+    setupExpiryMock('2026-08', [mapping({ lifeChannelId: null })]);
+    const app = createMockApp() as { client: { chat: { postMessage: ReturnType<typeof vi.fn> } } };
+
+    await warnTargetExpiryIfNear(app as never, config);
+
+    const arg = app.client.chat.postMessage.mock.calls[0][0] as { channel: string };
+    expect(arg.channel).toBe('U1');
+  });
+
+  it('월요일 + 아직 여유(43일 전) → 무음', async () => {
+    mockTodayISO.mockReturnValue('2026-07-02');
+    setupExpiryMock('2026-08', [mapping()]);
+    const app = createMockApp() as { client: { chat: { postMessage: ReturnType<typeof vi.fn> } } };
+
+    await warnTargetExpiryIfNear(app as never, config);
+
+    expect(app.client.chat.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('월요일 + target_date 없음 → 무음', async () => {
+    setupExpiryMock(null, [mapping()]);
+    const app = createMockApp() as { client: { chat: { postMessage: ReturnType<typeof vi.fn> } } };
+
+    await warnTargetExpiryIfNear(app as never, config);
+
+    expect(app.client.chat.postMessage).not.toHaveBeenCalled();
   });
 });
