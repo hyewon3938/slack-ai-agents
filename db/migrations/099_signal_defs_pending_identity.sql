@@ -1,4 +1,4 @@
--- 098: 신호 재생성 가드 — active/pending 부분 unique 인덱스 (#557)
+-- 099: 신호 재생성 가드 — active/pending 부분 unique 인덱스 (#557)
 -- 배경: 085가 active sql 신호에 부분 unique 인덱스(uq_signal_defs_sql_active)를 걸어 동일 측정
 --   신호의 재-active를 막았으나 status='pending'은 인덱스 밖이었다. monthly-signal-suggest routine(repo 밖)이
 --   동일 정의를 pending으로 INSERT하면 인덱스에 걸리지 않고 슬쩍 들어와 승인 카드로 노출된다(피로 + m-인플레).
