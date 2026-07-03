@@ -70,33 +70,71 @@ describe('dismissDiscoveryLink — pending → archived', () => {
   });
 });
 
-describe('approveLlmSignal — pending → active (게이트 #1 재검증, ADR-0040)', () => {
-  it('검증 통과 sql_body면 active 전이 + signalId 반환', async () => {
+describe('approveLlmSignal — pending → active (게이트 #1 재검증, ADR-0040 + 재생성 가드 #557)', () => {
+  /** 승인 대상 pending 신호의 identity SELECT 응답. */
+  const pendingRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    sql_body: 'SELECT count(*) FROM schedules WHERE user_id = $1 AND date = $2',
+    name: 'schedule_completion_rate',
+    kind: 'sql',
+    direction: 'above_avg',
+    threshold: null,
+    tag_name: null,
+    ...over,
+  });
+
+  it('검증 통과 + 동일 정의 없음이면 active 전이 + signalId 반환', async () => {
     resultQueue = [
-      { rows: [{ sql_body: 'SELECT count(*) FROM schedules WHERE user_id = $1 AND date = $2' }] },
-      { rows: [{ id: 88 }] },
+      { rows: [pendingRow()] }, // identity SELECT
+      { rows: [] }, // findEquivalentSignal → absent
+      { rows: [{ id: 88 }] }, // UPDATE
     ];
     const out = await approveLlmSignal(1, 88);
     expect(out).toBe(88);
-    expect(captured).toHaveLength(2);
-    expect(captured[0]?.sql).toMatch(/SELECT sql_body FROM signal_defs/);
+    expect(captured).toHaveLength(3);
+    expect(captured[0]?.sql).toMatch(/SELECT sql_body, name, kind, direction, threshold, tag_name/);
     expect(captured[0]?.sql).toMatch(/status = 'pending' AND source = 'llm'/);
-    expect(captured[1]?.sql).toMatch(/UPDATE signal_defs SET status = 'active'/);
-    expect(captured[1]?.sql).toMatch(/source = 'llm'/); // llm만
-    expect(captured[1]?.params).toEqual([88, 1]); // [signalId, userId]
+    // findEquivalentSignal은 자신 제외(excludeId=signalId).
+    expect(captured[1]?.sql).toMatch(/SELECT id, status FROM signal_defs/);
+    expect(captured[1]?.params?.[7]).toBe(88);
+    expect(captured[2]?.sql).toMatch(/UPDATE signal_defs SET status = 'active'/);
+    expect(captured[2]?.sql).toMatch(/source = 'llm'/); // llm만
+    expect(captured[2]?.params).toEqual([88, 1]); // [signalId, userId]
   });
 
-  it('검증 실패 sql_body면 활성화 거부(UPDATE 안 함, null)', async () => {
-    resultQueue = [{ rows: [{ sql_body: 'SELECT sum(value) FROM assets WHERE user_id = $1' }] }];
+  it('검증 실패 sql_body면 활성화 거부(equiv 조회·UPDATE 안 함, null)', async () => {
+    resultQueue = [
+      { rows: [pendingRow({ sql_body: 'SELECT sum(value) FROM assets WHERE user_id = $1' })] },
+    ];
     const out = await approveLlmSignal(1, 88);
     expect(out).toBeNull();
-    expect(captured).toHaveLength(1); // SELECT만, UPDATE 미실행
+    expect(captured).toHaveLength(1); // identity SELECT만, equiv·UPDATE 미실행
+  });
+
+  it('기각 이력 동일 정의만 존재 → 활성화 거부(UPDATE 안 함, null)', async () => {
+    resultQueue = [
+      { rows: [pendingRow()] }, // identity SELECT
+      { rows: [{ id: 3, status: 'rejected' }] }, // findEquivalentSignal → skip_rejected
+    ];
+    const out = await approveLlmSignal(1, 88);
+    expect(out).toBeNull();
+    expect(captured).toHaveLength(2); // equiv까지, UPDATE 미실행
+    expect(captured[1]?.sql).toMatch(/SELECT id, status FROM signal_defs/);
+  });
+
+  it('다른 active 동일 정의 존재(중복) → 활성화 거부(null)', async () => {
+    resultQueue = [
+      { rows: [pendingRow()] },
+      { rows: [{ id: 42, status: 'active' }] }, // findEquivalentSignal → reuse
+    ];
+    const out = await approveLlmSignal(1, 88);
+    expect(out).toBeNull();
+    expect(captured).toHaveLength(2); // UPDATE 미실행
   });
 
   it('pending/llm/본인 아님(SELECT 0행)이면 null', async () => {
     resultQueue = [{ rows: [] }];
     expect(await approveLlmSignal(1, 99)).toBeNull();
-    expect(captured).toHaveLength(1); // UPDATE 미시도
+    expect(captured).toHaveLength(1); // equiv·UPDATE 미시도
   });
 });
 
