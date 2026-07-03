@@ -13,7 +13,6 @@ import {
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
-import { getDayPillar } from '@/lib/saju';
 import {
   computeWeekLayout,
   WEEK_START,
@@ -23,6 +22,7 @@ import { StatusBadge } from './status-badge';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
 import { ActionMenu } from './action-menu';
+import { SajuPillarLabel } from './saju-pillar-label';
 
 interface WeekViewProps {
   currentDate: Date;
@@ -472,28 +472,6 @@ function WeekSpanBar({
           <div className="mx-auto h-full w-0.5 rounded bg-gray-200" />
         </div>
       )}
-    </div>
-  );
-}
-
-function SajuPillarLabel({
-  dateStr,
-  today,
-  className = '',
-}: {
-  dateStr: string;
-  today: boolean;
-  className?: string;
-}) {
-  const pillar = getDayPillar(dateStr);
-  return (
-    <div
-      className={`flex flex-wrap items-baseline justify-center gap-x-1 text-[11px] leading-tight ${
-        today ? 'text-blue-600' : 'text-gray-500'
-      } ${className}`}
-    >
-      <span className="font-medium">{pillar.hanja}</span>
-      <span>{pillar.hangul}</span>
     </div>
   );
 }

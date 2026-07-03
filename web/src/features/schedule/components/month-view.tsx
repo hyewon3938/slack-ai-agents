@@ -22,6 +22,7 @@ import {
 import { ScheduleCard } from './schedule-card';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
+import { SajuPillarLabel } from './saju-pillar-label';
 
 interface MonthViewProps {
   currentDate: Date;
@@ -36,7 +37,8 @@ interface MonthViewProps {
 const DAY_NAMES = ['월', '화', '수', '목', '금', '토', '일'];
 const MAX_VISIBLE = 3;
 const LANE_HEIGHT = 22;
-const DATE_ROW_HEIGHT = 34;
+// 날짜 숫자 + 사주 일주 라벨 한 줄까지 포함한 헤더 높이. 스패닝 바가 라벨을 가리지 않도록 여유 포함.
+const DATE_ROW_HEIGHT = 44;
 
 export function MonthView({
   currentDate,
@@ -100,20 +102,30 @@ export function MonthView({
                     !isCurrentMonth ? 'bg-gray-50/50' : 'bg-white hover:bg-blue-50/30'
                   } ${selected ? 'ring-2 ring-inset ring-blue-400' : ''}`}
                 >
-                  <div
-                    className={`mb-1.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                      today
-                        ? 'bg-blue-500 text-white'
-                        : !isCurrentMonth
-                          ? 'text-gray-300'
-                          : dayOfWeek === 0
-                            ? 'text-red-500'
-                            : dayOfWeek === 6
-                              ? 'text-blue-500'
-                              : 'text-gray-700'
-                    }`}
-                  >
-                    {format(day, 'd')}
+                  <div className="mb-1.5">
+                    <div
+                      className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                        today
+                          ? 'bg-blue-500 text-white'
+                          : !isCurrentMonth
+                            ? 'text-gray-300'
+                            : dayOfWeek === 0
+                              ? 'text-red-500'
+                              : dayOfWeek === 6
+                                ? 'text-blue-500'
+                                : 'text-gray-700'
+                      }`}
+                    >
+                      {format(day, 'd')}
+                    </div>
+                    <SajuPillarLabel
+                      dateStr={dateStr}
+                      today={today}
+                      dimmed={!isCurrentMonth}
+                      compact
+                      align="start"
+                      className="mt-0.5"
+                    />
                   </div>
 
                   {/* 스패닝 바 공간 확보 */}

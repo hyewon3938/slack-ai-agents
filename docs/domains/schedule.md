@@ -92,6 +92,7 @@ features/schedule/
 │   ├── schedule-card.tsx       # 일정 카드 UI
 │   ├── schedule-form.tsx       # 일정 생성/수정 폼 (모달)
 │   ├── status-badge.tsx        # 상태 뱃지 컴포넌트
+│   ├── saju-pillar-label.tsx   # 사주 일주 라벨 (월/주 뷰 공용)
 │   └── action-menu.tsx         # 일정 컨텍스트 메뉴 (수정/삭제/미루기 등)
 ├── hooks/
 │   ├── use-schedules.ts        # 메인 일정 상태 관리 + CRUD + 필터링 + 폴링
@@ -133,12 +134,15 @@ features/schedule/
 - 3가지 뷰: month / week / day
 - 초기 뷰: 모바일(< 768px) = day, 데스크톱 = week
 - 15초 폴링 (탭 활성 시), 탭 복귀 시 날짜 갱신
-- 사주 일주 표시 (2026-05-26, #427): 주간·일간 뷰 날짜 셀에 일주(천간+지지) 한자+한글 병기
-  - 계산: `web/src/lib/saju.ts` `getDayPillar(dateStr)` — 봇 `src/shared/saju-calendar.ts`의 복제본 (순수 함수, ~50줄). 동기화 책임은 [ADR-0021](../adr/0021-web-shared-saju-code-duplication.md)
-  - 표시 형식: `庚子 경자` 한 줄 (한자 명조체 `font-serif` + 한글), `flex-wrap`으로 좁아지면 두 줄 자동 분리
-  - 적용 위치: `week-view.tsx` 데스크탑 grid 날짜 셀 + 모바일 세로 리스트 카드, `day-view.tsx` 헤더 옆
-  - 색상: 오늘 `text-blue-600`, 그 외 `text-gray-500` (day-view 헤더는 항상 `text-blue-600`)
-  - 컴포넌트: `SajuPillarLabel`은 week-view.tsx 내부 정의 (재사용 범위가 한 파일이라 별도 분리 안 함)
+- 사주 일주 표시 (2026-05-26 #427, 월간 뷰 확장 2026-07-03): 월·주·일 모든 뷰 날짜 셀에 일주(천간+지지) 한자+한글 병기
+  - 계산: `web/src/lib/saju.ts` `getDayPillar(dateStr)` — 봇 `src/shared/saju-calendar.ts`의 복제본 (순수 함수, \~50줄). 동기화 책임은 [ADR-0021](../adr/0021-web-shared-saju-code-duplication.md)
+  - 표시 형식: `庚子 경자` (한자 `font-medium` + 한글)
+    - 주·일 뷰: `text-[11px]` + `flex-wrap`(좁아지면 두 줄 자동 분리)
+    - 월간 뷰: `compact` 모드 — `text-[9px] sm:text-[10px]` + `whitespace-nowrap`(한 줄 고정). 좁은 모바일 셀에서 헤더 높이를 예측 가능하게 유지해 스패닝 바와 겹치지 않게
+  - 적용 위치: `month-view.tsx` 날짜 셀(숫자 아래) + `week-view.tsx` 데스크탑 grid 셀·모바일 리스트 카드 + `day-view.tsx` 헤더 옆(자체 배지)
+  - 색상: 오늘 `text-blue-600`, 이번 달 아님(월간 뷰) `text-gray-300`, 그 외 `text-gray-500` (day-view 헤더는 항상 `text-blue-600`)
+  - 컴포넌트: `SajuPillarLabel` (`saju-pillar-label.tsx`) — 월·주 뷰 공용. `today`/`dimmed`/`compact`/`align` prop으로 뷰별 변형. day-view는 헤더용 자체 배지 사용
+  - 월간 뷰는 일주 라벨 한 줄만큼 `DATE_ROW_HEIGHT`를 34→44로 올려 스패닝 바 시작 위치를 라벨 아래로 내림
 
 ### 필터링
 - 카테고리 필터 (상위 + 하위 카테고리)
