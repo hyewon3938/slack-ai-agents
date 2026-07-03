@@ -60,3 +60,25 @@ describe('decidePeriodTriggers (게이트 4분기)', () => {
     expect(types).toEqual(['daeun', 'seun', 'wolun']);
   });
 });
+
+// ─── 전환일 인접 경계 + 게이트 결정론 (#558 — 소서 첫 발화 회귀 보호) ──
+// 게이트는 날짜 단위 결정론(isJeolgiTransitionDay)이지 시각 조건이 아니다. 전환일이 하루라도
+// 어긋나면 no-op이어야 함 — 전환일 직전/직후 인접일을 명시적으로 못박아 경계 회귀를 감지한다.
+describe('decidePeriodTriggers 경계 — 전환일 인접일 no-op (#558)', () => {
+  it('소서 직전일(2026-07-06) → no-op (전환은 07-07에만)', () => {
+    const triggers = decidePeriodTriggers('2026-07-06', NO_DAEUN);
+    expect(triggers).toHaveLength(0);
+  });
+
+  it('소서 익일(2026-07-08, 미월 진행 중) → no-op (기간 내부는 전환 아님)', () => {
+    const triggers = decidePeriodTriggers('2026-07-08', NO_DAEUN);
+    expect(triggers).toHaveLength(0);
+  });
+
+  it('게이트 결정론 — 같은 전환일 2회 호출 → 동일 트리거(재실행 안전)', () => {
+    // 같은 전환일에 태스크가 2회 도는 상황: 트리거 결정 자체가 결정론이라 재실행이 안전해야 한다.
+    const first = decidePeriodTriggers('2026-07-07', NO_DAEUN);
+    const second = decidePeriodTriggers('2026-07-07', NO_DAEUN);
+    expect(second).toEqual(first);
+  });
+});

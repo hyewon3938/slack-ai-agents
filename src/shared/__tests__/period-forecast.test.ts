@@ -551,3 +551,90 @@ describe('loadLedger', () => {
     expect(ledger.scored).toEqual([]);
   });
 });
+
+// ─── 절기 전환 발화 경로 (#558 — 소서 첫 발화 회귀 보호) ──────
+// generateAndPost가 전환일에 도는 순서(①직전 open 채점 → ③이번 기간 사전등록)를 픽스처로 재현.
+// 소서 미월 = decidePeriodTriggers('2026-07-07')가 내는 실제 구간(2026-07-07 ~ 08-06)과 일치.
+const SOSEO_RANGE = { start: '2026-07-07', end: '2026-08-06' }; // 소서 → 입추 전날
+const IPCHUE = '2026-08-07'; // 다음 절입(입추) — 소서 예측의 채점 트리거일
+
+describe('절기 전환 발화 경로 (#558)', () => {
+  it('첫 발화 — 직전 예측 0건: 채점은 빈 배열 안전 반환 + 신규 등록은 진행', async () => {
+    // prod 두 테이블 0행 상태(배포 후 첫 절입 전환) 재현: 아직 어떤 예측도 등록된 적 없음.
+    const scored = await scoreForecasts(USER, 'wolun', SOSEO_RANGE.start);
+    expect(scored).toEqual([]); // 강제판정·throw 없이 빈 채점
+
+    // 같은 실행 안에서 이번 기간(소서 미월) 예측 신규 등록은 정상 진행.
+    dbState.repLinks.set(1, { signal_id: 100, n_active: 30, rate_off: 0.3 });
+    const forecasts = await generateForecasts(USER, 'wolun', SOSEO_RANGE, [
+      mkCell({ sourceLinkIds: [1] }),
+    ]);
+    expect(forecasts).toHaveLength(1);
+    expect(forecasts[0]?.status).toBe('open');
+    expect(forecasts[0]?.signalId).toBe(100);
+    // 등록 행이 소서 구간으로 봉인됐는지(다음 채점 대상 계약).
+    const row = dbState.table[0];
+    expect(row?.period_start).toBe(SOSEO_RANGE.start);
+    expect(row?.period_end).toBe(SOSEO_RANGE.end);
+  });
+
+  it('첫 발화 — 측정 셀 0개면 no_call 등록(침묵 금지, D8)', async () => {
+    const scored = await scoreForecasts(USER, 'wolun', SOSEO_RANGE.start);
+    expect(scored).toEqual([]);
+    const forecasts = await generateForecasts(USER, 'wolun', SOSEO_RANGE, []);
+    expect(forecasts).toHaveLength(1);
+    expect(forecasts[0]?.status).toBe('no_call');
+    expect(dbState.table[0]?.status).toBe('no_call');
+  });
+
+  it('같은 전환일 2회 실행 — 채점·생성 재실행해도 중복 등록·baseline 변동 없음', async () => {
+    dbState.repLinks.set(1, { signal_id: 110, n_active: 30, rate_off: 0.3 });
+    const cells = [mkCell({ sourceLinkIds: [1] })];
+
+    // 1회차: 채점(빈) → 생성
+    await scoreForecasts(USER, 'wolun', SOSEO_RANGE.start);
+    const first = await generateForecasts(USER, 'wolun', SOSEO_RANGE, cells);
+    expect(dbState.table).toHaveLength(1);
+    const baselineBefore = dbState.table[0]?.baseline_rate;
+
+    // 2회차: 같은 전환일 재실행. rate_off가 바뀌어도 동결이라 재생성 안 함.
+    dbState.repLinks.set(1, { signal_id: 110, n_active: 30, rate_off: 0.99 });
+    await scoreForecasts(USER, 'wolun', SOSEO_RANGE.start);
+    const second = await generateForecasts(USER, 'wolun', SOSEO_RANGE, cells);
+    expect(dbState.table).toHaveLength(1); // 중복 등록 없음
+    expect(dbState.table[0]?.baseline_rate).toBe(baselineBefore);
+    expect(second).toEqual(first);
+  });
+
+  it('다음 절입 채점 예고 — 소서 등록 예측이 입추 시점에 채점 대상으로 잡힘', async () => {
+    // 소서 미월 예측을 등록(open) — 다음 절입(입추)까지 open으로 대기.
+    pushOpen({
+      signal_id: 120,
+      baseline_rate: 0.3,
+      period_start: SOSEO_RANGE.start,
+      period_end: SOSEO_RANGE.end,
+    });
+    dbState.signalDefs.set(120, mkSignal(120));
+    const dates = daysBetween(SOSEO_RANGE.start, SOSEO_RANGE.end); // 31일
+    dbState.seriesBySignal.set(120, series(dates, 22)); // 22/31 ≈ 0.71 > 0.3 → up 적중
+
+    // 입추일 실행: 소서 기간 끝(08-06) <= today(입추 08-07) → 다음 절입이 채점을 회수.
+    const scored = await scoreForecasts(USER, 'wolun', IPCHUE);
+    expect(scored).toHaveLength(1);
+    expect(scored[0]?.status).toBe('scored');
+    expect(scored[0]?.directionHit).toBe(true);
+    expect(scored[0]?.measuredRate).toBeCloseTo(22 / 31, 5);
+  });
+
+  it('다음 절입 채점 예고 — 소서 기간 진행 중(입추 전)에는 미채점', async () => {
+    pushOpen({
+      signal_id: 121,
+      period_start: SOSEO_RANGE.start,
+      period_end: SOSEO_RANGE.end,
+    });
+    // 미월 한복판(07-20) 실행: period_end(08-06) > today → 채점 대상 아님, open 유지.
+    const scored = await scoreForecasts(USER, 'wolun', '2026-07-20');
+    expect(scored).toHaveLength(0);
+    expect(dbState.table[0]?.status).toBe('open');
+  });
+});
