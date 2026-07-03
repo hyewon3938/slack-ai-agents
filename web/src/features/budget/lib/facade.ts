@@ -5,7 +5,6 @@ import {
   calcCycleDays,
   addBillingMonths,
 } from './billing/cycle';
-import { calcAllocatedDays } from './allocator/proration';
 import { allocateMonthlyBudgets } from './allocator/month-allocator';
 import { allocateTodayBudget } from './allocator/day-allocator';
 import { projectRunway, projectFromAllocator } from './allocator/runway-projection';
