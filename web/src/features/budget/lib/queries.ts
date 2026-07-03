@@ -269,7 +269,7 @@ export async function deleteExpense(userId: number, id: number): Promise<boolean
 
 /**
  * 월간 요약: 총 지출, 카테고리별, 예산 대비.
- * 카드 결제주기 기준: 전월 14일 ~ 당월 13일.
+ * 카드 결제주기 기준: 전월 15일 ~ 당월 14일.
  */
 export async function queryMonthSummary(userId: number, yearMonth: string): Promise<MonthSummary> {
   const { from, to } = getBillingRange(yearMonth);
@@ -336,7 +336,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   const plannedRows = await queryPlannedExpenses(userId, yearMonth);
   const plannedTotal = plannedRows.reduce((s, p) => s + p.amount, 0);
 
-  // 결제주기 일수 계산 (전월 14일 ~ 당월 13일)
+  // 결제주기 일수 계산 (전월 15일 ~ 당월 14일)
   const daysInCycle = calcCycleDays(from, to);
   const dailyAvg = variableTotal > 0 ? Math.round(variableTotal / daysInCycle) : 0;
 
@@ -558,53 +558,6 @@ export async function deletePlannedExpense(userId: number, id: number): Promise<
     userId,
   ]);
   return (result.rowCount ?? 0) > 0;
-}
-
-// ─── 가용자금 실시간 계산 ────────────────────────────────
-
-interface EffectiveAvailable {
-  snapshot_total: number; // 자산 스냅샷 합계
-  expense_since: number; // 스냅샷 이후 지출
-  income_since: number; // 스냅샷 이후 수입
-  effective: number; // 실시간 가용자금
-  latest_update: string | null;
-}
-
-/**
- * 가용자금 실시간 계산 (단일 CTE 쿼리로 통합):
- * 자산 available_amount 합계 - 스냅샷 이후 지출 + 스냅샷 이후 수입
- */
-export async function getEffectiveAvailable(userId: number): Promise<EffectiveAvailable> {
-  const result = await queryOne<{
-    snapshot_total: string;
-    latest_update: string | null;
-    expense_since: string;
-    income_since: string;
-  }>(
-    `WITH asset_snapshot AS (
-       SELECT COALESCE(SUM(available_amount), 0) as total, MAX(updated_at) as latest
-       FROM assets WHERE user_id = $1 AND is_emergency = false
-     )
-     SELECT
-       a.total::text as snapshot_total,
-       a.latest::text as latest_update,
-       COALESCE((SELECT SUM(amount) FROM expenses WHERE user_id = $1 AND COALESCE(type,'expense')='expense' AND created_at > a.latest), 0)::text as expense_since,
-       COALESCE((SELECT SUM(amount) FROM expenses WHERE user_id = $1 AND COALESCE(type,'expense')='income' AND created_at > a.latest), 0)::text as income_since
-     FROM asset_snapshot a`,
-    [userId],
-  );
-
-  const snapshotTotal = Number(result?.snapshot_total ?? 0);
-  const expenseSince = Number(result?.expense_since ?? 0);
-  const incomeSince = Number(result?.income_since ?? 0);
-
-  return {
-    snapshot_total: snapshotTotal,
-    expense_since: expenseSince,
-    income_since: incomeSince,
-    effective: snapshotTotal - expenseSince + incomeSince,
-    latest_update: result?.latest_update ?? null,
-  };
 }
 
 // ─── 일별 예산 로그 ──────────────────────────────────────

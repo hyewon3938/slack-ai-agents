@@ -34,7 +34,7 @@ export function MonthSummaryCard({ summary }: MonthSummaryCardProps) {
 
   const month = parseInt(summary.year_month.slice(5), 10);
 
-  // 결제주기: 전월 14일 ~ 당월 13일
+  // 결제주기: 전월 15일 ~ 당월 14일
   const todayISO = getTodayISO();
   const today = new Date(`${todayISO}T00:00:00`);
   const { from, to } = getBillingRange(summary.year_month);
