@@ -51,7 +51,7 @@
 
 ### 가용자금 (Total Available) = 자금
 - 비상금 제외 자산의 `available_amount` 합계 = 단일 **자금**(현금 유동자금, #539)
-- 결제주기 종료 cron이 이전 사이클의 **전체 결제분**(`readTotalCycleSpent`)을 자금에서 자동 차감하고 수입을 증액 (depletion 일원화). 자잘한 차이는 사용자가 수기로 보정(사용자 입력 승)
+- 결제주기 종료 정산이 이전 사이클의 **전체 결제분**(`readTotalCycleSpent`)을 자금에서 자동 차감하고 수입을 증액 (depletion 일원화). 정산은 매일 실행되며 미정산 종료 주기를 오래된 순으로 따라잡는다(catch-up, #551). 자잘한 차이는 사용자가 수기로 보정(사용자 입력 승)
 - 할부 회차는 등록 시점에 차감하지 않는다 — 묶인 돈으로 라이브 계산(reservation)되다가 결제되는 주기의 정산에서 한 번만 차감(depletion)
 - 구현: [facade.ts `runSettlementIfDue`](../../web/src/features/budget/lib/facade.ts), [assets-repo.ts](../../web/src/features/budget/lib/repository/assets-repo.ts)
 - 판단 근거: [ADR 0051](../adr/0051-budget-model-simplification-runway-locked.md) (ADR 0015·0018 supersede)
@@ -60,7 +60,7 @@
 - 월 자유 예산 = 월 가용자금 − (월 고정비 + **그 달 묶인 돈** + 예정 지출)
 - 묶인 돈 = 목표 기간 창 안 그 `billing_month`의 할부 락(`readInstallmentLockByMonth`). 현재월/미래월 동일 규칙
 - 목표 기간이 설정되면 남은 모든 월에 **일수 비례로 균등** 분배
-- 현재 월은 결제주기 잔여일 기준으로 `allocatedDays` 비례 축소
+- 현재 월도 결제주기 **전체 일수**로 배분한다 — 잔여일 비례 축소는 하지 않는다(프로레이션 제거, 커밋 f222cfa). 대금기간 내 월/일 예산을 고정해 하루 안 봤다고 예산이 출렁이지 않게 한다. 일 단위 조정은 day-allocator 책임
 
 ### 일일 예산 (Daily Budget) — 이중 모델
 
@@ -70,17 +70,19 @@ ADR 0008 도입 후 일 예산은 두 값으로 분리된다:
 - **오늘 예산 (`todayRecommended`)**: `max(0, round((monthBudgetRemaining + todayFlexSpent) / daysFromToday))`. 매일 갱신되는 동적 권장값. 잔여 음수 시 0으로 클램프되어 회복 모드 진입 신호. UI 메인 표시.
 - **오늘 남음 (`todayRemaining`)**: `todayRecommended − todayFlexSpent`. 음수 가능 (UI에서 초과 표시).
 - **산식은 #539 이후에도 불변** — 입력만 바뀌었다. `flexibleSpent`/`todayFlexSpent`가 할부를 전부 제외(1회차 포함)하므로, 할부 1회차가 "오늘 예산"에 몰리지 않고 현재월 묶인 돈으로만 작용한다.
+- **이번 달 수입(bonus)의 위치**: `todayBudget` base(`monthBudget − currentMonthIncome`)는 bonus를 **뺀** 값이라 기준 일 예산은 흔들리지 않는다. bonus는 현재월 `free`에만 독점 가산되므로 `todayRecommended`("오늘 예산")만 올라간다. → 이번 달 들어온 돈은 "오늘 쓸 수 있는 여유"로만 반영되고 사이클 약속선(base)은 유지.
 - 일별 예산 로그(`daily_budget_logs.budget`)는 `todayBudget`(기준 일 예산)을 저장 — 약속된 기준선 대비 평가가 누적 분석(세이브 합계, 일평균, 런웨이 환산)에 정합 (ADR 0009).
 - 구현: [day-allocator.ts](../../web/src/features/budget/lib/allocator/day-allocator.ts), 판단 근거: [ADR 0008](../adr/0008-daily-budget-base-vs-recommended.md), [ADR 0009](../adr/0009-daily-log-baseline-anchor.md)
 
-### 수입 처리의 두 축 ⚠️
+### 수입 처리의 두 축
 
 | 옵션 | `distribute_to_budget` | 반영 경로 | 상태 |
 |------|----------------------|----------|------|
-| 이번 달 | `false` (기본) | 정산 시 월 스냅샷에만 기록 | ⚠️ 예산 계산에 미반영 |
+| 이번 달 (bonus) | `false` (기본) | 월 allocator에서 분배 풀에서 빼고 **현재월 free에 독점 가산**. `todayBudget`(기준) base에선 제외 → "오늘 예산"만 상승 | ✅ 구현 (ADR 0008 의도) |
 | 전체 분배 | `true` | 가용자금에 합산 → 목표 기간 전체 균등 분배 | ✅ 완전 구현 |
 
-> **의도 확인 필요**: UI 레이블 "이번 달"은 현재 달에만 반영되어야 할 것 같지만, 실제 구현에서는 `false`일 때 예산 계산 어느 경로에도 반영되지 않는다. "이번 달" 옵션의 실제 의도(= 현재 달 가용자금만 증가) 구현이 필요하다.
+- **이번 달 수입 소스**: `readCurrentMonthOnlyIncome`(`type='income' AND distribute_to_budget=false AND billing_month=현재 AND date<=오늘`) → `allocateMonthlyBudgets`가 `bonus = max(0, currentMonthOnlyIncome)`로 받아 `totalFree`에서 뺀 뒤 현재월 `free`에만 더한다. `todayBudget` base는 `monthBudget − currentMonthIncome`이라 bonus를 제외 — 기준선은 불변, "오늘 예산"만 오른다.
+- **전체 수입 소스**: `readIncomeTotal`(`type='income'`, billing_month 기준) — 레거시 `incomes` 테이블은 DROP됨(#553, 마이그 098). 수입은 이제 `expenses` 단일 소스.
 
 ### 제외 플래그 모음
 
@@ -212,23 +214,31 @@ features/budget/
 └── lib/
     ├── types.ts                    # 타입 정의
     ├── queries.ts                  # DB 쿼리 (지출 CRUD, 요약, 로그)
-    ├── facade.ts                   # v2 통합 인터페이스
+    ├── facade.ts                   # v2 통합 인터페이스 (정산 catch-up 포함)
+    ├── fixed-cost-ensure.ts        # 고정비 자동 기록 보장 (순환 import 차단용 추출, #551)
     ├── allocator/                  # 순수 계산 함수
     │   ├── day-allocator.ts        # 일일 예산 배분
-    │   ├── month-allocator.ts      # 월별 예산 배분
+    │   ├── month-allocator.ts      # 월별 예산 배분 (현재월도 전체 일수)
     │   ├── runway-projection.ts    # 런웨이 시뮬레이션
-    │   ├── runway-warn.ts          # 런웨이 단축 경고
-    │   └── proration.ts            # 당월 잔여 일수 계산
+    │   └── runway-warn.ts          # 런웨이 단축 경고 (month-summary 통합)
     ├── billing/                    # 결제주기 유틸리티
     │   ├── cycle.ts                # 빌링 월/범위/일수 계산
+    │   ├── card-billing.ts         # 카드별 결제주기 startDay
+    │   ├── fixed-cost-date.ts      # 고정비 결제일 계산
     │   └── snapshot-date.ts        # cron 드리프트 보정
+    ├── settlement/                 # 정산 스냅샷 구성
+    │   └── settle.ts               # buildSettlementSnapshot (순수)
     └── repository/                 # DB 읽기/쓰기 레이어
         ├── expenses-repo.ts
         ├── assets-repo.ts
         ├── fixed-costs-repo.ts
+        ├── installments-repo.ts
+        ├── incomes-repo.ts
         ├── planned-repo.ts
         └── settings-repo.ts
 ```
+
+> `proration.ts`(당월 잔여 일수 축소)는 #553에서 제거 — 대금기간 내 예산 고정(프로레이션 제거) 이후 미사용.
 
 ## 기능 구현 상태
 
@@ -242,33 +252,39 @@ features/budget/
 | 4 | 예정 지출 | planned-expense-list | `/api/budget/planned-expenses` | planned-repo.ts | 지출 시 `planned_expense_id` 연결 |
 | 5 | 고정비 템플릿 | 고정비 UI + 자동 기록 | `/api/budget/fixed-costs` | `ensureFixedCostExpenses` | 결제일 기준 자동 생성 |
 | 6 | 자산 관리 | 자산 목록/수정 | `/api/budget/assets` + `/[id]` | assets-repo.ts | 비상금 분리 |
-| 7 | 예산 설정 (목표 기간) | budget-settings-page | `/api/budget/settings` | settings-repo.ts | `target_date` 단순 저장 + 만료/임박 경고 배너 (#539). 변경 시 자산 보정 없음 |
+| 7 | 예산 설정 (목표 기간) | budget-settings-page | `/api/budget/settings` | settings-repo.ts | `target_date` 단순 저장 + 만료/임박 경고 배너 (#539) + 봇 주 1회 만료 임박 안내 (#554). 변경 시 자산 보정 없음 |
 | 8 | 월 예산 배분 | month-summary | `/api/budget/monthly` | month-allocator.ts | 일수 비례 균등 분배 |
 | 9 | 일 예산 배분 | month-summary 오늘 예산 | `/api/budget/today` | day-allocator.ts | 초과 클램프 |
 | 10 | 장기 예산 시뮬레이션 | runway-card | `/api/budget/runway` | runway-projection.ts | 월별 burn 시뮬 |
 | 11 | 일별 예산 로그 | daily-budget-log | `/api/budget/daily-logs` + cron | `saveDailyBudgetLog` | UNIQUE(user, date) |
-| 12 | 월별 예산 스냅샷 | — (내부) | 정산 cron 진입점 | `buildSettlementSnapshot` | 14일 종료 → 15일 새벽 cron, idempotent |
+| 12 | 월별 예산 스냅샷 + 정산 catch-up | — (내부) | 정산 cron 진입점 | `runSettlementIfDue` / `listUnsettledMonths` / `settleMonth` | 매일 실행, 미정산 종료 주기 오래된 순 최대 3개 순차 정산, 정산 전 고정비 보장, 멱등 (#551) |
 | 13 | 결제주기 유틸 | — | — | billing/cycle.ts, billing/card-billing.ts | 전월 15일\~당월 14일, 카드별 startDay |
 | 14 | 내역 type 필터 (수입/지출 세그먼트) | [expense-list.tsx](../../web/src/features/budget/components/expense-list.tsx) 세그먼트 + [manage/page.tsx](../../web/src/app/budget/manage/page.tsx) 상태 | — (클라이언트 필터) | `expense-list.tsx` 의 `filtered` (type AND 카테고리), `categoryPool` type별 분기 | 세그먼트(전체/지출/수입). type 변경 시 카테고리 자동 해제. 일별 합계는 `type === 'income'` 기준 차감으로 변경 (환불 특수처리 제거 — 환불은 migration 032에 의해 income으로 저장됨) |
 
 > **#539로 은퇴**: "할부 자산 차감 범위 토글"(`distribute_to_runway`)·"할부 exclude 그룹 동기화"는 폐지. 묶인 돈을 목표 기간 창 일괄 reservation으로 단순화하면서 건별 토글·등록시점 차감·그룹 자산 보정이 모두 사라졌다.
 
-### 🟡 부분 구현 (4)
+### ✅ 추가 완전 구현 (전망 카드 이중 구조 · #552)
+
+| 기능 | UI | 계산/쿼리 | 비고 |
+|------|----|---------|------|
+| 자유 예산 단축 경고 | month-summary 통합 | [runway-warn.ts](../../web/src/features/budget/lib/allocator/runway-warn.ts) | 순수 계산 함수 + month-summary 노출(과거 "UI 통합 누락" 해소) |
+| 전망 카드 계획/페이스 이중 전망 | [runway-card.tsx](../../web/src/features/budget/components/runway-card.tsx) | facade `plan_projections`(목표 있을 때, allocator 배분) + `pace_projections`(항상, 최근 실지출) + `pace_runway_*` | 목표 대비 비교를 페이스 기준으로 전환해 목표월 동어반복 제거. `actual_*`/`projections`는 (목표 ? 계획 : 페이스)로 의미 불변(하위호환) |
+| 3개월 평균 변동 지출 정밀화 | (런웨이 기본값) | `readAvgVariableMonthly` | 할부·예정연결분 제외 + 완결 결제주기(`[현재-N, 현재)`) 기준으로 이중 계상 방지(#552) |
+
+### 🟡 부분 구현 (2)
 
 | # | 기능 | 구현된 부분 | 누락/미완 | 위치 |
 |---|------|-----------|----------|------|
-| 14 | 자유 예산 단축 경고 | 순수 계산 함수 완성 | UI 통합 (임계값, 시각화) | [runway-warn.ts](../../web/src/features/budget/lib/allocator/runway-warn.ts) |
-| 15 | 3개월 평균 변동 지출 | 쿼리 + 런웨이 기본값으로 사용 | 독립 UI 노출 없음 | `readAvgVariableMonthly` |
 | 16 | 예산 제외 플래그 자동화 | 카테고리 기반 자동 체크 | 수동/자동 일관성, 제외 카테고리 목록 명확화 | `expense-form.tsx` 카테고리 변경 훅 |
 | 17 | 대시보드 뷰 구조 | `/budget/manage`, `/budget/settings` | `/budget/analysis` 페이지 콘텐츠 확인 필요, 개요 홈 없음 | features/budget/components |
 
-### ⚠️ 의심 / 확인 필요 (3)
+### ⚠️ 의심 / 확인 필요 (2)
 
 | # | 항목 | 설명 |
 |---|------|------|
-| A | 수입 "이번 달" 옵션 | `distribute_to_budget=false` 시 예산 계산에 미반영. UI 레이블과 동작 불일치 — 의도 확인 + 구현 필요 |
+| A | ~~수입 "이번 달" 옵션~~ | **해소** — `distribute_to_budget=false` 수입은 bonus로 현재월 free에 독점 가산되어 "오늘 예산"만 올린다(ADR 0008 의도, `readCurrentMonthOnlyIncome` → `allocateMonthlyBudgets`) |
 | B | ~~할부 `isNew` 경계 판정~~ | **#539로 해소** — 묶인 돈을 `billing_month`별 락으로 일괄 처리하면서 `isNew` 특례(1회차 자유지출 귀속)가 사라짐 |
-| C | 고정비 자동 기록 강제 `exclude_from_budget=true` | [queries.ts `ensureFixedCostExpenses`](../../web/src/features/budget/lib/queries.ts)에서 강제. 사용자 정책 재검토 필요 |
+| C | 고정비 자동 기록 강제 `exclude_from_budget=true` | [fixed-cost-ensure.ts `ensureFixedCostExpenses`](../../web/src/features/budget/lib/fixed-cost-ensure.ts)에서 강제. 사용자 정책 재검토 필요 |
 
 ## 데이터 흐름
 
@@ -295,17 +311,21 @@ expense-form (type=expense)
   → allocateTodayBudget() 의 todayRemaining 감소
 ```
 
-### 월 경계 정산 (14일 종료 → 15일 새벽 cron)
+### 월 경계 정산 (catch-up, #551)
 ```
-detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
-  → getMonthlyAllocation() 재실행
-  → readFlexibleSpent/Excluded/Income/TotalCycleSpent (범위: 정산 대상 월)
-  → available_at_end = available_at_start + income − totalSpent (전체 결제분, depletion 일원화)
-  → buildSettlementSnapshot() 로 monthly_budget_snapshots 저장 (idempotent)
-     · snapshot 분해 필드(flexible_spent/excluded_spent)는 별도 기록
-  → applyAssetDeduction(totalSpent) + applyAssetIncrease(income) — 자산 자동 반영
-  → 다음 월의 available_at_start 로 연쇄
+runSettlementIfDue(userId, now)  ── 매일 실행
+  → listUnsettledMonths(): 스냅샷 없는 종료 주기를 오래된 순으로 (cap MAX_CATCHUP_MONTHS=3)
+     · 스냅샷 전무 → 직전 종료 주기 1개만 (초회 대량 소급 방지)
+     · 최신 스냅샷 있으면 (latest, current 직전] 구간을 오래된 순 최대 3개
+  → for month of targetMonths (오래된 순 — available_at_start 체인 순서 보존):
+       settleMonth(userId, month):
+         → ensureFixedCostExpenses(month) — 정산 직전 고정비 자동 기록 보장(조회 부수효과 의존 제거)
+         → readFlexibleSpent/Excluded/Income/TotalCycleSpent + getMonthlyAllocation 재실행
+         → available_at_end = available_at_start + income − totalSpent (전체 결제분, depletion 일원화)
+         → buildSettlementSnapshot() → saveSnapshotIfAbsent (UNIQUE(user, year_month) 멱등)
+         → result.saved 일 때만 applyAssetDeduction/Increase (재실행 시 이중 변동 없음)
 ```
+> 크론이 특정 날짜에 실패해도 다음 실행이 오래된 순으로 따라잡는 자기치유 구조. 이전 단일-일자 트리거(`detectSettlementTrigger`)는 #553에서 제거.
 
 ### 일별 예산 로그 저장 (매일 자정 cron)
 ```
@@ -345,9 +365,9 @@ detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
 - `installment_group` UUID 로 원본 거래 추적
 
 ### 현재 월 allocatedDays
-- 결제주기 잔여일 = `cycle.to - today + 1`
-- 현재 월 자유 예산은 **잔여일 / 결제주기 총 일수** 비율로 축소
-- 다음 달부터는 결제주기 전체 일수 사용
+- 현재 월도 결제주기 **전체 일수**(`currentAllocatedDays = currentCycle.totalDays`)로 배분 — 잔여일 비례 축소 없음
+- `buildMonthEntry`의 `ratio`는 현재월(index 0)에서 `allocatedDays / cycleDays = 1` → 고정비·할부·예정도 그대로
+- 프로레이션 제거(커밋 f222cfa): 대금기간 안에서 월/일 예산을 고정해 하루 안 봤다고 예산이 출렁이지 않게 한다. 일 단위 변동은 day-allocator의 `daysFromToday`가 담당
 
 ### 균등 분배 원칙
 - `totalFree = totalAvailable − totalLocked`
@@ -357,6 +377,7 @@ detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
 ### 비상금 / 제외 규칙
 - `assets.is_emergency=true` → `readDistributableAssetBalance` 에서 제외 (예산 분배 밖 '최후의 보루')
 - `expenses.exclude_from_budget=true` → 자유 예산 계산 대상 아님 (별도 `excluded_spent`로 집계). 할부는 `is_installment` 필터로 이미 flex에서 빠지므로 exclude와 무관 (#539)
+- **할부 × exclude 조합 금지**(#549, 마이그 095): 할부는 예외 없이 묶인 돈이라 `exclude_from_budget=true`가 될 수 없다. 기존 할부 exclude 행은 정규화하고 CHECK 제약(`expenses_installment_not_excluded`)으로 재발 차단. `queryMonthSummary`의 할부 합계는 exclude 필터 없이 락 집합과 동일하게, `readExcludedSpent`는 비할부 지출로 한정
 - 고정비 자동 기록은 현재 **항상** `exclude_from_budget=true`로 저장 (정책 재검토 대상)
 - Vercel cron 드리프트 보정: 발화 시각에서 1시간 버퍼 차감 후 KST 날짜 결정
 
@@ -383,14 +404,12 @@ detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
 
 - **채널**: #money
 - **에이전트**: money 에이전트 (SQL 도구 기반, 지출 기록 + 분석)
+- **목표 기간 만료 임박 알림**(#554): 목표 기간(`target_date`)이 만료되면 예산 계산이 정지되는데, 배너가 대시보드 안에만 있어 봇이 만료 6주 전부터 주 1회 채널로 안내한다. `morningTask`에 `warnTargetExpiryIfNear` — 월요일에만 실행(주 1회, 별도 상태 저장 불필요, try/catch 격리). 만료일 = `target_date` 그 달 14일(15일-시작 결제주기 규칙). 남은 일수 `0 < N ≤ 42`면 임박 안내, `≤ 0`이면 정지 안내. 채널은 money 전용이 없어 `#life`로 라우팅(없으면 DM). 문구는 기간·일수만 노출(금액·재정 상황 표현 없음). 순수 함수 `buildTargetExpiryWarning` + `TARGET_EXPIRY_WARN_DAYS = 42`
 
 ## 향후 개선 과제
 
-- [ ] 수입 "이번 달" 옵션의 현재 달 반영 로직 설계/구현
-- [ ] 자유 예산 단축 경고(runway-warn)의 UI 통합 — 임계값, 카드 표시
-- [ ] 3개월 평균 변동 지출 대시보드 카드 추가
 - [ ] 고정비 자동 기록 `exclude_from_budget` 기본값 재검토 (토글 제공 가능?)
-- [ ] 목표 기간 만료/임박 경고 UI 디테일 (현재 배너만 — 자동 연장 없이 수동 연장 정책, #539)
+- [ ] 목표 기간 만료/임박 경고 UI 디테일 (대시보드 배너 + 봇 주 1회 안내 #554 — 자동 연장 없이 수동 연장 정책, #539)
 - [ ] 개요 홈(장기 시뮬레이션 + 오늘 예산 + 자산) 대시보드
 - [ ] `/budget/analysis` 페이지 콘텐츠 확인/보강
 
@@ -403,3 +422,4 @@ detectSettlementTrigger() → 어제가 14일(주기 마지막)인지 판정
 ## 주요 PR
 
 - #292 (v2 전환), #293 (정합성 수정), #295 (projectFromAllocator 도입), #411 (할부 자산 차감 범위 토글 + 세금 카테고리), #539 (모델 단순화 — 자금 단일화 + 묶인 돈 목표기간 창 일괄, ADR 0051)
+- #549 (할부 × exclude 정합성 정리 + CHECK 마이그 095), #551 (정산 catch-up + 고정비 기록 보장), #552 (전망 카드 계획/페이스 이중 전망), #553 (레거시 코드·incomes 테이블 정리, 마이그 098), #554 (목표 기간 만료 임박 알림)

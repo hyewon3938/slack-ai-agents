@@ -95,21 +95,25 @@
 
 ### 크론 시스템
 
-| 시간 | 내용 |
-|------|------|
-| 07:00 | 사주 일일 매칭 — 오늘 발현 시드 → `seed_daily_activations` 기록 (08:00 종합 인사이트 핸드오프, 발송 없음. 검증은 월요일 주간 엔진) |
-| 08:00 | 일일 종합 인사이트 — 오늘 사주 일운 + 검증/현황 개인 패턴 종합 (`#insight`, routine·Opus, #475) |
-| 08:20 | 주기 운세 리포트 — 절기 전환·입춘·대운 전환 시 월운/세운/대운 해석 카드. wolun/seun은 예측 장부 채점(직전 기간)+사전등록(이번 기간) 동봉 (전환 없으면 no-op, `#insight`, #529·#531) |
-| 09:05 | 오늘 일정 + 어제 리뷰 + morning 인사이트 |
-| 월요일 09:00 | 주간 인사이트 리포트 (Block Kit) |
-| 월요일 06:00 | 주간 패턴 검증 엔진 — off-day 통계·교란·포화 양방향 가드 DB 갱신 + 발굴 후보 카드 발송. 검증 현황 카드는 은퇴(통합 카드로 이관, #542) (`#insight`, #477·#508·#542) |
-| 월요일 08:04 | 주간 인사이트 통합 카드 — 회고 + 라이프 메트릭 + 패턴 학습(검증중/검증됨/기각) 한 장 (routine·Opus, `#insight`, #542) |
-| 월요일 10:00 | 주간 인사이트 미발송 시 수동 실행 알림(fallback, routine 실패 주만) (`#insight`, #542) |
-| 매월 1일 09:30 | LLM 신호 제안 — 새 측정 신호 자율 제안 승인 카드 (`#insight`, #477 P5b) |
-| 23:55 | 하루 종합 리뷰 + 마무리 잔소리 + night 인사이트 |
-| 23:55 → 익일 05:30 (hotfix 진행 중) | 일기 메타 enum 추출 (Phase 3) |
+> 시각 source of truth = 봇 서버 `notification_settings` DB. 아래는 2026-07-03 실측 기준.
 
-타임존: `Asia/Seoul` 고정.
+| 시간 | 슬롯 | 내용 |
+|------|------|------|
+| 05:30 | diaryMetaExtract | 일기 메타 enum 추출 — 어제 일기 대상(자정 넘긴 일기 커버, Phase 3) |
+| 07:00 | dailySajuMatching | 사주 일일 매칭 — 오늘 발현 시드 → `seed_daily_activations` 기록 (08:00 종합 인사이트 핸드오프, 발송 없음. 검증은 월요일 주간 엔진) |
+| 07:30 | discoveryRecommend | 발굴 후보 데일리 재추천 — 주간 묶음 전부 패스 시 다음 best 후보 1건 승인 카드 (`#insight`, #504 Phase 3) |
+| 08:00 | (routine) | 일일 종합 인사이트 — 오늘 사주 일운 + 검증/현황 개인 패턴 종합 (`#insight`, routine·Opus, #475) |
+| 08:20 | periodFortune | 주기 운세 리포트 — 절기 전환·입춘·대운 전환 시 월운/세운/대운 해석 카드. wolun/seun은 예측 장부 채점(직전 기간)+사전등록(이번 기간) 동봉 (전환 없으면 no-op, `#insight`, #529·#531) |
+| 09:01 | morning | 오늘 일정 + 어제 리뷰 + morning 인사이트. 월요일엔 목표 기간 만료 임박 안내 병행(주 1회, `#life`, #554) |
+| 23:00 | insightNight | 밤 인사이트 — night 슬롯 프로액티브 패턴(수면·루틴 등) |
+| 23:55 | night | 하루 종합 리뷰 + 마무리 잔소리 |
+| 월요일 06:00 | weeklyVerification | 주간 패턴 검증 엔진 — off-day 통계·교란·포화 양방향 가드 DB 갱신 + 발굴 후보 카드 발송. 검증 현황 카드는 은퇴(통합 카드로 이관, #542) (`#insight`, #477·#508·#542) |
+| 월요일 08:04 | (routine) | 주간 인사이트 통합 카드 — 회고 + 라이프 메트릭 + 패턴 학습(검증중/검증됨/기각) 한 장 (routine·Opus, `#insight`, #542) |
+| 월요일 09:00 | weeklyReport | 주간 인사이트 리포트 (Block Kit) |
+| 월요일 10:00 | weeklyReviewFallback | 주간 인사이트 미발송 시 수동 실행 알림(fallback, routine 실패 주만) (`#insight`, #542) |
+| 매월 1일 09:30 | (신호 제안) | LLM 신호 제안 — 새 측정 신호 자율 제안 승인 카드 (`#insight`, #477 P5b) |
+
+타임존: `Asia/Seoul` 고정. `pillar-level-distribution-review` 슬롯은 은퇴(마이그레이션 097 비활성).
 
 ### 웹 대시보드 (Vercel)
 
@@ -131,11 +135,18 @@
 | PostgreSQL | Oracle VM (Docker 컨테이너) |
 | 웹 | Vercel 자동 배포 (GitHub push → 빌드) |
 | 봇 배포 | GitHub Actions `Deploy` 워크플로우 (main push 자동 + 수동 트리거) |
-| 모니터링 | (TBD) |
+| 모니터링 | GitHub Actions 5분 폴링 ([docs/ops/health-monitoring.md](./ops/health-monitoring.md)) |
+| DB 백업 | 매일 04:00 KST → Cloudflare R2 ([docs/ops/db-backup.md](./ops/db-backup.md)) |
 
-## 마스터 단위 진행 중 작업
+## 마스터 히스토리 (최근)
 
-- **프로액티브 인사이트 v2** ([#393](https://github.com/hyewon3938/slack-ai-agents/issues/393)) — Phase 1\~4 머지 완료 (Phase 4 = 가설-검증 정량 파이프라인, 2026-05-22 PR [#415](https://github.com/hyewon3938/slack-ai-agents/pull/415)). Phase 5([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408)) 월운·세운·대운 확장은 Phase 4 운영 1\~3개월 데이터 누적 후 진입 예정. 흐름: [design-notebook](./design-notebook/insight-engine-v2.md)
+> **현재 별도 진행 중인 마스터 없음.** 아래는 최근 종료된 마스터. 후속(#408 월/세/대운 매칭 등)은 운영 데이터 누적 후 별도 진입.
+
+- **프로액티브 인사이트 v2** ([#393](https://github.com/hyewon3938/slack-ai-agents/issues/393), **close 2026-05-27**) — Phase 1\~4 머지 (Phase 4 = 가설-검증 정량 파이프라인, PR [#415](https://github.com/hyewon3938/slack-ai-agents/pull/415)). v2 헌장 4개는 #434·#477로 계승. Phase 5([#408](https://github.com/hyewon3938/slack-ai-agents/issues/408)) 월운·세운·대운 확장은 별도 트랙. 흐름: [design-notebook](./design-notebook/insight-engine-v2.md)
+- **매트릭 중심 패턴 검증** ([#477](https://github.com/hyewon3938/slack-ai-agents/issues/477), **close 2026-06-06**) — off-day 2×2 + e-value 확정 게이트 + 사주 feature substrate + 발굴 + LLM 신호 제안 + 교란 MH 조정 (P1\~P7, ADR-0032\~0042). 흐름: [design-notebook](./design-notebook/metric-first-verification.md)
+- **발굴 엔진 측정 타당성 + 카드 UX** ([#504](https://github.com/hyewon3938/slack-ai-agents/issues/504), **close 2026-06-08**) — 데이터-존재 윈도우 + 효과크기 랭킹 + 라벨 레이어 + 후보 재추천 (ADR-0044\~0047). 흐름: [design-notebook](./design-notebook/discovery-refinement.md)
+- **세운·대운 확장 + 검증 교정** ([#523](https://github.com/hyewon3938/slack-ai-agents/issues/523), **close 2026-06-13**) — 기간 해석 엔진 + 주기 리포트 + 예측 장부(`period_forecasts`, 사전등록→사후채점) (ADR-0049·0050). 흐름: [design-notebook](./design-notebook/period-extension.md)
+- **주간 인사이트 단일 카드 통합** ([#542](https://github.com/hyewon3938/slack-ai-agents/issues/542), **close 2026-06-16**) — 봇 검증 카드 은퇴 + routine 통합 카드 단독 (ADR-0052)
 - **본인 1명 패턴 발견 시스템** ([#434](https://github.com/hyewon3938/slack-ai-agents/issues/434), **close 2026-05-29**) — Phase 1(스키마 rename, ADR-0022\~0026) / Phase 2(사주 시드 풀셋 161개 + evidence-only) / Phase 2.5(운 레벨 차원 + 풀셋 임계치 + 분포 분석 cron, ADR-0028) / Phase 3(life_signal 시드 풀 셋 + 매칭 cron 일반화) / Phase 4(매칭 cron 카운터 source 전환 + pattern-match rename) / Phase 5(가설 발견·검증 파이프라인 target-type 확장) / Phase 6(LLM 자율 매트릭 + 승인 게이트, ADR-0030) / Phase 7(가설 단위 Beta-Binomial posterior + 카드 한 줄 병기 + 시드 영향력 top 5 섹션, ADR-0024 실행) / Phase 8a(catalog 카운터 DROP + per-seed try/catch 격리 + `verify_status='error'` enum, [#462](https://github.com/hyewon3938/slack-ai-agents/issues/462)) / Phase 8b(마스터 close docs + follow-up 일괄 등록, [#464](https://github.com/hyewon3938/slack-ai-agents/issues/464)) 머지 완료. 운영 1\~3개월 후 도입 검토는 [design-notebook 부록 E](./design-notebook/personal-pattern-discovery.md). 흐름: [design-notebook](./design-notebook/personal-pattern-discovery.md)
 
 ## 문서 지도
