@@ -1,4 +1,5 @@
 import { query } from '@/lib/db';
+import { addBillingMonths } from '../billing/cycle';
 
 function subtractOneDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -121,20 +122,32 @@ export async function readPlannedOverflow(
   return Number(result.rows[0]?.overflow ?? 0);
 }
 
-/** 최근 N개월 변동 지출 월평균 (고정비 제외 일반 지출만) */
-export async function readAvgVariableMonthly(userId: number, months = 3): Promise<number> {
+// 최근 N개 '완결된' 결제주기의 자유(변동) 지출 월평균 — 페이스 전망의 freePerMonth 추정치.
+// - is_installment=false: 할부 회차는 예측 시 락 맵으로 따로 burn되므로 평균에 넣으면 이중 계상.
+// - planned_expense_id IS NULL: 예정지출 연결분도 예측에서 planned로 따로 반영 → 제외.
+// - billing_month 기준 [current-N, current): 결제주기 단위로 집계하고 진행 중 주기(부분)는 제외
+//   (달력월 DATE_TRUNC나 부분 주기가 평균을 끌어내리는 것 방지).
+export async function readAvgVariableMonthly(
+  userId: number,
+  months: number,
+  currentBillingMonth: string,
+): Promise<number> {
+  const windowStart = addBillingMonths(currentBillingMonth, -months);
   const result = await query<{ avg_monthly: string }>(
     `SELECT COALESCE(AVG(monthly_total), 0) AS avg_monthly
      FROM (
-       SELECT DATE_TRUNC('month', date) AS month, SUM(amount) AS monthly_total
+       SELECT billing_month, SUM(amount) AS monthly_total
        FROM expenses
        WHERE user_id = $1
-         AND date >= NOW() - ($2::text || ' months')::interval
-         AND exclude_from_budget = false
          AND COALESCE(type, 'expense') = 'expense'
-       GROUP BY 1
+         AND exclude_from_budget = false
+         AND is_installment = false
+         AND planned_expense_id IS NULL
+         AND billing_month >= $2
+         AND billing_month < $3
+       GROUP BY billing_month
      ) sub`,
-    [userId, months],
+    [userId, windowStart, currentBillingMonth],
   );
   return Math.round(Number(result.rows[0]?.avg_monthly ?? 0));
 }

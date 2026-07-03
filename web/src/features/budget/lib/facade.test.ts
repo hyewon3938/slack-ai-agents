@@ -524,6 +524,61 @@ describe('getRunwayProjection', () => {
     expect(result.actual_runway_date).toBe('2026-08');
     expect(result.projections[0]!.installments).toBeGreaterThan(0);
   });
+
+  // #552 — 페이스(실지출) 전망 상시 병기
+  it('readAvgVariableMonthly 를 (userId, 3, 현재 결제월) 시그니처로 호출', async () => {
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
+    // DEFAULT_NOW = 2026-04-10 21:00 KST → 현재 결제월 '2026-04'
+    await getRunwayProjection(1, DEFAULT_NOW);
+    expect(readAvgVariableMonthly).toHaveBeenCalledWith(1, 3, '2026-04');
+  });
+
+  it('pace_* 필드 + pace_projections 항상 존재 (target 유무 무관)', async () => {
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
+    vi.mocked(readAvgVariableMonthly).mockResolvedValue(200_000);
+    vi.mocked(readTargetMonth).mockResolvedValue('2026-06');
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(typeof result.pace_runway_months).toBe('number');
+    expect(typeof result.pace_runway_date).toBe('string');
+    expect(Array.isArray(result.pace_projections)).toBe(true);
+    // 페이스는 avgVariableMonthly(200_000)를 자유 지출로 소진
+    expect(result.pace_projections[0]!.free_budget).toBe(200_000);
+  });
+
+  it('target 있으면 plan_projections 채워지고 pace_projections 는 target 너머까지 이어짐', async () => {
+    // 자유 예산이 커서 페이스 소진이 느림 → target(2026-06)보다 페이스가 더 오래 감.
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_200_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
+    vi.mocked(readAvgVariableMonthly).mockResolvedValue(100_000); // 12개월치 페이스
+    vi.mocked(readTargetMonth).mockResolvedValue('2026-06'); // 계획은 3개월
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    // 계획 전망: allocator 배분 → target월(2026-06)에 수렴
+    expect(result.plan_projections).not.toBeNull();
+    expect(result.actual_runway_date).toBe('2026-06');
+    // 페이스 전망: target과 독립 — 잔액이 target월 이후에도 이어짐 (동어반복 아님)
+    expect(result.pace_projections.length).toBeGreaterThan(result.plan_projections!.length);
+    expect(result.pace_runway_date > '2026-06').toBe(true);
+  });
+
+  it('target 없으면 plan_projections=null, actual_*=pace (하위호환)', async () => {
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(1_000_000);
+    vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
+    vi.mocked(readAvgVariableMonthly).mockResolvedValue(200_000);
+    vi.mocked(readTargetMonth).mockResolvedValue(null);
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(result.plan_projections).toBeNull();
+    // actual_* 는 페이스와 동일해야 함 (target 없을 때 primary=pace)
+    expect(result.actual_runway_months).toBe(result.pace_runway_months);
+    expect(result.actual_runway_date).toBe(result.pace_runway_date);
+    expect(result.projections).toEqual(result.pace_projections);
+  });
 });
 
 describe('getBudgetPreview', () => {
