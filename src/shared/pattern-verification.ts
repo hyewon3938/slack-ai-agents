@@ -14,6 +14,7 @@
  */
 
 import { query } from './db.js';
+import { findEquivalentSignal } from './signal-defs.js';
 import { addDays } from './kst.js';
 import {
   fisherExact,
@@ -545,20 +546,20 @@ export const ensureMirrorSignalDef = async (
     return { outcome: 'ineligible', mirrorSignalId: null };
   }
 
-  // 같은 측정 정의(name·sql·threshold·domain) + 반전 direction 행 조회. NULL threshold/domain은 IS NOT DISTINCT FROM으로 매칭.
-  const existing = await query<{ status: string }>(
-    `SELECT status FROM signal_defs
-      WHERE user_id = $1 AND kind = 'sql' AND source = 'seed' AND name = $2
-        AND sql_body = $3 AND direction = $4
-        AND threshold IS NOT DISTINCT FROM $5
-        AND domain IS NOT DISTINCT FROM $6`,
-    [userId, row.name, row.sql_body, mirror, row.threshold, row.domain],
-  );
-  if (existing.rows.some((r) => r.status === 'active' || r.status === 'pending')) {
+  // 같은 측정 정의(name·kind·threshold·sql) + 반전 direction 신호가 이미 있으면 재생성 금지 (#557 공통 가드).
+  // NULL threshold는 IS NOT DISTINCT FROM으로 매칭. active/pending → 재사용(exists), rejected만 → 스킵.
+  const eq = await findEquivalentSignal(userId, {
+    name: row.name,
+    kind: 'sql',
+    direction: mirror,
+    threshold: row.threshold === null ? null : Number(row.threshold),
+    tagName: null,
+    sqlBody: row.sql_body,
+  });
+  if (eq.decision === 'reuse') {
     return { outcome: 'exists', mirrorSignalId: null };
   }
-  if (existing.rows.length > 0) {
-    // active/pending은 없고 rejected 이력만 존재 — 되살리지 않는다(재기각 방지).
+  if (eq.decision === 'skip_rejected') {
     console.warn(
       `[MirrorSignal] user=${userId} signal=${signalId} 거울(${row.name} ${mirror}) 기각 이력만 존재 — 생성 스킵`,
     );

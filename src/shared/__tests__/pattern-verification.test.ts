@@ -38,8 +38,9 @@ vi.mock('../db.js', () => ({
     if (/FROM signal_defs/i.test(s) && /WHERE id = \$1 AND user_id = \$2/i.test(s)) {
       return { rows: signalRow ? [signalRow] : [] }; // 대상 신호 로드
     }
-    if (/FROM signal_defs/i.test(s) && /direction = \$4/i.test(s)) {
-      return { rows: mirrorRows }; // 거울 존재 조회
+    // findEquivalentSignal(#557) 거울 존재 조회 — id·status 컬럼, IS NOT DISTINCT FROM 매칭.
+    if (/SELECT id, status FROM signal_defs/i.test(s) && /IS NOT DISTINCT FROM/i.test(s)) {
+      return { rows: mirrorRows };
     }
     throw new Error(`[fixture] unexpected SQL: ${s.slice(0, 60)}`);
   }),
