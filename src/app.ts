@@ -14,6 +14,7 @@ import { setPostModifyHook, setConfirmCardSender } from './shared/sql-tools.js';
 import { buildConfirmModifyCard } from './agents/life/blocks.js';
 import { postBlockMessage } from './shared/slack.js';
 import { startDBProxy } from './db-proxy.js';
+import { startUptimeHeartbeat } from './ops/uptime-heartbeat.js';
 
 const app = new App({
   token: CONFIG.slack.botToken,
@@ -77,6 +78,9 @@ const startApp = async (): Promise<void> => {
 
   // DB 프록시 서버 (웹 대시보드용 — Vercel → HTTPS → VM → DB)
   startDBProxy();
+
+  // 업타임 dead-man's-switch heartbeat (인프라 레벨 — 5분 간격 외부 ping)
+  startUptimeHeartbeat();
 
   await app.start();
   // eslint-disable-next-line no-console

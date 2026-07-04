@@ -1,6 +1,6 @@
 # 0005. GitHub Actions 기반 자체 업타임 모니터링
 
-- Status: Accepted
+- Status: Superseded by [0055](0055-uptime-deadman-heartbeat.md)
 - Date: 2026-04-22
 - Related: #334
 - Tags: infra, observability
