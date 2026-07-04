@@ -138,7 +138,7 @@ const SIGNAL_MEASURE: Record<string, Measure> = {
   sleep_nap_count: { noun: '낮잠' },
   sleep_wake_hour: { noun: '기상 시각', hi: '늦음', lo: '이름' },
   // expense
-  expense_total: { noun: '총 지출' },
+  expense_discretionary: { noun: '자유지출' }, // #573: expense_total 개명 — 할부·고정비 제외
   expense_배달음식: { noun: '배달음식 지출' },
   expense_식재료: { noun: '식재료 지출' },
   expense_외식: { noun: '외식 지출' },
@@ -151,8 +151,8 @@ const SIGNAL_MEASURE: Record<string, Measure> = {
   schedule_count_today: { noun: '일정 수' },
   schedule_created: { noun: '등록한 일정' },
   schedule_done: { noun: '완료한 일정' },
-  schedule_영화: { noun: '영화 일정' },
-  schedule_이직: { noun: '이직 일정' },
+  // schedule_영화·schedule_이직은 "실제 처리한 날"(status=done) 의미라 방향 룰로 안 떨어짐 →
+  // SIGNAL_LABEL_OVERRIDES에서 전체 라벨 직접 지정(#573 ADR-0056).
 };
 
 /** 합성·모호 신호 — 룰로 안 떨어져 라벨 전체를 직접 지정(direction 무시). */
@@ -164,6 +164,9 @@ const SIGNAL_LABEL_OVERRIDES: Record<string, string> = {
   audit_postponed_done: '미룬 일정 처리',
   expense_hospital_excl_installment: '병원비 지출(할부 제외)',
   schedule_tax_keyword: '세금 관련 일정',
+  // #573 ADR-0056: category_id JOIN + status='done' 재정의 — "그 일정을 실제로 처리한 날".
+  schedule_영화: '영화 일정 처리한 날',
+  schedule_이직: '이직 일정 처리한 날',
 };
 
 /** diary 태그 enum → 한글 (diary-meta-extract.ts gloss 기반). */
