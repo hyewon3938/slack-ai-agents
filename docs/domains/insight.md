@@ -1903,7 +1903,7 @@ saju_influence_summary 뷰 (verified 가드 + confound_note) → daily-insight �
 윈도우가 365일 고정인데 도메인별 실제 데이터는 더 짧다. 수면 신호 SQL이 `COALESCE(SUM,0)`이라 **기록 없는 빈 과거를 "0분 수면=발현 안 함(fail)"으로** 세 → 비발현일 pass율(rateOff)이 0으로 깔리고 `effect = rateActive/rateOff`가 폭발. 순수 시간 교란(데이터 있는 최근 vs 텅 빈 과거).
 
 - **per-pair 데이터-존재 구간**: 윈도우 = `[max(시드 시작일, 신호 시작일), today]`. 그 시드와 그 신호가 **둘 다 데이터를 가진 구간**만 2×2·day 시퀀스에 넣는다.
-  - 신호 시작일 = 도메인 테이블 `MIN(date)` ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `DOMAIN_TABLE`: schedule→schedules, sleep→sleep_records, routine→routine_records, expense→expenses, diary_meta→diary_meta_tags, audit→schedules).
+  - 신호 시작일 = 도메인 테이블 `MIN(date)` ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `DOMAIN_TABLE`: schedule→schedules, sleep→sleep_records, routine→routine_records, expense→expenses, diary_meta→diary_meta_tags, audit→schedule_changes). audit만 `date` 컬럼이 없어 `MIN(DATE(changed_at))` 특례로 산출(§42, #572).
   - 시드 시작일 = saju는 글로벌 floor(매일 일운 존재), life_signal은 의존 도메인 시작(threshold/behavior_baseline→해당 테이블, 캘린더류→floor).
   - **단일 글로벌 floor로는 부족** — 한 도메인이 다른 도메인보다 먼저 시작하면(예: 지출 기록이 일정보다 이름) floor가 늦게 시작한 신호를 과거로 늘려 같은 아티팩트를 재생산. per-signal 클립이 필수.
 - **빈 과거는 결측, 활성 기간 내 0은 보존**: 신호 시작일 이전 raw를 `null`로 처리([computeSignalSeries](../../src/shared/pattern-verification.ts) `dataStart`) → 2×2 제외 + rolling baseline 오염 차단 + 그 날 SQL 실행 생략. 활성 기간 내 "기록 없음(유효 0)"은 의미로 살린다.
@@ -2339,6 +2339,39 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 - `above_avg ↔ below_avg`(baseline-상대 방향)만 대상. 반대 방향 신호 **정의**가 이미 있으면 no-op. 기각 이력만 있으면 스킵(#557 `findEquivalentSignal` 위임).
 - **링크는 만들지 않는다** — 정의만 확보. 실제 (시드 × 거울신호) 가설 수립은 발굴 엔진(P5a)이 다음 주간 스캔에서 off-day 대조로 판단([ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) 2층 분리 유지: 사람·발굴은 노출만, 믿음은 통계).
 - 호출: [weekly-verification.ts](../../src/cron/weekly-verification.ts) 종결 훅에서 `verdict === 'direction_mismatch' && nextStatus === 'rejected'`일 때. per-link try/catch 격리 + 관측 로그.
+
+### 42. 일정 날짜 변경 신호 측정 정밀화 2차 — 순변위·기록 경로 단일화 (#572, ADR-0054)
+
+1차(#508, §33 계보)가 미룸/당김 방향을 분리한 뒤에도 운영 데이터에서 측정 아티팩트 4종이 남았다 — ⓐ 하루 안에 미뤘다 되돌린 왕복(순변위 0)이 양쪽 다 발화, ⓑ 생성 직후 오기입 교정이 미룸/당김으로 집계, ⓒ 웹만 기록하고 Slack 버튼·에이전트 SQL 경로 누락, ⓓ CASCADE 이력 소급 소멸 + 존재-윈도우 어긋남. 통계 스택·verdict·tier·임계치 불변 — 1차와 동일하게 *무엇을* 측정하는지만 교정. 마이그레이션 [100](../../db/migrations/100_audit_net_displacement.sql).
+
+**순변위(일정 × 하루) 신호 SQL 3종 재정의** ([100](../../db/migrations/100_audit_net_displacement.sql) ④):
+
+그날 그 일정의 첫 `before_value` 날짜와 마지막 `after_value` 날짜를 비교해 순변위 방향만 센다(`GROUP BY schedule_id, KST day`). 방향 신호 2개는 유지하되 반대 방향이 상쇄되는 왕복 쌍만 양측에서 제외 — 방향무관 합산([ADR-0046](../adr/0046-signal-seed-precision.md) 기각안)으로의 회귀가 아니라 §1 강화.
+
+| 신호 | 순변위 정의 | 은퇴 전 |
+|------|-----------|--------|
+| `audit_date_postponed` | (일정×하루) 첫 before < 마지막 after인 일정 수 | 이벤트 단위 `after>before` COUNT |
+| `audit_date_advanced` | 동일 구조, 첫 before > 마지막 after | 이벤트 단위 `after<before` COUNT |
+| `audit_postponed_done` | 순미룸 일수 ≥ 2인 일정을 완료한 날 | raw 변경 횟수 `n≥2`(방향 무시) |
+
+- **왕복 상쇄**: 여러 번 나눠 미뤄도 하루 1회로 정규화. 크로스데이 왕복(오늘 미루고 내일 되돌림)은 각 날의 실제 행동이라 각각 집계 — "미룬 날" 의미와 하루 경계가 정합.
+- **생성 30분 유예**: 세 신호 모두 `changed_at > schedule_created_at + INTERVAL '30 minutes'` 필터. 경계값은 052 전례 재사용(새 임의값 없음, #434 헌장 ⑤). 30분 이내 변경은 날짜 오기입 교정으로 간주.
+- `above_abs` threshold=1 이진화·`domain='audit'`·`source='seed'`는 1차와 동일. NULL date(백로그) 변경은 `before_value->>'date' IS NOT NULL` 필터로 제외.
+
+**기록 트리거 2종 — 전 경로 단일 계기** ([100](../../db/migrations/100_audit_net_displacement.sql) ③·③-b):
+
+- `record_schedule_date_change` (`AFTER UPDATE OF date ... WHEN (OLD.date IS DISTINCT FROM NEW.date AND NEW.user_id IS NOT NULL)`) — 웹 PATCH·Slack 버튼·에이전트 `modify_db`·수동 psql까지 날짜 변경 전 경로가 단일 계기로 수렴. 027 `updated_at` 트리거의 두 번째 적용(같은 패턴). 웹 앱 수동 기록(`recordScheduleChanges`)은 제거 — 자세한 관계는 [schedule.md](schedule.md) audit 섹션.
+- `record_schedule_deletion` (`AFTER DELETE`) — `change_type='deleted'` tombstone 행 기록. `before_value`에 삭제 시점 `{date, status, category_id}`만(원문 비저장, v2 헌장 ①). 순변위 신호는 `change_type='date_changed'` 필터라 tombstone 무영향.
+
+**audit 로그화 + 생성시각 스냅샷** ([100](../../db/migrations/100_audit_net_displacement.sql) ①·②): `schedule_changes.schedule_id` FK 제거 → append-only 로그. 일정을 지워도 변경 이력이 `schedule_id` 그대로 남는다(무결성은 writer가 트리거뿐이라 유지). `schedule_created_at` 컬럼을 트리거가 기록 시점에 스냅샷 → 30분 유예 판정이 `schedules` JOIN 없이 자립(삭제 후에도 유효). 인터뷰 초안 `ON DELETE SET NULL`은 기각([ADR-0054](../adr/0054-audit-net-displacement-and-trigger-writer.md) G) — 삭제 시 그 일정의 모든 audit 행이 NULL 한 그룹으로 뭉개져 (일정×하루) 그룹핑·코호트 추적이 붕괴.
+
+**존재-윈도우 교정** ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `DOMAIN_TABLE`·`computeUserDataStarts`): audit 매핑을 `schedules`(2026-03-05) → `schedule_changes` 기준으로. audit만 `date` 컬럼이 없어 `MIN(DATE(changed_at AT TIME ZONE 'Asia/Seoul'))` 특례로 첫 기록일(2026-05-18)을 산출 — 기록 계기 도입 이전(전체 윈도우의 약 60%)이 "변경 없음" 날로 발굴 2×2에 새는 것을 차단. 글로벌 floor(`DATA_TABLES`)는 불변 — audit 계기는 라이프 데이터 시작이 아니라 floor 산출 뒤에 `byTable`에 얹는다.
+
+**구 신호 처분**: 구 3개 `status='rejected'` 은퇴 + 링크 archive → 같은 이름으로 신설([086](../../db/migrations/086_signal_seed_precision.sql) 전례). 측정 체계가 바뀐 시계열을 한 e-value 과정에 섞지 않는다. 은퇴를 신설보다 먼저 실행 — 085/099 부분 유니크 인덱스가 active/pending만 잡으므로 그래야 신설이 인덱스에 안 걸린다. prod 확인 결과 audit 신호에 confirmed 링크 0(최대 e=6.4)이라 [ADR-0048](../adr/0048-enrollment-clip-and-rebaseline.md) D2 re-baseline 의무는 미발생. 이름 재사용은 `SIGNAL_LABEL_OVERRIDES`([insight-labels.ts](../../src/shared/insight-labels.ts))·테스트가 name 키라 무수정.
+
+**prod 정량 근거** (2026-07-04 측정): 전체 이벤트 186건 / 당김 발화일 13→10(왕복 아티팩트 23%) / 미룸 36→36 / 생성 30분 내 3건 / `audit_postponed_done` 자격 36개 중 4개(11%) 방향무시 인플레 / audit 계기 시작 2026-05-18 vs 구 윈도우 시작 2026-03-05.
+
+**`schedule_fate` view — 생성일 코호트 추적 기반** ([100](../../db/migrations/100_audit_net_displacement.sql) ⑥, #574 선행): 살아있는 일정(schedules) + 삭제 일정(tombstone) 합집합으로 생성일(KST `cohort_date`)·카테고리·순미룸 일수·최종 상태를 한 곳에 낸다. 한 번도 안 옮긴 채 완료된 일정도 코호트의 "잘 해결된" 쪽으로 포함(생존 편향 방지). 코호트 신호 정의·성숙 기간·e-value 정합은 [#574](https://github.com/hyewon3938/slack-ai-agents/issues/574)에서 설계 — 그 전에도 view로 ad-hoc·주간 리뷰 소비 가능. 삭제 이벤트는 소급 불가라 캡처 계층만 본 건에 포함(배포일부터 축적).
 
 ## 부록 — e-value 게이트 설계 노트 (S-f)
 
