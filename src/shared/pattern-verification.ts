@@ -161,7 +161,7 @@ export interface LinkVerification {
 // COALESCE(SUM,0)=0=fail로 세지 않는다(비발현 pass율 0 → rate ratio 폭발 = GIGO). 활성 기간 내
 // "기록 없음"은 의미로 살린다(floor 위는 보존). 검증·발굴 양쪽이 동일 클립을 경유 → 둘 다 정직.
 
-/** 신호 domain → 데이터-존재 기준 테이블. audit(스케줄 변경 로그)는 스케줄 라이프사이클을 따름. */
+/** 신호 domain → 데이터-존재 기준 테이블. audit는 기록 계기(schedule_changes) 자체의 시작을 따름. */
 const DOMAIN_TABLE: Record<string, string> = {
   schedule: 'schedules',
   routine: 'routine_records',
@@ -169,7 +169,7 @@ const DOMAIN_TABLE: Record<string, string> = {
   expense: 'expenses',
   expense_category_present: 'expenses',
   diary_meta: 'diary_meta_tags',
-  audit: 'schedules',
+  audit: 'schedule_changes',
 };
 
 /** 글로벌 floor(온보딩) 산출 대상 테이블 — DATE+user_id 보유 라이프 데이터 테이블. */
@@ -208,6 +208,19 @@ export const computeUserDataStarts = async (userId: number): Promise<UserDataSta
   }
   let global: string | null = null;
   for (const d of byTable.values()) if (global === null || d < global) global = d;
+
+  // audit 도메인 특례(#572 ADR-0054): 기록 계기(schedule_changes)는 date 컬럼 없이 changed_at뿐이라
+  // DATA_TABLES 루프(MIN(date))에 못 들어간다. audit이 기록 가능해진 날(첫 changed_at, KST)부터가 존재
+  // 구간 — schedules 첫 데이터가 아니라. global floor 산출 뒤에 넣어 온보딩 floor를 오염시키지 않는다
+  // (audit 계기는 라이프 데이터 시작이 아님).
+  const auditRes = await query<{ d: string | null }>(
+    `SELECT MIN(DATE(changed_at AT TIME ZONE 'Asia/Seoul'))::text AS d
+       FROM schedule_changes WHERE user_id = $1`,
+    [userId],
+  );
+  const auditStart = auditRes.rows[0]?.d ?? null;
+  if (auditStart) byTable.set('schedule_changes', auditStart);
+
   return { byTable, global };
 };
 
