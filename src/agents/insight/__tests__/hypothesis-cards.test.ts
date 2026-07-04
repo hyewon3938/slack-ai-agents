@@ -31,9 +31,9 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
     seedDescription: '일운 천간 갑목(편재) → 일정/지출 폭증',
     seedLabel: '갑목(편재)',
     patternKind: 'saju',
-    signalName: 'expense_total',
-    signalDescription: 'N8_병화_편관_천간 시드의 expense_total 평가',
-    signalLabel: '총 지출 많음',
+    signalName: 'expense_discretionary',
+    signalDescription: 'N8_병화_편관_천간 시드의 expense_discretionary 평가',
+    signalLabel: '자유지출 많음',
     signalKind: 'sql',
     valueType: 'binary',
     rateActive: 0.75,
@@ -63,7 +63,7 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
     const text = sectionTexts(buildDiscoveryCandidateCard(makeCandidate()))[0] ?? '';
     expect(text).toContain('[사주]');
     expect(text).toContain('갑목(편재)'); // seedLabel (#542 접두 제거)
-    expect(text).toContain('총 지출 많음'); // signalLabel (#542 "평소보다" 제거)
+    expect(text).toContain('자유지출 많음'); // signalLabel (#573 expense_total→expense_discretionary)
     expect(text).toContain('새 패턴 후보');
     expect(text).toContain('24일 중 18일'); // 발현 = 분수
     expect(text).toContain('평소 25%'); // 비발현 = 비율
@@ -71,7 +71,7 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
     expect(text).toContain('인과 아님'); // caveat
     // 변수명·깨진 provenance 미노출 (#504 P2)
     expect(text).not.toContain('S1_갑목_편재_천간');
-    expect(text).not.toContain('expense_total');
+    expect(text).not.toContain('expense_discretionary');
     expect(text).not.toContain('평가');
   });
 
@@ -98,7 +98,7 @@ describe('buildDiscoveryCandidateCard — 발굴 후보 맥락 카드', () => {
         ),
       )[0] ?? '';
     expect(text).toContain('갑목(편재)'); // seedLabel
-    expect(text).toContain('총 지출 많음'); // signalLabel
+    expect(text).toContain('자유지출 많음'); // signalLabel
     expect(text).not.toContain('schedule_tax_keyword');
     expect(text).not.toContain('평가');
   });

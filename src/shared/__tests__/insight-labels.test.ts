@@ -177,9 +177,9 @@ describe('signalLabel — sql seed 룰', () => {
   it('above_abs threshold=1 → 있음', () => {
     expect(
       signalLabel(
-        sig({ name: 'schedule_영화', domain: 'schedule', direction: 'above_abs', threshold: 1 }),
+        sig({ name: 'schedule_created', domain: 'schedule', direction: 'above_abs', threshold: 1 }),
       ),
-    ).toBe('영화 일정 있음');
+    ).toBe('등록한 일정 있음');
   });
 
   it('above_abs threshold>1 → N회 이상', () => {
@@ -227,6 +227,28 @@ describe('signalLabel — override / tag / llm', () => {
         }),
       ),
     ).toBe('병원비 지출(할부 제외)');
+  });
+
+  it('영화·이직 신호 override (#573 — status=done 재정의, direction·threshold 무시)', () => {
+    // above_abs 1이지만 "있음" 룰 대신 "처리한 날" 평어 override. 변수명·언더스코어 미노출.
+    const movie = signalLabel(
+      sig({ name: 'schedule_영화', domain: 'schedule', direction: 'above_abs', threshold: 1 }),
+    );
+    const job = signalLabel(
+      sig({ name: 'schedule_이직', domain: 'schedule', direction: 'above_abs', threshold: 1 }),
+    );
+    expect(movie).toBe('영화 일정 처리한 날');
+    expect(job).toBe('이직 일정 처리한 날');
+    expect(looksLikeIdentifier(movie)).toBe(false);
+    expect(looksLikeIdentifier(job)).toBe(false);
+  });
+
+  it('expense_discretionary 개명 (#573 — expense_total → 자유지출)', () => {
+    expect(
+      signalLabel(
+        sig({ name: 'expense_discretionary', domain: 'expense', direction: 'above_avg' }),
+      ),
+    ).toBe('자유지출 많음');
   });
 
   it('날짜 변경 방향 신호 override (#508 ① — direction·threshold 무시)', () => {

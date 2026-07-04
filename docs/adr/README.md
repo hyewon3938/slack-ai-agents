@@ -161,6 +161,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0052](0052-weekly-insight-single-card-merge.md) | 주간 인사이트 단일 카드 통합 — routine 단독 발송 + 봇 검증 카드 은퇴 + posterior 노출 제거 | Accepted | 2026-06-16 | process, data, ux |
 | [0053](0053-signal-suggest-idempotency.md) | 월간 신호 제안 루틴 idempotency — DB 클레임 테이블 (최초 원자적 클레임, 재실행 중복 발송 차단) | Accepted | 2026-07-01 | data, process, reliability |
 | [0054](0054-audit-net-displacement-and-trigger-writer.md) | 일정 변경 audit 순변위 측정 + 기록 트리거 단일 계기 — 왕복 상쇄·30분 유예·FK 제거 로그화·tombstone·운명 view | Accepted | 2026-07-04 | data, process, reliability |
+| [0056](0056-signal-semantics-batch-correction.md) | 신호 의미론 일괄 교정 — 좀비 부활(schema drift) + done 재정의 + 자유지출 개명 + 결측 인프라 #574 편입 | Accepted | 2026-07-04 | insight, data, statistics, process |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
