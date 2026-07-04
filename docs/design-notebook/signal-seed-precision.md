@@ -100,3 +100,40 @@ PR [#509](https://github.com/hyewon3938/slack-ai-agents/pull/509)로 ①②③�
 - **계획서의 전제도 리뷰 대상이다.** FK 동적 DROP이 `contype='f'`만으로 조회해 2개 FK(user_id→users, schedule_id→schedules) 중 아무거나 잡는 비결정 버그 — 구현 에이전트 잘못이 아니라 FK 1개를 전제한 계획서 자체의 누락이었고, 에이전트는 충실히 따랐을 뿐. 리뷰에서 원본 DDL(053)을 다시 폈기 때문에 잡혔다. `confrelid` 특정으로 교정.
 - **검증 엄격도는 "진짜 불변식"에만.** 스냅샷 NULL 0건 강제는 nullable `created_at`의 정상 상태를 부팅 롤백 사고로 만들 뻔했다 — "살아있는 일정 기준 백필 누락 0건"(JOIN 불변식)으로 교체. 반대로 rejected 카운트는 `≥3` 관대 검증이 정답이었음이 배포 전 preflight에서 실측 증명 — `audit_postponed_done`에 과거 재정의 흔적(rejected 3행)이 이미 있었고, `=3` 강제였다면 마이그레이션이 롤백됐다.
 - **배포 전 read-only preflight는 싸고 강하다.** FK 실재·created_at NULL 0·CHECK 1개·신호 선재 상태를 5쿼리로 확정하고 들어가니 "방어적으로 짰지만 실제로 어느 분기를 타는지"를 아는 상태로 배포. 검증은 배포 파이프라인 성공 + 업타임 체크(마이그레이션이 부팅 차단이라 기동=적용 증명)로 이중 확인.
+
+---
+
+## 3차: 신호 의미론 점검 (#573, 2026-07-04)
+
+- 이슈: [#573](https://github.com/hyewon3938/slack-ai-agents/issues/573)
+- 관련 ADR: [ADR-0056](../adr/0056-signal-semantics-batch-correction.md)
+- 관련 마이그레이션: [101](../../db/migrations/101_signal_semantics.sql)
+- 2차(#572)의 "포기/미룬" 6건을 prod 실측으로 처분
+
+### 결정 요약
+
+2차가 후속으로 넘긴 "타 도메인 신호 의미론 점검 6건"을 prod 실측(2026-07-04)으로 갈랐다 — **3건 교정 / 3건 무변경**. 실측이 판단을 대체한 케이스.
+
+1. **영화·이직 = 좀비 부활 + done 재정의.** 두 신호의 `sql_body`가 `schedules.category`(TEXT)를 참조하는데 #394(2026-05-13)가 그 컬럼을 DROP하고 `category_id` FK로 교체 → 7주째 실행 불능(링크 hit 0/miss 0). `category_id` JOIN으로 재작성 + `status='done'` 추가해 "실제 처리한 날"로 재정의.
+2. **`expense_total` → `expense_discretionary` 개명.** 자유지출만 측정(할부 제외 + 고정비 카테고리 제외).
+3. **나머지 4건 무변경.** 완료율×미룸 공존 쌍 0 / `schedule_count_today` 2행은 의도된 반대 가설 / 수면·루틴 결측 실측 0건 / `schedule_tax_keyword` title 기반 정상(생애 발화 0).
+
+### 분기점 (실측이 결정을 뒤집은 지점들)
+
+- **done 필터는 실측 100%/95%가 결정했다.** "달력에 있던 날"을 "실제 처리한 날"로 좁히면 발화가 줄어들 걱정이 있었으나, 실측 done 비율(영화 7/7일=100%, 이직 39/41일=95%)이 손실 무시 가능임을 증명 → 망설임 없이 done 필터 채택. 실측 없이 SQL만 봤으면 done 필터를 못 넣었을 것.
+- **택배 제외는 사용자 통찰이 갈랐다.** '리커밋 사업'과 '리커밋 택배'를 처음엔 둘 다 넣거나 둘 다 뺄지 애매했는데, 사용자가 "사업 투자는 본인 재량 결정(편재 유관)이지만 택배는 주문량 비례 통과 비용(본인 행동 아님)"이라 구분 — 사업 유지·택배 제외로 확정. 카테고리명만 봐선 안 나오는 도메인 지식.
+- **결측 인프라 편입이 분석 제안을 뒤집었다.** 초기 분석은 "수면 결측=0시 기상 / 루틴 미기록일=완료율 0"을 SQL·실행기 수정으로 즉시 고치자고 봤으나, 실측 결측이 0건(수면 117/117, 루틴 120/120 매일 기록)이라 지금 고쳐도 동작 변화가 없음이 드러남 → 넓은 상류 변경(실행기 NULL 보존)을 이익 0인 채로 싣지 않고 #574로 편입. "고칠 값어치가 있나"를 실측이 답함.
+
+### 좀비 발견 경위 (스키마 드리프트)
+
+`signal_defs.sql_body`는 catalog(DB)에 문자열로 영속된다 — TypeScript 타입 체크·코드 리뷰의 사각지대다. #394가 `schedules.category`를 드롭할 때 코드의 category 참조는 다 고쳤지만, DB에 잠자던 신호 SQL 2개는 아무도 grep하지 않았다. 7주 뒤 이 이슈의 prod 실측(링크 hit/miss 0 → sql_body 확인 → 존재하지 않는 컬럼 참조)에서야 드러남. **재발 방지 = 컬럼 rename/drop 마이그레이션 시 `signal_defs.sql_body` grep 의무 + 신설 SQL 실행 스모크**(101 ③이 각 신설 sql_body를 `EXECUTE`해 스키마 정합을 런타임으로 봉인).
+
+### 포기한 안 / 미룬 항목
+
+- **즉시 결측 전파 인프라 구현** — #574로 편입. 실측 결측 0건이라 당장 이익 0 + 상류 변경(`extractFirstNumber` NULL→0 강제, `MetricRunner` 타입, 신호 COALESCE 제거, 도메인 opt-in)이 넓음. 하류(ADR-0044 `computeSignalSeries` raw null·`binarizeSqlSeries`·`buildContingency` inconclusive)는 이미 완비 → #574는 상류만 열면 됨.
+- **고정비 카테고리 하드코딩 최소화** — 대신 사용자 확정 제외 목록을 그대로 씀. "카테고리 메타에 is_fixed 플래그를 두자"는 정규화 안도 있었으나, 목록이 짧고 안정적이며 deny-list라 새 카테고리 기본 포함이라 하드코딩 비용 < 스키마 확장 비용. 목록이 자주 흔들리면 그때 플래그화.
+- **`expense_total` 계보 승계(in-place SQL 교체)** — 기각, 신명으로 단절. 측정 범위가 바뀐 시계열을 한 e-value 과정에 섞으면 anytime-valid 훼손(2차 신호 처분과 동일 논리). confirmed 0이라 ADR-0048 re-baseline 의무는 미발생.
+
+### 회고
+
+(머지 후 채움)

@@ -2373,6 +2373,39 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 **`schedule_fate` view — 생성일 코호트 추적 기반** ([100](../../db/migrations/100_audit_net_displacement.sql) ⑥, #574 선행): 살아있는 일정(schedules) + 삭제 일정(tombstone) 합집합으로 생성일(KST `cohort_date`)·카테고리·순미룸 일수·최종 상태를 한 곳에 낸다. 한 번도 안 옮긴 채 완료된 일정도 코호트의 "잘 해결된" 쪽으로 포함(생존 편향 방지). 코호트 신호 정의·성숙 기간·e-value 정합은 [#574](https://github.com/hyewon3938/slack-ai-agents/issues/574)에서 설계 — 그 전에도 view로 ad-hoc·주간 리뷰 소비 가능. 삭제 이벤트는 소급 불가라 캡처 계층만 본 건에 포함(배포일부터 축적).
 
+### 43. 신호 의미론 일괄 교정 (#573, ADR-0056)
+
+#572(§42)가 후속으로 분리한 "타 도메인 신호 의미론 점검 6건"의 실행체. prod 실측(2026-07-04)으로 6건을 갈라 **3건 교정 / 3건 무변경**으로 처분했다. 핵심 발견은 **좀비 신호** — `schedule_영화`·`schedule_이직`의 `sql_body`가 `schedules.category`(TEXT 컬럼)를 참조하는데 [#394](../adr/0013-schedule-category-fk-migration.md)(2026-05-13)가 그 컬럼을 DROP하고 `category_id` FK로 교체 → 두 신호가 7주째 존재하지 않는 컬럼 참조로 죽어 있었다(링크 hit 0/miss 0). 통계 스택·verdict·tier·임계치 불변 — *무엇을* 측정하는지만 교정. 마이그레이션 [101](../../db/migrations/101_signal_semantics.sql). 상세 판단은 [ADR-0056](../adr/0056-signal-semantics-batch-correction.md) · [signal-seed-precision.md](../design-notebook/signal-seed-precision.md) 3차.
+
+**6항목 처분 표** (각: 실측 근거 → 처분):
+
+| # | 신호/사안 | 실측 근거 | 처분 |
+|---|-----------|-----------|------|
+| 1 | `schedule_영화`·`schedule_이직` | `category` 컬럼 드롭으로 7주째 실행 불능(hit 0/miss 0). done 비율 영화 7/7=100%·이직 39/41=95% | **교정**: `category_id` JOIN + `status='done'` 재정의 = "실제 처리한 날" |
+| 2 | 완료율×미룸 기계 결합 | 완료율+audit 신호가 같은 시드에 공존하는 쌍 0개 | **무변경**(문서화만) |
+| 3 | 수면 결측=0시 기상 | 수면 실측 결측 0건(117/117 매일 기록) | **무변경** — 결측 인프라 #574 편입 |
+| 4 | `expense_total` 고정비 발화 | "총 지출"이 할부·구독·통신·공과금 합산 — 할부 행만 168/912(18%) | **교정**: `expense_discretionary` 개명 = 자유지출만 |
+| 5 | `schedule_count_today` 동명 2행 | id 11 above_avg×life_dow_월 / id 12 below_avg×life_holiday = 의도된 반대 가설 | **무변경**(문서화만) |
+| 6 | 루틴 미기록일=완료율 0 | 루틴 실측 결측 0건(120/120 매일 기록) | **무변경** — 결측 인프라 #574 편입 |
+
+(추가로 `schedule_tax_keyword`는 title 기반이라 동작 정상, 생애 발화 0일 — 대기 상태.)
+
+**영화·이직 = 좀비 부활 + done 재정의** ([101](../../db/migrations/101_signal_semantics.sql) ②): 깨진 `category='영화'`를 `categories.name='영화'` category_id JOIN으로 재작성 + `status='done'` 필터 추가. 의미를 "달력에 있던 날"에서 "그 일정을 실제로 처리한 날"로 명시적으로 좁힌다. `above_abs` threshold=1·`domain='schedule'`·`source='seed'`는 구 정의 유지.
+
+**자유지출 개명 재정의** ([101](../../db/migrations/101_signal_semantics.sql) ②): `expense_total` → `expense_discretionary`(신명 = 계보 단절). 할부 제외(`COALESCE(is_installment,false)=false`) + 고정비/통과비용 카테고리 제외.
+
+- **제외 목록**: `구독·구독료·통신·통신비·공과금·보험·주거·세금·리커밋 택배`. **deny-list 방식이라 새 카테고리는 기본 포함** — 재량 지출이 다양하게 늘 수 있어 "포함 열거"보다 "제외할 고정지출 열거"가 유지보수 부담이 낮다.
+- **'리커밋 사업' 유지 / '리커밋 택배' 제외**: 사업 투자 결정은 본인 재량 행동(편재 유관)이라 포함, 택배는 주문량 비례 통과 비용(본인 행동 아님)이라 제외(사용자 통찰).
+- `COALESCE(SUM(amount),0)` 유지 — 지출 0원인 날은 유효 0([ADR-0044](../adr/0044-discovery-measurement-validity.md)). `direction='above_avg'`·`domain='expense'`는 구 정의 유지. 개명이라 `expense_total`의 e-value 시계열은 승계 안 함.
+
+**결측 인프라 #574 편입 설계 스케치**: 3·6항의 근본 원인(수면·루틴 결측일이 "0"으로 강제 변환)은 실측 결측 0건이라 지금 손대도 동작 변화 0 → #574로 미룬다. 상류 변경 스케치 — ⓐ `extractFirstNumber`([pattern-match.ts](../../src/shared/pattern-match.ts) 첫 행 첫 컬럼을 number로 좁히며 NULL을 0으로 강제하는 지점) null→0 강제 해제 + ⓑ `runMetricSql`/`MetricRunner`([pattern-match.ts](../../src/shared/pattern-match.ts)) 타입을 `number | null` 반환으로 확장 + ⓒ 대상 신호 SQL의 `COALESCE` 제거 + ⓓ 도메인 화이트리스트 opt-in(결측을 결측으로 흘릴 도메인만). **하류는 이미 완비** — [computeSignalSeries](../../src/shared/pattern-verification.ts) raw null 처리·[binarizeSqlSeries](../../src/shared/pattern-verification.ts)·`buildContingency` inconclusive가 [ADR-0044](../adr/0044-discovery-measurement-validity.md)에서 갖춰짐. #574는 상류만 열면 결측이 2×2에서 자연 제외된다.
+
+**링크 처분**: 구 3신호 살아있는 링크(active/pending/weak/confirmed)는 전부 archive만. 재연결은 발굴 엔진(P5a) 다음 주간 스캔에 위임([086](../../db/migrations/086_signal_seed_precision.sql)/[100](../../db/migrations/100_audit_net_displacement.sql) 전례) — 마이그레이션에서 링크 수동 재생성 안 함. prod 확인 결과 구 3신호 confirmed 링크 0 → [ADR-0048](../adr/0048-enrollment-clip-and-rebaseline.md) re-baseline 의무 미발생. 은퇴를 신설보다 먼저 실행 — 085/099 부분 유니크 인덱스가 active/pending만 잡으므로.
+
+**신설 SQL 실행 스모크** ([101](../../db/migrations/101_signal_semantics.sql) ③): 좀비의 근본 원인이 sql_body의 컬럼 참조가 실제 스키마와 어긋난 것이므로, 검증 DO 블록이 각 신설 sql_body를 `user_id=1`·오늘 날짜로 `EXECUTE`해 "에러 없이 숫자 반환"을 증명한다. category_id JOIN·expenses 컬럼 참조가 현행 스키마와 맞음을 마이그레이션 시점에 봉인 — 좀비 재발의 구조적 차단.
+
+> **스키마 드리프트 재발 방지 규칙**: `signal_defs.sql_body`는 catalog(DB) 문자열이라 TypeScript 타입 체크·코드 리뷰의 사각지대다. **컬럼 rename/drop 마이그레이션 시 `signal_defs.sql_body` grep 의무.** 점검 쿼리: `SELECT name, sql_body FROM signal_defs WHERE sql_body ILIKE '%<드롭할 컬럼>%';` — 걸리면 신호 SQL을 새 스키마로 재작성 + 실행 스모크(101 ③ 패턴)로 정합 증명.
+
 ## 부록 — e-value 게이트 설계 노트 (S-f)
 
 > [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) 본문은 불변(Accepted). 이 부록은 운영·후속 판단을 위한 **경계 조건 메모**로, ADR 결정을 바꾸지 않는다.
