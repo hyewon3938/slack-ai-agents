@@ -268,16 +268,16 @@ LLM 응답을 `validateLlmInsightResponse(text)` 가 순서대로 검사 — 하
 
 #### 데이터 모델
 
-**마스터 테이블** (마이그레이션 049~050, ~466 rows):
+**마스터 테이블** (마이그레이션 049\~050, \~466 rows):
 - `stems_master` — 천간 10개 (오행·음양·한자)
 - `branches_master` — 지지 12개 (오행·음양·계절·동물)
 - `ganji_master` — 60갑자 (FK to stems/branches)
 - `sipsin_lookup` — 십성 매핑 220 (10 천간 일간 × 22 대상 글자)
 - `sibiunsung_lookup` — 십이운성 120 (10 천간 일간 × 12 지지)
-- `branch_relations` — 지지 관계 ~46 (육합/삼합/방합/충/형/파/해/원진)
+- `branch_relations` — 지지 관계 \~46 (육합/삼합/방합/충/형/파/해/원진)
 - `stem_relations` — 천간 관계
 
-**운영 테이블** (마이그레이션 051~053):
+**운영 테이블** (마이그레이션 051\~053):
 - `pattern_catalog` — 시드 정의 (name / sipsin / trigger_type / trigger_target / active / hit_count / miss_count / inconclusive_count / source='seed'|'llm_promoted')
 - `pattern_metrics` — 시드 1:N 메트릭 (metric_key / expected_direction / threshold / sql_template)
 - `pattern_matches` — 일일 매칭 결과 (pattern_id / date / trigger_activated / matched / metric_values JSONB / verify_status='pending'|'hit'|'miss'|'inconclusive')
@@ -1839,7 +1839,7 @@ buildVerificationBlocks(…, confoundByLink)            # 카드 caveat
 
 ### 32. 매트릭 중심 패턴 검증 — Phase 7 (교란 다변량 분리: Mantel-Haenszel 층화 + 데이터 게이트, #495)
 
-P6는 marginal 교란을 **플래그**하고 각 (링크 × 교란 Z)의 공동발현일 수 `nCofire`를 기록만 했다(annotate-only). P7은 공동발현이 충분히 쌓인 쌍만 **Mantel-Haenszel 층화**로 조정 추정치를 산출해 어부지리(가짜 연관)를 노출에서 실제로 걷어낸다. **마스터 #477 마지막 phase**. 정본 [ADR-0042](../adr/0042-confound-multivariate-stratification.md). **새 통계 코어 = MH 풀링 함수 하나, 마이그레이션 083(뷰 재정의 only)** — feature 환원(P4a~P6 "새 통계 코어 ~0") 연속.
+P6는 marginal 교란을 **플래그**하고 각 (링크 × 교란 Z)의 공동발현일 수 `nCofire`를 기록만 했다(annotate-only). P7은 공동발현이 충분히 쌓인 쌍만 **Mantel-Haenszel 층화**로 조정 추정치를 산출해 어부지리(가짜 연관)를 노출에서 실제로 걷어낸다. **마스터 #477 마지막 phase**. 정본 [ADR-0042](../adr/0042-confound-multivariate-stratification.md). **새 통계 코어 = MH 풀링 함수 하나, 마이그레이션 083(뷰 재정의 only)** — feature 환원(P4a\~P6 "새 통계 코어 \~0") 연속.
 
 **방법 = Mantel-Haenszel 층화** (vs [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 지명 elastic-net): 시드 S·신호 X·교란 Z가 전부 결정론 binary + 교란 2\~3개 캡 + n=1 희소 → 층화가 교과서적·가볍다(층별 2×2 = P6 프리미티브 재사용). elastic-net은 새 통계 코어(페널티 GLM 솔버)·log-odds 이질 척도·λ 불안정 → **교란이 층화 한계(joint strata 폭발) 넘는 다수일 때**를 위한 후속 노브(기본 off, [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §1).
 
