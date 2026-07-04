@@ -130,47 +130,15 @@ export const updateSchedule = async (
 
   if (fields.length === 0) return queryScheduleById(userId, id);
 
-  // audit: 변경 전 값 스냅샷 (date_changed 추적용)
-  const before = await queryScheduleById(userId, id);
-
   values.push(id);
+  // date 변경 audit(schedule_changes) 기록 주체는 DB 트리거 — 앱 코드는 기록하지 않음
+  // (전 경로 단일 계기, #572 ADR-0054).
   const result = await query<ScheduleRow>(
     `UPDATE schedules SET ${fields.join(', ')} WHERE user_id = $1 AND id = $${idx}
      RETURNING id, title, date::text, end_date::text, status, category_id, memo, important`,
     values,
   );
-  const updated = result.rows[0] ?? null;
-
-  if (before && updated) {
-    await recordScheduleChanges(userId, id, before, updated);
-  }
-
-  return updated;
-};
-
-/** schedule_changes audit — date_changed만 기록 (사주 outcome 메트릭용).
- *  insert 실패는 본 업데이트를 막지 않음 (best-effort 관측). */
-const recordScheduleChanges = async (
-  userId: number,
-  scheduleId: number,
-  before: ScheduleRow,
-  after: ScheduleRow,
-): Promise<void> => {
-  if (before.date === after.date) return;
-  try {
-    await query(
-      `INSERT INTO schedule_changes (user_id, schedule_id, change_type, before_value, after_value)
-       VALUES ($1, $2, 'date_changed', $3::jsonb, $4::jsonb)`,
-      [
-        userId,
-        scheduleId,
-        JSON.stringify({ date: before.date }),
-        JSON.stringify({ date: after.date }),
-      ],
-    );
-  } catch (err) {
-    console.error('[Schedule Audit] date_changed 기록 실패:', err);
-  }
+  return result.rows[0] ?? null;
 };
 
 export const deleteSchedule = async (userId: number, id: number): Promise<boolean> => {
