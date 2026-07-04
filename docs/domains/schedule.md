@@ -172,3 +172,31 @@ features/schedule/
   1. 기간 일정 포함: `WHERE date = '날짜' OR (date <= '날짜' AND end_date >= '날짜')`
   2. 요일은 SQL로만: `EXTRACT(DOW FROM date)`
   3. 정렬: event 타입 상단 + 카테고리 내 상태 순
+
+## 일정 변경 audit — 기록 경로 (#572, ADR-0054)
+
+`schedule_changes` 테이블은 일정 날짜 변경·삭제를 남기는 **append-only 감사 로그**다. insight 도메인의 미룸/당김 신호가 outcome 메트릭으로 소비하므로(→ [insight.md](insight.md) §42) 기록의 완전성·정직성이 검증 신뢰성의 선행조건이다. 기록 주체·보존 정책·소비 관계를 [ADR-0054](../adr/0054-audit-net-displacement-and-trigger-writer.md)에서 결정. 마이그레이션 [100](../../db/migrations/100_audit_net_displacement.sql).
+
+### 기록 주체 = DB 트리거 2종 (전 경로 단일 계기)
+
+기록은 앱 코드가 아니라 `schedules` 테이블의 트리거가 한다 — 웹 PATCH·Slack 카드 버튼(내일로 미루기·오늘로 옮기기)·에이전트 `modify_db`(LLM 자유 SQL)·수동 psql까지 **모든 날짜 변경 경로가 단일 계기로 수렴**한다. 앱 레벨 writer로는 LLM 자유 SQL 경로를 구조적으로 커버할 수 없어(대화로 옮기면 구멍 재발) 트리거로 단일화했다. 027의 `updated_at` 자동 갱신 트리거와 같은 패턴의 두 번째 적용.
+
+| 트리거 | 계기 | 기록 |
+|--------|------|------|
+| `record_schedule_date_change` | `AFTER UPDATE OF date` + `WHEN (OLD.date IS DISTINCT FROM NEW.date AND NEW.user_id IS NOT NULL)` | `change_type='date_changed'`, `before/after_value = {date}`, 생성시각 스냅샷 |
+| `record_schedule_deletion` | `AFTER DELETE` + `WHEN (OLD.user_id IS NOT NULL)` | `change_type='deleted'` tombstone, `before_value = {date, status, category_id}` |
+
+- `NEW.user_id IS NOT NULL` 가드: `schedules.user_id`가 nullable(016)이라 NOT NULL 컬럼 INSERT 실패로 본 UPDATE·DELETE까지 중단되는 사고 방지.
+- `AFTER UPDATE OF date` 한정 — date 외 컬럼 UPDATE에는 트리거가 안 걸린다(`updated_at` 트리거와 공존, 실행 순서 무관).
+- **웹 앱 수동 기록 제거**: `updateSchedule`의 `recordScheduleChanges`와 audit 전용 before 선조회를 삭제([web/.../queries.ts](../../web/src/features/schedule/lib/queries.ts)). 기록 주체가 트리거로 이관됐음을 코드 주석으로 명시. 배포 원자성 — 마이그레이션(트리거 생성)과 웹 코드 제거가 같은 배포로 도착, 이중 기록 구간은 순변위 계산에서 `(first, last)` 동일값 반복이라 결과 불변(무해).
+
+### 보존 정책 — FK 제거(로그화) + tombstone
+
+- `schedule_id`의 FK를 **제거**해 삭제 후에도 변경 이력이 `schedule_id` 그대로 남는다. "미루다 포기하고 지운 일정"이 미룸 데이터의 핵심 케이스인데 기존 `ON DELETE CASCADE`는 그걸 통째로 소멸시켰다. 무결성은 writer가 트리거뿐이라 유지.
+- `ON DELETE SET NULL`은 기각([ADR-0054](../adr/0054-audit-net-displacement-and-trigger-writer.md) G) — 삭제 시 그 일정의 모든 audit 행이 NULL 한 그룹으로 뭉개져 (일정×하루) 순변위 그룹핑과 생성일 코호트 추적이 둘 다 붕괴.
+- `schedule_created_at` 스냅샷 컬럼 — 30분 유예 판정이 `schedules` JOIN 없이 자립(삭제 후에도 유효).
+- **원문 비저장**: 스냅샷·tombstone 모두 날짜·시각·id·상태·카테고리뿐, 일정 제목 등 원문은 저장하지 않는다(v2 헌장 ①). 삭제 시점 status로 "done 후 정리 삭제"와 "todo 채 포기 삭제"를 구분할 수 있다.
+
+### `schedule_fate` view — 생성일 코호트 추적 기반 (#574 선행)
+
+살아있는 일정 + 삭제 일정(tombstone) 합집합으로 일정 단위 궤적(생성일 코호트·카테고리·순미룸 일수·최종 상태/삭제)을 낸다. 한 번도 안 옮긴 채 완료된 일정도 포함해 생존 편향을 막는다. 가설·검증 레이어는 [#574](https://github.com/hyewon3938/slack-ai-agents/issues/574)에서 설계하고, 그 전에도 ad-hoc·주간 리뷰에서 소비 가능. 순변위 의미론·측정 정밀화 상세는 insight 도메인 [§42](insight.md) 참조.

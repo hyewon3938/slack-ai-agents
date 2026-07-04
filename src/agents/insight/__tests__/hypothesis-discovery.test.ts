@@ -53,6 +53,10 @@ vi.mock('../../../shared/db.js', () => ({
     if (/MIN\(date\)/i.test(sql)) {
       return { rows: [{ d: null }] };
     }
+    // audit 도메인 특례(#572): schedule_changes MIN(changed_at) — 픽스처는 무클립.
+    if (/MIN\(DATE\(changed_at/i.test(sql)) {
+      return { rows: [{ d: null }] };
+    }
     if (/FROM signal_defs/i.test(sql) && /status = 'active'/i.test(sql)) {
       return { rows: fixture.signals };
     }

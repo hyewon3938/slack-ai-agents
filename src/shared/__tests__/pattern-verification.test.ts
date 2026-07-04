@@ -19,12 +19,17 @@ let signalRow: FakeSignalRow | null; // id로 조회되는 대상 신호
 let mirrorRows: Array<{ status: string }>; // 거울 존재 조회 결과
 let inserts: Array<{ sql: string; params: readonly unknown[] }>;
 let nextInsertId: number;
+// computeUserDataStarts 픽스처 — 테이블별 MIN(date) + audit MIN(changed_at) 응답 제어.
+let dataStartByTable: Map<string, string | null>;
+let auditChangedStart: string | null;
 
 const resetDb = (): void => {
   signalRow = null;
   mirrorRows = [];
   inserts = [];
   nextInsertId = 999;
+  dataStartByTable = new Map();
+  auditChangedStart = null;
 };
 resetDb();
 
@@ -41,6 +46,15 @@ vi.mock('../db.js', () => ({
     // findEquivalentSignal(#557) 거울 존재 조회 — id·status 컬럼, IS NOT DISTINCT FROM 매칭.
     if (/SELECT id, status FROM signal_defs/i.test(s) && /IS NOT DISTINCT FROM/i.test(s)) {
       return { rows: mirrorRows };
+    }
+    // computeUserDataStarts(#504): 라이프 데이터 테이블별 MIN(date). 테이블명으로 픽스처 응답 선택.
+    const minDate = /MIN\(date\)::text AS d FROM (\w+)/i.exec(s);
+    if (minDate) {
+      return { rows: [{ d: dataStartByTable.get(minDate[1] ?? '') ?? null }] };
+    }
+    // audit 특례(#572): schedule_changes MIN(changed_at) — global floor와 분리 검증용.
+    if (/MIN\(DATE\(changed_at/i.test(s)) {
+      return { rows: [{ d: auditChangedStart }] };
     }
     throw new Error(`[fixture] unexpected SQL: ${s.slice(0, 60)}`);
   }),
@@ -60,6 +74,7 @@ import {
   bhFdrByFamily,
   signalDataStart,
   seedDataStart,
+  computeUserDataStarts,
   maxDate,
   enrollmentStart,
   splitHalvesConsistent,
@@ -471,6 +486,7 @@ describe('데이터-존재 시작일 헬퍼 (#504)', () => {
       ['sleep_records', '2026-03-10'],
       ['expenses', '2026-01-01'],
       ['routine_records', '2026-03-07'],
+      ['schedule_changes', '2026-05-18'], // audit 기록 계기 시작(#572) — schedules와 별개
     ]),
     global: '2026-01-01',
   };
@@ -478,7 +494,7 @@ describe('데이터-존재 시작일 헬퍼 (#504)', () => {
   it('signalDataStart — domain→table MIN, 매핑 없으면 global fallback', () => {
     expect(signalDataStart('sleep', starts)).toBe('2026-03-10');
     expect(signalDataStart('expense', starts)).toBe('2026-01-01');
-    expect(signalDataStart('audit', starts)).toBe('2026-03-05'); // audit→schedules
+    expect(signalDataStart('audit', starts)).toBe('2026-05-18'); // audit→schedule_changes(#572, ≠ schedules)
     expect(signalDataStart('unknown', starts)).toBe('2026-01-01'); // fallback
     expect(signalDataStart(null, starts)).toBe('2026-01-01');
   });
@@ -531,6 +547,41 @@ describe('데이터-존재 시작일 헬퍼 (#504)', () => {
     expect(maxDate(null, '2026-03-05')).toBe('2026-03-05');
     expect(maxDate('2026-03-05', null)).toBe('2026-03-05');
     expect(maxDate(null, null)).toBeNull();
+  });
+});
+
+// ─── computeUserDataStarts audit 특례 (#572, ADR-0054) ────
+describe('computeUserDataStarts — audit(schedule_changes) 특례', () => {
+  beforeEach(() => resetDb());
+
+  it('schedule_changes 키를 byTable에 넣되 global floor는 DATA_TABLES 산출로 불변', async () => {
+    // DATA_TABLES 최소 = expenses 2026-01-01 → global floor. audit 계기(2026-05-18)는 그보다 늦다.
+    dataStartByTable = new Map([
+      ['schedules', '2026-03-05'],
+      ['routine_records', '2026-03-07'],
+      ['sleep_records', '2026-03-10'],
+      ['expenses', '2026-01-01'],
+      ['diary_meta_tags', '2026-03-01'],
+    ]);
+    auditChangedStart = '2026-05-18';
+
+    const starts = await computeUserDataStarts(1);
+
+    // audit 특례: schedule_changes 키가 changed_at 최소값으로 들어간다(schedules와 별개).
+    expect(starts.byTable.get('schedule_changes')).toBe('2026-05-18');
+    expect(starts.byTable.get('schedules')).toBe('2026-03-05');
+    // global floor는 DATA_TABLES 최소(expenses)로 불변 — audit 계기가 온보딩 floor를 오염시키지 않음.
+    expect(starts.global).toBe('2026-01-01');
+  });
+
+  it('audit 데이터 없으면 schedule_changes 키 없음, global은 DATA_TABLES로 산출', async () => {
+    dataStartByTable = new Map([['schedules', '2026-03-05']]);
+    auditChangedStart = null;
+
+    const starts = await computeUserDataStarts(1);
+
+    expect(starts.byTable.has('schedule_changes')).toBe(false);
+    expect(starts.global).toBe('2026-03-05');
   });
 });
 

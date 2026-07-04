@@ -38,6 +38,7 @@ reset();
 vi.mock('../db.js', () => ({
   query: vi.fn(async (sql: string, params?: readonly unknown[]) => {
     if (/MIN\(date\)/i.test(sql)) return { rows: [{ d: null }] }; // computeUserDataStarts → 무클립
+    if (/MIN\(DATE\(changed_at/i.test(sql)) return { rows: [{ d: null }] }; // audit 특례(#572) → 무클립
     if (/JOIN seed_daily_activations/i.test(sql)) return { rows: detectRows }; // detectSaturatedActive
     if (/archived_reason = \$2/i.test(sql) && /active = false/i.test(sql) && /SELECT/i.test(sql)) {
       return { rows: archivedRows }; // reviveDesaturated 로드
