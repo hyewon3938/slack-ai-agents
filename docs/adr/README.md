@@ -111,7 +111,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0002](0002-v3-architecture-split.md) | v3 아키텍처 — Vercel 웹 + VM 봇 + managed DB | Accepted | 2026-03-12 | infra, architecture |
 | [0003](0003-self-hosted-postgres.md) | DB 자가 호스팅 전환 (Neon → VM PostgreSQL) | Accepted | 2026-04-06 | infra, data |
 | [0004](0004-db-proxy-api.md) | DB Proxy API 패턴 — Vercel→VM DB 직결 제거 | Accepted | 2026-04-09 | infra, security |
-| [0005](0005-uptime-monitoring-github-actions.md) | GitHub Actions 기반 자체 업타임 모니터링 | Accepted | 2026-04-22 | infra, observability |
+| [0005](0005-uptime-monitoring-github-actions.md) | GitHub Actions 기반 자체 업타임 모니터링 | Superseded by [0055](0055-uptime-deadman-heartbeat.md) | 2026-04-22 | infra, observability |
 | [0006](0006-modify-db-confirm-flow.md) | modify_db 대량 변경 확인 플로우 | Accepted | 2026-04-22 | security, llm, ux |
 | [0007](0007-flexible-spent-unified-definition.md) | 자유지출 정의 통일 — directFlex + plannedOverflow | Accepted | 2026-05-06 | data, budget |
 | [0008](0008-daily-budget-base-vs-recommended.md) | 일 예산 산정 모델 이중화 — 기준 일 예산 + 오늘 예산 | Accepted | 2026-05-06 | data, budget, ux |
@@ -161,6 +161,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0052](0052-weekly-insight-single-card-merge.md) | 주간 인사이트 단일 카드 통합 — routine 단독 발송 + 봇 검증 카드 은퇴 + posterior 노출 제거 | Accepted | 2026-06-16 | process, data, ux |
 | [0053](0053-signal-suggest-idempotency.md) | 월간 신호 제안 루틴 idempotency — DB 클레임 테이블 (최초 원자적 클레임, 재실행 중복 발송 차단) | Accepted | 2026-07-01 | data, process, reliability |
 | [0054](0054-audit-net-displacement-and-trigger-writer.md) | 일정 변경 audit 순변위 측정 + 기록 트리거 단일 계기 — 왕복 상쇄·30분 유예·FK 제거 로그화·tombstone·운명 view | Accepted | 2026-07-04 | data, process, reliability |
+| [0055](0055-uptime-deadman-heartbeat.md) | 업타임 dead-man's-switch heartbeat — 봇 프로세스 5분 송신 + 외부 관측, GH Actions 폴링 2차망 강등 | Accepted | 2026-07-04 | infra, observability, reliability |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
