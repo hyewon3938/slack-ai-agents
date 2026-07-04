@@ -185,7 +185,8 @@ flowchart LR
 - **봇·DB** — Oracle Cloud VM, Docker Compose로 app + PostgreSQL 17 운영
 - **DB Proxy** — 루프백 바인딩, 외부에선 Caddy HTTPS 경유로만 접근(DB 포트 미노출). 웹(Vercel)은 DB 직결 없이 이 프록시 API를 호출
 - **비동기 분석** — 주간 통계 검증·발굴은 node-cron(Asia/Seoul), LLM이 무거운 일일 종합 인사이트는 Claude 앱 routine으로 실시간 경로와 분리
-- **CI/CD** — main push → GitHub Actions → GHCR 이미지 빌드 → VM 재기동, 5분 간격 자체 업타임 모니터링
+- **CI/CD** — main push → GitHub Actions → GHCR 이미지 빌드 → VM 재기동
+- **업타임 모니터링 이중화** — 봇 프로세스가 5분마다 self·웹 헬스를 확인해 외부 dead-man's-switch로 heartbeat 송신(1차), GitHub Actions 폴링을 보조망으로 유지(2차)
 
 ### Public 저장소 다층 보안
 

@@ -135,7 +135,7 @@
 | PostgreSQL | Oracle VM (Docker 컨테이너) |
 | 웹 | Vercel 자동 배포 (GitHub push → 빌드) |
 | 봇 배포 | GitHub Actions `Deploy` 워크플로우 (main push 자동 + 수동 트리거) |
-| 모니터링 | GitHub Actions 5분 폴링 ([docs/ops/health-monitoring.md](./ops/health-monitoring.md)) |
+| 모니터링 | 봇 heartbeat + healthchecks.io dead-man's-switch(1차) + GitHub Actions 폴링(2차) ([docs/ops/health-monitoring.md](./ops/health-monitoring.md)) |
 | DB 백업 | 매일 04:00 KST → Cloudflare R2 ([docs/ops/db-backup.md](./ops/db-backup.md)) |
 
 ## 마스터 히스토리 (최근)
