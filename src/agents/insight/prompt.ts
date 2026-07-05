@@ -37,36 +37,6 @@ const loadLifeThemes = async (userId: number): Promise<string> => {
   }
 };
 
-/** DB에서 활성 saju_patterns 조회 */
-const loadSajuPatterns = async (userId: number): Promise<string> => {
-  try {
-    const result = await query<{
-      pattern_type: string;
-      trigger_element: string;
-      description: string;
-      confidence: string | null;
-      detection_count: number;
-    }>(
-      `SELECT pattern_type, trigger_element, description, confidence, detection_count
-       FROM saju_patterns
-       WHERE active = true AND user_id = $1
-       ORDER BY detection_count DESC, created_at`,
-      [userId],
-    );
-    if (result.rows.length === 0) return '';
-
-    const lines = result.rows
-      .map(
-        (r) =>
-          `- [${r.pattern_type}] ${r.trigger_element}: ${r.description} (${r.detection_count}회 감지, ${r.confidence ?? '미평가'})`,
-      )
-      .join('\n');
-    return `\n\n## 확인된 개인 패턴 (saju_patterns)\n※ 아래 설명에 등장하는 천간/지지/합충 표현은 **패턴 성격 설명**일 뿐, 오늘의 일주와는 무관해. 거기서 일주를 역산하지 마.\n${lines}`;
-  } catch {
-    return '';
-  }
-};
-
 /** DB에서 오늘 일운 조회 → 프롬프트 주입용 (내일은 사용자가 물으면 DB 조회) */
 const loadFortuneContext = async (
   today: string,
@@ -128,14 +98,12 @@ export const buildInsightSystemPrompt = async (userId: number): Promise<string> 
   const todayPillar = getDayPillar(todayISO);
   const todayPillarStr = `${todayPillar.cheongan}${todayPillar.jiji}(${todayPillar.hanja})`;
 
-  const [lifeThemes, sajuPatterns, fortuneContext, profileContext, sajuMappingPrompt] =
-    await Promise.all([
-      loadLifeThemes(userId),
-      loadSajuPatterns(userId),
-      loadFortuneContext(todayISO, todayPillarStr, userId),
-      loadProfileContext(userId),
-      loadSajuMappingPrompt(userId),
-    ]);
+  const [lifeThemes, fortuneContext, profileContext, sajuMappingPrompt] = await Promise.all([
+    loadLifeThemes(userId),
+    loadFortuneContext(todayISO, todayPillarStr, userId),
+    loadProfileContext(userId),
+    loadSajuMappingPrompt(userId),
+  ]);
 
   return `너는 개인 일기 관리자이자 명리학 운세 전달자야.
 사용자의 일기와 고민을 기록하고, 저장된 분석(일운=fortune_analyses, 월/세/대운=period_interpretations)을 바탕으로 사주적 관점을 연결해주는 역할이야.
@@ -179,7 +147,6 @@ ${sajuMappingPrompt}
 
 ### 사주 연결 규칙 (⛔ 필수)
 - ⛔ **오늘 일주는 프롬프트 상단 "오늘 일주:"에 박힌 값만 사용**. 다른 일주로 바꿔 말하지 마. 계산/추론 금지.
-- ⛔ **saju_patterns 설명에 등장하는 천간/지지/합충 표현(예: 정화/병화/사해충/진술충)은 패턴 성격 설명일 뿐, 오늘의 일주와 무관**. 거기서 역산해서 일주를 만들어내지 마.
 - 오늘 일기 사주 코멘트: 프롬프트 하단 "오늘 일운" 데이터 기반으로만.
 - 과거/미래 일기: fortune_analyses에서 해당 날짜 조회해서 day_pillar 사용. 오늘 일운을 다른 날짜에 적용 금지.
 - 일운 데이터 없으면 사주 해석 없이 공감 위주로 응답.
@@ -201,9 +168,8 @@ ${sajuMappingPrompt}
 category: career/family/romance/health/finance/기타. detail에 상세 상황 기록.
 ⚠️ 일기에서 기존 테마 상황 변화 감지 시 detail 업데이트 (기존 맥락 유지, 최신만 추가).
 
-### 4. 사주 프로필/패턴 조회
+### 4. 사주 프로필 조회
 - saju_profiles: 원국, 격국, 용신, 대운
-- saju_patterns: 일기-일운 비교에서 감지된 구조적 반응 패턴 (active=true 조회)
 
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ)
 
@@ -212,9 +178,8 @@ category: career/family/romance/health/finance/기타. detail에 상세 상황 �
 - period_interpretations: user_id, period_type('wolun'/'seun'/'daeun'), period_start, period_end, pillar(간지 2자), narrative(TEXT, 월/세/대운 답변 근거), structured(JSONB) — period_type별 최신은 period_start DESC LIMIT 1
 - diary_entries: user_id, date(UNIQUE), content, updated_at
 - life_themes: user_id, theme, category, detail, active, source(user/auto), first_mentioned, mention_count
-- saju_patterns: user_id, pattern_type(sipsin/ganji/relation/sibiunsung), trigger_element, description, evidence(JSONB), active, detection_count, first_detected, last_detected, activated_at, deactivated_at, source(auto/user), confidence(high/medium/low), updated_at
 
 ## ⚠️ user_id 필터 (절대 규칙)
 모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = ${userId} 조건을 포함해.
-${profileContext}${lifeThemes}${sajuPatterns}${fortuneContext}`;
+${profileContext}${lifeThemes}${fortuneContext}`;
 };
