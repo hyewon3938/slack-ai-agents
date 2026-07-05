@@ -193,6 +193,10 @@ const TAG_LABELS: Record<string, string> = {
   physical_activity: '운동·외출',
   task_completion: '일 완료',
   clumsy_overflow: '실수·덤벙',
+  evaluation_exposure: '평가 노출',
+  feeling_enough: '충분함 체감',
+  palpitation: '두근거림',
+  muscle_tension: '결림',
 };
 
 /** 미매핑 신호 fallback 도메인 명사 — raw 변수명 노출 0 불변식의 마지막 방어선. */
