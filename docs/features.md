@@ -31,7 +31,7 @@
 - 삶의 테마 관리 (`life_themes`, 자동 진화)
 - 사주 패턴 누적 (`saju_patterns`, 28일 롤링 — 갱신 routine 2026-05-26 비활성화, 누적분만 시스템 프롬프트에 활용)
 - 사주 일일 매칭 시드 카탈로그 (`pattern_catalog`, Phase 3 — 결정론 매칭, 마스터 #434 Phase 1 rename per ADR-0026, 마스터 #434 Phase 2에서 6종 풀세트 161개 신규 시드 추가, Phase 2.5에서 `pillar_level` 차원 + `cumulative_pillar_count` trigger + 14 신규 시드 추가)
-- 일기 LLM enum 16종 추출 (`diary_meta_tags`, Phase 3)
+- 일기 LLM enum 26종 추출 (`diary_meta_tags`, Phase 3 — 059·102 확장)
 - 주간 사주 회고 카드 (`weekly-saju-review-v2`, 매주 월요일 08:00 KST `#insight` — 마스터 #421)
 - 일일 종합 인사이트 (`daily-insight` routine, 매일 08:00 KST `#insight` — 오늘 사주 일운 + 검증된 개인 패턴 신뢰도별 종합, 마스터 A A3 #475)
 - 상세: [docs/domains/insight.md](./domains/insight.md)
