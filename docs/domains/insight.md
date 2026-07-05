@@ -2406,6 +2406,19 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 > **스키마 드리프트 재발 방지 규칙**: `signal_defs.sql_body`는 catalog(DB) 문자열이라 TypeScript 타입 체크·코드 리뷰의 사각지대다. **컬럼 rename/drop 마이그레이션 시 `signal_defs.sql_body` grep 의무.** 점검 쿼리: `SELECT name, sql_body FROM signal_defs WHERE sql_body ILIKE '%<드롭할 컬럼>%';` — 걸리면 신호 SQL을 새 스키마로 재작성 + 실행 스모크(101 ③ 패턴)로 정합 증명.
 
+### 44. 일운 콜 장부 (fortune_calls, #582, ADR-0057)
+
+일운·이벤트성 예측을 반증 가능한 콜(claim + criterion)로 명시 등록하고 주간 경로에서 판정하는 경량 장부. `period_forecasts`(절기 기간 × 신호 pass율, 무인 통계 채점 — §39)와 역할 분리: 서술형 콜은 신호 시계열로 환원되지 않아 명시 기준 + 정성 판정으로 채점한다. 확률 점수(Brier 등) 금지는 091과 동일 철학. 결정 근거는 [ADR-0057](../adr/0057-fortune-calls-ledger.md).
+
+**스키마** (마이그 [103](../../db/migrations/103_fortune_calls.sql)): `scope_start/scope_end`(판정 구간), `claim`, `criterion`, `source('weekly'|'report'|'manual')`, `status('open'|'hit'|'partial'|'miss'|'unmeasurable')`, `verdict_note`, `scored_at`. 무결성: scope 순서 CHECK + "open이면 scored_at NULL, 판정되면 NOT NULL" CHECK. 부분 인덱스 `(user_id, scope_end) WHERE status='open'`.
+
+**운영 경로** (봇 코드 관여 없음 — DB 프록시 경유 routine, repo 밖):
+
+- 등록: `weekly-fortune` routine이 일요일 밤 주간 일운 생성 시 다음 주 콜 2\~3개 등록(남발 상한). `source='report'`는 심층 분석 예측 세트의 수동 시드.
+- 채점: 같은 routine이 실행 시점에 `scope_end`가 지난 open 콜을 criterion 기준으로 판정(diary·일정 실측 대조).
+- 표시: `weekly-saju-review-v2` 월요 통합 카드가 지난주 판정 결과를 읽기 전용 2\~3줄로 표시.
+- routine 계약이 바뀌면 이 섹션을 갱신한다.
+
 ## 부록 — e-value 게이트 설계 노트 (S-f)
 
 > [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) 본문은 불변(Accepted). 이 부록은 운영·후속 판단을 위한 **경계 조건 메모**로, ADR 결정을 바꾸지 않는다.
