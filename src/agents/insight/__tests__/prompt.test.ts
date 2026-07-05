@@ -7,9 +7,8 @@ vi.mock('../../../shared/db.js', () => ({
 
 // kst 모킹 — 결정론적 날짜
 vi.mock('../../../shared/kst.js', async () => {
-  const actual = await vi.importActual<typeof import('../../../shared/kst.js')>(
-    '../../../shared/kst.js',
-  );
+  const actual =
+    await vi.importActual<typeof import('../../../shared/kst.js')>('../../../shared/kst.js');
   return {
     ...actual,
     getTodayISO: () => '2026-04-11',
@@ -34,8 +33,6 @@ describe('buildInsightSystemPrompt — 일주 앵커 가드레일', () => {
   it('"상단 앵커만 사용" 가드레일 문구를 포함한다', async () => {
     const prompt = await buildInsightSystemPrompt(1);
     expect(prompt).toMatch(/오늘 일주는 프롬프트 상단.*박힌 값만 사용/);
-    expect(prompt).toMatch(/saju_patterns 설명.*일주와 무관/);
-    expect(prompt).toMatch(/역산/);
   });
 
   it('일주 앵커가 프롬프트 초반(상위 30%)에 위치한다', async () => {

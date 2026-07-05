@@ -69,6 +69,8 @@ life_themes:
   created_at TIMESTAMPTZ
 
 -- 사주 패턴 (cross-domain x 일운 상관 분석)
+-- > 2026-07-05 은퇴: 봇 프롬프트에서 미사용. 테이블·데이터는 이력으로 존치.
+-- > 역할은 profile_summary 실측 패턴 + pattern_links 검증축이 대체.
 saju_patterns:
   id SERIAL PK,
   user_id INTEGER,
@@ -139,20 +141,20 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 - **detail 자동 진화**: 일기/대화에서 상황 변화 감지 시 detail 업데이트
 - 해결 시 `active = false`
 
-### 4. 사주 패턴 (saju_patterns)
-- 누적된 패턴은 시스템 프롬프트 조회에 계속 사용. 갱신 routine(구 `weekly-saju-review`)은 2026-05-26 비활성화 (마스터 #421 A1 신 routine 검증 후 archive 예정)
+### 4. 사주 패턴 (saju_patterns) — 🗑️ 봇 프롬프트 미사용 (2026-07-05)
+> 갱신 routine(구 `weekly-saju-review`)은 2026-05-26 비활성화. 봇 시스템 프롬프트(`buildInsightSystemPrompt`)에서도 2026-07-05 참조 제거 — 테이블·누적 row는 이력으로 존치, 새 조회 경로 없음. 역할은 `saju_profiles.profile_summary`(실측 패턴 포함) + 검증 시드 파이프라인(`pattern_links`)이 대체.
+
 - pattern_type: sipsin(십신) / ganji(특정 글자) / relation(합/형/충) / sibiunsung(십이운성)
 - **분석 도메인**: 일기, 수면, 지출, 일정, 루틴 (cross-domain 통합 분석, 28일 롤링 윈도우)
 - **evidence 표준 형식**: `{date, domain, summary, fortune_element, ...domain_specific}` — 도메인 추가(식사·운동 등) 시 마이그레이션 없이 확장 가능. 상세는 [ADR 0011](../adr/0011-saju-patterns-cross-domain.md) 참조
 - 같은 trigger_element가 여러 도메인에 발현하면 분리하지 않고 같은 row의 evidence에 누적
 - 감지 횟수 추적 (detection_count), 신뢰도 평가 (confidence)
 - 비활성화 시 `active = false`, `deactivated_at = NOW()`
-- **일일 종합 인사이트(§23)는 `saju_patterns`를 쓰지 않는다** — `saju_influence_summary` view(#477 P3: verified/emerging/recent 3-tier, ### 26)를 사용. `saju_patterns`는 시스템 프롬프트 조회 + weekly-fortune 관점 5 용으로만 잔존 (정리는 마스터 A A3 후속)
+- **일일 종합 인사이트(§23)는 `saju_patterns`를 쓰지 않는다** — `saju_influence_summary` view(#477 P3: verified/emerging/recent 3-tier, ### 26)를 사용.
 
 ### 5. 시스템 프롬프트 구성
 `buildInsightSystemPrompt()`가 실시간으로 아래 데이터를 로드하여 프롬프트에 주입:
 - 활성 life_themes (현재 삶의 맥락)
-- 활성 saju_patterns (확인된 개인 패턴)
 - 오늘/내일 fortune_analyses (일운 컨텍스트)
 - 십성 매핑표, 오행 상생상극, 사용자 원국 정보 (정적)
 
