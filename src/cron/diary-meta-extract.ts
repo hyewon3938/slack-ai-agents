@@ -5,7 +5,7 @@
  *
  * 흐름:
  *   1) 오늘 diary_entries 로드
- *   2) LLM(Opus)에게 고정 enum 22개 중 해당되는 태그만 JSON 배열로 요청
+ *   2) LLM(Opus)에게 고정 enum 26개 중 해당되는 태그만 JSON 배열로 요청
  *   3) 결과 파싱 → enum 화이트리스트 필터 → diary_meta_tags UPSERT
  */
 
@@ -16,7 +16,7 @@ import { getYesterdayISO } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 import type { LifeCronConfig } from './life-cron.js';
 
-/** 허용된 22개 enum (migration 053 + 059와 동기화 필수) */
+/** 허용된 26개 enum (migration 053 + 059 + 102와 동기화 필수) */
 export const DIARY_META_TAGS = [
   // 기존 16 (migration 053)
   'irritation',
@@ -42,6 +42,11 @@ export const DIARY_META_TAGS = [
   'physical_activity',
   'task_completion',
   'clumsy_overflow',
+  // 신규 4 (migration 102 — 신호 해상도 확장)
+  'evaluation_exposure',
+  'feeling_enough',
+  'palpitation',
+  'muscle_tension',
 ] as const;
 
 export type DiaryMetaTag = (typeof DIARY_META_TAGS)[number];
@@ -50,7 +55,7 @@ const TAG_SET = new Set<string>(DIARY_META_TAGS);
 
 const SYSTEM_PROMPT = `너는 일기 텍스트에서 정해진 enum 태그만 추출하는 분류기.
 
-허용된 태그 (이 22개 외엔 절대 출력 금지):
+허용된 태그 (이 26개 외엔 절대 출력 금지):
 - irritation: 짜증/화남/예민
 - health_complaint: 몸 아픔/통증/컨디션 난조 호소
 - low_energy: 무기력/피곤/늘어짐
@@ -74,11 +79,17 @@ const SYSTEM_PROMPT = `너는 일기 텍스트에서 정해진 enum 태그만 �
 - physical_activity: 운동·산책·외출·이동 (단순 외출도 포함)
 - task_completion: 업무·과제 처리/완료 (구체적 일을 마쳤다는 언급)
 - clumsy_overflow: 실수·물건 떨어뜨림·놓침·잊음
+- evaluation_exposure: 면접·발표·리뷰·시험·마감 등 평가받거나 시선에 노출된 상황이 있었던 날
+- feeling_enough: 뿌듯함, "이만하면 됐다", 성취를 스스로 인정하거나 인정받은 날
+- palpitation: 두근거림·심계·가슴 답답 등 심장 계열 신호
+- muscle_tension: 목·어깨·허리 결림, 뻐근함, 근육 긴장
+
+구분 규칙: 심장 계열 신호는 palpitation, 근육 결림은 muscle_tension을 쓰고, 그 외 신체 불편(두통·소화·감기 등)만 health_complaint로 분류.
 
 출력 규칙:
 - 출력은 오로지 JSON 배열만. 예: ["irritation","low_energy"]
 - 해당 없으면 빈 배열 [].
-- 추론·확장 금지. 위 22개 외 태그를 만들지 마.
+- 추론·확장 금지. 위 26개 외 태그를 만들지 마.
 - 설명·주석·코드블록 마커 출력 금지.`;
 
 const buildContext = (content: string): string =>

@@ -752,7 +752,7 @@ GROUP BY c.id;
 
 - `weekly-saju-review-v2` Routine — view 인터페이스 유지로 영향 없음 (Section 13)
 - `weekly-fortune` Routine + `fortune_analyses` 테이블 — 본 마스터 범위 외
-- `diary_meta_tags` enum 22종 — 마스터 #393 Phase 4 (그대로)
+- `diary_meta_tags` enum 26종 — 마스터 #393 Phase 4 + migration 102 (그대로)
 - fast path 명령어(`/일운`·`/월운`·`/세운`·`/대운`) — 그대로
 
 #### 다음 Phase
@@ -1464,7 +1464,7 @@ ALTER TABLE pattern_matches
 | `signal_defs` | 전역 신호 정의 (시드 무관) | `kind`(sql\|tag), `sql_body`·`direction`·`value_type`·`threshold`·`domain`·`window_days`(sql), `tag_name`(tag), `source`(seed\|llm), `status`(active\|pending\|rejected) |
 | `pattern_links` | (시드 × 신호) = 가설 + 누적 검증상태 | `seed_id`×`signal_id` UNIQUE, `source`(manual\|discovery\|llm), `status`(active\|pending\|weak\|confirmed\|rejected\|archived), `hit/miss/inconclusive_count`, `posterior_*`, 검증결과(`test_type`·`effect`·`p_value`·`q_value`·`e_value`·`test_detail`·`confound`) |
 
-- **신호 종류**: `kind=sql`(객관 SQL 측정, 1차) — 기존 매트릭 SQL + off-day 대조 판정(`direction`). `kind=tag`(일기 메타 22태그, 보조) — 그날 태그 존재 여부를 binary로 평가. 객관 SQL이 1차, 주관 태그가 보조 (ADR-0033 §5, 확증편향 방어).
+- **신호 종류**: `kind=sql`(객관 SQL 측정, 1차) — 기존 매트릭 SQL + off-day 대조 판정(`direction`). `kind=tag`(일기 메타 26태그, 보조) — 그날 태그 존재 여부를 binary로 평가. 객관 SQL이 1차, 주관 태그가 보조 (ADR-0033 §5, 확증편향 방어).
 - **검증결과 컬럼**(`e_value`·`test_detail`·`confound` 등)은 P1에서 **선언만** — 로직은 P2(주간 엔진)/P3(통계 증강). 헌장 ④ "후속 미루지 않기"에 따라 컬럼은 미리 둠.
 
 **이관 매핑** (077, 데이터 독립 검증 DO 블록이 DROP 전 대조 — 불일치 시 전체 롤백):
@@ -1940,7 +1940,7 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 순수 함수 [insight-labels.ts](../../src/shared/insight-labels.ts)(`seedLabel`·`signalLabel`)가 카드 조립 지점에서 라벨 문자열을 생성. 시드와 신호는 description 신뢰도가 정반대라 생성 규칙이 비대칭이다:
 
 - **시드 = description tail-strip.** 시드 description은 hand-authored라 접두가 곧 활성조건. 첫 `→`/`—` 앞만 취한다("일운 천간 갑목(편재) → 일정/지출 폭증" → "일운 천간 갑목(편재)", "갑술 60갑자일 — … 콤보 — 본인 일지 비화" → "갑술 60갑자일"). 십성 주석 "(편재)"은 보존(`(`는 구분자에서 제외), 예측절·내부 참조(ADR)·가설 꼬리표는 자동 탈락. 6종 trigger 구조 파싱 불필요.
-- **신호 = name+domain+direction 룰.** 신호 description은 깨진 provenance라 못 쓰고 metadata로 생성. 측정 명사는 `SIGNAL_MEASURE` 맵(한글접미 `expense_배달음식`→"배달음식 지출"), 방향은 룰(above_avg→"평소보다 많음", 율·시각은 높음/낮음·늦음/이름), 합성·모호 4개는 `SIGNAL_LABEL_OVERRIDES`("세금 관련 일정" 등), tag 신호는 diary 22태그 한글맵, llm 신호는 자작 description.
+- **신호 = name+domain+direction 룰.** 신호 description은 깨진 provenance라 못 쓰고 metadata로 생성. 측정 명사는 `SIGNAL_MEASURE` 맵(한글접미 `expense_배달음식`→"배달음식 지출"), 방향은 룰(above_avg→"평소보다 많음", 율·시각은 높음/낮음·늦음/이름), 합성·모호 4개는 `SIGNAL_LABEL_OVERRIDES`("세금 관련 일정" 등), tag 신호는 diary 26태그 한글맵, llm 신호는 자작 description.
 
 #### 2) 4개 표면 — hard / soft
 
