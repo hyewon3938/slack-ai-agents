@@ -29,7 +29,7 @@
 - 월운/세운 예측 장부 — 사전등록 → 사후 채점(방향 적중 + 실측 delta, Brier 금지). baseline 동결·절기 시간게이트 무인 자기검증 (`period_forecasts`, #531, 대운 비편입)
 - 일기 자동 저장 (`diary_entries`)
 - 삶의 테마 관리 (`life_themes`, 자동 진화)
-- 사주 패턴 누적 (`saju_patterns`, 28일 롤링 — 갱신 routine 2026-05-26 비활성화, 누적분만 시스템 프롬프트에 활용)
+- ~~사주 패턴 누적~~ (`saju_patterns` — 갱신 2026-05-26 중단, 봇 프롬프트 참조 2026-07-05 제거 #583. 테이블·누적분은 이력으로 존치, 역할은 프로필 요약 + `pattern_links` 검증축이 대체)
 - 사주 일일 매칭 시드 카탈로그 (`pattern_catalog`, Phase 3 — 결정론 매칭, 마스터 #434 Phase 1 rename per ADR-0026, 마스터 #434 Phase 2에서 6종 풀세트 161개 신규 시드 추가, Phase 2.5에서 `pillar_level` 차원 + `cumulative_pillar_count` trigger + 14 신규 시드 추가)
 - 일기 LLM enum 16종 추출 (`diary_meta_tags`, Phase 3)
 - 주간 사주 회고 카드 (`weekly-saju-review-v2`, 매주 월요일 08:00 KST `#insight` — 마스터 #421)
