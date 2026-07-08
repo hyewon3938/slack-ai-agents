@@ -2421,6 +2421,26 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 - 표시: `weekly-saju-review-v2` 월요 통합 카드가 지난주 판정 결과를 읽기 전용 2\~3줄로 표시.
 - routine 계약이 바뀌면 이 섹션을 갱신한다.
 
+### 45. 월간 신호 제안 누락 fallback 슬롯 (#466, ADR-0058)
+
+`monthly-signal-suggest`(월 1일 09:30 KST, repo 밖 Claude 앱 routine, §30·ADR-0040)가 그 달 실패하거나 앱이 안 켜져 아예 안 돌면 신호 제안이 조용히 누락된다. 봇 사이드에 `signal_suggest_runs`를 읽는 코드가 전무해 누락돼도 아무도 몰랐다. `weeklyReviewFallback`(§40, ADR-0052)과 대칭 구조의 봇 fallback 슬롯으로 해소.
+
+- **슬롯**: `signalSuggestFallback` — `notification_settings`에 daily 등록(마이그 104, 11:00), `signalSuggestFallbackTask`(`src/cron/signal-suggest-fallback.ts`) 내부에서 `getKSTDayOfMonth() !== 2` early return으로 **매월 2일만** 실행.
+- **감지**: `signal_suggest_runs`의 그 달 row 존재를 `SELECT EXISTS`로 확인. `month_start`는 SQL 안에서 `DATE_TRUNC('month', (NOW() AT TIME ZONE 'Asia/Seoul'))::date`로 계산 → routine 클레임 키(ADR-0053)와 동일.
+- **동작**: row 없으면 `#insight`에 "수동 실행해줘" 알림만 발송. 봇이 제안을 대신 생성·발송하지 않는다(LLM 신호 생성은 봇 능력 밖, ADR-0052 Alt B 기각 계승).
+
+**감지 의미론 차이 (weekly와 반대)** — 이게 핵심 제약이다:
+
+| | `saju_weekly_reviews`(§40) | `signal_suggest_runs`(§45) |
+|---|---|---|
+| row 기록 시점 | 발송 성공 후 | 최초 액션 클레임(발송 전, ADR-0053) |
+| row 없음 의미 | 미발송 | 그 달 routine이 **아예 안 돎** |
+
+즉 signal-suggest의 row는 발송 성공을 뜻하지 않는다. 그래서 **row 없음 = 미실행만 확실 감지**하고, burned month(클레임 직후 크래시로 row는 있는데 발송 0건)와 후보 0건 정상 종료는 row 의미론상 구분 불가 → 감지 대상 아님(스코프 한계, ADR-0053의 burned month 수용과 정합).
+
+- **2일 가드 근거**: 1일 정상 실행이면 2일엔 이미 row → no-op. 1일에 밀려 늦게 실행돼도 2일 체크 전 row가 생기면 헛알림 억제. `#574` 게이트 task(매월 2일)와도 리듬 일치.
+- **후속**: burned month 실측 여부는 #466 회고 본체(8월 2회차 실행 후)에서 판단 → 재발 시 ADR-0058 대안 A(발송완료 마킹) 재검토.
+
 ## 부록 — e-value 게이트 설계 노트 (S-f)
 
 > [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) 본문은 불변(Accepted). 이 부록은 운영·후속 판단을 위한 **경계 조건 메모**로, ADR 결정을 바꾸지 않는다.
