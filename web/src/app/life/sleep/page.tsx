@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSleepDashboard } from '@/features/sleep/hooks/use-sleep-dashboard';
 import { PeriodSelector } from '@/features/sleep/components/period-selector';
+import { SleepScoreCard } from '@/features/sleep/components/sleep-score-card';
 import { SleepSummaryCards } from '@/features/sleep/components/sleep-summary-cards';
 import { SleepTimeline } from '@/features/sleep/components/sleep-timeline';
 import { SleepTrendChart } from '@/features/sleep/components/sleep-trend-chart';
@@ -20,7 +21,9 @@ function SleepFallback() {
       <div className="mx-auto max-w-5xl space-y-4 px-4 py-4 md:py-6">
         <CardSkeleton className="h-10 w-48" />
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => <CardSkeleton key={i} className="h-24" />)}
+          {[1, 2, 3, 4].map((i) => (
+            <CardSkeleton key={i} className="h-24" />
+          ))}
         </div>
         <CardSkeleton className="h-80" />
       </div>
@@ -57,7 +60,9 @@ function SleepContent() {
         <div className="mx-auto max-w-5xl space-y-4 px-4 py-4 md:py-6">
           <CardSkeleton className="h-10 w-48" />
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => <CardSkeleton key={i} className="h-24" />)}
+            {[1, 2, 3, 4].map((i) => (
+              <CardSkeleton key={i} className="h-24" />
+            ))}
           </div>
           <CardSkeleton className="h-80" />
           <CardSkeleton className="h-48" />
@@ -74,6 +79,7 @@ function SleepContent() {
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-4 px-4 py-4 md:py-6">
         <PeriodSelector period={period} onChange={onPeriodChange} />
+        <SleepScoreCard scores={data.summary.scores} />
         <SleepSummaryCards summary={data.summary} />
         <SleepTimeline dailies={data.dailySleeps} period={period} />
         <SleepTrendChart dailies={data.dailySleeps} period={period} />

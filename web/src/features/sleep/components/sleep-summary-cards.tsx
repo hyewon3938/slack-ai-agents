@@ -13,13 +13,21 @@ function formatDuration(minutes: number): string {
   return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
 }
 
-function scoreColor(score: number): string {
+/** 점수(0~100) → 텍스트 색상 클래스 (70↑ 초록 / 40~69 노랑 / 40 미만 빨강) — SleepScoreCard와 공유 */
+export function scoreColor(score: number): string {
   if (score >= 70) return 'text-green-600';
   if (score >= 40) return 'text-yellow-600';
   return 'text-red-500';
 }
 
-function InfoButton({ content }: { content: React.ReactNode }) {
+/** hover/tap 설명 팝오버 버튼 — 수면 카드류 공용 */
+export function InfoButton({
+  content,
+  ariaLabel,
+}: {
+  content: React.ReactNode;
+  ariaLabel: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -42,7 +50,7 @@ function InfoButton({ content }: { content: React.ReactNode }) {
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onClick={() => setOpen((v) => !v)}
-        aria-label="규칙성 점수 설명"
+        aria-label={ariaLabel}
       >
         i
       </button>
@@ -55,16 +63,10 @@ function InfoButton({ content }: { content: React.ReactNode }) {
   );
 }
 
-const regularityContent = (
+const efficiencyContent = (
   <div className="text-xs leading-relaxed">
-    <p className="mb-1 font-semibold text-gray-700">규칙성 점수란?</p>
-    <p className="mb-2 text-gray-600">취침 시각이 얼마나 일정한지를 100점 만점으로 나타내.</p>
-    <ul className="space-y-0.5 text-gray-500">
-      <li><span className="font-medium text-green-600">80점↑</span> 거의 같은 시간에 잠</li>
-      <li><span className="font-medium text-green-600">70~79</span> 꽤 규칙적</li>
-      <li><span className="font-medium text-yellow-600">40~69</span> 변동 큼</li>
-      <li><span className="font-medium text-red-500">40점↓</span> 매우 불규칙</li>
-    </ul>
+    <p className="mb-1 font-semibold text-gray-700">수면 효율이란?</p>
+    <p className="text-gray-600">누운 시간 대비 실제 수면 비율. 각성 = 세그먼트 사이 깬 시간.</p>
   </div>
 );
 
@@ -100,30 +102,26 @@ export function SleepSummaryCards({ summary }: SleepSummaryCardsProps) {
         <div className="mt-0.5 text-xs text-gray-400">총 {summary.totalMidWakes}회</div>
       </div>
 
-      {/* 규칙성 */}
+      {/* 수면 효율 */}
       <div className="relative rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex items-center gap-1 text-xs text-gray-400">
-          규칙성
-          <InfoButton content={regularityContent} />
+          수면 효율
+          <InfoButton content={efficiencyContent} ariaLabel="수면 효율 설명" />
         </div>
-        <div className={`mt-1 text-lg font-bold ${scoreColor(summary.regularityScore)}`}>
-          {summary.regularityScore}점
+        <div className="mt-1 text-lg font-bold text-gray-900">
+          {summary.avgEfficiencyPct !== null ? `${summary.avgEfficiencyPct}%` : '—'}
         </div>
-        <div className="mt-0.5 text-xs text-gray-400">취침 시간 기준</div>
+        <div className="mt-0.5 text-xs text-gray-400">평균 각성 {summary.avgWasoMinutes}분</div>
       </div>
 
       {/* 낮잠 */}
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <div className="text-xs text-gray-400">낮잠</div>
         <div className="mt-1 text-lg font-bold text-gray-900">
-          {summary.napDaysCount > 0
-            ? formatDuration(summary.avgNapMinutes)
-            : '없음'}
+          {summary.napDaysCount > 0 ? formatDuration(summary.avgNapMinutes) : '없음'}
         </div>
         <div className="mt-0.5 text-xs text-gray-400">
-          {summary.napDaysCount > 0
-            ? `${summary.napDaysCount}일 기록 · 평균`
-            : '기간 내 없음'}
+          {summary.napDaysCount > 0 ? `${summary.napDaysCount}일 기록 · 평균` : '기간 내 없음'}
         </div>
       </div>
     </div>

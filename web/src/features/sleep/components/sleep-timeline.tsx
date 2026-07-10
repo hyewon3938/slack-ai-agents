@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import type { DailySleep, SleepPeriod } from '../lib/types';
+import type { DailySleep, SleepPeriod, SleepRecord } from '../lib/types';
 import { formatDateLabel, getDayOfWeek } from '../lib/chart-utils';
 
 interface SleepTimelineProps {
@@ -15,13 +15,26 @@ const Y_RANGE_MINUTES = 16 * 60;
 
 function timeToY(time: string): number {
   const [h, m] = time.split(':').map(Number);
-  let minutesFromStart = ((h ?? 0) * 60 + (m ?? 0)) - (Y_START_HOUR * 60);
+  let minutesFromStart = (h ?? 0) * 60 + (m ?? 0) - Y_START_HOUR * 60;
   if (minutesFromStart < 0) minutesFromStart += 1440;
   return minutesFromStart;
 }
 
 function yToRatio(y: number): number {
   return Math.max(0, Math.min(1, y / Y_RANGE_MINUTES));
+}
+
+/** 세그먼트 종료 시각 — wake_time 우선, 없으면 bedtime + duration 환산 (둘 다 없으면 null) */
+function segmentEndTime(record: SleepRecord): string | null {
+  if (record.wake_time) return record.wake_time;
+  if (record.bedtime && record.duration_minutes != null) {
+    const [h, m] = record.bedtime.split(':').map(Number);
+    const total = ((h ?? 0) * 60 + (m ?? 0) + record.duration_minutes) % 1440;
+    const hh = String(Math.floor(total / 60)).padStart(2, '0');
+    const mm = String(total % 60).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+  return null;
 }
 
 const Y_LABELS = ['20', '22', '0', '2', '4', '6', '8', '10', '12'];
@@ -39,16 +52,15 @@ interface Tooltip {
   daily: DailySleep;
 }
 
-function buildSessions(
-  d: DailySleep,
-  topPadding: number,
-  chartHeight: number,
-): Session[] {
+function buildSessions(d: DailySleep, topPadding: number, chartHeight: number): Session[] {
   const sessions: Session[] = [];
-  if (d.nightSleep?.bedtime && d.nightSleep?.wake_time) {
+  // 밤잠 세그먼트별 분리 렌더 — 세그먼트 사이 갭은 비워서 끊긴 구간이 보이게
+  for (const seg of d.nightSegments) {
+    const end = segmentEndTime(seg);
+    if (!seg.bedtime || !end) continue;
     sessions.push({
-      bedY: topPadding + yToRatio(timeToY(d.nightSleep.bedtime)) * chartHeight,
-      wakeY: topPadding + yToRatio(timeToY(d.nightSleep.wake_time)) * chartHeight,
+      bedY: topPadding + yToRatio(timeToY(seg.bedtime)) * chartHeight,
+      wakeY: topPadding + yToRatio(timeToY(end)) * chartHeight,
       kind: 'night',
     });
   }
@@ -97,7 +109,7 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
   }, [tooltip]);
 
   const validDailies = dailies.filter(
-    (d) => d.nightSleep?.bedtime || d.morningSleeps.length > 0,
+    (d) => d.nightSegments.length > 0 || d.morningSleeps.length > 0,
   );
 
   if (validDailies.length === 0) {
@@ -134,12 +146,21 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
               const y = topPadding + ((Y_LABEL_MINUTES[i] ?? 0) / Y_RANGE_MINUTES) * chartHeight;
               return (
                 <g key={label}>
-                  <text x={labelWidth - 4} y={y + 4} textAnchor="end" className="fill-gray-400 text-[10px]">
+                  <text
+                    x={labelWidth - 4}
+                    y={y + 4}
+                    textAnchor="end"
+                    className="fill-gray-400 text-[10px]"
+                  >
                     {label}
                   </text>
                   <line
-                    x1={labelWidth} y1={y} x2={chartWidth} y2={y}
-                    stroke="#f3f4f6" strokeWidth={1}
+                    x1={labelWidth}
+                    y1={y}
+                    x2={chartWidth}
+                    y2={y}
+                    stroke="#f3f4f6"
+                    strokeWidth={1}
                   />
                 </g>
               );
@@ -155,8 +176,10 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
                 <g key={d.date}>
                   {/* 히트 영역 — 좁은 바도 hover/tap 쉽게 */}
                   <rect
-                    x={x - 2} y={topPadding}
-                    width={barWidth + 4} height={chartHeight}
+                    x={x - 2}
+                    y={topPadding}
+                    width={barWidth + 4}
+                    height={chartHeight}
                     fill="transparent"
                     style={{ cursor: 'pointer' }}
                     onPointerEnter={(e) => {
@@ -169,7 +192,9 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
                     }}
                     onClick={() => {
                       setTooltip((prev) =>
-                        prev?.daily.date === d.date ? null : { x: x + barWidth / 2, y: topPadding, daily: d },
+                        prev?.daily.date === d.date
+                          ? null
+                          : { x: x + barWidth / 2, y: topPadding, daily: d },
                       );
                     }}
                   />
@@ -177,33 +202,43 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
                   {sessions.map((s, si) => (
                     <rect
                       key={si}
-                      x={x} y={s.bedY}
-                      width={barWidth} height={Math.max(4, s.wakeY - s.bedY)}
-                      rx={3} fill="#818cf8" opacity={0.8}
+                      x={x}
+                      y={s.bedY}
+                      width={barWidth}
+                      height={Math.max(4, s.wakeY - s.bedY)}
+                      rx={3}
+                      fill="#818cf8"
+                      opacity={0.8}
                       className="pointer-events-none"
                     />
                   ))}
                   {/* 밤잠 중간 기상 이벤트 */}
-                  {d.nightSleep?.events.map((e) => {
+                  {d.nightEvents.map((e) => {
                     const ey = topPadding + yToRatio(timeToY(e.event_time)) * chartHeight;
                     return (
                       <circle
                         key={e.id}
-                        cx={x + barWidth / 2} cy={ey}
-                        r={2.5} fill="#ef4444"
+                        cx={x + barWidth / 2}
+                        cy={ey}
+                        r={2.5}
+                        fill="#ef4444"
                         className="pointer-events-none"
                       />
                     );
                   })}
                   <text
-                    x={x + barWidth / 2} y={topPadding + chartHeight + 12}
-                    textAnchor="middle" className="fill-gray-500 text-[9px]"
+                    x={x + barWidth / 2}
+                    y={topPadding + chartHeight + 12}
+                    textAnchor="middle"
+                    className="fill-gray-500 text-[9px]"
                   >
                     {dateLabel}
                   </text>
                   <text
-                    x={x + barWidth / 2} y={topPadding + chartHeight + 24}
-                    textAnchor="middle" className="fill-gray-400 text-[8px]"
+                    x={x + barWidth / 2}
+                    y={topPadding + chartHeight + 24}
+                    textAnchor="middle"
+                    className="fill-gray-400 text-[8px]"
                   >
                     {dayLabel}
                   </text>
@@ -212,47 +247,64 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
             })}
           </svg>
         )}
-        {tooltip && (() => {
-          const d = tooltip.daily;
-          const totalH = Math.floor(d.totalNightDurationMinutes / 60);
-          const totalM = d.totalNightDurationMinutes % 60;
-          const hasMorning = d.morningSleeps.length > 0;
-          const alignRight = tooltip.x > chartWidth - 120;
-          const alignLeft = tooltip.x < 120;
-          const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
-          return (
-            <div
-              className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
-              style={{ left: tooltip.x, top: 0, transform: `translateX(${translateX})` }}
-            >
-              <p className="mb-1 font-semibold text-gray-700">{d.date}</p>
-              {d.nightSleep?.bedtime && (
-                <p className="text-gray-600">
-                  밤잠 {d.nightSleep.bedtime} → {d.nightSleep.wake_time ?? '?'}
-                </p>
-              )}
-              {d.morningSleeps.map((m, i) => (
-                <p key={i} className="text-indigo-500">
-                  아침잠 {m.bedtime} → {m.wake_time ?? '?'}
-                </p>
-              ))}
-              {d.totalNightDurationMinutes > 0 && (
-                <p className="text-gray-600">
-                  총 {totalH}시간{totalM > 0 ? ` ${totalM}분` : ''}
-                  {hasMorning ? ' (합산)' : ''}
-                </p>
-              )}
-              {(d.nightSleep?.events.length ?? 0) > 0 && (
-                <div className="mt-1 border-t border-gray-100 pt-1">
-                  <p className="text-red-500">중간기상 {d.nightSleep!.events.length}회</p>
-                  {d.nightSleep!.events.map((e) => (
-                    <p key={e.id} className="text-gray-500">&nbsp;&nbsp;{e.event_time}{e.memo ? ` — ${e.memo}` : ''}</p>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {tooltip &&
+          (() => {
+            const d = tooltip.daily;
+            const totalH = Math.floor(d.totalNightDurationMinutes / 60);
+            const totalM = d.totalNightDurationMinutes % 60;
+            const hasMorning = d.morningSleeps.length > 0;
+            const segmentLabels = d.nightSegments.map(
+              (s) => `${s.bedtime}-${segmentEndTime(s) ?? '?'}`,
+            );
+            const noteMemos = [...d.nightSegments, ...d.nightMemoRecords]
+              .map((r) => r.memo)
+              .filter((m): m is string => !!m);
+            const alignRight = tooltip.x > chartWidth - 120;
+            const alignLeft = tooltip.x < 120;
+            const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
+            return (
+              <div
+                className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+                style={{ left: tooltip.x, top: 0, transform: `translateX(${translateX})` }}
+              >
+                <p className="mb-1 font-semibold text-gray-700">{d.date}</p>
+                {segmentLabels.length > 0 && (
+                  <p className="text-gray-600">밤잠 {segmentLabels.join(' · ')}</p>
+                )}
+                {d.morningSleeps.map((m, i) => (
+                  <p key={i} className="text-indigo-500">
+                    아침잠 {m.bedtime} → {m.wake_time ?? '?'}
+                  </p>
+                ))}
+                {d.totalNightDurationMinutes > 0 && (
+                  <p className="text-gray-600">
+                    총 {totalH}시간{totalM > 0 ? ` ${totalM}분` : ''}
+                    {hasMorning ? ' (합산)' : ''}
+                  </p>
+                )}
+                {d.nightEvents.length > 0 && (
+                  <div className="mt-1 border-t border-gray-100 pt-1">
+                    <p className="text-red-500">중간기상 {d.nightEvents.length}회</p>
+                    {d.nightEvents.map((e) => (
+                      <p key={e.id} className="text-gray-500">
+                        &nbsp;&nbsp;{e.event_time}
+                        {e.memo ? ` — ${e.memo}` : ''}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {noteMemos.length > 0 && (
+                  <div className="mt-1 border-t border-gray-100 pt-1">
+                    {noteMemos.map((m, i) => (
+                      <p key={i} className="max-w-[13rem] whitespace-normal text-gray-500">
+                        메모 — {m}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">

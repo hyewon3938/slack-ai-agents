@@ -56,15 +56,14 @@ function DurationChart({ dailies, allowScroll }: { dailies: DailySleep[]; allowS
       <h3 className="mb-3 text-sm font-semibold text-gray-900">수면 시간 추이</h3>
       <div ref={ref} className={allowScroll ? 'overflow-x-auto' : ''}>
         {cw > 0 && (
-          <svg
-            width={chartWidth}
-            height={chartHeight + 24 + dateAreaHeight}
-            className="text-xs"
-          >
+          <svg width={chartWidth} height={chartHeight + 24 + dateAreaHeight} className="text-xs">
             <rect
-              x={0} y={(1 - idealMax / (maxDur + 60)) * chartHeight}
-              width={chartWidth} height={((idealMax - idealMin) / (maxDur + 60)) * chartHeight}
-              fill="#d1fae5" opacity={0.3}
+              x={0}
+              y={(1 - idealMax / (maxDur + 60)) * chartHeight}
+              width={chartWidth}
+              height={((idealMax - idealMin) / (maxDur + 60)) * chartHeight}
+              fill="#d1fae5"
+              opacity={0.3}
             />
 
             {dailies.map((d, i) => {
@@ -74,10 +73,20 @@ function DurationChart({ dailies, allowScroll }: { dailies: DailySleep[]; allowS
                 const dayLabel = getDayOfWeek(d.date);
                 return (
                   <g key={d.date}>
-                    <text x={x + barWidth / 2} y={chartHeight + 12} textAnchor="middle" className="fill-gray-300 text-[9px]">
+                    <text
+                      x={x + barWidth / 2}
+                      y={chartHeight + 12}
+                      textAnchor="middle"
+                      className="fill-gray-300 text-[9px]"
+                    >
                       {dateLabel}
                     </text>
-                    <text x={x + barWidth / 2} y={chartHeight + 24} textAnchor="middle" className="fill-gray-200 text-[8px]">
+                    <text
+                      x={x + barWidth / 2}
+                      y={chartHeight + 24}
+                      textAnchor="middle"
+                      className="fill-gray-200 text-[8px]"
+                    >
                       {dayLabel}
                     </text>
                   </g>
@@ -96,13 +105,28 @@ function DurationChart({ dailies, allowScroll }: { dailies: DailySleep[]; allowS
               return (
                 <g key={d.date}>
                   <rect x={x} y={y} width={barWidth} height={h} rx={2} fill={color} opacity={0.8} />
-                  <text x={x + barWidth / 2} y={y - 3} textAnchor="middle" className="fill-gray-500 text-[8px]">
+                  <text
+                    x={x + barWidth / 2}
+                    y={y - 3}
+                    textAnchor="middle"
+                    className="fill-gray-500 text-[8px]"
+                  >
                     {hours}h{mins > 0 ? mins : ''}
                   </text>
-                  <text x={x + barWidth / 2} y={chartHeight + 12} textAnchor="middle" className="fill-gray-500 text-[9px]">
+                  <text
+                    x={x + barWidth / 2}
+                    y={chartHeight + 12}
+                    textAnchor="middle"
+                    className="fill-gray-500 text-[9px]"
+                  >
                     {dateLabel}
                   </text>
-                  <text x={x + barWidth / 2} y={chartHeight + 24} textAnchor="middle" className="fill-gray-400 text-[8px]">
+                  <text
+                    x={x + barWidth / 2}
+                    y={chartHeight + 24}
+                    textAnchor="middle"
+                    className="fill-gray-400 text-[8px]"
+                  >
                     {dayLabel}
                   </text>
                 </g>
@@ -127,9 +151,15 @@ interface TrendTooltip {
   type: 'bed' | 'wake';
 }
 
-function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allowScroll: boolean }) {
+function TimesTrendChart({
+  dailies,
+  allowScroll,
+}: {
+  dailies: DailySleep[];
+  allowScroll: boolean;
+}) {
   const { ref, w: cw } = useContainerWidth();
-  const valid = dailies.filter((d) => d.nightSleep?.bedtime);
+  const valid = dailies.filter((d) => d.nightSegments.length > 0);
   const [tooltip, setTooltip] = useState<TrendTooltip | null>(null);
   useScrollToEnd(ref, cw, [valid.length], allowScroll);
 
@@ -168,13 +198,11 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
 
   const bedPoints = valid.map((d, i) => ({
     x: padding.left + (i / Math.max(1, valid.length - 1)) * innerW,
-    y: padding.top + timeToNorm(d.nightSleep!.bedtime!) * innerH,
+    y: padding.top + timeToNorm(d.nightSegments[0]!.bedtime!) * innerH,
   }));
   const wakePoints = valid.map((d, i) => ({
     x: padding.left + (i / Math.max(1, valid.length - 1)) * innerW,
-    y: d.effectiveWakeTime
-      ? padding.top + timeToNorm(d.effectiveWakeTime) * innerH
-      : null,
+    y: d.effectiveWakeTime ? padding.top + timeToNorm(d.effectiveWakeTime) * innerH : null,
   }));
 
   const bedPath = bedPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
@@ -196,10 +224,21 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
               const y = padding.top + (yLabelNorms[i] ?? 0) * innerH;
               return (
                 <g key={label}>
-                  <text x={padding.left - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[10px]">
+                  <text
+                    x={padding.left - 4}
+                    y={y + 3}
+                    textAnchor="end"
+                    className="fill-gray-400 text-[10px]"
+                  >
                     {label}시
                   </text>
-                  <line x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y} stroke="#f3f4f6" />
+                  <line
+                    x1={padding.left}
+                    y1={y}
+                    x2={chartWidth - padding.right}
+                    y2={y}
+                    stroke="#f3f4f6"
+                  />
                 </g>
               );
             })}
@@ -208,7 +247,10 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
               <g key={`b${i}`}>
                 <circle cx={p.x} cy={p.y} r={2.5} fill="#818cf8" className="pointer-events-none" />
                 <circle
-                  cx={p.x} cy={p.y} r={12} fill="transparent"
+                  cx={p.x}
+                  cy={p.y}
+                  r={12}
+                  fill="transparent"
                   style={{ cursor: 'pointer' }}
                   onPointerEnter={(e) => {
                     if (e.pointerType === 'touch') return;
@@ -233,9 +275,18 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
               if (p.y === null) return null;
               return (
                 <g key={`w${i}`}>
-                  <circle cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" className="pointer-events-none" />
                   <circle
-                    cx={p.x} cy={p.y} r={12} fill="transparent"
+                    cx={p.x}
+                    cy={p.y}
+                    r={2.5}
+                    fill="#f59e0b"
+                    className="pointer-events-none"
+                  />
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={12}
+                    fill="transparent"
                     style={{ cursor: 'pointer' }}
                     onPointerEnter={(e) => {
                       if (e.pointerType === 'touch') return;
@@ -264,10 +315,20 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
               const dayLabel = getDayOfWeek(d.date);
               return (
                 <g key={d.date}>
-                  <text x={x} y={chartHeight - padding.bottom + 14} textAnchor="middle" className="fill-gray-500 text-[9px]">
+                  <text
+                    x={x}
+                    y={chartHeight - padding.bottom + 14}
+                    textAnchor="middle"
+                    className="fill-gray-500 text-[9px]"
+                  >
                     {dateLabel}
                   </text>
-                  <text x={x} y={chartHeight - padding.bottom + 26} textAnchor="middle" className="fill-gray-400 text-[8px]">
+                  <text
+                    x={x}
+                    y={chartHeight - padding.bottom + 26}
+                    textAnchor="middle"
+                    className="fill-gray-400 text-[8px]"
+                  >
                     {dayLabel}
                   </text>
                 </g>
@@ -275,30 +336,41 @@ function TimesTrendChart({ dailies, allowScroll }: { dailies: DailySleep[]; allo
             })}
           </svg>
         )}
-        {tooltip && (() => {
-          const d = tooltip.daily;
-          const hasMorning = d.morningSleeps.length > 0;
-          const alignRight = tooltip.x > chartWidth - 100;
-          const alignLeft = tooltip.x < 100;
-          const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
-          return (
-            <div
-              className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
-              style={{ left: tooltip.x, top: tooltip.y - 8, transform: `translate(${translateX}, -100%)` }}
-            >
-              <p className="mb-0.5 font-semibold text-gray-700">{d.date}</p>
-              <p style={{ color: tooltip.type === 'bed' ? '#818cf8' : undefined }} className={tooltip.type === 'bed' ? 'font-medium' : 'text-gray-500'}>
-                취침 {d.nightSleep?.bedtime ?? '--:--'}
-              </p>
-              <p style={{ color: tooltip.type === 'wake' ? '#f59e0b' : undefined }} className={tooltip.type === 'wake' ? 'font-medium' : 'text-gray-500'}>
-                기상 {d.effectiveWakeTime ?? '--:--'}
-                {hasMorning && tooltip.type === 'wake' && (
-                  <span className="ml-1 text-gray-400 font-normal">※아침잠 포함</span>
-                )}
-              </p>
-            </div>
-          );
-        })()}
+        {tooltip &&
+          (() => {
+            const d = tooltip.daily;
+            const hasMorning = d.morningSleeps.length > 0;
+            const alignRight = tooltip.x > chartWidth - 100;
+            const alignLeft = tooltip.x < 100;
+            const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
+            return (
+              <div
+                className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+                style={{
+                  left: tooltip.x,
+                  top: tooltip.y - 8,
+                  transform: `translate(${translateX}, -100%)`,
+                }}
+              >
+                <p className="mb-0.5 font-semibold text-gray-700">{d.date}</p>
+                <p
+                  style={{ color: tooltip.type === 'bed' ? '#818cf8' : undefined }}
+                  className={tooltip.type === 'bed' ? 'font-medium' : 'text-gray-500'}
+                >
+                  취침 {d.nightSegments[0]?.bedtime ?? '--:--'}
+                </p>
+                <p
+                  style={{ color: tooltip.type === 'wake' ? '#f59e0b' : undefined }}
+                  className={tooltip.type === 'wake' ? 'font-medium' : 'text-gray-500'}
+                >
+                  기상 {d.effectiveWakeTime ?? '--:--'}
+                  {hasMorning && tooltip.type === 'wake' && (
+                    <span className="ml-1 text-gray-400 font-normal">※아침잠 포함</span>
+                  )}
+                </p>
+              </div>
+            );
+          })()}
       </div>
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">

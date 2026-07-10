@@ -44,6 +44,7 @@
 |--------|------|-----------|
 | 일정 관리 | [docs/domains/schedule.md](docs/domains/schedule.md) | #life |
 | 루틴 관리 | [docs/domains/routine.md](docs/domains/routine.md) | #life |
+| 수면 | [docs/domains/sleep.md](docs/domains/sleep.md) | #life |
 | 사주/일기 | [docs/domains/insight.md](docs/domains/insight.md) | #insight |
 | 지출/예산 | [docs/domains/budget.md](docs/domains/budget.md) | #money |
 
