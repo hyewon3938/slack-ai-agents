@@ -11,7 +11,8 @@ interface ScheduleFormProps {
   categories: CategoryRow[];
   defaultDate?: string | null;
   onSubmit: (data: Partial<ScheduleRow>) => Promise<void>;
-  onDelete?: () => Promise<void>;
+  // 실제 삭제가 아니라 삭제 사유 모달을 여는 트리거 (#590)
+  onDelete?: () => void;
   onClose: () => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -335,11 +336,10 @@ export function ScheduleForm({
       {/* 버튼 */}
       <div className="flex gap-2">
         {onDelete && schedule && (
+          /* 삭제 확인은 사유 모달(DeleteReasonModal) 단일 지점 — 여기에 confirm 추가 금지 (#590) */
           <button
             type="button"
-            onClick={() => {
-              if (confirm('이 일정을 삭제할까?')) onDelete();
-            }}
+            onClick={() => onDelete()}
             className="rounded-lg px-4 py-2.5 text-sm font-medium text-red-500 transition hover:bg-red-50"
           >
             삭제

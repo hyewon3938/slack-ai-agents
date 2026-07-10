@@ -40,8 +40,10 @@ export function ActionMenu({
 
     const handleClickOutside = (e: MouseEvent) => {
       if (
-        menuRef.current && !menuRef.current.contains(e.target as Node) &&
-        buttonRef.current && !buttonRef.current.contains(e.target as Node)
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(e.target as Node)
       ) {
         setOpen(false);
       }
@@ -114,7 +116,8 @@ export function ActionMenu({
               onClick={(e) => {
                 e.stopPropagation();
                 setOpen(false);
-                if (confirm('이 일정을 삭제할까?')) onDelete(scheduleId);
+                // 삭제 확인은 사유 모달(DeleteReasonModal) 단일 지점 — 여기에 confirm 추가 금지 (#590)
+                onDelete(scheduleId);
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50"
             >

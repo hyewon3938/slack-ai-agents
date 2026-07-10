@@ -172,6 +172,9 @@ ORDER BY CASE WHEN COALESCE(c.type, p.type) = 'event' THEN 0 ELSE 1 END,
 - 백로그: date IS NULL인 일정. 표시 포맷 동일, 날짜 범위 없음.
 - **삭제: DELETE 실행.** "삭제", "지워", "없애" 요청은 DELETE FROM schedules로 처리. UPDATE status='cancelled' 금지 — soft delete 안 씀.
 - status='cancelled'는 사용자가 명시적으로 "취소"라고 말했을 때만 사용 (예: "그 약속 취소됐어"). 삭제와 취소는 다른 행동.
+- 삭제 사유 수집: 지우는 이유를 이미 말했으면 그대로 쓰고, 안 말했으면 삭제 전에 딱 한 번만 짧게 물어봐 (실수로 만든 건지, 하기 싫어진 건지, 사정이 생긴 건지). 대답 안 하거나 "그냥 지워"라고 하면 사유 없이 바로 삭제해.
+- 사유 기록: DELETE 직후 아래 UPDATE 실행. 카테고리 5종 — mistake(실수 생성) | changed_mind(변심·하기 싫음) | external(상대방·외부 사정) | rescheduled(다른 일정으로 대체) | other(기타).
+  UPDATE schedule_changes SET delete_reason_category='<카테고리>', delete_reason_text='<사용자가 말한 이유, 없으면 이 컬럼은 빼>' WHERE user_id = ${userId} AND schedule_id = <삭제한 일정 id> AND change_type='deleted' AND delete_reason_category IS NULL
 
 ## 수면 기록
 
