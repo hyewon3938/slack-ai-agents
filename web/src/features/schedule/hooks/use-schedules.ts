@@ -16,6 +16,7 @@ import {
 } from 'date-fns';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
 import { lookupCategory } from '@/features/schedule/lib/types';
+import type { DeleteReason } from '@/features/schedule/lib/delete-reasons';
 import type { CategoryRow } from '@/lib/types';
 import type { CalendarView } from '@/features/schedule/components/calendar-header';
 import { WEEK_START } from '@/features/schedule/lib/calendar-utils';
@@ -33,6 +34,8 @@ export function useSchedules(initialView?: CalendarView) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // 삭제 사유 모달 대상 일정 id — null이면 모달 닫힘 (#590)
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   // 카테고리 필터: 최상위 id 기준
   const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
   // 하위 카테고리 필터: child id 기준
@@ -237,15 +240,24 @@ export function useSchedules(initialView?: CalendarView) {
     }
   };
 
-  const handleDelete = async () => {
-    if (!editingSchedule) return;
+  /** 삭제 요청 — 사유 모달을 연다. 실제 삭제는 confirmDelete가 수행 */
+  const requestDelete = (id: number) => setDeleteTarget(id);
+
+  /** 사유 모달 확정 — 사유를 body에 담아 삭제 (API가 tombstone 사유 enrichment까지 수행) */
+  const confirmDelete = async (reason: DeleteReason) => {
+    if (deleteTarget === null) return;
     try {
-      const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
+      const res = await fetch(`/api/schedules/${deleteTarget}`, {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason_category: reason.category, reason_text: reason.text }),
       });
       if (res.ok) {
-        setEditingSchedule(null);
+        if (editingSchedule?.id === deleteTarget) setEditingSchedule(null);
+        setDeleteTarget(null);
         await fetchData();
+      } else {
+        alert('일정 삭제에 실패했어');
       }
     } catch {
       alert('일정 삭제에 실패했어');
@@ -338,16 +350,6 @@ export function useSchedules(initialView?: CalendarView) {
     }
   };
 
-  const handleDeleteById = async (id: number) => {
-    if (!confirm('이 일정을 삭제할까?')) return;
-    try {
-      const res = await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
-      if (res.ok) await fetchData();
-    } catch {
-      alert('삭제에 실패했어');
-    }
-  };
-
   const handleSelectDate = (dateStr: string) => {
     setSelectedDate(dateStr === selectedDate ? null : dateStr);
   };
@@ -420,10 +422,12 @@ export function useSchedules(initialView?: CalendarView) {
     handleEndDateChange,
     handleCreate,
     handleUpdate,
-    handleDelete,
     handlePostpone,
     handleMoveToBacklog,
-    handleDeleteById,
+    deleteTarget,
+    setDeleteTarget,
+    requestDelete,
+    confirmDelete,
     handleSelectDate,
     toggleCategory,
     toggleSubcategory,

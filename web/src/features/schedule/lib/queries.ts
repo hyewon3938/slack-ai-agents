@@ -146,6 +146,28 @@ export const deleteSchedule = async (userId: number, id: number): Promise<boolea
   return result.rowCount !== null && result.rowCount > 0;
 };
 
+/**
+ * 삭제 tombstone 사유 enrichment (#590, ADR-0060).
+ * 행 생성은 DB 트리거 단일 계기(ADR-0054) — 앱은 삭제 직후 사유 필드만 fill-NULL-only로 1회 채운다.
+ * 같은 일정이 복구 후 재삭제될 수 있으므로 최신 tombstone만 대상.
+ */
+export const recordDeleteReason = async (
+  userId: number,
+  scheduleId: number,
+  category: string,
+  text: string | null,
+): Promise<void> => {
+  await query(
+    `UPDATE schedule_changes
+     SET delete_reason_category = $3, delete_reason_text = $4
+     WHERE user_id = $1 AND schedule_id = $2 AND change_type = 'deleted'
+       AND delete_reason_category IS NULL
+       AND id = (SELECT MAX(id) FROM schedule_changes
+                 WHERE user_id = $1 AND schedule_id = $2 AND change_type = 'deleted')`,
+    [userId, scheduleId, category, text],
+  );
+};
+
 // ─── 카테고리 ──────────────────────────────────────────
 
 export const queryCategories = async (userId: number): Promise<CategoryRow[]> =>

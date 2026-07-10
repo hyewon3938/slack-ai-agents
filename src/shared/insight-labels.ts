@@ -162,6 +162,8 @@ const SIGNAL_LABEL_OVERRIDES: Record<string, string> = {
   audit_date_postponed: '일정 미룸',
   audit_date_advanced: '일정 당김',
   audit_postponed_done: '미룬 일정 처리',
+  // #590 ADR-0060: 삭제 사유(changed_mind) 기반 — "하기 싫어져서 일정을 지운 날".
+  audit_cancel_changed_mind: '변심 일정 취소',
   expense_hospital_excl_installment: '병원비 지출(할부 제외)',
   schedule_tax_keyword: '세금 관련 일정',
   // #573 ADR-0056: category_id JOIN + status='done' 재정의 — "그 일정을 실제로 처리한 날".

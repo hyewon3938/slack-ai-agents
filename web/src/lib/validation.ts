@@ -4,6 +4,7 @@ export const MAX_LENGTHS = {
   name: 100,
   description: 200,
   memo: 500,
+  reason: 300,
   category: 50,
   color: 7,
   paymentMethod: 50,

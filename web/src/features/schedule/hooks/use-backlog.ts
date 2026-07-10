@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
 import { getScheduleTopCategoryName } from '@/features/schedule/lib/types';
+import type { DeleteReason } from '@/features/schedule/lib/delete-reasons';
 import type { CategoryRow } from '@/lib/types';
 
 export function useBacklog() {
@@ -10,6 +11,8 @@ export function useBacklog() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // 삭제 사유 모달 대상 일정 id — null이면 모달 닫힘 (#590)
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -98,13 +101,24 @@ export function useBacklog() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!editingSchedule) return;
+  /** 삭제 요청 — 사유 모달을 연다. 실제 삭제는 confirmDelete가 수행 */
+  const requestDelete = (id: number) => setDeleteTarget(id);
+
+  /** 사유 모달 확정 — 사유를 body에 담아 삭제 (API가 tombstone 사유 enrichment까지 수행) */
+  const confirmDelete = async (reason: DeleteReason) => {
+    if (deleteTarget === null) return;
     try {
-      const res = await fetch(`/api/schedules/${editingSchedule.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/schedules/${deleteTarget}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason_category: reason.category, reason_text: reason.text }),
+      });
       if (res.ok) {
-        setEditingSchedule(null);
+        if (editingSchedule?.id === deleteTarget) setEditingSchedule(null);
+        setDeleteTarget(null);
         await fetchData();
+      } else {
+        alert('일정 삭제에 실패했어');
       }
     } catch {
       alert('일정 삭제에 실패했어');
@@ -138,7 +152,10 @@ export function useBacklog() {
     sortedCategories,
     handleAssignDate,
     handleUpdate,
-    handleDelete,
+    deleteTarget,
+    setDeleteTarget,
+    requestDelete,
+    confirmDelete,
     handleCreate,
   };
 }

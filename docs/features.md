@@ -9,6 +9,7 @@
 ### 일정 관리 (`#life` 채널)
 
 - Slack 자연어로 일정 추가/조회/수정/삭제
+- 일정 삭제 사유 수집 — 웹은 사유 선택 모달(고정 5종 + 기타 텍스트), Slack은 대화 수집. tombstone enrichment로 축적, 변심 취소는 패턴 신호화 (#590, ADR-0060)
 - 카테고리 분류 (FK 기반, 2026-05-13 마이그레이션)
 - 밀린 일정 자동 감지 + 잔소리
 - 상세: [docs/domains/schedule.md](./domains/schedule.md)

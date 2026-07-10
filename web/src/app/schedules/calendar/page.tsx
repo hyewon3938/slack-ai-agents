@@ -18,6 +18,7 @@ import { DndCalendar } from '@/features/schedule/components/dnd-calendar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/features/schedule/components/schedule-form';
+import { DeleteReasonModal } from '@/features/schedule/components/delete-reason-modal';
 import type { CalendarView } from '@/features/schedule/components/calendar-header';
 
 function getInitialView(): CalendarView {
@@ -43,7 +44,15 @@ function getTitle(view: string, currentDate: Date): string {
 
 export default function CalendarPage() {
   return (
-    <Suspense fallback={<div className="flex-1 p-4"><div className="mx-auto max-w-3xl"><ListSkeleton rows={5} rowHeight="h-20" /></div></div>}>
+    <Suspense
+      fallback={
+        <div className="flex-1 p-4">
+          <div className="mx-auto max-w-3xl">
+            <ListSkeleton rows={5} rowHeight="h-20" />
+          </div>
+        </div>
+      }
+    >
       <CalendarContent />
     </Suspense>
   );
@@ -80,10 +89,12 @@ function CalendarContent() {
     handleEndDateChange,
     handleCreate,
     handleUpdate,
-    handleDelete,
     handlePostpone,
     handleMoveToBacklog,
-    handleDeleteById,
+    deleteTarget,
+    setDeleteTarget,
+    requestDelete,
+    confirmDelete,
     handleSelectDate,
     toggleCategory,
     toggleSubcategory,
@@ -150,8 +161,14 @@ function CalendarContent() {
         onDateChange={handleDateChange}
         onEndDateChange={handleEndDateChange}
       >
-        <div className={`md:flex md:flex-1 md:min-h-0 ${view === 'month' && selectedDate ? '' : 'md:flex-col'}`}>
-          <div className={view === 'month' && selectedDate ? 'flex-1' : 'md:flex md:flex-1 md:flex-col'}>
+        <div
+          className={`md:flex md:flex-1 md:min-h-0 ${view === 'month' && selectedDate ? '' : 'md:flex-col'}`}
+        >
+          <div
+            className={
+              view === 'month' && selectedDate ? 'flex-1' : 'md:flex md:flex-1 md:flex-col'
+            }
+          >
             {view === 'month' && (
               <MonthView
                 currentDate={currentDate}
@@ -175,7 +192,7 @@ function CalendarContent() {
                 onToggleImportant={handleToggleImportant}
                 onPostpone={handlePostpone}
                 onMoveToBacklog={handleMoveToBacklog}
-                onDelete={handleDeleteById}
+                onDelete={requestDelete}
               />
             )}
             {view === 'day' && (
@@ -188,7 +205,7 @@ function CalendarContent() {
                 onToggleImportant={handleToggleImportant}
                 onPostpone={handlePostpone}
                 onMoveToBacklog={handleMoveToBacklog}
-                onDelete={handleDeleteById}
+                onDelete={requestDelete}
               />
             )}
           </div>
@@ -254,12 +271,19 @@ function CalendarContent() {
             schedule={editingSchedule}
             categories={categories}
             onSubmit={handleUpdate}
-            onDelete={handleDelete}
+            onDelete={() => requestDelete(editingSchedule.id)}
             onClose={() => setEditingSchedule(null)}
             onDirtyChange={setFormDirty}
           />
         )}
       </Modal>
+
+      {/* 삭제 사유 모달 — 삭제 확인의 유일한 지점 (#590) */}
+      <DeleteReasonModal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

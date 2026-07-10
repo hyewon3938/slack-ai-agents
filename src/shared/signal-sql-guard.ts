@@ -32,6 +32,8 @@ const MAX_SIGNAL_SQL_LENGTH = 2000;
 export const SIGNAL_TABLE_WHITELIST: ReadonlySet<string> = new Set([
   // schedule
   'schedules',
+  // schedule_changes의 delete_reason_text(사용자 원문, #590)는 헌장 ① 대상 —
+  // 화이트리스트는 테이블 단위라 BLOCKED_PATTERNS에서 컬럼명으로 정적 차단.
   'schedule_changes',
   // routine
   'routine_templates',
@@ -80,6 +82,8 @@ const BLOCKED_PATTERNS: readonly RegExp[] = [
   /\bpg_hba_file_rules\b/i,
   /\binformation_schema\b/i,
   /\bpg_catalog\b/i,
+  // 삭제 사유 원문 컬럼 (#590 ADR-0060) — 헌장 ①(원문 0). 신호화는 delete_reason_category만.
+  /\bdelete_reason_text\b/i,
 ];
 
 /** 주석·문자열 리터럴 제거 (db-proxy 등급 — 이스케이프된 '' 처리). */

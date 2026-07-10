@@ -69,7 +69,7 @@ ORDER BY
 | GET | `/api/schedules?from=&to=` | 날짜 범위 일정 조회 (캘린더용) |
 | POST | `/api/schedules` | 일정 생성 |
 | PATCH | `/api/schedules/[id]` | 일정 수정 (부분 업데이트) |
-| DELETE | `/api/schedules/[id]` | 일정 삭제 |
+| DELETE | `/api/schedules/[id]` | 일정 삭제 (body로 사유 전달 — 삭제 후 tombstone enrichment) |
 | GET | `/api/categories` | 카테고리 목록 조회 |
 | POST | `/api/categories` | 카테고리 생성 |
 | PATCH | `/api/categories/[id]` | 카테고리 수정 |
@@ -91,6 +91,7 @@ features/schedule/
 │   ├── droppable-day.tsx       # 드롭 영역 (날짜 셀)
 │   ├── schedule-card.tsx       # 일정 카드 UI
 │   ├── schedule-form.tsx       # 일정 생성/수정 폼 (모달)
+│   ├── delete-reason-modal.tsx # 삭제 사유 선택 모달 (삭제 확인 단일 지점)
 │   ├── status-badge.tsx        # 상태 뱃지 컴포넌트
 │   ├── saju-pillar-label.tsx   # 사주 일주 라벨 (월/주 뷰 공용)
 │   └── action-menu.tsx         # 일정 컨텍스트 메뉴 (수정/삭제/미루기 등)
@@ -101,6 +102,7 @@ features/schedule/
     ├── types.ts                # ScheduleRow, ScheduleStatus, 정렬 함수
     ├── queries.ts              # 서버 사이드 DB 쿼리 (query, queryOne)
     ├── calendar-utils.ts       # 캘린더 유틸 (WEEK_START 등)
+    ├── delete-reasons.ts       # 삭제 사유 고정 어휘 5종 (코드·라벨, 마이그 106 CHECK와 동기)
     └── __tests__/              # 테스트
 ```
 
@@ -199,4 +201,33 @@ features/schedule/
 
 ### `schedule_fate` view — 생성일 코호트 추적 기반 (#574 선행)
 
-살아있는 일정 + 삭제 일정(tombstone) 합집합으로 일정 단위 궤적(생성일 코호트·카테고리·순미룸 일수·최종 상태/삭제)을 낸다. 한 번도 안 옮긴 채 완료된 일정도 포함해 생존 편향을 막는다. 가설·검증 레이어는 [#574](https://github.com/hyewon3938/slack-ai-agents/issues/574)에서 설계하고, 그 전에도 ad-hoc·주간 리뷰에서 소비 가능. 순변위 의미론·측정 정밀화 상세는 insight 도메인 [§42](insight.md) 참조.
+살아있는 일정 + 삭제 일정(tombstone) 합집합으로 일정 단위 궤적(생성일 코호트·카테고리·순미룸 일수·최종 상태/삭제)을 낸다. 한 번도 안 옮긴 채 완료된 일정도 포함해 생존 편향을 막는다. 가설·검증 레이어는 [#574](https://github.com/hyewon3938/slack-ai-agents/issues/574)에서 설계하고, 그 전에도 ad-hoc·주간 리뷰에서 소비 가능. 순변위 의미론·측정 정밀화 상세는 insight 도메인 [§42](insight.md) 참조. 마이그레이션 106부터 view 말미에 `delete_reason_category` 노출(살아있는 일정은 NULL) — 아래 삭제 사유 섹션 참조.
+
+### 삭제 사유 수집 (#590, ADR-0060)
+
+삭제 tombstone에 "왜 지웠는지"를 담는다. 마이그레이션 [106](../../db/migrations/106_schedule_delete_reason.sql), 설계 근거 [ADR-0060](../adr/0060-schedule-delete-reason-capture.md).
+
+**컬럼 2개** (둘 다 `change_type='deleted'` 행에서만 허용, CHECK 강제):
+
+- `delete_reason_category TEXT` — 고정 어휘 5종 CHECK. 웹 상수 [delete-reasons.ts](../../web/src/features/schedule/lib/delete-reasons.ts)와 동기.
+- `delete_reason_text TEXT` — 자유 텍스트. `other`면 필수, 그 외 선택(수집 규약). **사용자 원문이라 검증·발굴·제안 LLM 입력 금지**(v2 헌장 ①) — 신호화는 category만 (insight [§46](insight.md)).
+
+**사유 어휘 5종**:
+
+| 코드 | 라벨 | 의미 |
+|------|------|------|
+| `mistake` | 실수로 만든 일정 | 오기입·중복 생성 교정 (통계에선 노이즈로 취급) |
+| `changed_mind` | 하기 싫어졌거나 마음이 바뀜 | 내적 취소 — `audit_cancel_changed_mind` 신호의 대상 |
+| `external` | 상대방·외부 사정으로 취소됨 | 외생 취소 |
+| `rescheduled` | 다른 날짜·일정으로 대체함 | 삭제 후 재생성·대체 |
+| `other` | 기타 | 자유 텍스트 필수 |
+
+**기록 규약** — 행 생성은 트리거 단일 계기 그대로(ADR-0054 불변), 사유는 삭제 직후 앱이 **fill-NULL-only UPDATE 1회 enrichment** (`WHERE ... AND delete_reason_category IS NULL`, 최신 tombstone 대상). append-only 로그에 허용하는 유일한 예외이며 트리거가 쓴 필드는 불변.
+
+**경로별 커버리지**:
+
+| 경로 | 수집 방식 |
+|------|----------|
+| 웹 삭제 (액션 메뉴·수정 폼) | `DeleteReasonModal`(라디오 5종 + 텍스트)이 **유일한 삭제 확인 지점** — 기존 중복 confirm 제거. DELETE API body(`reason_category`/`reason_text`)로 전달 → API가 삭제 후 `recordDeleteReason` enrichment |
+| Slack 에이전트 자연어 | 프롬프트 지침([prompt.ts](../../src/agents/life/prompt.ts) 일정/백로그 규칙)으로 대화에서 사유 수집 후 동일 UPDATE. 사용자가 안 주면 미기록 진행 |
+| Slack 오버플로우 버튼 | 미기록(NULL) — 빠른 액션 특성상 수용, 한계로 명시 |
