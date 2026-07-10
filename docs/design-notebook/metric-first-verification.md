@@ -684,3 +684,41 @@ P3([ADR-0035](../adr/0035-graded-confidence-exposure.md) 3-tier 노출)가 만�
 ### 회고
 
 [/build 머지 후 채움]
+
+---
+
+## 후속 — 월간 신호 제안 누락 fallback (#466, 2026-07-08, post-close)
+
+- 이슈: [#466](https://github.com/hyewon3938/slack-ai-agents/issues/466) (마스터 #434 Phase 6 follow-up 중 "routine 실패 fallback 경로" 하나)
+- 관련 ADR: [0058](../adr/0058-signal-suggest-missing-fallback.md)
+- 관련 계획서: `.claude/plans/466-signal-suggest-fallback.md`
+- 상태: 설계 완료
+
+`monthly-signal-suggest`(P5b, ADR-0040, repo 밖 앱 routine)가 그 달 아예 안 돌면 신호 제안이 조용히 누락되던 안전망 부재를 봇 사이드 fallback 슬롯으로 해소. `weeklyReviewFallback`(ADR-0052) 대칭 복제.
+
+**#466 본체(첫 가동 회고 — 후보 품질·승인률·거절률 분포)는 표본 1회(2026-07-01) 부족으로 8월 2회차 실행 이후로 연기**(사용자 2026-07-02 판단). 이번엔 표본과 무관한 fallback 경로만 처리.
+
+### 결정 요약
+
+- **감지 = `signal_suggest_runs` row-존재**(`SELECT EXISTS`). 월 2일 11:00 가드(daily 등록 + 내부 일자 가드). row 없으면 #insight 수동 실행 알림만.
+- **감지 의미론 비대칭이 핵심**: weekly는 row=발송 성공(연속성 우선), signal-suggest는 row=최초 클레임(중복 방지 우선, ADR-0053). 그래서 signal-suggest fallback은 "그 달 아예 안 돎"만 확실히 잡고, burned month(클레임 후 크래시)·후보 0건 정상은 구분 못 함 — 스코프 한계로 명시.
+
+### 의사결정 분기점
+
+- **감지 범위 — row 없음만 vs burned month까지**: burned month까지 잡으려면 `signal_suggest_runs`에 발송완료 컬럼 추가 or SKILL 계약 변경 필요. ADR-0053이 burned month를 "저손실 수용"으로 이미 결정 → 지금 뒤집으면 충돌. row 없음(=미실행)만 감지로 확정하고, burned month 실측 여부는 8월 회고로 미룸. 표본 무관 최소 안전망이라는 이번 작업 취지와도 일치.
+- **감지 시각 — 1일 늦게 vs 2일**: 1일은 routine 당일이라 앱 재시작 밀림을 헛알림. 2일 채택(하루 유예 흡수, #574 게이트 task와 리듬 일치).
+- **알림 vs 봇 대신 발송**: LLM 신호 생성은 봇 밖. ADR-0052 Alt B(반쪽 카드) 기각 계승 → 알림만.
+
+### 포기한 안 / 미룬 항목
+
+- burned month 감지(Alt A) → 8월 회고 실측 후.
+- healthchecks.io dead-man 확장(Alt C, #577) → 레이어 불일치(인프라 liveness vs 월 1회 비즈니스 routine)로 기각.
+- #466 이슈 stale 앵커 정합성(본문이 옛 pattern_metrics ADR을 링크) → /build에서 이슈 코멘트 1줄(선택), 코드 무관.
+
+### 기술적 의의
+
+같은 "repo 밖 routine 미발송 → 봇 fallback 알림" 패턴을 두 번째 적용하면서, **idempotency 클레임 시점 차이(발송 후 기록 vs 최초 클레임)가 fallback 감지 의미론을 어떻게 가르는지**를 스코프 한계로 정직하게 드러낸 사례. row 존재를 "정상"으로 오독하지 않도록 감지 대상을 "미실행"으로 한정. (어필 표현은 portfolio-candidates.)
+
+### 회고
+
+[/build 머지 후 채움]

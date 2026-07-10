@@ -112,6 +112,7 @@
 | 월요일 09:00 | weeklyReport | 주간 인사이트 리포트 (Block Kit) |
 | 월요일 10:00 | weeklyReviewFallback | 주간 인사이트 미발송 시 수동 실행 알림(fallback, routine 실패 주만) (`#insight`, #542) |
 | 매월 1일 09:30 | (신호 제안) | LLM 신호 제안 — 새 측정 신호 자율 제안 승인 카드 (`#insight`, #477 P5b) |
+| 매월 2일 11:00 | signalSuggestFallback | 신호 제안 routine 미실행 월 수동 실행 알림(fallback, 그 달 미실행만 감지) (`#insight`, #466) |
 
 타임존: `Asia/Seoul` 고정. `pillar-level-distribution-review` 슬롯은 은퇴(마이그레이션 097 비활성).
 
