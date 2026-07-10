@@ -41,9 +41,10 @@ const setupQueryMock = (overrides: Record<string, MockRow[]> = {}): void => {
   const defaultResponses: Record<string, MockRow[]> = {
     // sleep (night + morning naps)
     "sleep_type = 'night' OR": [],
-    'AVG.*duration_minutes': [],
+    // queryWeekAvg: 날짜별 합산 CTE (day_minutes 별칭으로 유니크 매칭)
+    day_minutes: [],
     'AS is_late': [],
-    'bedtime.*>= \'12:00\'': [{ nap_count: '0' }],
+    "bedtime.*>= '12:00'": [{ nap_count: '0' }],
     // routine
     'routine_records.*routine_templates.*date =': [],
     'AVG.*daily_rate': [],
@@ -85,15 +86,21 @@ describe('buildLifeContext', () => {
   it('수면 데이터가 있으면 시간/취침시각 표시', async () => {
     setupQueryMock({
       "sleep_type = 'night' OR": [
-        { date: '2026-03-09', bedtime: '01:30', wake_time: '07:00', duration_minutes: 330, sleep_type: 'night' },
+        {
+          date: '2026-03-09',
+          bedtime: '01:30',
+          wake_time: '07:00',
+          duration_minutes: 330,
+          sleep_type: 'night',
+        },
       ],
-      'AVG.*duration_minutes': [{ avg_duration: '360', avg_bedtime_hour: '25.5', count: '5' }],
+      day_minutes: [{ avg_duration: '360', avg_bedtime_hour: '25.5', count: '5' }],
       'AS is_late': [
         { date: '2026-03-09', is_late: true },
         { date: '2026-03-08', is_late: true },
         { date: '2026-03-07', is_late: true },
       ],
-      'bedtime.*>= \'12:00\'': [{ nap_count: '1' }],
+      "bedtime.*>= '12:00'": [{ nap_count: '1' }],
       'routine_records.*routine_templates.*date =': [{ total: '8', completed: '3' }],
       'AVG.*daily_rate': [{ avg_rate: '72' }],
       "status != 'cancelled'.*end_date.*\\$2\\)": [{ total: '5', incomplete: '3' }],
@@ -123,12 +130,65 @@ describe('buildLifeContext', () => {
     expect(result).toContain('백로그 13건');
   });
 
+  it('분할 수면(밤잠 2세그먼트)은 합산 시간 + 구간 나열로 표기', async () => {
+    setupQueryMock({
+      "sleep_type = 'night' OR": [
+        {
+          date: '2026-03-09',
+          bedtime: '00:30',
+          wake_time: '03:00',
+          duration_minutes: 150,
+          sleep_type: 'night',
+          memo: null,
+        },
+        {
+          date: '2026-03-09',
+          bedtime: '03:45',
+          wake_time: '09:00',
+          duration_minutes: 315,
+          sleep_type: 'night',
+          memo: null,
+        },
+      ],
+    });
+
+    const result = await buildLifeContext('conversation', 1);
+
+    // 150 + 315 = 465분 = 7시간 45분 (합산)
+    expect(result).toContain('어젯밤 7시간 45분');
+    // 세그먼트 2개는 구간 나열
+    expect(result).toContain('00:30-03:00 · 03:45-09:00');
+    // 첫 세그먼트만 집어 150분(2시간 30분)으로 과소 표기하지 않는다
+    expect(result).not.toContain('2시간 30분');
+  });
+
+  it('주간 평균·늦밤 패턴 SQL은 날짜별 집계(GROUP BY date)로 분할 수면 정합', async () => {
+    setupQueryMock();
+
+    await buildLifeContext('conversation', 1);
+
+    const sqls = mockQuery.mock.calls.map((c) => c[0] as string);
+    const weekAvgSql = sqls.find((s) => /day_minutes/.test(s));
+    const lateSql = sqls.find((s) => /AS is_late/.test(s));
+    // 행 단위 AVG가 아니라 날짜별 SUM 후 평균
+    expect(weekAvgSql).toMatch(/GROUP BY date/);
+    expect(weekAvgSql).toMatch(/SUM\(duration_minutes\)/);
+    // 늦밤 판정도 날짜별 onset 기준 (분할일 이중 카운트 방지)
+    expect(lateSql).toMatch(/GROUP BY date/);
+  });
+
   it('morning 타이밍에는 루틴이 어제 기준, 낮잠 생략', async () => {
     setupQueryMock({
       "sleep_type = 'night' OR": [
-        { date: '2026-03-08', bedtime: '23:30', wake_time: '07:00', duration_minutes: 450, sleep_type: 'night' },
+        {
+          date: '2026-03-08',
+          bedtime: '23:30',
+          wake_time: '07:00',
+          duration_minutes: 450,
+          sleep_type: 'night',
+        },
       ],
-      'AVG.*duration_minutes': [{ avg_duration: '420', avg_bedtime_hour: '23.5', count: '3' }],
+      day_minutes: [{ avg_duration: '420', avg_bedtime_hour: '23.5', count: '3' }],
       'AS is_late': [{ date: '2026-03-08', is_late: false }],
       'routine_records.*routine_templates.*date =': [{ total: '10', completed: '8' }],
       'AVG.*daily_rate': [{ avg_rate: '75' }],
@@ -218,9 +278,7 @@ describe('buildLifeContext', () => {
 
   it('일기 데이터가 있으면 일기 맥락 포함', async () => {
     setupQueryMock({
-      'diary_entries.*date IN': [
-        { date: '2026-03-09', content: '오늘 면접 봤는데 긴장했다.' },
-      ],
+      'diary_entries.*date IN': [{ date: '2026-03-09', content: '오늘 면접 봤는데 긴장했다.' }],
     });
 
     const result = await buildLifeContext('conversation', 1);
@@ -230,9 +288,7 @@ describe('buildLifeContext', () => {
 
   it('일기 200자 초과 시 잘림', async () => {
     setupQueryMock({
-      'diary_entries.*date IN': [
-        { date: '2026-03-09', content: 'A'.repeat(250) },
-      ],
+      'diary_entries.*date IN': [{ date: '2026-03-09', content: 'A'.repeat(250) }],
     });
 
     const result = await buildLifeContext('conversation', 1);
@@ -253,9 +309,7 @@ describe('buildLifeContext', () => {
 
   it('운세 데이터가 있으면 운세 맥락 포함', async () => {
     setupQueryMock({
-      'fortune_analyses.*daily': [
-        { summary: '편관 운이 들어오는 날', advice: '무리하지 마' },
-      ],
+      'fortune_analyses.*daily': [{ summary: '편관 운이 들어오는 날', advice: '무리하지 마' }],
     });
 
     const result = await buildLifeContext('conversation', 1);

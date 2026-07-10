@@ -57,7 +57,11 @@ const fmtDuration = (minutes: number): string => {
   return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
 };
 
-/** 오늘 날짜의 밤잠 + 아침잠(bedtime < 12:00 낮잠) 합산 */
+/**
+ * 오늘 날짜의 밤잠 + 아침잠(bedtime < 12:00 낮잠) 합산.
+ * 분할 수면(같은 날짜 night 여러 세그먼트)은 전체 합산 시간으로 표기하고,
+ * 세그먼트가 2개 이상이면 구간을 나열한다 (예: 6시간 (00:30-03:00 · 03:45-09:00)).
+ */
 const queryLastNight = async (
   { today, userId }: DateParams,
   timing: ContextTiming,
@@ -67,50 +71,63 @@ const queryLastNight = async (
      FROM sleep_records
      WHERE date = $1 AND user_id = $2
        AND (sleep_type = 'night' OR (sleep_type = 'nap' AND bedtime::time < '12:00'))
-     ORDER BY CASE sleep_type WHEN 'night' THEN 0 ELSE 1 END`,
+     ORDER BY CASE sleep_type WHEN 'night' THEN 0 ELSE 1 END, bedtime`,
     [today, userId],
   );
 
-  if (result.rows.length === 0) {
-    return timing === 'morning' ? '어젯밤 수면 미기록' : null;
-  }
-
-  const night = result.rows.find((r) => r.sleep_type === 'night');
+  const nightRows = result.rows.filter((r) => r.sleep_type === 'night');
   const morningNaps = result.rows.filter((r) => r.sleep_type === 'nap');
 
-  if (!night) {
+  if (nightRows.length === 0) {
     return timing === 'morning' ? '어젯밤 수면 미기록' : null;
   }
 
-  if (night.duration_minutes == null || night.bedtime == null || night.wake_time == null) {
-    return night.memo ? `어젯밤 수면 (시간 미기록, 메모 있음)` : `어젯밤 수면 (시간 미기록)`;
+  // 시간이 온전히 기록된 세그먼트만 합산·표기 대상 (메모 전용 행 제외)
+  const timed = nightRows.filter(
+    (r) => r.duration_minutes != null && r.bedtime != null && r.wake_time != null,
+  );
+
+  if (timed.length === 0) {
+    return nightRows.some((r) => r.memo != null)
+      ? `어젯밤 수면 (시간 미기록, 메모 있음)`
+      : `어젯밤 수면 (시간 미기록)`;
   }
 
-  const nightText = `어젯밤 ${fmtDuration(night.duration_minutes)} (${night.bedtime}~${night.wake_time})`;
+  const nightTotal = timed.reduce((sum, r) => sum + (r.duration_minutes ?? 0), 0);
+  const nightText =
+    timed.length === 1
+      ? `어젯밤 ${fmtDuration(nightTotal)} (${timed[0].bedtime}~${timed[0].wake_time})`
+      : `어젯밤 ${fmtDuration(nightTotal)} (${timed
+          .map((r) => `${r.bedtime}-${r.wake_time}`)
+          .join(' · ')})`;
 
   // 아침잠이 있으면 합산 총합 표시
   const morningTotal = morningNaps.reduce((sum, r) => sum + (r.duration_minutes ?? 0), 0);
   if (morningTotal > 0) {
-    const total = night.duration_minutes + morningTotal;
+    const total = nightTotal + morningTotal;
     return `${nightText} + 아침잠 ${fmtDuration(morningTotal)} = 총 ${fmtDuration(total)}`;
   }
 
   return nightText;
 };
 
-/** 7일 평균 수면 시간 (데이터 2건 이상일 때만) */
+/** 7일 평균 수면 시간 (데이터 2건 이상일 때만) — 분할 수면은 날짜별 합산 후 평균 */
 const queryWeekAvg = async ({ today, userId }: DateParams): Promise<string | null> => {
   const weekAvg = await query<SleepAvgRow>(
-    `SELECT ROUND(AVG(duration_minutes))::text as avg_duration,
-            ROUND(AVG(
-              CASE WHEN bedtime::time < '06:00'
-                THEN EXTRACT(HOUR FROM bedtime::time) + 24 + EXTRACT(MINUTE FROM bedtime::time) / 60.0
-                ELSE EXTRACT(HOUR FROM bedtime::time) + EXTRACT(MINUTE FROM bedtime::time) / 60.0
-              END
-            ), 1)::text as avg_bedtime_hour,
+    `WITH daily AS (
+       SELECT date,
+              SUM(duration_minutes) AS day_minutes,
+              MIN(CASE WHEN bedtime::time >= '20:00'
+                    THEN EXTRACT(EPOCH FROM bedtime::time) / 60 - 1440
+                    ELSE EXTRACT(EPOCH FROM bedtime::time) / 60 END) AS onset_minutes
+       FROM sleep_records
+       WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND duration_minutes IS NOT NULL AND user_id = $2
+       GROUP BY date
+     )
+     SELECT ROUND(AVG(day_minutes))::text as avg_duration,
+            ROUND(AVG(onset_minutes) / 60.0, 1)::text as avg_bedtime_hour,
             COUNT(*)::text as count
-     FROM sleep_records
-     WHERE sleep_type = 'night' AND date >= ($1::date - 7) AND duration_minutes IS NOT NULL AND user_id = $2`,
+     FROM daily`,
     [today, userId],
   );
 
@@ -123,13 +140,21 @@ const queryWeekAvg = async ({ today, userId }: DateParams): Promise<string | nul
   return `7일 평균 ${avgM > 0 ? `${avgH}시간 ${avgM}분` : `${avgH}시간`}`;
 };
 
-/** 최근 연속 자정 이후 취침 패턴 (실제 연속 일수만 카운트) */
+/** 최근 연속 자정 이후 취침 패턴 (실제 연속 일수만 카운트) — 분할 수면은 날짜별 첫 세그먼트 취침 기준 */
 const queryLateNightPattern = async ({ today, userId }: DateParams): Promise<string | null> => {
   const result = await query<{ date: string; is_late: boolean }>(
-    `SELECT date::text,
-            (bedtime::time >= '00:00' AND bedtime::time < '06:00') AS is_late
-     FROM sleep_records
-     WHERE sleep_type = 'night' AND date >= ($1::date - 14) AND bedtime IS NOT NULL AND user_id = $2
+    `WITH daily AS (
+       SELECT date,
+              MIN(CASE WHEN bedtime::time >= '20:00'
+                    THEN EXTRACT(EPOCH FROM bedtime::time) / 60 - 1440
+                    ELSE EXTRACT(EPOCH FROM bedtime::time) / 60 END) AS onset_minutes
+       FROM sleep_records
+       WHERE sleep_type = 'night' AND date >= ($1::date - 14) AND bedtime IS NOT NULL AND user_id = $2
+       GROUP BY date
+     )
+     SELECT date::text,
+            (onset_minutes >= 0 AND onset_minutes < 360) AS is_late
+     FROM daily
      ORDER BY date DESC
      LIMIT 10`,
     [today, userId],

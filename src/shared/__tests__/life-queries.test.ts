@@ -30,6 +30,7 @@ import {
   countOverdueTasks,
   updateScheduleStatus,
   postponeSchedule,
+  querySleepForHome,
 } from '../life-queries.js';
 
 const TEST_USER_ID = 1;
@@ -275,5 +276,17 @@ describe('postponeSchedule', () => {
       1,
       TEST_USER_ID,
     ]);
+  });
+});
+
+describe('querySleepForHome', () => {
+  it('밤잠 세그먼트를 LIMIT 1로 자르지 않고 전부 반환 (분할 수면 정합)', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await querySleepForHome('2026-03-09', TEST_USER_ID);
+    const sql = mockQuery.mock.calls[0]?.[0] as string;
+    // night 서브쿼리에 LIMIT 1이 있으면 두 번째 세그먼트가 잘려 총 수면시간이 과소 표기됨
+    expect(sql).not.toMatch(/LIMIT\s+1/i);
+    expect(sql).toMatch(/sleep_type = 'night'/);
+    expect(sql).toMatch(/sleep_type = 'nap'/);
   });
 });

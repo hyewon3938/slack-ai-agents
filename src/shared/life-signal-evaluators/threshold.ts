@@ -20,11 +20,12 @@ interface StreakMaxRow {
 }
 
 const loadSleepMinutes = async (userId: number, date: string): Promise<number | null> => {
+  // 분할 수면 정합: 세그먼트 1건(LIMIT 1)이 아니라 그 날짜 수면 분을 합산.
+  // 세그먼트 하나만 집으면 분할일이 실제보다 짧게 잡혀 임계치(≤6/7/8h)를 잘못 트리거한다.
   const result = await query<SleepMinutesRow>(
-    `SELECT duration_minutes::text AS minutes
+    `SELECT SUM(duration_minutes)::text AS minutes
        FROM sleep_records
-      WHERE user_id = $1 AND date = $2 AND duration_minutes IS NOT NULL
-      LIMIT 1`,
+      WHERE user_id = $1 AND date = $2 AND duration_minutes IS NOT NULL`,
     [userId, date],
   );
   const row = result.rows[0];

@@ -427,7 +427,11 @@ export interface SleepEventRow {
 
 // ─── 수면 쿼리 (Home 탭) ────────────────────────────
 
-/** Home 탭용 수면 기록 조회: 오늘 날짜 밤잠 + 낮잠 (effective date 기준) */
+/**
+ * Home 탭용 수면 기록 조회: 오늘 날짜 밤잠 + 낮잠 (effective date 기준).
+ * 밤잠은 분할 수면 세그먼트를 모두 반환한다 (LIMIT 1로 자르지 않음).
+ * 렌더러(buildSleepBlocks)가 여러 세그먼트 + 총합을 표시한다.
+ */
 export const querySleepForHome = async (
   today: string,
   userId: number,
@@ -436,7 +440,7 @@ export const querySleepForHome = async (
     `(SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
       FROM sleep_records
       WHERE sleep_type = 'night' AND date = $1 AND user_id = $2
-      ORDER BY date DESC LIMIT 1)
+      ORDER BY bedtime)
      UNION ALL
      (SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
       FROM sleep_records
