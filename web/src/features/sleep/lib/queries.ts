@@ -1,9 +1,11 @@
-import { query } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { calculateSleepScores } from './scores';
 import type {
   SleepRecord,
   SleepEvent,
   SleepRecordWithEvents,
+  SleepRecordInput,
+  SleepEventInput,
   SleepSummary,
   DayOfWeekPattern,
   DailySleep,
@@ -307,4 +309,105 @@ export function calculateDayOfWeekPattern(dailies: DailySleep[]): DayOfWeekPatte
         : 0,
     count: b.durations.length,
   }));
+}
+
+// ─── 수면 기록/이벤트 쓰기 (웹 대시보드 입력, #595) ───────────────────
+
+/**
+ * duration_minutes 계산 SQL 조각 — 암산 금지, 봇과 동일하게 DB에서 계산.
+ * bedtime·wake_time(TEXT 'HH:MM')이 둘 다 있을 때만 계산, 자정 넘김 보정.
+ * (wake − bed + 24h)를 분으로 환산 후 1440 모듈러 → 0~1439분. 하나라도 NULL이면 NULL.
+ * bed·wake 인자는 '$4' 같은 파라미터 참조(코드 상수, 사용자 입력 아님 → 인젝션 없음).
+ */
+function durationMinutesExpr(bed: string, wake: string): string {
+  return `CASE
+      WHEN ${bed} IS NOT NULL AND ${wake} IS NOT NULL
+        THEN (EXTRACT(EPOCH FROM (${wake}::time - ${bed}::time + INTERVAL '24h')) / 60)::int % 1440
+      ELSE NULL
+    END`;
+}
+
+/** sleep_records 쓰기 결과 컬럼 (SleepRecord 매핑) */
+const SLEEP_RECORD_RETURNING =
+  'id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo, tags';
+
+/** 수면 기록 추가 (duration은 SQL에서 계산) */
+export async function createSleepRecord(
+  userId: number,
+  input: SleepRecordInput,
+): Promise<SleepRecord> {
+  const row = await queryOne<SleepRecord>(
+    `INSERT INTO sleep_records (user_id, date, sleep_type, bedtime, wake_time, duration_minutes, tags, memo)
+     VALUES ($1, $2, $3, $4, $5, ${durationMinutesExpr('$4', '$5')}, $6::text[], $7)
+     RETURNING ${SLEEP_RECORD_RETURNING}`,
+    [
+      userId,
+      input.date,
+      input.sleep_type,
+      input.bedtime,
+      input.wake_time,
+      input.tags ?? [],
+      input.memo ?? null,
+    ],
+  );
+  if (!row) throw new Error('createSleepRecord: INSERT returned no rows');
+  return row;
+}
+
+/** 수면 기록 수정 (전체 필드 교체, duration 재계산). 없으면 null */
+export async function updateSleepRecord(
+  userId: number,
+  id: number,
+  input: SleepRecordInput,
+): Promise<SleepRecord | null> {
+  return queryOne<SleepRecord>(
+    `UPDATE sleep_records
+     SET date = $3, sleep_type = $4, bedtime = $5, wake_time = $6,
+         duration_minutes = ${durationMinutesExpr('$5', '$6')}, tags = $7::text[], memo = $8
+     WHERE id = $1 AND user_id = $2
+     RETURNING ${SLEEP_RECORD_RETURNING}`,
+    [
+      id,
+      userId,
+      input.date,
+      input.sleep_type,
+      input.bedtime,
+      input.wake_time,
+      input.tags ?? [],
+      input.memo ?? null,
+    ],
+  );
+}
+
+/** 수면 기록 삭제 (user 스코프) */
+export async function deleteSleepRecord(userId: number, id: number): Promise<boolean> {
+  const result = await query('DELETE FROM sleep_records WHERE id = $1 AND user_id = $2', [
+    id,
+    userId,
+  ]);
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** 중간기상 이벤트 추가 */
+export async function createSleepEvent(
+  userId: number,
+  input: SleepEventInput,
+): Promise<SleepEvent> {
+  const row = await queryOne<SleepEvent>(
+    `INSERT INTO sleep_events (user_id, date, event_time, memo)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, date::text, event_time, memo`,
+    [userId, input.date, input.event_time, input.memo ?? null],
+  );
+  if (!row) throw new Error('createSleepEvent: INSERT returned no rows');
+  return row;
+}
+
+/** 중간기상 이벤트 삭제 (user 스코프) */
+export async function deleteSleepEvent(userId: number, id: number): Promise<boolean> {
+  const result = await query('DELETE FROM sleep_events WHERE id = $1 AND user_id = $2', [
+    id,
+    userId,
+  ]);
+  return (result.rowCount ?? 0) > 0;
 }
