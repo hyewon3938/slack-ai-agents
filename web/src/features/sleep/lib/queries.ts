@@ -1,5 +1,13 @@
 import { query } from '@/lib/db';
-import type { SleepRecord, SleepEvent, SleepRecordWithEvents, SleepSummary, DayOfWeekPattern, DailySleep } from './types';
+import { calculateSleepScores } from './scores';
+import type {
+  SleepRecord,
+  SleepEvent,
+  SleepRecordWithEvents,
+  SleepSummary,
+  DayOfWeekPattern,
+  DailySleep,
+} from './types';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -61,8 +69,8 @@ function isMorningNap(bedtime: string | null): boolean {
   return (h ?? 24) < 12;
 }
 
-/** 시간 문자열(HH:MM)을 자정 기준 분으로 변환. 20:00 이후는 음수 */
-function timeToMinutesFromMidnight(time: string): number {
+/** 시간 문자열(HH:MM)을 자정 기준 분으로 변환. 20:00 이후는 음수 (scores.ts에서도 사용) */
+export function timeToMinutesFromMidnight(time: string): number {
   const [h, m] = time.split(':').map(Number);
   const total = (h ?? 0) * 60 + (m ?? 0);
   return total >= 1200 ? total - 1440 : total;
@@ -77,27 +85,81 @@ function minutesToTimeStr(minutes: number): string {
   return `${hh}:${mm}`;
 }
 
-/** 하루 기록 → DailySleep 묶기 */
+/** night 레코드들의 events를 date 레벨로 승격 (id dedup + event_time 오름차순) */
+function collectNightEvents(nightRecords: SleepRecordWithEvents[]): SleepEvent[] {
+  const seen = new Set<number>();
+  const events: SleepEvent[] = [];
+  for (const r of nightRecords) {
+    for (const e of r.events) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      events.push(e);
+    }
+  }
+  return events.sort((a, b) => a.event_time.localeCompare(b.event_time));
+}
+
+/** 세그먼트 수학 — 종료(래핑 분) = bedtime래핑 + duration. waso = 세그먼트 사이 갭 합 */
+function calculateSegmentMath(segments: SleepRecordWithEvents[]): {
+  wasoMinutes: number;
+  timeInBedMinutes: number;
+} {
+  if (segments.length === 0) return { wasoMinutes: 0, timeInBedMinutes: 0 };
+  const starts = segments.map((s) => timeToMinutesFromMidnight(s.bedtime!));
+  const ends = segments.map((s, i) => starts[i]! + (s.duration_minutes ?? 0));
+  let waso = 0;
+  for (let i = 1; i < segments.length; i++) {
+    waso += Math.max(0, starts[i]! - ends[i - 1]!);
+  }
+  return { wasoMinutes: waso, timeInBedMinutes: ends[ends.length - 1]! - starts[0]! };
+}
+
+/** 기상 시각 — ① 아침잠 최후 wake ② 마지막 세그먼트 wake_time ③ 종료 래핑 환산(duration 있을 때만) ④ null */
+function resolveEffectiveWakeTime(
+  segments: SleepRecordWithEvents[],
+  morning: SleepRecord[],
+): string | null {
+  const morningWakes = morning
+    .map((r) => r.wake_time)
+    .filter((t): t is string => !!t)
+    .sort();
+  if (morningWakes.length > 0) return morningWakes[morningWakes.length - 1]!;
+
+  const last = segments[segments.length - 1];
+  if (!last) return null;
+  if (last.wake_time) return last.wake_time;
+  if (last.duration_minutes != null) {
+    return minutesToTimeStr(timeToMinutesFromMidnight(last.bedtime!) + last.duration_minutes);
+  }
+  return null;
+}
+
+/** 하루 기록 → DailySleep 묶기 (같은 날 night 여러 건 = 분할 수면 세그먼트로 보존) */
 export function buildDailySleeps(
   records: SleepRecordWithEvents[],
   from: string,
   to: string,
 ): DailySleep[] {
-  const byDate = new Map<string, {
-    night: SleepRecordWithEvents | null;
-    morning: SleepRecord[];
-    afternoon: SleepRecord[];
-  }>();
+  const byDate = new Map<
+    string,
+    {
+      nightSegments: SleepRecordWithEvents[];
+      nightMemoRecords: SleepRecordWithEvents[];
+      morning: SleepRecord[];
+      afternoon: SleepRecord[];
+    }
+  >();
 
   for (const d of eachDate(from, to)) {
-    byDate.set(d, { night: null, morning: [], afternoon: [] });
+    byDate.set(d, { nightSegments: [], nightMemoRecords: [], morning: [], afternoon: [] });
   }
 
   for (const r of records) {
     const bucket = byDate.get(r.date);
     if (!bucket) continue;
     if (r.sleep_type === 'night') {
-      bucket.night = r;
+      if (r.bedtime) bucket.nightSegments.push(r);
+      else bucket.nightMemoRecords.push(r);
     } else if (isMorningNap(r.bedtime)) {
       bucket.morning.push(r);
     } else {
@@ -107,24 +169,26 @@ export function buildDailySleeps(
 
   const result: DailySleep[] = [];
   for (const [date, b] of byDate) {
-    const nightDur = b.night?.duration_minutes ?? 0;
+    const nightSegments = b.nightSegments.sort(
+      (x, y) => timeToMinutesFromMidnight(x.bedtime!) - timeToMinutesFromMidnight(y.bedtime!),
+    );
+    const nightEvents = collectNightEvents([...nightSegments, ...b.nightMemoRecords]);
+    const { wasoMinutes, timeInBedMinutes } = calculateSegmentMath(nightSegments);
+    const segmentDur = nightSegments.reduce((s, r) => s + (r.duration_minutes ?? 0), 0);
     const morningDur = b.morning.reduce((s, r) => s + (r.duration_minutes ?? 0), 0);
-    const morningWakes = b.morning
-      .map((r) => r.wake_time)
-      .filter((t): t is string => !!t)
-      .sort();
-    const effectiveWakeTime =
-      morningWakes.length > 0
-        ? morningWakes[morningWakes.length - 1]
-        : (b.night?.wake_time ?? null);
 
     result.push({
       date,
-      nightSleep: b.night,
+      nightSegments,
+      nightMemoRecords: b.nightMemoRecords,
+      nightEvents,
       morningSleeps: b.morning,
       afternoonNaps: b.afternoon,
-      totalNightDurationMinutes: nightDur + morningDur,
-      effectiveWakeTime,
+      totalNightDurationMinutes: segmentDur + morningDur,
+      effectiveWakeTime: resolveEffectiveWakeTime(nightSegments, b.morning),
+      wasoMinutes,
+      timeInBedMinutes,
+      fragmentationCount: nightEvents.length + Math.max(0, nightSegments.length - 1),
     });
   }
   return result.sort((a, b) => a.date.localeCompare(b.date));
@@ -132,76 +196,72 @@ export function buildDailySleeps(
 
 /** 수면 요약 통계 계산 (DailySleep[] 기반) */
 export function calculateSleepSummary(dailies: DailySleep[]): SleepSummary {
-  const withNight = dailies.filter((d) => d.nightSleep?.bedtime && d.nightSleep?.wake_time);
   const withAnySleep = dailies.filter((d) => d.totalNightDurationMinutes > 0);
+  const withOnset = dailies.filter((d) => d.nightSegments.length > 0);
   const withWake = dailies.filter((d) => d.effectiveWakeTime != null);
 
   const totalNights = withAnySleep.length;
-
-  if (totalNights === 0) {
-    const napDaysCount = dailies.filter((d) => d.afternoonNaps.length > 0).length;
-    const totalNapMinutes = dailies.reduce(
-      (s, d) => s + d.afternoonNaps.reduce((x, n) => x + (n.duration_minutes ?? 0), 0),
-      0,
-    );
-    return {
-      avgDuration: 0,
-      avgBedtime: '--:--',
-      avgWakeTime: '--:--',
-      totalMidWakes: 0,
-      avgMidWakesPerNight: 0,
-      regularityScore: 0,
-      totalNights: 0,
-      napDaysCount,
-      avgNapMinutes: napDaysCount > 0 ? Math.round(totalNapMinutes / napDaysCount) : 0,
-      totalNapMinutes,
-    };
-  }
-
-  const totalDuration = withAnySleep.reduce((s, d) => s + d.totalNightDurationMinutes, 0);
-  const avgDuration = Math.round(totalDuration / withAnySleep.length);
-
-  const bedtimeMins = withNight.map((d) => timeToMinutesFromMidnight(d.nightSleep!.bedtime!));
-  const avgBedtimeMin = bedtimeMins.length > 0
-    ? bedtimeMins.reduce((a, b) => a + b, 0) / bedtimeMins.length
-    : 0;
-
-  const waketimeMins = withWake.map((d) => timeToMinutesFromMidnight(d.effectiveWakeTime!));
-  const avgWakeTimeMin = waketimeMins.length > 0
-    ? waketimeMins.reduce((a, b) => a + b, 0) / waketimeMins.length
-    : 0;
-
-  const totalMidWakes = dailies.reduce(
-    (s, d) => s + (d.nightSleep?.events.length ?? 0),
-    0,
-  );
-
-  const bedtimeStdDev = bedtimeMins.length > 0
-    ? Math.sqrt(
-        bedtimeMins.reduce((s, m) => s + (m - avgBedtimeMin) ** 2, 0) / bedtimeMins.length,
-      )
-    : 0;
-  const regularityScore = Math.max(0, Math.min(100, Math.round(100 - (bedtimeStdDev / 120) * 100)));
 
   const napDaysCount = dailies.filter((d) => d.afternoonNaps.length > 0).length;
   const totalNapMinutes = dailies.reduce(
     (s, d) => s + d.afternoonNaps.reduce((x, n) => x + (n.duration_minutes ?? 0), 0),
     0,
   );
+  const totalMidWakes = dailies.reduce((s, d) => s + d.nightEvents.length, 0);
+  const scores = calculateSleepScores(dailies);
 
-  return {
-    avgDuration,
-    avgBedtime: bedtimeMins.length > 0 ? minutesToTimeStr(avgBedtimeMin) : '--:--',
-    avgWakeTime: waketimeMins.length > 0 ? minutesToTimeStr(avgWakeTimeMin) : '--:--',
+  const avgWasoMinutes =
+    withOnset.length > 0
+      ? Math.round(withOnset.reduce((s, d) => s + d.wasoMinutes, 0) / withOnset.length)
+      : 0;
+
+  const inBedDays = dailies.filter((d) => d.timeInBedMinutes > 0);
+  const segmentDurSum = inBedDays.reduce(
+    (s, d) => s + d.nightSegments.reduce((x, r) => x + (r.duration_minutes ?? 0), 0),
+    0,
+  );
+  const inBedSum = inBedDays.reduce((s, d) => s + d.timeInBedMinutes, 0);
+  const avgEfficiencyPct =
+    inBedDays.length > 0 ? Math.round((segmentDurSum / inBedSum) * 100) : null;
+
+  const base = {
     totalMidWakes,
-    avgMidWakesPerNight: withAnySleep.length > 0
-      ? Math.round((totalMidWakes / withAnySleep.length) * 10) / 10
-      : 0,
-    regularityScore,
+    scores,
+    avgEfficiencyPct,
+    avgWasoMinutes,
     totalNights,
     napDaysCount,
     avgNapMinutes: napDaysCount > 0 ? Math.round(totalNapMinutes / napDaysCount) : 0,
     totalNapMinutes,
+  };
+
+  if (totalNights === 0) {
+    return {
+      ...base,
+      avgDuration: 0,
+      avgBedtime: '--:--',
+      avgWakeTime: '--:--',
+      avgMidWakesPerNight: 0,
+    };
+  }
+
+  const totalDuration = withAnySleep.reduce((s, d) => s + d.totalNightDurationMinutes, 0);
+  const avgDuration = Math.round(totalDuration / withAnySleep.length);
+
+  const bedtimeMins = withOnset.map((d) => timeToMinutesFromMidnight(d.nightSegments[0]!.bedtime!));
+  const avgBedtimeMin =
+    bedtimeMins.length > 0 ? bedtimeMins.reduce((a, b) => a + b, 0) / bedtimeMins.length : 0;
+
+  const waketimeMins = withWake.map((d) => timeToMinutesFromMidnight(d.effectiveWakeTime!));
+  const avgWakeTimeMin =
+    waketimeMins.length > 0 ? waketimeMins.reduce((a, b) => a + b, 0) / waketimeMins.length : 0;
+
+  return {
+    ...base,
+    avgDuration,
+    avgBedtime: bedtimeMins.length > 0 ? minutesToTimeStr(avgBedtimeMin) : '--:--',
+    avgWakeTime: waketimeMins.length > 0 ? minutesToTimeStr(avgWakeTimeMin) : '--:--',
+    avgMidWakesPerNight: Math.round((totalMidWakes / withAnySleep.length) * 10) / 10,
   };
 }
 
@@ -221,8 +281,9 @@ export function calculateDayOfWeekPattern(dailies: DailySleep[]): DayOfWeekPatte
     const bucket = buckets[dow];
     if (!bucket) continue;
     bucket.durations.push(d.totalNightDurationMinutes);
-    if (d.nightSleep?.bedtime) {
-      bucket.bedtimes.push(timeToMinutesFromMidnight(d.nightSleep.bedtime));
+    const onset = d.nightSegments[0]?.bedtime;
+    if (onset) {
+      bucket.bedtimes.push(timeToMinutesFromMidnight(onset));
     }
     if (d.effectiveWakeTime) {
       bucket.waketimes.push(timeToMinutesFromMidnight(d.effectiveWakeTime));
@@ -232,15 +293,18 @@ export function calculateDayOfWeekPattern(dailies: DailySleep[]): DayOfWeekPatte
   return buckets.map((b) => ({
     day: b.day,
     dayName: b.dayName,
-    avgDuration: b.durations.length > 0
-      ? Math.round(b.durations.reduce((a, c) => a + c, 0) / b.durations.length)
-      : 0,
-    avgBedtime: b.bedtimes.length > 0
-      ? Math.round(b.bedtimes.reduce((a, c) => a + c, 0) / b.bedtimes.length)
-      : 0,
-    avgWakeTime: b.waketimes.length > 0
-      ? Math.round(b.waketimes.reduce((a, c) => a + c, 0) / b.waketimes.length)
-      : 0,
+    avgDuration:
+      b.durations.length > 0
+        ? Math.round(b.durations.reduce((a, c) => a + c, 0) / b.durations.length)
+        : 0,
+    avgBedtime:
+      b.bedtimes.length > 0
+        ? Math.round(b.bedtimes.reduce((a, c) => a + c, 0) / b.bedtimes.length)
+        : 0,
+    avgWakeTime:
+      b.waketimes.length > 0
+        ? Math.round(b.waketimes.reduce((a, c) => a + c, 0) / b.waketimes.length)
+        : 0,
     count: b.durations.length,
   }));
 }
