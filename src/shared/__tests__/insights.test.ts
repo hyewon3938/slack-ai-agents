@@ -703,6 +703,32 @@ describe('pickWeeklyInsights', () => {
 
 // ─── DB 오류 처리 ─────────────────────────────────────────
 
+// ─── 분할 수면 정합 (날짜별 집계) ─────────────────────────
+
+describe('분할 수면 정합 (GROUP BY date)', () => {
+  it('detectSleepTrend SQL은 날짜별 SUM(duration_minutes) + GROUP BY date', async () => {
+    setupQueryMock();
+    await detectSleepTrend('2026-03-15', 1);
+    const sql = mockQuery.mock.calls.map((c) => c[0] as string).find((s) => /LIMIT 3/.test(s));
+    // 행 단위(세그먼트)로 3일 트렌드를 잡으면 분할일이 별도 데이터포인트가 됨
+    expect(sql).toMatch(/GROUP BY date/);
+    expect(sql).toMatch(/SUM\(duration_minutes\)/);
+  });
+
+  it('detectDrift SQL은 날짜별 onset(MIN)·기상(MAX)·합산으로 정합', async () => {
+    setupQueryMock();
+    await detectDrift('2026-03-15', 1);
+    const sql = mockQuery.mock.calls
+      .map((c) => c[0] as string)
+      .find((s) => /this_week_avg_bedtime_minutes/.test(s));
+    expect(sql).toMatch(/this_week_daily/);
+    expect(sql).toMatch(/GROUP BY date/);
+    // 취침=첫 세그먼트 onset(20:00 래핑 최솟값), 기상=마지막 세그먼트
+    expect(sql).toMatch(/MIN\(CASE WHEN bedtime/);
+    expect(sql).toMatch(/MAX\(EXTRACT\(EPOCH FROM wake_time/);
+  });
+});
+
 describe('에러 처리', () => {
   it('DB 오류 시 각 감지 함수는 null 반환', async () => {
     mockQuery.mockRejectedValue(new Error('DB connection lost'));

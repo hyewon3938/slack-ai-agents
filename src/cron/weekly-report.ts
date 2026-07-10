@@ -89,23 +89,25 @@ export const aggregateWeeklySleep = async (
   userId: number = DEFAULT_USER_ID,
 ): Promise<WeeklySleepData> => {
   try {
+    // 분할 수면 정합: 세그먼트가 아니라 날짜별 합산을 1 레코드로 집계 (평균·최고·최저·건수 왜곡 방지)
     const result = await query<SleepAggRow>(
-      `WITH sleep AS (
-        SELECT date::text, duration_minutes
+      `WITH daily AS (
+        SELECT date::text AS date, SUM(duration_minutes)::int AS duration_minutes
         FROM sleep_records
         WHERE sleep_type = 'night'
           AND date BETWEEN $1 AND $2
           AND duration_minutes IS NOT NULL
           AND user_id = $3
+        GROUP BY date
       )
       SELECT
         ROUND(AVG(duration_minutes))::int AS avg_duration,
         COUNT(*)::int AS record_count,
-        (SELECT date FROM sleep ORDER BY duration_minutes DESC LIMIT 1) AS best_date,
-        (SELECT duration_minutes FROM sleep ORDER BY duration_minutes DESC LIMIT 1) AS best_duration,
-        (SELECT date FROM sleep ORDER BY duration_minutes ASC LIMIT 1) AS worst_date,
-        (SELECT duration_minutes FROM sleep ORDER BY duration_minutes ASC LIMIT 1) AS worst_duration
-      FROM sleep`,
+        (SELECT date FROM daily ORDER BY duration_minutes DESC LIMIT 1) AS best_date,
+        (SELECT duration_minutes FROM daily ORDER BY duration_minutes DESC LIMIT 1) AS best_duration,
+        (SELECT date FROM daily ORDER BY duration_minutes ASC LIMIT 1) AS worst_date,
+        (SELECT duration_minutes FROM daily ORDER BY duration_minutes ASC LIMIT 1) AS worst_duration
+      FROM daily`,
       [weekStart, weekEnd, userId],
     );
 
@@ -335,12 +337,13 @@ export const aggregateSleepRoutineCorrelation = async (
   try {
     const result = await query<CorrelationRow>(
       `WITH daily_sleep AS (
-        SELECT date, duration_minutes
+        SELECT date, SUM(duration_minutes) AS duration_minutes
         FROM sleep_records
         WHERE sleep_type = 'night'
           AND date BETWEEN $1 AND $2
           AND duration_minutes IS NOT NULL
           AND user_id = $3
+        GROUP BY date
       ),
       daily_routine AS (
         SELECT r.date,

@@ -442,3 +442,29 @@ describe('에러 처리', () => {
     expect(correlation.goodSleepRate).toBeNull();
   });
 });
+
+// ─── 분할 수면 정합 (날짜별 집계) ────────────────────────
+
+describe('분할 수면 정합 (GROUP BY date)', () => {
+  it('aggregateWeeklySleep SQL은 날짜별 SUM(duration_minutes) + GROUP BY date', async () => {
+    setupQueryMock();
+    await aggregateWeeklySleep('2026-03-09', '2026-03-15');
+    const sql = mockQuery.mock.calls
+      .map((c) => c[0] as string)
+      .find((s) => /avg_duration/.test(s) && /record_count/.test(s));
+    // 세그먼트 단위면 best/worst가 분할일의 짧은 조각을 최저로 잡고 평균·건수가 왜곡됨
+    expect(sql).toMatch(/GROUP BY date/);
+    expect(sql).toMatch(/SUM\(duration_minutes\)/);
+  });
+
+  it('상관관계 daily_sleep는 날짜별 합산 (분할일이 짧은 수면 2건으로 오분류되지 않게)', async () => {
+    setupQueryMock();
+    await aggregateSleepRoutineCorrelation('2026-03-09', '2026-03-15');
+    const sql = mockQuery.mock.calls
+      .map((c) => c[0] as string)
+      .find((s) => /good_sleep_rate/.test(s));
+    expect(sql).toMatch(/daily_sleep/);
+    expect(sql).toMatch(/SUM\(duration_minutes\)/);
+    expect(sql).toMatch(/GROUP BY date/);
+  });
+});

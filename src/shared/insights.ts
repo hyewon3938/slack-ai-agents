@@ -127,12 +127,13 @@ export const detectSleepTrend = async (today: string, userId: number): Promise<I
   const { windowDays, shortSleepMinutes } = INSIGHT_THRESHOLDS.sleepTrend;
   try {
     const result = await query<SleepTrendRow>(
-      `SELECT date::text, duration_minutes
+      `SELECT date::text, SUM(duration_minutes)::int AS duration_minutes
        FROM sleep_records
        WHERE sleep_type = 'night'
          AND date BETWEEN ($1::date - ${windowDays}) AND $1
          AND duration_minutes IS NOT NULL
          AND user_id = $2
+       GROUP BY date
        ORDER BY date DESC
        LIMIT ${windowDays}`,
       [today, userId],
@@ -368,30 +369,32 @@ export const detectDrift = async (today: string, userId: number): Promise<Insigh
     minSampleNights,
   } = INSIGHT_THRESHOLDS.drift;
   try {
+    // 분할 수면 정합: 날짜별로 취침=첫 세그먼트 onset(20:00 래핑 최솟값), 기상=마지막 세그먼트(MAX),
+    // duration=세그먼트 합산. 세그먼트 행 단위 평균이면 분할일이 이중 가중되고 2번째 세그먼트 취침이 섞인다.
     const result = await query<DriftRow>(
-      `WITH this_week_sleep AS (
-        SELECT
-          CASE WHEN bedtime::time < '06:00'
-            THEN (EXTRACT(HOUR FROM bedtime::time) + 24) * 60 + EXTRACT(MINUTE FROM bedtime::time)
-            ELSE EXTRACT(HOUR FROM bedtime::time) * 60 + EXTRACT(MINUTE FROM bedtime::time)
-          END AS bedtime_minutes,
-          EXTRACT(HOUR FROM wake_time::time) * 60 + EXTRACT(MINUTE FROM wake_time::time) AS wake_minutes,
-          duration_minutes
+      `WITH this_week_daily AS (
+        SELECT date,
+          MIN(CASE WHEN bedtime::time >= '20:00'
+                THEN EXTRACT(EPOCH FROM bedtime::time) / 60 - 1440
+                ELSE EXTRACT(EPOCH FROM bedtime::time) / 60 END) AS bedtime_minutes,
+          MAX(EXTRACT(EPOCH FROM wake_time::time) / 60) AS wake_minutes,
+          SUM(duration_minutes) AS duration_minutes
         FROM sleep_records
         WHERE user_id = $2 AND sleep_type = 'night'
           AND date BETWEEN ($1::date - 6) AND $1
+        GROUP BY date
       ),
-      prev_weeks_sleep AS (
-        SELECT
-          CASE WHEN bedtime::time < '06:00'
-            THEN (EXTRACT(HOUR FROM bedtime::time) + 24) * 60 + EXTRACT(MINUTE FROM bedtime::time)
-            ELSE EXTRACT(HOUR FROM bedtime::time) * 60 + EXTRACT(MINUTE FROM bedtime::time)
-          END AS bedtime_minutes,
-          EXTRACT(HOUR FROM wake_time::time) * 60 + EXTRACT(MINUTE FROM wake_time::time) AS wake_minutes,
-          duration_minutes
+      prev_weeks_daily AS (
+        SELECT date,
+          MIN(CASE WHEN bedtime::time >= '20:00'
+                THEN EXTRACT(EPOCH FROM bedtime::time) / 60 - 1440
+                ELSE EXTRACT(EPOCH FROM bedtime::time) / 60 END) AS bedtime_minutes,
+          MAX(EXTRACT(EPOCH FROM wake_time::time) / 60) AS wake_minutes,
+          SUM(duration_minutes) AS duration_minutes
         FROM sleep_records
         WHERE user_id = $2 AND sleep_type = 'night'
           AND date BETWEEN ($1::date - ${windowWeeks * 7 - 1}) AND ($1::date - 7)
+        GROUP BY date
       ),
       this_week_events AS (
         SELECT COUNT(*)::int AS cnt FROM sleep_events
@@ -402,13 +405,13 @@ export const detectDrift = async (today: string, userId: number): Promise<Insigh
         WHERE date BETWEEN ($1::date - ${windowWeeks * 7 - 1}) AND ($1::date - 7)
       )
       SELECT
-        (SELECT AVG(bedtime_minutes) FROM this_week_sleep WHERE bedtime_minutes IS NOT NULL) AS this_week_avg_bedtime_minutes,
-        (SELECT AVG(bedtime_minutes) FROM prev_weeks_sleep WHERE bedtime_minutes IS NOT NULL) AS prev_weeks_avg_bedtime_minutes,
-        (SELECT AVG(wake_minutes) FROM this_week_sleep WHERE wake_minutes IS NOT NULL) AS this_week_avg_wake_minutes,
-        (SELECT AVG(wake_minutes) FROM prev_weeks_sleep WHERE wake_minutes IS NOT NULL) AS prev_weeks_avg_wake_minutes,
+        (SELECT AVG(bedtime_minutes) FROM this_week_daily WHERE bedtime_minutes IS NOT NULL) AS this_week_avg_bedtime_minutes,
+        (SELECT AVG(bedtime_minutes) FROM prev_weeks_daily WHERE bedtime_minutes IS NOT NULL) AS prev_weeks_avg_bedtime_minutes,
+        (SELECT AVG(wake_minutes) FROM this_week_daily WHERE wake_minutes IS NOT NULL) AS this_week_avg_wake_minutes,
+        (SELECT AVG(wake_minutes) FROM prev_weeks_daily WHERE wake_minutes IS NOT NULL) AS prev_weeks_avg_wake_minutes,
         (SELECT cnt FROM this_week_events) AS this_week_mid_wake,
         (SELECT cnt::numeric / ${windowWeeks} FROM prev_weeks_events) AS prev_weeks_mid_wake_per_week,
-        (SELECT COUNT(*)::int FROM this_week_sleep WHERE duration_minutes IS NOT NULL) AS this_week_nights`,
+        (SELECT COUNT(*)::int FROM this_week_daily WHERE duration_minutes IS NOT NULL) AS this_week_nights`,
       [today, userId],
     );
     const row = result.rows[0];

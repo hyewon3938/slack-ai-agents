@@ -317,12 +317,17 @@ const aggregateLifeStats = async (
 ): Promise<Pick<DescriptiveStats, 'sleep' | 'routine' | 'diary'>> => {
   if (ranges.length === 0) return { sleep: null, routine: null, diary: null };
 
+  // 분할 수면 정합: 날짜별 합산을 1 레코드로 본 뒤 평균·건수 집계 (세그먼트 단위 평균 왜곡 방지)
   const sleepRange = buildRangeClause(ranges, 'date', 2);
   const sleepRes = await query<SleepStatRow>(
-    `SELECT ROUND(AVG(duration_minutes))::int AS avg_duration, COUNT(*)::int AS cnt
-       FROM sleep_records
-      WHERE sleep_type = 'night' AND duration_minutes IS NOT NULL
-        AND user_id = $1 AND ${sleepRange.clause}`,
+    `SELECT ROUND(AVG(day_minutes))::int AS avg_duration, COUNT(*)::int AS cnt
+       FROM (
+         SELECT date, SUM(duration_minutes) AS day_minutes
+           FROM sleep_records
+          WHERE sleep_type = 'night' AND duration_minutes IS NOT NULL
+            AND user_id = $1 AND ${sleepRange.clause}
+          GROUP BY date
+       ) d`,
     [userId, ...sleepRange.params],
   );
   const routineRange = buildRangeClause(ranges, 'r.date', 2);

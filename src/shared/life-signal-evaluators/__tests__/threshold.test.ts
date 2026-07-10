@@ -68,6 +68,22 @@ describe('evaluateThreshold - sleep_minutes', () => {
     };
     expect(await evaluateThreshold(aux, baseCtx('2026-06-01'))).toBe(false);
   });
+
+  it('분할 수면일은 세그먼트 합산(SUM)으로 판정 — LIMIT 1로 자르지 않음', async () => {
+    // 150 + 315 = 465분(7시간45분) 합산 → ≤420(7h) 트리거 안 됨.
+    // 세그먼트 하나만 집으면 150분으로 잘못 트리거된다.
+    mockQuery.mockResolvedValueOnce({ rows: [{ minutes: '465' }] });
+    const aux: ThresholdAux = {
+      kind: 'threshold',
+      source: 'sleep_minutes',
+      op: 'lte',
+      value: 420,
+    };
+    expect(await evaluateThreshold(aux, baseCtx('2026-06-01'))).toBe(false);
+    const sql = mockQuery.mock.calls[0]?.[0] as string;
+    expect(sql).toMatch(/SUM\(duration_minutes\)/);
+    expect(sql).not.toMatch(/LIMIT\s+1/i);
+  });
 });
 
 describe('evaluateThreshold - routine_streak_max', () => {

@@ -137,6 +137,8 @@ const SIGNAL_MEASURE: Record<string, Measure> = {
   sleep_total_minutes: { noun: '총 수면 시간' },
   sleep_nap_count: { noun: '낮잠' },
   sleep_wake_hour: { noun: '기상 시각', hi: '늦음', lo: '이름' },
+  sleep_midwake_count: { noun: '중간기상' }, // #593: 밤중 깬 횟수 (기본 많음/적음)
+  sleep_onset_late_minutes: { noun: '취침 시각', hi: '늦게 잠', lo: '일찍 잠' }, // #593: 취침 지각 분
   // expense
   expense_discretionary: { noun: '자유지출' }, // #573: expense_total 개명 — 할부·고정비 제외
   expense_배달음식: { noun: '배달음식 지출' },
