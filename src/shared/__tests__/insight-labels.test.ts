@@ -168,6 +168,28 @@ describe('signalLabel — sql seed 룰', () => {
     ).toBe('기상 시각 늦음');
   });
 
+  it('중간기상 신호 — above_avg 많음 / below_avg 적음 (#593)', () => {
+    expect(
+      signalLabel(sig({ name: 'sleep_midwake_count', domain: 'sleep', direction: 'above_avg' })),
+    ).toBe('중간기상 많음');
+    expect(
+      signalLabel(sig({ name: 'sleep_midwake_count', domain: 'sleep', direction: 'below_avg' })),
+    ).toBe('중간기상 적음');
+  });
+
+  it('취침 지각 신호 — 늦게 잠/일찍 잠 어휘 (#593)', () => {
+    expect(
+      signalLabel(
+        sig({ name: 'sleep_onset_late_minutes', domain: 'sleep', direction: 'above_avg' }),
+      ),
+    ).toBe('취침 시각 늦게 잠');
+    expect(
+      signalLabel(
+        sig({ name: 'sleep_onset_late_minutes', domain: 'sleep', direction: 'below_avg' }),
+      ),
+    ).toBe('취침 시각 일찍 잠');
+  });
+
   it('한글접미 신호는 도메인 명사로 자연어화', () => {
     expect(
       signalLabel(sig({ name: 'expense_배달음식', domain: 'expense', direction: 'above_avg' })),
