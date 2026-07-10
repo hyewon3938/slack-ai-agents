@@ -25,6 +25,7 @@ function night(
     duration_minutes: durationMinutes,
     sleep_type: 'night',
     memo: null,
+    tags: [],
     events,
   };
 }
@@ -44,6 +45,7 @@ function nap(
     duration_minutes: durationMinutes,
     sleep_type: 'nap',
     memo: null,
+    tags: [],
     events: [],
   };
 }

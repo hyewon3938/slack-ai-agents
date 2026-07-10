@@ -1,3 +1,19 @@
+/** 특이사항 고정 태그 어휘 (마이그 105 CHECK 제약과 동일 목록, 슬랙 프롬프트와 일치) */
+export const SLEEP_TAGS = [
+  '악몽',
+  '화장실',
+  '뒤척임',
+  '카페인',
+  '음주',
+  '야식',
+  '스트레스',
+  '소음',
+  '통증',
+  '온도',
+] as const;
+
+export type SleepTag = (typeof SLEEP_TAGS)[number];
+
 /** 수면 기록 (sleep_records 테이블 매핑) */
 export interface SleepRecord {
   id: number;
@@ -7,6 +23,7 @@ export interface SleepRecord {
   duration_minutes: number | null;
   sleep_type: 'night' | 'nap';
   memo: string | null;
+  tags: string[];
 }
 
 /** 수면 이벤트 — 중간 기상 (sleep_events 테이블 매핑) */
@@ -97,3 +114,20 @@ export interface SleepDashboardData {
 
 /** 기간 선택 타입 */
 export type SleepPeriod = '1w' | '2w' | '1m';
+
+/** 수면 기록 생성/수정 입력 (duration_minutes는 서버가 계산) */
+export interface SleepRecordInput {
+  date: string;
+  sleep_type: 'night' | 'nap';
+  bedtime: string | null;
+  wake_time: string | null;
+  tags?: string[];
+  memo?: string | null;
+}
+
+/** 중간기상 이벤트 생성 입력 */
+export interface SleepEventInput {
+  date: string;
+  event_time: string;
+  memo?: string | null;
+}

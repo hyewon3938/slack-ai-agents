@@ -19,7 +19,7 @@ export async function querySleepRecordsWithEvents(
 ): Promise<SleepRecordWithEvents[]> {
   const [recordsResult, eventsResult] = await Promise.all([
     query<SleepRecord>(
-      `SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo
+      `SELECT id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo, tags
        FROM sleep_records
        WHERE user_id = $1 AND date BETWEEN $2 AND $3
        ORDER BY date, sleep_type, bedtime`,

@@ -20,6 +20,7 @@ function seg(
     duration_minutes: durationMinutes,
     sleep_type: 'night',
     memo: null,
+    tags: [],
     events: [],
   };
 }
@@ -105,6 +106,7 @@ describe('calculateSleepScores — 밤잠 데이터 없음', () => {
           duration_minutes: null,
           sleep_type: 'night',
           memo: '늦게 잠',
+          tags: [],
           events: [],
         },
       ],
