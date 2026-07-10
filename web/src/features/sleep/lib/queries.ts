@@ -28,9 +28,9 @@ export async function querySleepRecordsWithEvents(
     query<SleepEvent>(
       `SELECT e.id, e.date::text, e.event_time, e.memo
        FROM sleep_events e
-       WHERE e.date BETWEEN $1 AND $2
+       WHERE e.user_id = $1 AND e.date BETWEEN $2 AND $3
        ORDER BY e.date, e.event_time`,
-      [from, to],
+      [userId, from, to],
     ),
   ]);
 
