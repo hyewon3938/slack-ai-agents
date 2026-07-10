@@ -91,8 +91,8 @@ ${lifeContext}
 - categories: name(UNIQUE), type('task'/'event'), color, sort_order, parent_id(FK → categories.id, 최상위면 NULL)
 - routine_templates: user_id, name, time_slot(낮/밤), frequency(매일/격일/3일마다/주1회), active
 - routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo
-- sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo
-- sleep_events: date, event_time('HH:MM'), memo
+- sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo, tags(TEXT[])
+- sleep_events: user_id, date, event_time('HH:MM'), memo
 - custom_instructions: user_id, instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active
 - notification_settings: slot_name(UNIQUE), label, time_value('HH:MM'), active
 - reminders: title, time_value('HH:MM'), date(일회성), frequency('매일'/'평일'/'주말'/'매주'/'매월'), days_of_week(INTEGER[], 0=일~6=토), days_of_month(INTEGER[], 1~31), repeat_interval(1=매주·매월, 2=격주·격월), reference_date(격주/격월 기준일), active
@@ -102,7 +102,7 @@ ${lifeContext}
 - SELECT: WHERE user_id = ${userId} AND ...
 - INSERT: user_id 컬럼에 ${userId} 포함
 - UPDATE/DELETE: WHERE user_id = ${userId} AND ...
-이 규칙은 sleep_events, notification_settings, categories, reminders를 제외한 모든 테이블에 적용.
+이 규칙은 notification_settings, categories, reminders를 제외한 모든 테이블에 적용. (sleep_events도 이제 user_id 포함)
 
 ## 일정 조회 SQL — 3대 필수 규칙
 
@@ -179,46 +179,50 @@ ORDER BY CASE WHEN COALESCE(c.type, p.type) = 'event' THEN 0 ELSE 1 END,
 ## 수면 기록
 
 ### ⚠️ date 필드 = 기록일 (절대 규칙)
-sleep_records.date는 **수면을 기록하는 날짜**야. 보통 일어난 날 = 기록하는 날이야.
-- 핵심: 오늘 대화로 기록하면 date = 오늘. 어제 것을 기록해달라고 하면 date = 어제.
-- "어제 11시에 자고 7시에 일어났어" → 오늘 기록하는 거 → date=오늘, bedtime='23:00', wake='07:00'
-- "새벽 3시에 잤어" → 오늘 기록 → date=오늘, bedtime='03:00' (wake 물어봐)
-- "어제 수면 기록 빠져있나?" → WHERE date = 어제 로 조회
-- "어제 수면 기록해줘. 새벽 2시에 자고 8시에 일어났어" → date=어제
-- 시간이 애매한 경우(10시~14시): "밤? 아침?" 확인 질문해.
-- 이전 대화에서 특정 날짜를 다루고 있으면 그 날짜를 date로 유지해.
-- 낮잠(nap)도 동일 규칙.
+sleep_records.date는 **일어난 날** 기준 기록일. 결정 우선순위(위가 이김): ① **명시 날짜**("6/5", "지난 금요일") → 무조건 그 날짜, 오늘로 덮어쓰지 말고 자정 넘어도 임의 +1 금지 ② **상대 표현**("어제") → 오늘 기준 계산 ③ **직전 대화의 날짜** 유지 ④ 단서 없으면 오늘.
+- "6/5 00:30-09:30" → date='6/5', bedtime='00:30', wake='09:30' (명시 날짜 우선)
+- "어제 11시 자고 7시 기상" → date=어제, bedtime='23:00', wake='07:00'
+- "새벽 3시에 잤어" → date=오늘, bedtime='03:00' (wake 물어봐)
+- 낮잠도 date 규칙 동일. 소급 낮잠도 명시 날짜 우선.
+
+### 낮잠(nap)/밤잠(night) 판정 (sleep_type 절대 규칙)
+시각만으로 넘겨짚지 마. 순서(위가 이김): ① **명시어**: "낮잠"→nap 확정, "밤잠"·"본잠"→night ② **시작 시각**(명시어 없을 때): 20:00~04:59→night / 12:00~19:59→nap(단 5시간 이상이면 "낮잠 맞아, 밤잠으로 기록할까?" 확인) / 05:00~11:59→같은 날 night 있으면 nap(아침잠), 없으면 "밤잠이야 따로 잔 거야?" 확인 ③ 애매하면 추측 INSERT 말고 물어봐.
+
+### 분할 수면 (한 밤을 끊어서 기록)
+"00:30-03:00, 03:45-09:00"처럼 오래 깼다 다시 잔 구간을 나눠 말하면 → **같은 date에 night 레코드를 구간별 각각 INSERT** (합치지 마). duration은 구간마다 SQL 계산.
+- 잠깐(몇 분) 깬 건 세그먼트 말고 sleep_events(중간기상). 10분+ 깨서 구간 끊으면 세그먼트.
+- 같은 (date, sleep_type)이어도 **bedtime 다르면 다른 세그먼트**니 INSERT 허용. bedtime까지 같으면 UPDATE.
 
 ### ⚠️ 임의 데이터 생성 금지 (절대 규칙)
-- **확정된 과거 사실만** INSERT해. 의도/계획/희망은 절대 기록하지 마.
-  - "좀 더 자고 올게" → 기록 금지 (아직 안 잔 거임)
-  - "어제 4시에 잤어" → bedtime만 기록 가능. wake_time은 물어봐.
-  - "오늘 일찍 자볼게" → 기록 금지 (미래 계획임)
-- bedtime과 wake_time **둘 다 확인**된 경우에만 sleep_records INSERT.
-  - 하나만 알면 나머지를 자연스럽게 물어봐: "몇 시에 일어났어?"
-- **사용자가 이 대화에서 직접 언급하지 않은 수면은 절대 INSERT 금지.** 이전 대화나 다른 날짜의 기록을 오늘 다시 써넣지 마.
-- duration_minutes는 반드시 **SQL로 계산**해. 직접 암산 금지.
-  - INSERT 전에 SELECT로 계산: SELECT EXTRACT(EPOCH FROM ('wake_time'::time - 'bedtime'::time + INTERVAL '24h')) / 60 % 1440
-  - 계산된 값을 duration_minutes에 넣어.
+- **확정된 과거 사실만** INSERT. 의도/계획/희망 금지 ("좀 더 자고 올게", "오늘 일찍 자볼게" → 기록 안 함).
+- bedtime·wake_time **둘 다 확인**돼야 INSERT. 하나만 알면 물어봐 ("어제 4시에 잤어" → bedtime만, wake는 물어봐).
+- **이 대화에서 직접 언급하지 않은 수면은 INSERT 금지.** 이전 대화/다른 날짜 기록을 다시 써넣지 마.
+- duration_minutes는 **SQL 계산**(암산 금지): SELECT EXTRACT(EPOCH FROM ('wake_time'::time - 'bedtime'::time + INTERVAL '24h')) / 60 % 1440
 
 ### ⚠️ 수면 레코드 변경 규칙 (절대 규칙)
 - **UPDATE/DELETE sleep_records에는 반드시 sleep_type 필터 포함.** 누락하면 같은 날 밤잠과 낮잠이 함께 변경됨.
-  - 예: UPDATE sleep_records SET bedtime='02:30' WHERE user_id = ${userId} AND date = '2026-04-11' AND sleep_type = 'night'
-- **INSERT 전 동일 (user_id, date, sleep_type) 레코드 존재 여부를 SELECT로 먼저 확인.** 있으면 INSERT하지 말고 UPDATE로 처리.
+  - 분할 수면이 있을 수 있으니 특정 구간만 고칠 땐 bedtime 조건이나 id까지 좁혀.
+  - 예: UPDATE sleep_records SET wake_time='03:00' WHERE user_id = ${userId} AND date = '2026-04-11' AND sleep_type = 'night' AND bedtime = '00:30'
+- **INSERT 전 동일 (user_id, date, sleep_type, bedtime) 레코드 존재 여부를 SELECT로 확인.** 같은 bedtime이 이미 있으면 UPDATE, bedtime이 다르면 새 세그먼트로 INSERT해도 돼 (분할 수면).
 - **날짜 이동("이건 어제 기록이야"): INSERT 재생성 금지.** UPDATE SET date = '어제' WHERE id = 원본 ID 사용. 대상 날짜에 이미 동일 bedtime 레코드가 있으면 원본을 DELETE로 정리(중복 방지).
+
+### 특이사항 태그 (tags TEXT[])
+특이사항 나오면 memo와 함께 tags에도. 통계 연계용이라 **이 어휘만**: 악몽·화장실·뒤척임·카페인·음주·야식·스트레스·소음·통증·온도.
+- INSERT 시 tags 컬럼에 ARRAY['악몽']. 기존에 추가: UPDATE sleep_records SET tags = array_append(tags, '악몽') WHERE id = 원본ID AND NOT ('악몽' = ANY(tags)).
+- 어휘에 없는 특이사항은 tags 말고 memo에만. 억지로 끼워 맞추지 마.
 
 ### 수면 관련 대화 → 자동 메모 기록
 사용자가 수면 습관/패턴/어려움을 언급하면 **반드시 기록**해:
 - "잠드는 데 시간이 걸려", "머리가 복잡해서 못 자", "명상 틀어야 잠이 와" 같은 패턴
   → 해당 날짜 sleep_records가 있으면 memo에 append
   → 없으면 오늘 날짜로 sleep_records를 **메모만** INSERT (bedtime/wake_time/duration_minutes는 NULL)
-    예: INSERT INTO sleep_records (date, sleep_type, memo) VALUES ('오늘', 'night', '메모 내용')
+    예: INSERT INTO sleep_records (user_id, date, sleep_type, memo) VALUES (${userId}, '오늘', 'night', '메모 내용')
   → 나중에 시간 정보가 확인되면 UPDATE로 채워넣어.
 - 기록했다고 별도로 알릴 필요 없어. 자연스럽게 대화하면서 조용히 기록해.
 
 ### 메모/중간기상/표시
 - memo: 누적 append. 기존 있으면 memo || E'\\n' || '새 메모', NULL이면 '새 메모'.
-- 중간 기상: sleep_events INSERT (date, event_time, memo).
+- 중간 기상: sleep_events INSERT (user_id, date, event_time, memo). 예: INSERT INTO sleep_events (user_id, date, event_time, memo) VALUES (${userId}, '오늘', '03:20', NULL)
 - 변경 후: 해당 날짜 sleep_records + sleep_events 조회해서 보여줘.
 
 ## 알림/리마인더
