@@ -1,12 +1,14 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import type { DailySleep, SleepPeriod, SleepRecord } from '../lib/types';
 import { formatDateLabel, getDayOfWeek } from '../lib/chart-utils';
 
 interface SleepTimelineProps {
   dailies: DailySleep[];
   period: SleepPeriod;
+  /** 날짜 툴팁에서 "이 날 수정" 클릭 시 호출 (edit 모드 폼 진입) */
+  onEditDay?: (daily: DailySleep) => void;
 }
 
 // 20:00(=0) ~ 12:00(=960) 범위를 Y축으로 매핑
@@ -75,16 +77,30 @@ function buildSessions(d: DailySleep, topPadding: number, chartHeight: number): 
   return sessions;
 }
 
-export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
+export function SleepTimeline({ dailies, period, onEditDay }: SleepTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cw, setCw] = useState(0);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
+  // 데스크톱 hover에서 커서가 바 → 툴팁으로 넘어가는 사이 툴팁이 닫히지 않도록 지연 close
+  const closeTimer = useRef<number | null>(null);
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current !== null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => setTooltip(null), 180);
+  }, [cancelClose]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     setCw(el.clientWidth);
   }, []);
+
+  useEffect(() => () => cancelClose(), [cancelClose]);
 
   const allowScroll = period === '1m';
 
@@ -184,11 +200,12 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
                     style={{ cursor: 'pointer' }}
                     onPointerEnter={(e) => {
                       if (e.pointerType === 'touch') return;
+                      cancelClose();
                       setTooltip({ x: x + barWidth / 2, y: topPadding, daily: d });
                     }}
                     onPointerLeave={(e) => {
                       if (e.pointerType === 'touch') return;
-                      setTooltip(null);
+                      scheduleClose();
                     }}
                     onClick={() => {
                       setTooltip((prev) =>
@@ -259,13 +276,23 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
             const noteMemos = [...d.nightSegments, ...d.nightMemoRecords]
               .map((r) => r.memo)
               .filter((m): m is string => !!m);
+            const dayTags = Array.from(
+              new Set([...d.nightSegments, ...d.nightMemoRecords].flatMap((r) => r.tags)),
+            );
             const alignRight = tooltip.x > chartWidth - 120;
             const alignLeft = tooltip.x < 120;
             const translateX = alignRight ? '-100%' : alignLeft ? '0%' : '-50%';
             return (
               <div
-                className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
+                className="absolute z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg"
                 style={{ left: tooltip.x, top: 0, transform: `translateX(${translateX})` }}
+                onClick={(e) => e.stopPropagation()}
+                onPointerEnter={(e) => {
+                  if (e.pointerType !== 'touch') cancelClose();
+                }}
+                onPointerLeave={(e) => {
+                  if (e.pointerType !== 'touch') scheduleClose();
+                }}
               >
                 <p className="mb-1 font-semibold text-gray-700">{d.date}</p>
                 {segmentLabels.length > 0 && (
@@ -301,6 +328,23 @@ export function SleepTimeline({ dailies, period }: SleepTimelineProps) {
                       </p>
                     ))}
                   </div>
+                )}
+                {dayTags.length > 0 && (
+                  <p className="mt-1 max-w-[13rem] whitespace-normal text-gray-500">
+                    🏷 {dayTags.join('·')}
+                  </p>
+                )}
+                {onEditDay && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onEditDay(d);
+                      setTooltip(null);
+                    }}
+                    className="mt-2 w-full rounded-md bg-indigo-50 py-1 text-[11px] font-medium text-indigo-600 transition hover:bg-indigo-100"
+                  >
+                    이 날 수정
+                  </button>
                 )}
               </div>
             );
