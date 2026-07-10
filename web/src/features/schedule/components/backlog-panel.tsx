@@ -6,6 +6,7 @@ import { getTodayISO } from '@/lib/kst';
 import { useBacklog } from '@/features/schedule/hooks/use-backlog';
 import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/features/schedule/components/schedule-form';
+import { DeleteReasonModal } from '@/features/schedule/components/delete-reason-modal';
 import { StatusBadge } from '@/features/schedule/components/status-badge';
 
 export function BacklogPanel() {
@@ -21,7 +22,10 @@ export function BacklogPanel() {
     sortedCategories,
     handleAssignDate,
     handleUpdate,
-    handleDelete,
+    deleteTarget,
+    setDeleteTarget,
+    requestDelete,
+    confirmDelete,
     handleCreate,
   } = useBacklog();
 
@@ -105,7 +109,9 @@ export function BacklogPanel() {
                             <StatusBadge status={s.status} />
                           </div>
                           {s.memo && (
-                            <p className="mt-1 whitespace-pre-wrap text-xs text-gray-500">{s.memo}</p>
+                            <p className="mt-1 whitespace-pre-wrap text-xs text-gray-500">
+                              {s.memo}
+                            </p>
                           )}
                         </div>
 
@@ -126,7 +132,12 @@ export function BacklogPanel() {
       </div>
 
       {/* 생성 모달 */}
-      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} onBeforeClose={handleBeforeClose} title="백로그 추가">
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onBeforeClose={handleBeforeClose}
+        title="백로그 추가"
+      >
         <ScheduleForm
           categories={categories}
           defaultDate={null}
@@ -148,12 +159,19 @@ export function BacklogPanel() {
             schedule={editingSchedule}
             categories={categories}
             onSubmit={handleUpdate}
-            onDelete={handleDelete}
+            onDelete={() => requestDelete(editingSchedule.id)}
             onClose={() => setEditingSchedule(null)}
             onDirtyChange={setFormDirty}
           />
         )}
       </Modal>
+
+      {/* 삭제 사유 모달 — 삭제 확인의 유일한 지점 (#590) */}
+      <DeleteReasonModal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
 
       {/* 모바일 FAB */}
       <button

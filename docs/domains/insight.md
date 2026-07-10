@@ -1762,7 +1762,7 @@ LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 
 
 **검증 게이트** ([signal-sql-guard.ts](../../src/shared/signal-sql-guard.ts) `validateSignalSql`, 통과 시 null·실패 시 한글 사유): self-contained(보안 경계를 한 파일에서 감사, 외부 리팩토링이 조용히 약화 못 하게). 빠른 실패 순서 — 길이 → 단일문 → SELECT/WITH → 블록패턴(`db-proxy.ts BLOCKED_PATTERNS` 정렬 + DML 전수 + `information_schema`/`pg_catalog`) → 플레이스홀더(`$1`/`$2`만) → 테이블 화이트리스트 → `user_id=$1` 스코프.
 
-- **테이블 화이트리스트(deny-by-default, `SIGNAL_TABLE_WHITELIST`)**: prod introspection으로 확정한 5개 신호 도메인의 행동 데이터 테이블 10개(`schedules`·`schedule_changes`·`routine_templates`·`routine_records`·`routine_inactive_periods`·`sleep_records`·`sleep_events`·`expenses`·`categories`·`diary_meta_tags`). 의도적 제외 — 재정(`assets`·`incomes`·`budget_*`·`fixed_cost*`, 도메인 밖+민감) / 시스템·메타(`signal_defs`·`pattern_links`·`users`·`custom_instructions`, 자기승인·변조·교차유저 차단) / 사주 내부·마스터 / `diary_entries`(원문, 헌장 ① — 일기는 메타 태그로만).
+- **테이블 화이트리스트(deny-by-default, `SIGNAL_TABLE_WHITELIST`)**: prod introspection으로 확정한 5개 신호 도메인의 행동 데이터 테이블 10개(`schedules`·`schedule_changes`·`routine_templates`·`routine_records`·`routine_inactive_periods`·`sleep_records`·`sleep_events`·`expenses`·`categories`·`diary_meta_tags`). 의도적 제외 — 재정(`assets`·`incomes`·`budget_*`·`fixed_cost*`, 도메인 밖+민감) / 시스템·메타(`signal_defs`·`pattern_links`·`users`·`custom_instructions`, 자기승인·변조·교차유저 차단) / 사주 내부·마스터 / `diary_entries`(원문, 헌장 ① — 일기는 메타 태그로만). 컬럼 단위 예외: `schedule_changes.delete_reason_text`(삭제 사유 원문, #590 ADR-0060)는 테이블은 허용하되 컬럼명을 블록패턴에 추가해 정적 차단(§46).
 - **오탐 방지(빌드 정련)**: 순진한 `FROM/JOIN` 추출은 `EXTRACT(EPOCH FROM …)` 내부 `FROM`과 CTE 이름을 테이블로 오인(prod 시드 신호에서 `min`·`rc` 오탐 실측). → `EXTRACT(…)` 제거 후 추출 + CTE 이름(`WITH x AS (…)`)은 화이트리스트 면제.
 
 **`source` 스레딩**: `SignalDef.source`·`SajuMetric.source`(`'seed'|'llm'`) 추가 → 두 loader(`verifyUserLinks`·`loadActiveSeeds`·`loadActiveSignals`) SELECT에 `source` + `computeSignalSeries`/`evaluateMetric`가 `source==='llm'`이면 격리 실행기로 분기. 단일 숫자 추출은 `extractFirstNumber` 공통 헬퍼.
@@ -2440,6 +2440,16 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 - **2일 가드 근거**: 1일 정상 실행이면 2일엔 이미 row → no-op. 1일에 밀려 늦게 실행돼도 2일 체크 전 row가 생기면 헛알림 억제. `#574` 게이트 task(매월 2일)와도 리듬 일치.
 - **후속**: burned month 실측 여부는 #466 회고 본체(8월 2회차 실행 후)에서 판단 → 재발 시 ADR-0058 대안 A(발송완료 마킹) 재검토.
+
+### 46. 일정 삭제 사유 신호화 (#590, ADR-0060)
+
+삭제 tombstone(§42, ADR-0054)에 사유 컬럼 2개가 추가됐다 — `delete_reason_category`(고정 어휘 5종: `mistake`·`changed_mind`·`external`·`rescheduled`·`other`) + `delete_reason_text`(자유 텍스트). 수집 UX·기록 규약(fill-NULL-only enrichment)·경로별 커버리지는 [schedule.md](schedule.md) 삭제 사유 섹션과 [ADR-0060](../adr/0060-schedule-delete-reason-capture.md) 참조. 인사이트 관점의 편입은 세 갈래:
+
+- **시드 신호 신설** — `audit_cancel_changed_mind`: `delete_reason_category='changed_mind'`인 삭제의 일 카운트(KST). `kind='sql'`·`value_type='continuous'`·`direction='above_abs'`·`threshold=1`·`domain='audit'`·`source='seed'`(LLM 가드·승인 게이트 비대상, 086·100·101 전례). 링크 없이 시작 → P5a 발굴이 자연 페어링. 카드 라벨 `변심 일정 취소`(`SIGNAL_LABEL_OVERRIDES`). 같은 "삭제"라도 실수 교정(`mistake`)은 노이즈라 제외하고 변심만 신호화 — 사유 구분이 없으면 만들 수 없던 신호다.
+- **P5b 재료** — `schedule_changes`는 화이트리스트에 이미 포함(§30). 사유 카테고리가 생기면서 이 테이블 기반 LLM 신호 제안이 처음으로 의미 있는 재료를 얻는다(`external`·`rescheduled` 등의 신호화는 표본 축적 후 P5b·수동 판단에 위임).
+- **`schedule_fate` 확장** — view 말미에 `delete_reason_category` 노출(살아있는 일정은 NULL). #574 생성일 코호트 레이어가 "미루다 변심으로 지운 일정" 같은 사유별 슬라이스를 얻는다.
+
+원문 비노출(헌장 ①): `delete_reason_text`는 검증·발굴·제안 어떤 LLM 입력에도 넣지 않는다. 화이트리스트가 테이블 단위 검사라 컬럼을 못 막으므로 [signal-sql-guard.ts](../../src/shared/signal-sql-guard.ts) `BLOCKED_PATTERNS`에 컬럼명 자체를 추가해 LLM 신호 SQL의 참조를 정적으로 차단했다. 존재-윈도우: audit 도메인 dataStart는 `schedule_changes` 최초 행(2026-07-04) 기준이라 사유 도입(마이그 106, 2026-07-10) 전 약 1주는 0으로 관측되는 좌단 아티팩트가 있다 — 삭제가 희소 이벤트라 실질 영향 없음(ADR-0060 명시).
 
 ## 부록 — e-value 게이트 설계 노트 (S-f)
 

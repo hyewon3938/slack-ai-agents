@@ -166,6 +166,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0057](0057-fortune-calls-ledger.md) | 일운 콜 장부 분리 — 서술형 반증 가능 콜(claim+criterion, 3단 판정)을 period_forecasts(무인 통계 채점)와 별도 경량 테이블로 | Accepted | 2026-07-05 | insight, data, process |
 | [0058](0058-signal-suggest-missing-fallback.md) | 월간 신호 제안 누락 fallback 알림 — signal_suggest_runs row-존재 감지(봇 daily 슬롯 + 월 2일 가드), 최초-클레임 의미론상 미실행만 확실 감지·알림만 | Accepted | 2026-07-08 | reliability, process, insight |
 | [0059](0059-sleep-score-architecture.md) | 수면 점수 4축(시간·규칙성·연속성·타이밍)+종합 — 무저장 결정론 파생(웹 TS·통계 SQL), 분할 수면 세그먼트 합성으로 WASO·효율 파생, 특이사항 고정 태그 어휘 | Accepted | 2026-07-10 | data, web, insight |
+| [0060](0060-schedule-delete-reason-capture.md) | 일정 삭제 사유 수집 — tombstone 사유 컬럼 2개 + fill-NULL-only enrichment (행 생성은 트리거 불변, 웹 사유 모달 단일 확인 지점, 원문 비노출·카테고리만 신호화) | Accepted | 2026-07-10 | data, ux, insight |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 
