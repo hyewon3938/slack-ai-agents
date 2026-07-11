@@ -8,6 +8,7 @@ vi.mock('@/lib/db', () => ({
 import { query, queryOne } from '@/lib/db';
 import type { QueryResult } from '@/lib/db';
 import {
+  computeDurationMinutes,
   createSleepRecord,
   updateSleepRecord,
   deleteSleepRecord,
@@ -17,9 +18,8 @@ import {
 
 // ─── 합성 픽스처 (실제 개인 데이터 아님) ───────────────────────────────
 // DB proxy는 fetch 기반이라 목킹 불가 → @/lib/db의 query/queryOne을 스텁하고
-// 생성된 SQL 조각(duration 공식·user_id 스코프)과 파라미터 배열 구성을 검증한다.
+// 생성된 SQL·파라미터 배열(user_id 스코프·서버 계산된 duration)을 검증한다.
 
-/** queryOne이 돌려줄 합성 행 (RETURNING 결과 대역, 내용은 assert에 안 씀) */
 const RECORD_ROW: Record<string, unknown> = {
   id: 1,
   date: '2026-07-11',
@@ -41,14 +41,12 @@ const EVENT_ROW: Record<string, unknown> = {
 const okDelete: QueryResult = { rows: [], rowCount: 1 };
 const noDelete: QueryResult = { rows: [], rowCount: 0 };
 
-/** queryOne 마지막 호출의 [sql, params] */
 function lastQueryOneCall(): [string, unknown[]] {
   const call = vi.mocked(queryOne).mock.calls.at(-1);
   if (!call) throw new Error('queryOne 미호출');
   return [call[0], (call[1] ?? []) as unknown[]];
 }
 
-/** query 마지막 호출의 [sql, params] */
 function lastQueryCall(): [string, unknown[]] {
   const call = vi.mocked(query).mock.calls.at(-1);
   if (!call) throw new Error('query 미호출');
@@ -59,8 +57,40 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
-describe('createSleepRecord — INSERT SQL·파라미터·duration 공식', () => {
-  it('night(취침·기상 모두): user_id 선두 + duration 공식(자정 넘김·EXTRACT·% 1440)', async () => {
+// ─── duration 계산 (순수 함수) — #600 회귀 방어 ────────────────────────
+// 이 로직은 원래 SQL 표현식이었는데, bedtime 파라미터가 text(`bedtime = $n`)와
+// time(`$n::time`) 두 컨텍스트로 쓰여 "inconsistent types deduced for parameter"
+// 500을 냈다. TS 순수 함수로 옮겨 파라미터 타입 충돌을 제거하고, 여기서 직접 검증한다.
+describe('computeDurationMinutes — 서버 계산 (#600)', () => {
+  it('같은 날 구간: 23:30→07:30 = 480분', () => {
+    expect(computeDurationMinutes('23:30', '07:30')).toBe(480);
+  });
+
+  it('자정 넘김: 23:00→07:00 = 480분', () => {
+    expect(computeDurationMinutes('23:00', '07:00')).toBe(480);
+  });
+
+  it('새벽 취침(자정 이후): 02:50→10:30 = 460분 (실패 재현 케이스)', () => {
+    expect(computeDurationMinutes('02:50', '10:30')).toBe(460);
+  });
+
+  it('낮잠 짧은 구간: 13:00→13:30 = 30분', () => {
+    expect(computeDurationMinutes('13:00', '13:30')).toBe(30);
+  });
+
+  it('00:15→08:00 = 465분', () => {
+    expect(computeDurationMinutes('00:15', '08:00')).toBe(465);
+  });
+
+  it('한쪽이라도 null이면 null', () => {
+    expect(computeDurationMinutes(null, '07:00')).toBeNull();
+    expect(computeDurationMinutes('23:00', null)).toBeNull();
+    expect(computeDurationMinutes(null, null)).toBeNull();
+  });
+});
+
+describe('createSleepRecord — INSERT SQL·파라미터·서버 계산 duration', () => {
+  it('night(취침·기상 모두): user_id 선두 + duration은 계산된 정수 파라미터', async () => {
     vi.mocked(queryOne).mockResolvedValue(RECORD_ROW);
 
     const result = await createSleepRecord(7, {
@@ -77,29 +107,26 @@ describe('createSleepRecord — INSERT SQL·파라미터·duration 공식', () =
 
     const [sql, params] = lastQueryOneCall();
     expect(sql).toContain('INSERT INTO sleep_records');
-    // duration은 암산이 아니라 SQL에서 계산 — 공식 조각이 실제로 들어갔는지 고정
-    expect(sql).toContain('EXTRACT(EPOCH FROM');
-    expect(sql).toContain("INTERVAL '24h'");
-    expect(sql).toContain('% 1440');
-    // bedtime·wake_time 둘 다 있을 때만 계산하는 가드
-    expect(sql).toContain('$4 IS NOT NULL AND $5 IS NOT NULL');
-    // tags는 명시적 text[] 캐스팅
-    expect(sql).toContain('$6::text[]');
+    // duration은 파라미터($6)로 전달 — SQL time 캐스트 없음(파라미터 타입 충돌 방지 #600)
+    expect(sql).not.toContain('::time');
+    expect(sql).not.toContain('EXTRACT(EPOCH');
+    expect(sql).toContain('$7::text[]'); // tags는 명시적 text[] 캐스팅
 
-    // 파라미터 순서: user_id 선두(스코프), 이후 date·type·bed·wake·tags·memo
+    // user_id 선두 + date·type·bed·wake·**duration(계산값)**·tags·memo
     expect(params).toEqual([
       7,
       '2026-07-11',
       'night',
       '23:30',
       '07:30',
+      480,
       ['카페인'],
       '늦게 잠들었다',
     ]);
     expect(params[0]).toBe(7);
   });
 
-  it('nap: tags/memo 미지정 → tags 기본 [] + memo null 정규화', async () => {
+  it('nap: tags/memo 미지정 → tags 기본 [] + memo null, duration 계산', async () => {
     vi.mocked(queryOne).mockResolvedValue(RECORD_ROW);
 
     await createSleepRecord(7, {
@@ -111,10 +138,10 @@ describe('createSleepRecord — INSERT SQL·파라미터·duration 공식', () =
 
     const [sql, params] = lastQueryOneCall();
     expect(sql).toContain('INSERT INTO sleep_records');
-    expect(params).toEqual([7, '2026-07-11', 'nap', '13:00', '13:30', [], null]);
+    expect(params).toEqual([7, '2026-07-11', 'nap', '13:00', '13:30', 30, [], null]);
   });
 
-  it('bedtime·wake_time NULL(메모 전용 밤잠): null 파라미터가 그대로 전달, CASE가 duration NULL 처리', async () => {
+  it('bedtime·wake_time NULL(메모 전용 밤잠): duration은 null 파라미터', async () => {
     vi.mocked(queryOne).mockResolvedValue(RECORD_ROW);
 
     await createSleepRecord(7, {
@@ -125,17 +152,13 @@ describe('createSleepRecord — INSERT SQL·파라미터·duration 공식', () =
       memo: '시간 기억 안 남',
     });
 
-    const [sql, params] = lastQueryOneCall();
-    // duration은 CASE로 조건부 — 둘 다 NULL이면 SQL이 NULL 산출 (암산 아님)
-    expect(sql).toMatch(/CASE\s+WHEN .* IS NOT NULL AND .* IS NOT NULL/s);
-    expect(params[3]).toBeNull(); // bedtime
-    expect(params[4]).toBeNull(); // wake_time
-    expect(params).toEqual([7, '2026-07-11', 'night', null, null, [], '시간 기억 안 남']);
+    const [, params] = lastQueryOneCall();
+    expect(params).toEqual([7, '2026-07-11', 'night', null, null, null, [], '시간 기억 안 남']);
   });
 });
 
 describe('updateSleepRecord — UPDATE SQL·user_id 스코프·duration 재계산', () => {
-  it('전체 필드 교체 + duration 재계산($5/$6) + WHERE id·user_id', async () => {
+  it('전체 필드 교체 + duration 재계산(파라미터) + WHERE id·user_id', async () => {
     vi.mocked(queryOne).mockResolvedValue(RECORD_ROW);
 
     await updateSleepRecord(7, 42, {
@@ -150,14 +173,12 @@ describe('updateSleepRecord — UPDATE SQL·user_id 스코프·duration 재계�
     const [sql, params] = lastQueryOneCall();
     expect(sql).toContain('UPDATE sleep_records');
     expect(sql).toContain('WHERE id = $1 AND user_id = $2');
-    expect(sql).toContain("INTERVAL '24h'");
-    expect(sql).toContain('% 1440');
-    // update의 duration 재계산은 $5(bedtime)·$6(wake_time) 참조
-    expect(sql).toContain('$5 IS NOT NULL AND $6 IS NOT NULL');
-    expect(sql).toContain('$7::text[]');
+    expect(sql).not.toContain('::time');
+    expect(sql).toContain('duration_minutes = $7');
+    expect(sql).toContain('$8::text[]');
 
-    // id·user_id가 파라미터 선두(스코프), 이후 date·type·bed·wake·tags·memo
-    expect(params).toEqual([42, 7, '2026-07-12', 'night', '00:15', '08:00', [], null]);
+    // id·user_id 선두 + date·type·bed·wake·**duration(465)**·tags·memo
+    expect(params).toEqual([42, 7, '2026-07-12', 'night', '00:15', '08:00', 465, [], null]);
   });
 
   it('대상 없음(queryOne null) → null 반환', async () => {
