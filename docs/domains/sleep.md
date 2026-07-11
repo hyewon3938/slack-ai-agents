@@ -78,7 +78,7 @@ fast path 없음 — life 에이전트 LLM이 `modify_db`로 직접 INSERT/UPDAT
 슬랙과 동등한 표현력으로 직접 입력. 진입: `/life/sleep` 상단 "기록 추가" 버튼(신규) / 타임라인 "이 날 수정"(편집).
 
 - **폼**(`SleepRecordForm`): 날짜, 밤잠 구간(분할 수면 다중 세그먼트 add/remove), 중간기상, 낮잠, 특이사항 태그(고정 10종 칩), 메모.
-- **저장**: add = 구간별 `POST /api/sleep/records`(night/nap) + `POST /api/sleep/events`(중간기상), 태그·메모는 첫 구간에 탑재. edit = replace-day(기존 레코드·이벤트 delete 후 재생성).
+- **저장**(`save-day.ts` `saveSleepDay`): add = 구간별 `POST /api/sleep/records`(night/nap) + `POST /api/sleep/events`(중간기상), 태그·메모는 첫 구간에 탑재. edit = **제자리 재조정**(폼 행을 기존 레코드 id에 위치 매칭 → UPDATE, 넘치면 INSERT, 모자라는 기존 레코드만 **모든 upsert 성공 후 맨 마지막에** DELETE). 파괴적 삭제가 upsert 뒤에만 실행돼 편집 실패 시 데이터 손실이 없다 (초기 replace-day는 먼저 전부 삭제·재생성해 재생성 실패 시 데이터가 유실됨 — #598 수정).
 - **duration은 서버 SQL 계산** — `EXTRACT(EPOCH FROM (wake::time − bed::time + INTERVAL '24h'))/60 % 1440` (봇과 동일 규율, 자정 넘김 처리). 클라이언트 미전송.
 - **API**: `POST /api/sleep/records` · `PATCH·DELETE /api/sleep/records/[id]` · `POST /api/sleep/events` · `DELETE /api/sleep/events/[id]`. 전부 requireAuth + user_id 스코프 + 검증(`validate-input.ts`: 날짜·시각 형식, sleep_type enum, 태그 화이트리스트, memo 길이).
 - 5단 쓰기 패턴(Form → hook mutation → API route → queries.ts → DB proxy) — 루틴/지출 도메인과 동일.

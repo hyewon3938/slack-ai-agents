@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { DailySleep, SleepRecordInput, SleepEventInput, SleepTag } from '../lib/types';
 import { SLEEP_TAGS } from '../lib/types';
+import { saveSleepDay } from '../lib/save-day';
 import { getTodayISO } from '@/lib/kst';
 import { PlusIcon, TrashIcon, XMarkIcon } from '@/components/ui/icons';
 
@@ -45,7 +46,7 @@ export function SleepRecordForm({
   onClose,
   mutations,
 }: SleepRecordFormProps) {
-  const { createRecord, deleteRecord, createEvent, deleteEvent } = mutations;
+  const { createRecord, updateRecord, deleteRecord, createEvent, deleteEvent } = mutations;
 
   const [recordDate, setRecordDate] = useState<string>(existing?.date ?? date ?? getTodayISO());
   const [segments, setSegments] = useState<TimePair[]>(() =>
@@ -124,65 +125,40 @@ export function SleepRecordForm({
       return;
     }
 
+    // 원하는 최종 상태를 payload 목록으로 구성 (태그·메모는 첫 밤잠 구간에 탑재)
+    const nightPayloads: SleepRecordInput[] = cleanSegments.map((seg, i) => ({
+      date: recordDate,
+      sleep_type: 'night',
+      bedtime: seg.bedtime || null,
+      wake_time: seg.wake_time || null,
+      tags: i === 0 ? tags : [],
+      memo: i === 0 ? trimmedMemo || null : null,
+    }));
+    // 구간이 없는데 태그/메모만 있으면 메모 전용 밤잠 레코드 1개
+    if (nightPayloads.length === 0 && (trimmedMemo || tags.length > 0)) {
+      nightPayloads.push({
+        date: recordDate,
+        sleep_type: 'night',
+        bedtime: null,
+        wake_time: null,
+        tags,
+        memo: trimmedMemo || null,
+      });
+    }
+    const napPayloads: SleepRecordInput[] = cleanNaps.map((nap) => ({
+      date: recordDate,
+      sleep_type: 'nap',
+      bedtime: nap.bedtime || null,
+      wake_time: nap.wake_time || null,
+    }));
+
     setLoading(true);
     try {
-      // edit 모드 = replace-day: 기존 레코드/이벤트를 전부 삭제 후 재생성
-      if (existing) {
-        const oldRecords = [
-          ...existing.nightSegments,
-          ...existing.nightMemoRecords,
-          ...existing.morningSleeps,
-          ...existing.afternoonNaps,
-        ];
-        for (const r of oldRecords) {
-          await deleteRecord(r.id);
-        }
-        for (const e of existing.nightEvents) {
-          await deleteEvent(e.id);
-        }
-      }
-
-      // 밤잠 구간 — 태그·메모는 첫 구간에만 실어 보낸다
-      for (let i = 0; i < cleanSegments.length; i++) {
-        const seg = cleanSegments[i];
-        const first = i === 0;
-        await createRecord({
-          date: recordDate,
-          sleep_type: 'night',
-          bedtime: seg.bedtime || null,
-          wake_time: seg.wake_time || null,
-          tags: first ? tags : [],
-          memo: first ? trimmedMemo || null : null,
-        });
-      }
-
-      // 구간이 하나도 없는데 태그/메모만 있으면 메모 전용 밤잠 레코드 1개 생성
-      if (cleanSegments.length === 0 && (trimmedMemo || tags.length > 0)) {
-        await createRecord({
-          date: recordDate,
-          sleep_type: 'night',
-          bedtime: null,
-          wake_time: null,
-          tags,
-          memo: trimmedMemo || null,
-        });
-      }
-
-      // 낮잠
-      for (const nap of cleanNaps) {
-        await createRecord({
-          date: recordDate,
-          sleep_type: 'nap',
-          bedtime: nap.bedtime || null,
-          wake_time: nap.wake_time || null,
-        });
-      }
-
-      // 중간기상
-      for (const time of cleanMidWakes) {
-        await createEvent({ date: recordDate, event_time: time });
-      }
-
+      await saveSleepDay(
+        existing ?? null,
+        { date: recordDate, nightPayloads, napPayloads, midWakeTimes: cleanMidWakes },
+        { createRecord, updateRecord, deleteRecord, createEvent, deleteEvent },
+      );
       onSubmitDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : '저장 실패');
