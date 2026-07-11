@@ -314,31 +314,37 @@ export function calculateDayOfWeekPattern(dailies: DailySleep[]): DayOfWeekPatte
 // ─── 수면 기록/이벤트 쓰기 (웹 대시보드 입력, #595) ───────────────────
 
 /**
- * duration_minutes 계산 SQL 조각 — 암산 금지, 봇과 동일하게 DB에서 계산.
- * bedtime·wake_time(TEXT 'HH:MM')이 둘 다 있을 때만 계산, 자정 넘김 보정.
- * (wake − bed + 24h)를 분으로 환산 후 1440 모듈러 → 0~1439분. 하나라도 NULL이면 NULL.
- * bed·wake 인자는 '$4' 같은 파라미터 참조(코드 상수, 사용자 입력 아님 → 인젝션 없음).
+ * duration_minutes 계산 — 서버(TS)에서 계산해 파라미터로 넘긴다.
+ * bedtime·wake_time('HH:MM')이 둘 다 있을 때만, 자정 넘김 보정: (wake − bed + 1440) mod 1440 → 0~1439분.
+ *
+ * SQL 표현식 대신 TS 계산인 이유(#600): bedtime을 `bedtime = $n`(text)과 `$n::time`(time) 양쪽에
+ * 쓰면 pg가 같은 파라미터를 두 타입으로 추론해 "inconsistent types deduced" 오류가 났다.
+ * TS 계산은 duration을 단순 정수 파라미터로 넘겨 타입 충돌을 원천 제거하고, 순수 함수라 단위 테스트도 된다.
  */
-function durationMinutesExpr(bed: string, wake: string): string {
-  return `CASE
-      WHEN ${bed} IS NOT NULL AND ${wake} IS NOT NULL
-        THEN (EXTRACT(EPOCH FROM (${wake}::time - ${bed}::time + INTERVAL '24h')) / 60)::int % 1440
-      ELSE NULL
-    END`;
+export function computeDurationMinutes(
+  bedtime: string | null,
+  wakeTime: string | null,
+): number | null {
+  if (!bedtime || !wakeTime) return null;
+  const toMinutes = (t: string): number => {
+    const [h, m] = t.split(':').map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  };
+  return (toMinutes(wakeTime) - toMinutes(bedtime) + 1440) % 1440;
 }
 
 /** sleep_records 쓰기 결과 컬럼 (SleepRecord 매핑) */
 const SLEEP_RECORD_RETURNING =
   'id, date::text, bedtime, wake_time, duration_minutes, sleep_type, memo, tags';
 
-/** 수면 기록 추가 (duration은 SQL에서 계산) */
+/** 수면 기록 추가 (duration은 서버에서 계산해 파라미터로 전달) */
 export async function createSleepRecord(
   userId: number,
   input: SleepRecordInput,
 ): Promise<SleepRecord> {
   const row = await queryOne<SleepRecord>(
     `INSERT INTO sleep_records (user_id, date, sleep_type, bedtime, wake_time, duration_minutes, tags, memo)
-     VALUES ($1, $2, $3, $4, $5, ${durationMinutesExpr('$4', '$5')}, $6::text[], $7)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8)
      RETURNING ${SLEEP_RECORD_RETURNING}`,
     [
       userId,
@@ -346,6 +352,7 @@ export async function createSleepRecord(
       input.sleep_type,
       input.bedtime,
       input.wake_time,
+      computeDurationMinutes(input.bedtime, input.wake_time),
       input.tags ?? [],
       input.memo ?? null,
     ],
@@ -363,7 +370,7 @@ export async function updateSleepRecord(
   return queryOne<SleepRecord>(
     `UPDATE sleep_records
      SET date = $3, sleep_type = $4, bedtime = $5, wake_time = $6,
-         duration_minutes = ${durationMinutesExpr('$5', '$6')}, tags = $7::text[], memo = $8
+         duration_minutes = $7, tags = $8::text[], memo = $9
      WHERE id = $1 AND user_id = $2
      RETURNING ${SLEEP_RECORD_RETURNING}`,
     [
@@ -373,6 +380,7 @@ export async function updateSleepRecord(
       input.sleep_type,
       input.bedtime,
       input.wake_time,
+      computeDurationMinutes(input.bedtime, input.wake_time),
       input.tags ?? [],
       input.memo ?? null,
     ],
