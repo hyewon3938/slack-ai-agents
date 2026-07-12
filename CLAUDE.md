@@ -136,7 +136,7 @@
 
 | 문서 | 역할 | 갱신 주체 |
 |------|------|----------|
-| `.claude/plans/<이슈>-*.md` | 구현 직전 메모 (휘발) | /design |
+| `.claude/plans/<이슈>-*.md` | 구현 직전 메모 (휘발) | /design 생성 · /build 머지 후 `_archive/` 이동 |
 | `docs/design-notebook/<master>.md` | 마스터 단위 서사 (Phase 별 누적) | /design + /build |
 | `docs/adr/NNNN-*.md` | 되돌리기 어려운 결정 (불변) | /design |
 | `docs/features.md` | 현재 기능 카탈로그 | /build |
