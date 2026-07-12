@@ -28,6 +28,7 @@
 - 일운/월운/세운/대운 운세 분석 (`fortune_analyses`, 교과서 레이어)
 - 월운/세운/대운 기간 해석 — 검증가능성 사다리 기반 측정·교과서 분리 발화 (`period_interpretations`, 절기/입춘/대운 전환 시 생성, #529)
 - 월운/세운 예측 장부 — 사전등록 → 사후 채점(방향 적중 + 실측 delta, Brier 금지). baseline 동결·절기 시간게이트 무인 자기검증 (`period_forecasts`, #531, 대운 비편입)
+- 일운 콜 장부 — 일운 예측 사전등록 → 주간 엔진이 밤마다 방향 적중 채점 → 월요일 통합 카드에 지난주 콜 판정 노출 (`fortune_calls`, #582/PR #584, ADR-0057)
 - 일기 자동 저장 (`diary_entries`)
 - 삶의 테마 관리 (`life_themes`, 자동 진화)
 - ~~사주 패턴 누적~~ (`saju_patterns` — 갱신 2026-05-26 중단, 봇 프롬프트 참조 2026-07-05 제거 #583. 테이블·누적분은 이력으로 존치, 역할은 프로필 요약 + `pattern_links` 검증축이 대체)
@@ -62,7 +63,7 @@
 - 60갑자 마스터 정규화(\~466 rows) 위에 시드 catalog를 얹어 사용자 임상 가설을 정량 검증
 - polymorphic trigger 6종(stem / branch / ganji / element_density / sibiunsung / relation) + 메트릭 5방향(above_avg / below_avg / above_abs / below_abs / flag_present)
 - 매일 07:00 일일 매칭 cron — 오늘 활성 시드 평가 → `seed_daily_activations` 기록(오늘 발현 시드 핸드오프, 08:00 종합 인사이트 선행, #475). 검증은 주간 off-day 엔진으로 이관(#477 P2)
-- 일기 LLM enum 16종 자동 추출(허용 enum 외 출력 폐기) → `diary_meta_tags` 적재
+- 일기 LLM enum 26종 자동 추출(허용 enum 외 출력 폐기) → `diary_meta_tags` 적재
 - 약한 시드(누적 \~10건 + hit rate < 30%) 주간 알림 → 사용자 명령어로 active 토글
 - 슬랙 조회/토글: `사주 시드 보기` / `사주 시드 모두 보기` / `사주 시드 끄기 #N` / `사주 시드 켜기 #N`
 - 풀셋 시드(매트릭 없음, 마스터 #434 Phase 2): trigger만 평가하고 `seed_daily_activations.matched=NULL`로 evidence-only 누적. 60+일 후 LLM 매트릭 제안 슬롯(Phase 6)이 가설 후보 풀로 사용
