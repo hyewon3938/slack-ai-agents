@@ -173,6 +173,7 @@ export const aggregateWeeklyRoutine = async (
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date AND r.user_id = $3
+          AND r.entry_type = 'scheduled'
       ),
       last_week AS (
         SELECT ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
@@ -180,6 +181,7 @@ export const aggregateWeeklyRoutine = async (
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.date BETWEEN ($1::date - 7) AND ($1::date - 1) AND r.date >= t.created_at::date AND r.user_id = $3
+          AND r.entry_type = 'scheduled'
       )
       SELECT this_week_total, this_week_done, this_week_rate, last_week_rate
       FROM this_week, last_week`,
@@ -197,6 +199,7 @@ export const aggregateWeeklyRoutine = async (
       FROM routine_records r
       JOIN routine_templates t ON r.template_id = t.id
       WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date AND r.user_id = $3
+        AND r.entry_type = 'scheduled'
       GROUP BY t.time_slot
       ORDER BY rate DESC`,
       [weekStart, weekEnd, userId],
@@ -212,6 +215,7 @@ export const aggregateWeeklyRoutine = async (
       WHERE r.date BETWEEN $1 AND $2
         AND t.created_at::date < $1::date
         AND r.user_id = $3
+        AND r.entry_type = 'scheduled'
       GROUP BY t.id, t.name
       HAVING COUNT(*) >= 2
       ORDER BY rate DESC`,
@@ -352,6 +356,7 @@ export const aggregateSleepRoutineCorrelation = async (
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date AND r.user_id = $3
+          AND r.entry_type = 'scheduled'
         GROUP BY r.date
       )
       SELECT

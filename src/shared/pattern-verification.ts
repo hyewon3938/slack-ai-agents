@@ -193,14 +193,25 @@ export interface UserDataStarts {
 }
 
 /**
+ * 테이블별 추가 존재 조건 — 신호가 실제로 측정하는 행만 윈도우 시작을 정한다 (ADR-0061).
+ * 값은 고정 리터럴(사용자 입력 아님)이라 테이블명 인터폴레이션과 같은 안전 근거를 공유한다.
+ */
+const DATA_TABLE_EXTRA_WHERE: Partial<Record<(typeof DATA_TABLES)[number], string>> = {
+  // 자율 루틴 기록은 기대된 발생이 아니다. 이걸 세면 루틴 신호의 측정 윈도우가 과거로 앞당겨지고
+  // 그 구간은 COALESCE(SUM,0)=0=fail로 세지는 빈 과거가 된다 — ADR-0044가 없앤 GIGO의 재발.
+  routine_records: "entry_type = 'scheduled'",
+};
+
+/**
  * 유저의 라이프 데이터 테이블별 첫 기록일 + 글로벌 floor를 1회 산출 (#504).
  * 테이블명은 고정 allowlist(DATA_TABLES)라 인터폴레이션 안전(파라미터화 불가 대상).
  */
 export const computeUserDataStarts = async (userId: number): Promise<UserDataStarts> => {
   const byTable = new Map<string, string>();
   for (const table of DATA_TABLES) {
+    const extra = DATA_TABLE_EXTRA_WHERE[table];
     const res = await query<{ d: string | null }>(
-      `SELECT MIN(date)::text AS d FROM ${table} WHERE user_id = $1`,
+      `SELECT MIN(date)::text AS d FROM ${table} WHERE user_id = $1${extra ? ` AND ${extra}` : ''}`,
       [userId],
     );
     const d = res.rows[0]?.d ?? null;

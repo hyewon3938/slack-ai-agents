@@ -117,17 +117,30 @@ describe('frequencyBadge', () => {
 // ─── 루틴 쿼리 ─────────────────────────────────────────
 
 describe('queryActiveTemplates', () => {
-  it('활성 템플릿 조회 SQL 실행', async () => {
+  it('활성 템플릿 조회 SQL 실행 + tracking_mode 반환', async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, name: '운동', time_slot: '낮', frequency: '매일' }],
+      rows: [
+        { id: 1, name: '운동', time_slot: '낮', frequency: '매일', tracking_mode: 'scheduled' },
+      ],
     });
 
     const result = await queryActiveTemplates(TEST_USER_ID);
     expect(result).toHaveLength(1);
     expect(result[0]?.name).toBe('운동');
-    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('routine_templates'), [
+    expect(result[0]?.tracking_mode).toBe('scheduled');
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('tracking_mode'), [
       TEST_USER_ID,
     ]);
+  });
+
+  // 자율 루틴도 활성 루틴이다 — 여기서 걸러내면 "활성 루틴 N개" 표시가 거짓이 된다.
+  // 모드 분기는 생성 경로(createTodayRecords) 한 곳에서만 한다 (ADR-0061)
+  it('WHERE에 모드 필터를 넣지 않음 — 자율 루틴도 활성 목록에 포함', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await queryActiveTemplates(TEST_USER_ID);
+
+    const sql = mockQuery.mock.calls[0]?.[0] as string;
+    expect(sql).not.toMatch(/tracking_mode\s*(=|<>|!=|IN)/i);
   });
 });
 
@@ -154,6 +167,15 @@ describe('queryTodayRecords', () => {
       '2026-03-08',
       TEST_USER_ID,
     ]);
+  });
+
+  // 체크리스트·달성률의 분모가 되는 목록 — 자율 기록이 섞이면 분모 정의가 바뀐다
+  it("주기형만 조회 — entry_type = 'scheduled' 격리", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await queryTodayRecords('2026-03-08', TEST_USER_ID);
+
+    const sql = mockQuery.mock.calls[0]?.[0] as string;
+    expect(sql).toContain("entry_type = 'scheduled'");
   });
 });
 
@@ -195,6 +217,16 @@ describe('createRecord', () => {
       '2026-03-08',
       TEST_USER_ID,
     ]);
+  });
+
+  // 기대된 발생을 미리 만드는 자리 — 성격을 DEFAULT에 맡기지 않고 명시한다 (ADR-0061)
+  it("entry_type을 'scheduled'로 명시해 INSERT", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] });
+    await createRecord(1, '2026-03-08', TEST_USER_ID);
+
+    const sql = mockQuery.mock.calls[0]?.[0] as string;
+    expect(sql).toContain('entry_type');
+    expect(sql).toContain("'scheduled'");
   });
 });
 

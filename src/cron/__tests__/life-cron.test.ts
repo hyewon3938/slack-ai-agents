@@ -289,10 +289,13 @@ describe('createTodayRecords — 매일 빈도 start_date 가드', () => {
     time_slot: string;
     frequency: string;
     start_date: string;
+    tracking_mode?: 'scheduled' | 'free';
   }): void => {
+    // 모드를 명시하지 않은 케이스는 주기형 — 기존 루틴이 받는 값과 같다
+    const row = { ...template, tracking_mode: template.tracking_mode ?? 'scheduled' };
     mockQuery.mockImplementation((sql: string) => {
       if (/FROM routine_templates/.test(sql)) {
-        return Promise.resolve({ rows: [template] });
+        return Promise.resolve({ rows: [row] });
       }
       if (/SELECT template_id FROM routine_records/.test(sql)) {
         return Promise.resolve({ rows: [] });
@@ -346,6 +349,26 @@ describe('createTodayRecords — 매일 빈도 start_date 가드', () => {
 
     const created = await createTodayRecords('2026-04-21', 1);
     expect(created).toBe(1);
+  });
+
+  // 자율 루틴에는 기대된 발생이 없다 → 빈도가 뭐든 미리 만들지 않는다 (ADR-0061)
+  it("tracking_mode='free'는 빈도·start_date가 조건을 만족해도 기록 생성하지 않음", async () => {
+    setupTemplateMock({
+      id: 99,
+      name: '자전거 타기',
+      time_slot: '낮',
+      frequency: '매일',
+      start_date: '2026-04-01',
+      tracking_mode: 'free',
+    });
+
+    const created = await createTodayRecords('2026-04-21', 1);
+    expect(created).toBe(0);
+
+    const inserts = mockQuery.mock.calls.filter((call) =>
+      /INSERT INTO routine_records/.test(call[0] as string),
+    );
+    expect(inserts).toHaveLength(0);
   });
 });
 

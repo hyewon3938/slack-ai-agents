@@ -753,3 +753,37 @@ describe('에러 처리', () => {
     expect(insights).toEqual([]);
   });
 });
+
+// ─── 루틴 집계 측정 격리 (ADR-0061) ────────────────────
+// routine_records 한 행 = "그날 기대된 발생"이라는 계약 위에 달성률·연속 달성이 서 있다.
+// 자율 기록이 같은 테이블에 들어오므로, routine_records를 직접 세는 모든 쿼리는
+// entry_type = 'scheduled'로 범위를 좁혀야 한다. CTE를 재사용하는 하위 CTE는 이미 걸러진
+// 집합을 읽으므로 대상이 아니다 → "FROM routine_records 횟수 == 격리 조건 횟수"가 불변식.
+
+describe('루틴 집계 측정 격리', () => {
+  const routineDetectors: [string, (date: string, userId: number) => Promise<Insight | null>][] = [
+    ['detectStreak', detectStreak],
+    ['detectSlotGap', detectSlotGap],
+    ['detectWeekComparison', detectWeekComparison],
+    ['detectRecovery', detectRecovery],
+    ['detectLapseAlert', detectLapseAlert],
+    ['detectWeeklyRegression', detectWeeklyRegression],
+    ['detectSpottyPattern', detectSpottyPattern],
+  ];
+
+  it.each(routineDetectors)('%s: 기대된 발생만 센다', async (_name, detect) => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    await detect('2026-03-15', 1);
+
+    const routineSqls = mockQuery.mock.calls
+      .map((call) => call[0] as string)
+      .filter((sql) => sql.includes('routine_records'));
+    expect(routineSqls.length).toBeGreaterThan(0);
+
+    for (const sql of routineSqls) {
+      const scans = sql.match(/FROM routine_records/g)?.length ?? 0;
+      const guards = sql.match(/entry_type = 'scheduled'/g)?.length ?? 0;
+      expect(guards).toBe(scans);
+    }
+  });
+});

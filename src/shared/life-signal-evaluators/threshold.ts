@@ -44,6 +44,7 @@ const loadRoutineStreakMax = async (userId: number, date: string): Promise<numbe
          JOIN routine_templates t ON r.template_id = t.id
         WHERE r.date BETWEEN ($2::date - 60) AND $2
           AND t.active = true AND r.user_id = $1
+          AND r.entry_type = 'scheduled'
      ),
      streaks AS (
        SELECT template_id, COUNT(*) FILTER (WHERE grp = 0) AS streak
