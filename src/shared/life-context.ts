@@ -221,7 +221,8 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
             COUNT(*) FILTER (WHERE r.completed)::text as completed
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
-     WHERE r.date = $1 AND r.user_id = $2`,
+     WHERE r.date = $1 AND r.user_id = $2
+       AND r.entry_type = 'scheduled'`,
     [targetDate, userId],
   );
 
@@ -241,6 +242,7 @@ const queryRoutineContext = async (dates: DateParams, timing: ContextTiming): Pr
               COUNT(*) FILTER (WHERE r.completed)::float / NULLIF(COUNT(*), 0) * 100 as daily_rate
        FROM routine_records r
        WHERE r.date >= ($1::date - 7) AND r.date < $1 AND r.user_id = $2
+         AND r.entry_type = 'scheduled'
        GROUP BY r.date
      ) sub`,
     [today, userId],

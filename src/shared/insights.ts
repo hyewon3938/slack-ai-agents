@@ -78,6 +78,7 @@ export const detectStreak = async (today: string, userId: number): Promise<Insig
         WHERE r.date BETWEEN ($1::date - ${lookbackDays}) AND $1
           AND t.active = true AND t.frequency = '매일'
           AND r.user_id = $2
+          AND r.entry_type = 'scheduled'
         ORDER BY r.template_id, r.date DESC
       ),
       streaks AS (
@@ -194,6 +195,7 @@ export const detectSlotGap = async (today: string, userId: number): Promise<Insi
        WHERE r.date BETWEEN ($1::date - ${lookbackDays - 1}) AND $1
          AND r.date >= t.created_at::date
          AND r.user_id = $2
+         AND r.entry_type = 'scheduled'
        GROUP BY t.time_slot
        HAVING COUNT(*) >= ${minSampleSize}
        ORDER BY rate`,
@@ -240,6 +242,7 @@ export const detectWeekComparison = async (
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.date BETWEEN ($1::date - 6) AND $1 AND r.date >= t.created_at::date AND r.user_id = $2
+          AND r.entry_type = 'scheduled'
       ),
       last_week AS (
         SELECT ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric
@@ -247,6 +250,7 @@ export const detectWeekComparison = async (
         FROM routine_records r
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.date BETWEEN ($1::date - 13) AND ($1::date - 7) AND r.date >= t.created_at::date AND r.user_id = $2
+          AND r.entry_type = 'scheduled'
       )
       SELECT this_week.rate AS this_rate, last_week.rate AS last_rate
       FROM this_week, last_week`,
@@ -477,6 +481,7 @@ export const detectRecovery = async (today: string, userId: number): Promise<Ins
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.user_id = $2 AND t.active = true AND t.frequency = '매일'
           AND r.date BETWEEN ($1::date - 30) AND $1
+          AND r.entry_type = 'scheduled'
       ),
       break_events AS (
         SELECT template_id, name, date AS break_date,
@@ -541,12 +546,14 @@ export const detectLapseAlert = async (today: string, userId: number): Promise<I
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.user_id = $2 AND t.active = true AND t.frequency = '매일'
           AND r.date = $1 AND r.completed = false
+          AND r.entry_type = 'scheduled'
       ),
       prev_streaks AS (
         SELECT tm.template_id, tm.name,
           (SELECT COUNT(*) FROM routine_records r
             WHERE r.template_id = tm.template_id
               AND r.user_id = $2
+              AND r.entry_type = 'scheduled'
               AND r.date BETWEEN ($1::date - ${consecutiveDaysBeforeMiss}) AND ($1::date - 1)
               AND r.completed = true) AS prev_done_count
         FROM today_miss tm
@@ -594,6 +601,7 @@ export const detectWeeklyRegression = async (
         WHERE r.user_id = $2 AND t.frequency = '매일'
           AND r.date BETWEEN ($1::date - 6) AND $1
           AND r.date >= t.created_at::date
+          AND r.entry_type = 'scheduled'
         GROUP BY t.id, t.name
         HAVING COUNT(*) >= 4
       ),
@@ -606,6 +614,7 @@ export const detectWeeklyRegression = async (
         WHERE r.user_id = $2 AND t.frequency = '매일'
           AND r.date BETWEEN ($1::date - 13) AND ($1::date - 7)
           AND r.date >= t.created_at::date
+          AND r.entry_type = 'scheduled'
         GROUP BY t.id
         HAVING COUNT(*) >= 4
       )
@@ -651,6 +660,7 @@ export const detectSpottyPattern = async (
         JOIN routine_templates t ON r.template_id = t.id
         WHERE r.user_id = $2 AND t.active = true AND t.frequency = '매일'
           AND r.date BETWEEN ($1::date - ${lookbackDays - 1}) AND $1
+          AND r.entry_type = 'scheduled'
       ),
       miss_groups AS (
         SELECT template_id, name, date, completed,

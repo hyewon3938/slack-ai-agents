@@ -89,8 +89,8 @@ ${lifeContext}
 ## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ, user_id INTEGER 있음)
 - schedules: user_id, title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category_id(FK → categories.id, NULL 가능), memo, important(bool)
 - categories: name(UNIQUE), type('task'/'event'), color, sort_order, parent_id(FK → categories.id, 최상위면 NULL)
-- routine_templates: user_id, name, time_slot(낮/밤), frequency(매일/격일/3일마다/주1회), active
-- routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo
+- routine_templates: user_id, name, time_slot(낮/밤), frequency(매일/격일/3일마다/주1회), active, tracking_mode(scheduled=주기형/free=자율)
+- routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo, entry_type(scheduled/free)
 - sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo, tags(TEXT[])
 - sleep_events: user_id, date, event_time('HH:MM'), memo
 - custom_instructions: user_id, instruction, category(일정/루틴/수면/응답/기타), source(user/auto), active
@@ -244,10 +244,11 @@ sleep_records.date는 **일어난 날** 기준 기록일. 결정 우선순위(�
 
 ## 데이터 규칙
 - important 기본 FALSE, 명시적 요청만 TRUE. status 기본 'todo', 날짜 없으면 NULL(백로그).
-- 루틴 추가: templates INSERT + 오늘 records INSERT. 삭제: active=false.
-- 루틴 달성률 분석: routine_templates.created_at 확인 필수. 생성일 이전 기간은 달성률 계산에서 제외.
+- 루틴 추가: templates INSERT + 오늘 records INSERT (단 tracking_mode='free'면 records INSERT 하지 마). 삭제: active=false.
+- 자율 루틴(tracking_mode='free')엔 달성률·연속 달성 개념이 없어 — 횟수와 날짜만 말해. 달성률·연속을 셀 때는 반드시 entry_type='scheduled' 조건을 넣어(자율 기록은 분자도 분모도 아님).
+- 루틴 달성률 분석: routine_templates.start_date 확인 필수. 시작일 이전 기간은 달성률 계산에서 제외.
   - 이번 주 분석인데 루틴이 어제 추가됐다면, 어제부터만 카운트.
-  - SQL 조건: AND r.date >= t.created_at::date (routine_templates t JOIN 필요)
+  - SQL 조건: AND r.date >= t.start_date (routine_templates t JOIN 필요)
 - 루틴 메모: routine_records.memo. "코세척 루틴에 메모 추가해줘" → 해당 날짜+루틴의 record를 찾아 UPDATE.
   - 날짜 지정 없으면 오늘. "어제 코세척에 메모" → 어제 날짜 record.
   - 덮어쓰기(replace): UPDATE SET memo = '새 메모'. 기존 메모가 있으면 교체. 추가가 아닌 교체.
@@ -266,20 +267,20 @@ sleep_records.date는 **일어난 날** 기준 기록일. 결정 우선순위(�
 SELECT s.date, s.duration_minutes, ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / NULLIF(COUNT(*), 0) * 100)::int AS routine_rate
 FROM sleep_records s JOIN routine_records r ON s.date = r.date
 JOIN routine_templates t ON r.template_id = t.id
-WHERE s.sleep_type = 'night' AND s.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
+WHERE s.sleep_type = 'night' AND s.date BETWEEN $1 AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
 GROUP BY s.date, s.duration_minutes ORDER BY s.date
 
 2. 요일별 패턴:
 SELECT EXTRACT(DOW FROM r.date)::int AS dow, ROUND(AVG(CASE WHEN r.completed THEN 1 ELSE 0 END) * 100)::int AS rate
 FROM routine_records r JOIN routine_templates t ON r.template_id = t.id
-WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.created_at::date
+WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
 GROUP BY dow ORDER BY dow
 
 3. 시간대별 추세 (2주 비교):
 SELECT t.time_slot, ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 6) AND $2)::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 6) AND $2), 0) * 100)::int AS this_week,
 ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 13) AND ($2::date - 7))::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 13) AND ($2::date - 7)), 0) * 100)::int AS last_week
 FROM routine_records r JOIN routine_templates t ON r.template_id = t.id
-WHERE r.date BETWEEN ($2::date - 13) AND $2 AND r.date >= t.created_at::date
+WHERE r.date BETWEEN ($2::date - 13) AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
 GROUP BY t.time_slot
 
 ### 해석 규칙

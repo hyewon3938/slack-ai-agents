@@ -335,7 +335,8 @@ const aggregateLifeStats = async (
     `SELECT COUNT(*) FILTER (WHERE r.completed)::int AS done, COUNT(*)::int AS total
        FROM routine_records r
        JOIN routine_templates t ON r.template_id = t.id
-      WHERE r.user_id = $1 AND r.date >= t.created_at::date AND ${routineRange.clause}`,
+      WHERE r.user_id = $1 AND r.date >= t.created_at::date AND ${routineRange.clause}
+        AND r.entry_type = 'scheduled'`,
     [userId, ...routineRange.params],
   );
   const diaryRange = buildRangeClause(ranges, 'date', 2);

@@ -1,3 +1,9 @@
+/** 루틴 추적 방식 — scheduled=빈도대로 기대된 발생, free=수행 시점에만 기록 (ADR-0061) */
+export type RoutineTrackingMode = 'scheduled' | 'free';
+
+/** 기록의 성격 — 생성 시점에 확정되고 소급 변경하지 않는다 (ADR-0061) */
+export type RoutineEntryType = 'scheduled' | 'free';
+
 /** 루틴 템플릿 */
 export interface RoutineTemplateRow {
   id: number;
@@ -5,6 +11,7 @@ export interface RoutineTemplateRow {
   time_slot: string | null; // '낮' | '밤'
   frequency: string | null; // '매일' | '격일' | '주1회' | 'N일마다'
   active: boolean;
+  tracking_mode: RoutineTrackingMode;
   start_date?: string;
   created_at?: string;
 }
@@ -17,6 +24,7 @@ export interface RoutineRecordRow {
   completed: boolean;
   completed_at: string | null;
   memo: string | null;
+  entry_type: RoutineEntryType;
   name: string;
   time_slot: string | null;
   frequency: string | null;

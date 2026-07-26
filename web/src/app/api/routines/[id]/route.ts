@@ -10,12 +10,14 @@ import {
   queryRoutineTemplate,
   deleteRecordsBefore,
   countCompletedRecordsBefore,
+  deleteIncompleteScheduledRecordOn,
 } from '@/features/routine/lib/queries';
+import type { RoutineTrackingMode } from '@/features/routine/lib/types';
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+/** 추적 모드 허용값 — 자유 TEXT가 아니므로 화이트리스트로 검증 (ADR-0061) */
+const TRACKING_MODES: readonly string[] = ['scheduled', 'free'];
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -28,6 +30,7 @@ export async function PATCH(
       frequency: string | null;
       active: boolean;
       start_date: string;
+      tracking_mode: RoutineTrackingMode;
     }>;
 
     const lengthError = validateFields([
@@ -37,6 +40,9 @@ export async function PATCH(
     ]);
     if (lengthError) {
       return NextResponse.json({ error: lengthError }, { status: 400 });
+    }
+    if (body.tracking_mode !== undefined && !TRACKING_MODES.includes(body.tracking_mode)) {
+      return NextResponse.json({ error: 'tracking_mode 값 오류' }, { status: 400 });
     }
 
     // 시작일 변경 감지를 위해 이전 값 미리 조회
@@ -55,6 +61,13 @@ export async function PATCH(
       await closeOpenInactivePeriod(userId, numId, addDays(getTodayISO(), -1));
     }
 
+    // 주기형 → 자율 전환: 자동 생성된 오늘자 미완료 기록을 정리
+    // (남겨두면 오늘 밤 달성률이 하지도 않기로 한 의무 때문에 깎인다)
+    // 완료된 오늘 기록은 실제로 있었던 기대된 발생이라 보존한다 (ADR-0061 원칙 2)
+    if (body.tracking_mode === 'free' && oldTemplate.tracking_mode === 'scheduled') {
+      await deleteIncompleteScheduledRecordOn(userId, numId, getTodayISO());
+    }
+
     // 시작일이 미래로 이동된 경우 이전 기록 정리 (미완료만 자동, 완료는 카운트만 반환)
     let staleCompletedCount = 0;
     if (data.start_date && oldTemplate.start_date && data.start_date > oldTemplate.start_date) {
@@ -68,10 +81,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

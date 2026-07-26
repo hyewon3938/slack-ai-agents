@@ -2,9 +2,23 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getTodayISO, addDays } from '@/lib/kst';
-import type { RoutineTemplateRow, RoutineRecordRow, RoutineDayStat } from '@/features/routine/lib/types';
+import type {
+  RoutineTemplateRow,
+  RoutineRecordRow,
+  RoutineDayStat,
+} from '@/features/routine/lib/types';
 
 export type RoutineView = 'checklist' | 'stats' | 'manage';
+
+/** mutation 실패 시 서버가 준 메시지를 최대한 살려서 반환 */
+async function parseError(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: string; message?: string };
+    return body.error ?? body.message ?? `요청 실패 (${res.status})`;
+  } catch {
+    return `요청 실패 (${res.status})`;
+  }
+}
 
 export function useRoutines() {
   const [selectedDate, setSelectedDate] = useState(getTodayISO);
@@ -22,7 +36,10 @@ export function useRoutines() {
 
   const fetchTemplates = useCallback(async () => {
     const res = await fetch('/api/routines');
-    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
     if (res.ok) {
       const { data } = (await res.json()) as { data: RoutineTemplateRow[] };
       setTemplates(data);
@@ -31,7 +48,10 @@ export function useRoutines() {
 
   const fetchRecords = useCallback(async () => {
     const res = await fetch(`/api/routines/records?date=${selectedDate}`);
-    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
     if (res.ok) {
       const { data } = (await res.json()) as { data: RoutineRecordRow[] };
       if (mutatingRef.current === 0) setRecords(data);
@@ -40,7 +60,10 @@ export function useRoutines() {
 
   const fetchStats = useCallback(async (from: string, to: string) => {
     const res = await fetch(`/api/routines/stats?from=${from}&to=${to}`);
-    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
     if (res.ok) {
       const { data } = (await res.json()) as { data: RoutineDayStat[] };
       setStats(data);
@@ -175,18 +198,80 @@ export function useRoutines() {
     [fetchRecords],
   );
 
+  // ─── 자율 기록 ─────────────────────────────────────
+  // 실패 시 throw → 모달이 에러 메시지를 표시한다.
+
+  const handleCreateFreeRecord = useCallback(
+    async (templateId: number, date: string, memo: string | null) => {
+      mutatingRef.current++;
+      try {
+        const res = await fetch('/api/routines/records', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ template_id: templateId, date, memo }),
+        });
+        if (res.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        if (!res.ok) throw new Error(await parseError(res));
+      } finally {
+        mutatingRef.current--;
+        await fetchRecords();
+      }
+    },
+    [fetchRecords],
+  );
+
+  const handleDeleteFreeRecord = useCallback(
+    async (id: number) => {
+      mutatingRef.current++;
+      try {
+        const res = await fetch(`/api/routines/records/${id}`, { method: 'DELETE' });
+        if (res.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        // 404 = 이미 없음 → 목표(사라짐) 달성이므로 성공으로 취급
+        if (!res.ok && res.status !== 404) throw new Error(await parseError(res));
+      } finally {
+        mutatingRef.current--;
+        await fetchRecords();
+      }
+    },
+    [fetchRecords],
+  );
+
   return {
     // state
-    selectedDate, templates, records, stats, yearlyStats, loading,
-    showForm, editingTemplate, editingRecord,
+    selectedDate,
+    templates,
+    records,
+    stats,
+    yearlyStats,
+    loading,
+    showForm,
+    editingTemplate,
+    editingRecord,
     // setters
-    setSelectedDate, setShowForm, setEditingTemplate, setEditingRecord,
+    setSelectedDate,
+    setShowForm,
+    setEditingTemplate,
+    setEditingRecord,
     // date nav
-    handlePrevDate, handleNextDate, handleToday,
+    handlePrevDate,
+    handleNextDate,
+    handleToday,
     // templates
-    handleCreateTemplate, handleUpdateTemplate, handleDeleteTemplate,
+    handleCreateTemplate,
+    handleUpdateTemplate,
+    handleDeleteTemplate,
     // records
-    handleToggleRecord, handleUpdateMemo,
+    handleToggleRecord,
+    handleUpdateMemo,
+    // free records
+    handleCreateFreeRecord,
+    handleDeleteFreeRecord,
     // stats
     fetchStats,
   };

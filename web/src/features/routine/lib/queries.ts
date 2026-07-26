@@ -1,6 +1,7 @@
 import { query, queryOne } from '@/lib/db';
 import type {
   RoutineTemplateRow,
+  RoutineTrackingMode,
   RoutineRecordRow,
   RoutineDayStat,
   RoutinePerStat,
@@ -14,7 +15,7 @@ import type {
 /** 모든 템플릿 조회 (삭제된 항목 제외, active 먼저 정렬) */
 export async function queryRoutineTemplates(userId: number): Promise<RoutineTemplateRow[]> {
   const { rows } = await query<RoutineTemplateRow>(
-    `SELECT id, name, time_slot, frequency, active, start_date::text, created_at::text
+    `SELECT id, name, time_slot, frequency, active, tracking_mode, start_date::text, created_at::text
      FROM routine_templates
      WHERE user_id = $1 AND deleted_at IS NULL
      ORDER BY active DESC, time_slot, name`,
@@ -26,27 +27,41 @@ export async function queryRoutineTemplates(userId: number): Promise<RoutineTemp
 /** 템플릿 생성 */
 export async function createRoutineTemplate(
   userId: number,
-  data: { name: string; time_slot: string | null; frequency: string | null; start_date?: string },
+  data: {
+    name: string;
+    time_slot: string | null;
+    frequency: string | null;
+    start_date?: string;
+    tracking_mode?: RoutineTrackingMode;
+  },
 ): Promise<RoutineTemplateRow> {
+  const trackingMode = data.tracking_mode ?? 'scheduled';
   const row = data.start_date
     ? await queryOne<RoutineTemplateRow>(
-        `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active, start_date)
-         VALUES ($1, $2, $3, $4, true, $5)
-         RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
-        [userId, data.name, data.time_slot, data.frequency, data.start_date],
+        `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active, start_date, tracking_mode)
+         VALUES ($1, $2, $3, $4, true, $5, $6)
+         RETURNING id, name, time_slot, frequency, active, tracking_mode, start_date::text, created_at::text`,
+        [userId, data.name, data.time_slot, data.frequency, data.start_date, trackingMode],
       )
     : await queryOne<RoutineTemplateRow>(
-        `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active)
-         VALUES ($1, $2, $3, $4, true)
-         RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
-        [userId, data.name, data.time_slot, data.frequency],
+        `INSERT INTO routine_templates (user_id, name, time_slot, frequency, active, tracking_mode)
+         VALUES ($1, $2, $3, $4, true, $5)
+         RETURNING id, name, time_slot, frequency, active, tracking_mode, start_date::text, created_at::text`,
+        [userId, data.name, data.time_slot, data.frequency, trackingMode],
       );
   if (!row) throw new Error('createRoutineTemplate: INSERT returned no rows');
   return row;
 }
 
-/** 템플릿 수정 */
-const TEMPLATE_COLUMNS = new Set(['name', 'time_slot', 'frequency', 'active', 'start_date']);
+/** 템플릿 수정 — 화이트리스트에 없는 키는 조용히 버려진다 */
+const TEMPLATE_COLUMNS = new Set([
+  'name',
+  'time_slot',
+  'frequency',
+  'active',
+  'start_date',
+  'tracking_mode',
+]);
 
 export async function updateRoutineTemplate(
   userId: number,
@@ -63,7 +78,7 @@ export async function updateRoutineTemplate(
     `UPDATE routine_templates
      SET ${setClauses.join(', ')}
      WHERE id = $1 AND user_id = $2
-     RETURNING id, name, time_slot, frequency, active, start_date::text, created_at::text`,
+     RETURNING id, name, time_slot, frequency, active, tracking_mode, start_date::text, created_at::text`,
     [id, userId, ...values],
   );
 }
@@ -74,7 +89,7 @@ export async function queryRoutineTemplate(
   id: number,
 ): Promise<RoutineTemplateRow | null> {
   return queryOne<RoutineTemplateRow>(
-    `SELECT id, name, time_slot, frequency, active, start_date::text, created_at::text
+    `SELECT id, name, time_slot, frequency, active, tracking_mode, start_date::text, created_at::text
      FROM routine_templates
      WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
     [id, userId],
@@ -89,16 +104,19 @@ export async function deleteRecordsBefore(
   includeCompleted: boolean,
 ): Promise<number> {
   const completedFilter = includeCompleted ? '' : 'AND completed = false';
+  // 시작일 정리는 주기형 기준선만 손댄다 — 자율 기록은 사용자가 직접 남긴 사실이고
+  // 다시 만들어낼 수도 없으므로 시작일 변경에 휩쓸리면 안 된다 (ADR-0061)
   const result = await query(
     `DELETE FROM routine_records
      WHERE template_id = $1 AND user_id = $2 AND date < $3
+       AND entry_type = 'scheduled'
      ${completedFilter}`,
     [templateId, userId, before],
   );
   return result.rowCount ?? 0;
 }
 
-/** 특정 날짜 이전 완료된 기록 개수 */
+/** 특정 날짜 이전 완료된 기록 개수 (정리 안내용 — 삭제 대상과 같은 범위여야 한다) */
 export async function countCompletedRecordsBefore(
   userId: number,
   templateId: number,
@@ -106,7 +124,8 @@ export async function countCompletedRecordsBefore(
 ): Promise<number> {
   const row = await queryOne<{ count: number }>(
     `SELECT COUNT(*)::int AS count FROM routine_records
-     WHERE template_id = $1 AND user_id = $2 AND date < $3 AND completed = true`,
+     WHERE template_id = $1 AND user_id = $2 AND date < $3 AND completed = true
+       AND entry_type = 'scheduled'`,
     [templateId, userId, before],
   );
   return row?.count ?? 0;
@@ -130,7 +149,7 @@ export async function queryRoutineRecords(
 ): Promise<RoutineRecordRow[]> {
   const { rows } = await query<RoutineRecordRow>(
     `SELECT r.id, r.template_id, r.date::text, r.completed,
-            r.completed_at::text, r.memo,
+            r.completed_at::text, r.memo, r.entry_type,
             t.name, t.time_slot, t.frequency
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
@@ -139,6 +158,58 @@ export async function queryRoutineRecords(
     [date, userId],
   );
   return rows;
+}
+
+/**
+ * 자율 기록 생성 — 템플릿 소유·모드 검증을 INSERT 한 문장에 넣어 위조 요청을 차단.
+ * 조건 불일치(타 유저·삭제됨·주기형)면 0행 → null (ADR-0061).
+ */
+export async function createFreeRecord(
+  userId: number,
+  templateId: number,
+  date: string,
+  memo: string | null,
+): Promise<RoutineRecordRow | null> {
+  return queryOne<RoutineRecordRow>(
+    `WITH ins AS (
+       INSERT INTO routine_records (user_id, template_id, date, completed, completed_at, memo, entry_type)
+       SELECT $1, t.id, $3, true, NOW(), $4, 'free'
+         FROM routine_templates t
+        WHERE t.id = $2 AND t.user_id = $1 AND t.deleted_at IS NULL AND t.tracking_mode = 'free'
+       RETURNING id, template_id, date, completed, completed_at, memo, entry_type
+     )
+     SELECT ins.id, ins.template_id, ins.date::text, ins.completed,
+            ins.completed_at::text, ins.memo, ins.entry_type,
+            t.name, t.time_slot, t.frequency
+       FROM ins
+       JOIN routine_templates t ON t.id = ins.template_id`,
+    [userId, templateId, date, memo],
+  );
+}
+
+/** 자율 기록 삭제 — 주기형 기록은 측정 기반이라 삭제 대상이 아니다 */
+export async function deleteFreeRecord(userId: number, id: number): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM routine_records
+     WHERE id = $1 AND user_id = $2 AND entry_type = 'free'`,
+    [id, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** 주기형 → 자율 전환 시 오늘자 미완료 주기형 기록만 정리 (과거는 그 시대의 측정이라 보존) */
+export async function deleteIncompleteScheduledRecordOn(
+  userId: number,
+  templateId: number,
+  date: string,
+): Promise<number> {
+  const result = await query(
+    `DELETE FROM routine_records
+     WHERE user_id = $1 AND template_id = $2 AND date = $3
+       AND entry_type = 'scheduled' AND completed = false`,
+    [userId, templateId, date],
+  );
+  return result.rowCount ?? 0;
 }
 
 /** 기록 완료 토글 */
@@ -210,19 +281,27 @@ function shouldCreateToday(
   return true;
 }
 
-/** 오늘 기록 자동 생성 (아직 없는 active 템플릿만) */
+/**
+ * 오늘 기록 자동 생성 (아직 없는 active 템플릿만).
+ * 자율 루틴은 기대된 발생이 없으므로 대상에서 제외하고, 기존 여부·최근 기록일 판정도
+ * 주기형 기록만 본다 — 자율 기록이 주기형 행의 생성을 막지 않는다 (ADR-0061).
+ */
 export async function ensureTodayRecords(userId: number, date: string): Promise<number> {
   const { rows: templates } = await query<{
     id: number;
     frequency: string | null;
     start_date: string;
   }>(
-    `SELECT id, frequency, start_date::text FROM routine_templates WHERE active = true AND deleted_at IS NULL AND user_id = $1`,
+    `SELECT id, frequency, start_date::text
+     FROM routine_templates
+     WHERE active = true AND deleted_at IS NULL AND user_id = $1
+       AND tracking_mode = 'scheduled'`,
     [userId],
   );
 
   const { rows: existing } = await query<{ template_id: number }>(
-    `SELECT template_id FROM routine_records WHERE date = $1 AND user_id = $2`,
+    `SELECT template_id FROM routine_records
+     WHERE date = $1 AND user_id = $2 AND entry_type = 'scheduled'`,
     [date, userId],
   );
   const existingIds = new Set(existing.map((r) => r.template_id));
@@ -230,7 +309,7 @@ export async function ensureTodayRecords(userId: number, date: string): Promise<
   // 가장 최근 기록 날짜 조회 (빈도 판별용)
   const { rows: lastRecords } = await query<{ template_id: number; last_date: string }>(
     `SELECT template_id, MAX(date)::text AS last_date
-     FROM routine_records WHERE user_id = $1
+     FROM routine_records WHERE user_id = $1 AND entry_type = 'scheduled'
      GROUP BY template_id`,
     [userId],
   );
@@ -246,8 +325,8 @@ export async function ensureTodayRecords(userId: number, date: string): Promise<
   if (toInsertIds.length === 0) return 0;
 
   const result = await query(
-    `INSERT INTO routine_records (user_id, template_id, date, completed)
-     SELECT $1, t.id, $2, false
+    `INSERT INTO routine_records (user_id, template_id, date, completed, entry_type)
+     SELECT $1, t.id, $2, false, 'scheduled'
      FROM UNNEST($3::int[]) AS t(id)`,
     [userId, date, toInsertIds],
   );
@@ -256,7 +335,7 @@ export async function ensureTodayRecords(userId: number, date: string): Promise<
 
 // ─── 통계 ────────────────────────────────────────────
 
-/** 기간별 달성률 통계 (비활성 기간 제외) */
+/** 기간별 달성률 통계 (비활성 기간 제외, 기대된 발생만 — ADR-0061) */
 export async function queryRoutineStats(
   userId: number,
   from: string,
@@ -273,6 +352,7 @@ export async function queryRoutineStats(
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
      WHERE r.user_id = $1 AND r.date BETWEEN $2 AND $3
+       AND r.entry_type = 'scheduled'
        AND NOT EXISTS (
          SELECT 1 FROM routine_inactive_periods ip
          WHERE ip.template_id = r.template_id
@@ -286,7 +366,10 @@ export async function queryRoutineStats(
   return rows;
 }
 
-/** 루틴별 달성률 — 비활성 기간 제외, start_date 기준 */
+/**
+ * 루틴별 달성률 — 비활성 기간 제외, start_date 기준, 기대된 발생만 (ADR-0061).
+ * 순수 자율 루틴은 집계 대상 행이 0이라 목록에 나타나지 않는다 (달성률 개념 미적용).
+ */
 export async function queryRoutinePerStats(
   userId: number,
   from?: string,
@@ -319,6 +402,7 @@ export async function queryRoutinePerStats(
      JOIN routine_templates t ON r.template_id = t.id
      WHERE r.user_id = $1 AND t.deleted_at IS NULL
        AND r.date >= t.start_date
+       AND r.entry_type = 'scheduled'
        AND NOT EXISTS (
          SELECT 1 FROM routine_inactive_periods ip
          WHERE ip.template_id = r.template_id
@@ -408,7 +492,11 @@ export async function closeOpenInactivePeriod(
 
 // ─── 루틴별 히트맵 ───────────────────────────────────
 
-/** 루틴별 월간 히트맵 데이터 (기록 + 비활성 기간 + 시작일) */
+/**
+ * 루틴별 월간 히트맵 데이터 (기록 + 비활성 기간 + 시작일).
+ * 격리하지 않는다 — "언제 했는지" 표시용이라 두 시대(주기형·자율)가 한 캘린더에 이어져
+ * 보이는 게 맞다. 대신 자율은 하루 여러 건이 가능하므로 날짜별로 접어 중복 행을 막는다.
+ */
 export async function queryRoutineHeatmap(
   userId: number,
   templateId: number,
@@ -421,9 +509,10 @@ export async function queryRoutineHeatmap(
 
   const [recordsResult, periodsResult, templateResult] = await Promise.all([
     query<RoutineHeatmapDay>(
-      `SELECT date::text, completed
+      `SELECT date::text, bool_or(completed) AS completed
        FROM routine_records
        WHERE user_id = $1 AND template_id = $2 AND date BETWEEN $3 AND $4
+       GROUP BY date
        ORDER BY date`,
       [userId, templateId, from, to],
     ),
@@ -491,7 +580,8 @@ export async function backfillRecords(
       const date = addDaysISO(startDate, d);
       if (!existingDates.has(date)) {
         await query(
-          `INSERT INTO routine_records (user_id, template_id, date, completed) VALUES ($1, $2, $3, false)`,
+          `INSERT INTO routine_records (user_id, template_id, date, completed, entry_type)
+           VALUES ($1, $2, $3, false, 'scheduled')`,
           [userId, templateId, date],
         );
         created++;
@@ -501,7 +591,8 @@ export async function backfillRecords(
     // 매일/주1회: start_date 기록만 생성
     if (!existingDates.has(startDate)) {
       await query(
-        `INSERT INTO routine_records (user_id, template_id, date, completed) VALUES ($1, $2, $3, false)`,
+        `INSERT INTO routine_records (user_id, template_id, date, completed, entry_type)
+         VALUES ($1, $2, $3, false, 'scheduled')`,
         [userId, templateId, startDate],
       );
       created++;

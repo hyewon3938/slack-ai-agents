@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback } from 'react';
-import type { RoutineRecordRow } from '@/features/routine/lib/types';
+import { useCallback, useState } from 'react';
+import type { RoutineRecordRow, RoutineTrackingMode } from '@/features/routine/lib/types';
 import { useRoutines } from '@/features/routine/hooks/use-routines';
 import { DateNav } from '@/features/routine/components/date-nav';
 import { RoutineChecklist } from '@/features/routine/components/routine-checklist';
 import { RoutineForm } from '@/features/routine/components/routine-form';
+import { FreeRecordModal } from '@/features/routine/components/free-record-modal';
 import { RoutineRecordDetail } from '@/features/routine/components/routine-record-detail';
 import { Modal } from '@/components/ui/modal';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -13,13 +14,35 @@ import { ListSkeleton } from '@/components/ui/skeleton';
 
 export default function ChecklistPage() {
   const {
-    selectedDate, templates, records, loading,
-    showForm, editingTemplate, editingRecord,
-    setShowForm, setEditingTemplate, setEditingRecord,
-    handlePrevDate, handleNextDate, handleToday,
-    handleCreateTemplate, handleUpdateTemplate, handleDeleteTemplate,
-    handleToggleRecord, handleUpdateMemo,
+    selectedDate,
+    templates,
+    records,
+    loading,
+    showForm,
+    editingTemplate,
+    editingRecord,
+    setShowForm,
+    setEditingTemplate,
+    setEditingRecord,
+    handlePrevDate,
+    handleNextDate,
+    handleToday,
+    handleCreateTemplate,
+    handleUpdateTemplate,
+    handleDeleteTemplate,
+    handleToggleRecord,
+    handleUpdateMemo,
+    handleCreateFreeRecord,
+    handleDeleteFreeRecord,
   } = useRoutines();
+
+  const [freeRecordOpen, setFreeRecordOpen] = useState(false);
+  const [freeRecordTemplateId, setFreeRecordTemplateId] = useState<number | null>(null);
+
+  const handleOpenFreeRecord = useCallback((templateId: number | null) => {
+    setFreeRecordTemplateId(templateId);
+    setFreeRecordOpen(true);
+  }, []);
 
   const handleEditTemplate = useCallback(
     (templateId: number) => {
@@ -35,7 +58,13 @@ export default function ChecklistPage() {
   );
 
   const handleFormSubmit = useCallback(
-    async (data: { name: string; time_slot: string | null; frequency: string | null; start_date?: string }) => {
+    async (data: {
+      name: string;
+      time_slot: string | null;
+      frequency: string | null;
+      tracking_mode: RoutineTrackingMode;
+      start_date?: string;
+    }) => {
       if (editingTemplate) {
         await handleUpdateTemplate(editingTemplate.id, data);
       } else {
@@ -68,6 +97,8 @@ export default function ChecklistPage() {
             onToggle={handleToggleRecord}
             onMemoClick={handleMemoClick}
             onEditTemplate={handleEditTemplate}
+            templates={templates}
+            onOpenFreeRecord={handleOpenFreeRecord}
           />
         </div>
       </div>
@@ -84,24 +115,38 @@ export default function ChecklistPage() {
       {/* 추가/수정 모달 */}
       <Modal
         open={showForm || !!editingTemplate}
-        onClose={() => { setShowForm(false); setEditingTemplate(null); }}
+        onClose={() => {
+          setShowForm(false);
+          setEditingTemplate(null);
+        }}
         title={editingTemplate ? '루틴 수정' : '루틴 추가'}
       >
         <RoutineForm
           template={editingTemplate ?? undefined}
           onSubmit={handleFormSubmit}
           onDelete={editingTemplate ? () => handleDeleteTemplate(editingTemplate.id) : undefined}
-          onClose={() => { setShowForm(false); setEditingTemplate(null); }}
+          onClose={() => {
+            setShowForm(false);
+            setEditingTemplate(null);
+          }}
         />
       </Modal>
 
+      {/* 자율 기록 모달 */}
+      <FreeRecordModal
+        open={freeRecordOpen}
+        templates={templates}
+        records={records}
+        recordsDate={selectedDate}
+        initialTemplateId={freeRecordTemplateId}
+        onCreate={handleCreateFreeRecord}
+        onDelete={handleDeleteFreeRecord}
+        onClose={() => setFreeRecordOpen(false)}
+      />
+
       {/* 기록 상세 (데스크탑: 모달, 모바일: 바텀시트) */}
       <div className="hidden md:block">
-        <Modal
-          open={!!editingRecord}
-          onClose={() => setEditingRecord(null)}
-          title="기록 상세"
-        >
+        <Modal open={!!editingRecord} onClose={() => setEditingRecord(null)} title="기록 상세">
           {editingRecord && (
             <RoutineRecordDetail
               record={editingRecord}
@@ -111,10 +156,7 @@ export default function ChecklistPage() {
           )}
         </Modal>
       </div>
-      <BottomSheet
-        open={!!editingRecord}
-        onClose={() => setEditingRecord(null)}
-      >
+      <BottomSheet open={!!editingRecord} onClose={() => setEditingRecord(null)}>
         {editingRecord && (
           <div className="px-4 pb-4">
             <RoutineRecordDetail

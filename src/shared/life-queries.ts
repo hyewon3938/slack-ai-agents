@@ -8,12 +8,16 @@ import { query } from './db.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
+/** 추적 방식 — scheduled=빈도대로 기대된 발생, free=수행 시점에만 기록 (ADR-0061) */
+export type RoutineTrackingMode = 'scheduled' | 'free';
+
 export interface RoutineTemplateRow {
   id: number;
   name: string;
   time_slot: string;
   frequency: string;
   start_date: string;
+  tracking_mode: RoutineTrackingMode;
 }
 
 export interface RoutineRecordRow {
@@ -110,11 +114,15 @@ export const frequencyBadge = (frequency: string): string => {
 
 // ─── 루틴 쿼리 ──────────────────────────────────────────
 
-/** 활성 루틴 템플릿 전체 조회 */
+/**
+ * 활성 루틴 템플릿 전체 조회.
+ * 추적 모드로 필터하지 않는다 — 자율 루틴도 활성 루틴이므로 "활성 루틴 N개" 표시가 거짓이 된다.
+ * 모드 분기는 기록 생성 경로(createTodayRecords) 한 곳에서만 건다 (ADR-0061).
+ */
 export const queryActiveTemplates = async (userId: number): Promise<RoutineTemplateRow[]> =>
   (
     await query<RoutineTemplateRow>(
-      'SELECT id, name, time_slot, frequency, start_date::text FROM routine_templates WHERE active = true AND user_id = $1 ORDER BY id',
+      'SELECT id, name, time_slot, frequency, start_date::text, tracking_mode FROM routine_templates WHERE active = true AND user_id = $1 ORDER BY id',
       [userId],
     )
   ).rows;
@@ -131,6 +139,7 @@ export const queryTodayRecords = async (
      FROM routine_records r
      JOIN routine_templates t ON r.template_id = t.id
      WHERE r.date = $1 AND r.user_id = $2
+       AND r.entry_type = 'scheduled'
      ORDER BY
        CASE t.time_slot
          WHEN '낮' THEN 1 WHEN '밤' THEN 2
@@ -165,14 +174,14 @@ export const queryLastRecordDate = async (
   return result.rows[0]?.date ?? null;
 };
 
-/** 루틴 기록 생성 */
+/** 루틴 기록 생성 — 기대된 발생을 미리 만드는 자리 (entry_type을 DEFAULT에 맡기지 않고 명시) */
 export const createRecord = async (
   templateId: number,
   today: string,
   userId: number,
 ): Promise<number> => {
   const result = await query<{ id: number }>(
-    'INSERT INTO routine_records (template_id, date, completed, user_id) VALUES ($1, $2, false, $3) RETURNING id',
+    "INSERT INTO routine_records (template_id, date, completed, user_id, entry_type) VALUES ($1, $2, false, $3, 'scheduled') RETURNING id",
     [templateId, today, userId],
   );
   const row = result.rows[0];

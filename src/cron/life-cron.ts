@@ -192,6 +192,10 @@ interface RoutineStats {
   weakestSlot: string | null;
 }
 
+/**
+ * 루틴 달성률 집계. 입력이 이미 주기형만으로 걸러져 있다고 전제한다
+ * (queryTodayRecords가 entry_type='scheduled'로 격리) — 자율 기록은 분모가 아니다 (ADR-0061).
+ */
 export const calcRoutineStats = (records: RoutineRecordRow[]): RoutineStats => {
   const total = records.length;
   const completed = records.filter((r) => r.completed).length;
@@ -230,7 +234,10 @@ export const createTodayRecords = async (
   const templates = await queryActiveTemplates(userId);
   const existingIds = await queryExistingTemplateIds(today, userId);
 
-  const candidates = templates.filter((t) => !existingIds.has(t.id));
+  // 자율 루틴은 기대된 발생이 없다 → 미리 만들지 않는다 (ADR-0061)
+  const candidates = templates.filter(
+    (t) => t.tracking_mode === 'scheduled' && !existingIds.has(t.id),
+  );
 
   let created = 0;
   for (const t of candidates) {
