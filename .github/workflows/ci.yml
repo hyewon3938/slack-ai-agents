@@ -31,3 +31,11 @@ jobs:
 
       - name: Build
         run: yarn build
+
+      # 웹은 Vercel이 빌드하지만 lint는 아무도 안 돌리던 상태였다.
+      # 여기서 검사해야 스크립트가 다시 죽어도 바로 드러난다.
+      - name: Install (web)
+        run: yarn --cwd web install --frozen-lockfile
+
+      - name: Lint (web)
+        run: yarn --cwd web lint

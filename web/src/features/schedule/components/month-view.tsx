@@ -19,7 +19,6 @@ import {
   WEEK_START,
   type WeekSpan,
 } from '@/features/schedule/lib/calendar-utils';
-import { ScheduleCard } from './schedule-card';
 import { DroppableDay } from './droppable-day';
 import { DraggableCard } from './draggable-card';
 import { SajuPillarLabel } from './saju-pillar-label';

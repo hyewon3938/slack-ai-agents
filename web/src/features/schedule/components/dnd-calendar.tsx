@@ -12,7 +12,6 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
-import type { CategoryRow } from '@/lib/types';
 
 type DragType = 'move' | 'resize-left' | 'resize-right';
 
@@ -26,8 +25,7 @@ function parseDragId(id: string | number): { type: DragType; scheduleId: number 
     const prefix = match[1];
     const scheduleId = Number(match[2]);
     const type: DragType =
-      prefix === 'resize-r-' ? 'resize-right' :
-      prefix === 'resize-' ? 'resize-left' : 'move';
+      prefix === 'resize-r-' ? 'resize-right' : prefix === 'resize-' ? 'resize-left' : 'move';
     return { type, scheduleId };
   }
 
@@ -39,7 +37,6 @@ function parseDragId(id: string | number): { type: DragType; scheduleId: number 
 interface DndCalendarProps {
   children: React.ReactNode;
   schedules: ScheduleRow[];
-  categories: CategoryRow[];
   onDateChange: (id: number, newDate: string) => void;
   onEndDateChange?: (id: number, endDate: string | null) => void;
 }
@@ -47,7 +44,6 @@ interface DndCalendarProps {
 export function DndCalendar({
   children,
   schedules,
-  categories,
   onDateChange,
   onEndDateChange,
 }: DndCalendarProps) {
@@ -133,9 +129,7 @@ export function DndCalendar({
             const durationMs =
               new Date(endDate + 'T12:00:00').getTime() -
               new Date(scheduleDate + 'T12:00:00').getTime();
-            const newEndStr = new Date(
-              new Date(targetDate + 'T12:00:00').getTime() + durationMs,
-            )
+            const newEndStr = new Date(new Date(targetDate + 'T12:00:00').getTime() + durationMs)
               .toISOString()
               .slice(0, 10);
             onDateChange(scheduleId, targetDate);

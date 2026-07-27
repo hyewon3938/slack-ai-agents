@@ -34,8 +34,9 @@ export function PlannedExpenseList({ yearMonth, refreshTrigger }: PlannedExpense
   }, [yearMonth]);
 
   // yearMonth 변경 또는 지출 변경(refreshTrigger) 시 예정지출 목록 리프레시
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { void fetchItems(); }, [fetchItems, refreshTrigger]);
+  useEffect(() => {
+    void fetchItems();
+  }, [fetchItems, refreshTrigger]);
 
   const handleAdd = async () => {
     const amount = parseInt(amountInput.replace(/,/g, ''), 10);
@@ -189,14 +190,14 @@ export function PlannedExpenseList({ yearMonth, refreshTrigger }: PlannedExpense
                     <div className="mt-1 flex justify-between text-[10px] text-gray-400">
                       <span>사용 {formatAmount(used)}</span>
                       <span className={isOver ? 'text-red-500' : ''}>
-                        {isOver ? `${formatAmount(Math.abs(remaining))} 초과` : `${formatAmount(remaining)} 남음`}
+                        {isOver
+                          ? `${formatAmount(Math.abs(remaining))} 초과`
+                          : `${formatAmount(remaining)} 남음`}
                       </span>
                     </div>
                   </>
                 )}
-                {used === 0 && (
-                  <div className="text-[10px] text-gray-400">아직 사용 내역 없음</div>
-                )}
+                {used === 0 && <div className="text-[10px] text-gray-400">아직 사용 내역 없음</div>}
               </button>
             );
           })}

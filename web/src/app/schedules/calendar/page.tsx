@@ -157,7 +157,6 @@ function CalendarContent() {
 
       <DndCalendar
         schedules={filteredSchedules}
-        categories={categories}
         onDateChange={handleDateChange}
         onEndDateChange={handleEndDateChange}
       >

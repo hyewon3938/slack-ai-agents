@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 
 vi.mock('@/lib/db', () => ({
   query: vi.fn(),
@@ -7,11 +7,12 @@ vi.mock('@/lib/db', () => ({
 import { query } from '@/lib/db';
 import { applyAssetDeduction, applyAssetIncrease, getDefaultAssetId } from '../assets-repo';
 
-// biome-ignore lint/suspicious/noExplicitAny: test mock convenience
-type Any = any;
+// vi.mocked()는 실제 시그니처(QueryResult)를 요구해서 부분 목 객체를 넘길 수 없다.
+// 목 핸들을 여기서 한 번만 느슨하게 잡고, 각 케이스에서는 캐스팅 없이 쓴다.
+const mockQuery = query as unknown as Mock;
 
 function mockCandidates(rows: Array<{ id: number; available_amount: number }>) {
-  vi.mocked(query).mockResolvedValueOnce({ rows } as Any);
+  mockQuery.mockResolvedValueOnce({ rows });
 }
 
 describe('applyAssetDeduction — cascading 차감', () => {
@@ -30,7 +31,7 @@ describe('applyAssetDeduction — cascading 차감', () => {
       { id: 10, available_amount: 100_000 },
       { id: 20, available_amount: 50_000 },
     ]);
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // UPDATE
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const result = await applyAssetDeduction(1, 30_000);
 
@@ -43,8 +44,8 @@ describe('applyAssetDeduction — cascading 차감', () => {
       { id: 10, available_amount: 50_000 }, // default
       { id: 20, available_amount: 100_000 }, // fallback 후보
     ]);
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // UPDATE 1
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // UPDATE 2
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE 1
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE 2
 
     const result = await applyAssetDeduction(1, 70_000);
 
@@ -59,8 +60,8 @@ describe('applyAssetDeduction — cascading 차감', () => {
       { id: 10, available_amount: 10_000 },
       { id: 20, available_amount: 5_000 }, // last = 마이너스 통장
     ]);
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await applyAssetDeduction(1, 50_000);
 
@@ -77,8 +78,8 @@ describe('applyAssetDeduction — cascading 차감', () => {
       { id: 20, available_amount: -5_000 }, // 음수 - skip 대상이지만 last면 음수 허용
       { id: 30, available_amount: 50_000 }, // last
     ]);
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await applyAssetDeduction(1, 130_000);
 
@@ -110,8 +111,8 @@ describe('applyAssetIncrease — default 자산 증액', () => {
   });
 
   it('default 자산 있으면 거기에 증액', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [{ id: 42 }] } as Any); // getDefaultAssetId
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // UPDATE
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // getDefaultAssetId
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const result = await applyAssetIncrease(1, 100_000);
 
@@ -119,9 +120,9 @@ describe('applyAssetIncrease — default 자산 증액', () => {
   });
 
   it('default 없으면 is_emergency=false 첫 자산으로 fallback', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // getDefaultAssetId → null
-    vi.mocked(query).mockResolvedValueOnce({ rows: [{ id: 7 }] } as Any); // fallback
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // UPDATE
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // getDefaultAssetId → null
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] }); // fallback
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const result = await applyAssetIncrease(1, 50_000);
 
@@ -129,8 +130,8 @@ describe('applyAssetIncrease — default 자산 증액', () => {
   });
 
   it('default도 fallback도 없으면 빈 배열 (DB 변동 없음)', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // getDefaultAssetId → null
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any); // fallback → null
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // getDefaultAssetId → null
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // fallback → null
 
     const result = await applyAssetIncrease(1, 50_000);
 
@@ -145,13 +146,13 @@ describe('getDefaultAssetId', () => {
   });
 
   it('is_default=true 자산 있으면 ID 반환', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [{ id: 99 }] } as Any);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 99 }] });
     const id = await getDefaultAssetId(1);
     expect(id).toBe(99);
   });
 
   it('없으면 null', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as Any);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     const id = await getDefaultAssetId(1);
     expect(id).toBeNull();
   });
