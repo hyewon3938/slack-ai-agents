@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
@@ -28,6 +28,8 @@
     "@types/pg": "^8.18.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "eslint": "^10.0.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",

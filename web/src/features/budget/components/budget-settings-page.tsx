@@ -585,7 +585,6 @@ function TargetDateCard({
     if (savedTarget && /^\d{4}-\d{2}$/.test(savedTarget)) {
       void fetchPreview(savedTarget);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedTarget]);
 
   const fetchPreview = async (target: string) => {

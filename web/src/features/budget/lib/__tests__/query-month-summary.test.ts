@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 
 vi.mock('@/lib/db', () => ({
   query: vi.fn(),
@@ -13,24 +13,26 @@ import { query, queryOne } from '@/lib/db';
 import { readFlexibleSpent } from '../repository/expenses-repo';
 import { queryMonthSummary } from '../queries';
 
-// biome-ignore lint/suspicious/noExplicitAny: test mock convenience
-type Any = any;
+// vi.mocked()는 실제 시그니처(QueryResult)를 요구해서 부분 목 객체를 넘길 수 없다.
+// 목 핸들을 여기서 한 번만 느슨하게 잡고, 각 케이스에서는 캐스팅 없이 쓴다.
+const mockQuery = query as unknown as Mock;
+const mockQueryOne = queryOne as unknown as Mock;
 
 // queryMonthSummary가 발행하는 query() 호출 순서 (queryOne은 별도 mock):
 //   [0] total, [1] byCategory, [2] queryFixedCosts,
 //   [3] installmentTotal, [4] incomeTotal, [5] queryPlannedExpenses
 // queryOne 호출: [0] variableTotal
 function primeQueries(opts?: { installmentTotal?: string; variableTotal?: string }) {
-  vi.mocked(query)
-    .mockResolvedValueOnce({ rows: [{ total: '100000' }] } as Any) // total
-    .mockResolvedValueOnce({ rows: [] } as Any) // byCategory
-    .mockResolvedValueOnce({ rows: [] } as Any) // queryFixedCosts
-    .mockResolvedValueOnce({ rows: [{ total: opts?.installmentTotal ?? '0' }] } as Any) // installment
-    .mockResolvedValueOnce({ rows: [{ total: '0' }] } as Any) // income
-    .mockResolvedValueOnce({ rows: [] } as Any); // planned
-  vi.mocked(queryOne).mockResolvedValueOnce({
+  mockQuery
+    .mockResolvedValueOnce({ rows: [{ total: '100000' }] }) // total
+    .mockResolvedValueOnce({ rows: [] }) // byCategory
+    .mockResolvedValueOnce({ rows: [] }) // queryFixedCosts
+    .mockResolvedValueOnce({ rows: [{ total: opts?.installmentTotal ?? '0' }] }) // installment
+    .mockResolvedValueOnce({ rows: [{ total: '0' }] }) // income
+    .mockResolvedValueOnce({ rows: [] }); // planned
+  mockQueryOne.mockResolvedValueOnce({
     total: opts?.variableTotal ?? '0',
-  } as Any);
+  });
   vi.mocked(readFlexibleSpent).mockResolvedValueOnce(0);
 }
 
@@ -45,7 +47,7 @@ describe('queryMonthSummary — 할부 exclude 플래그 정합성 (#549)', () =
     await queryMonthSummary(1, '2026-04');
 
     // query 호출 [3]이 할부 합계 (is_installment=true, exclude 필터 없음)
-    const installmentSql = vi.mocked(query).mock.calls[3]![0] as string;
+    const installmentSql = mockQuery.mock.calls[3]![0] as string;
     expect(installmentSql).toMatch(/is_installment\s*=\s*true/i);
     expect(installmentSql).not.toMatch(/exclude_from_budget/i);
   });
@@ -55,7 +57,7 @@ describe('queryMonthSummary — 할부 exclude 플래그 정합성 (#549)', () =
 
     await queryMonthSummary(1, '2026-04');
 
-    const variableSql = vi.mocked(queryOne).mock.calls[0]![0] as string;
+    const variableSql = mockQueryOne.mock.calls[0]![0] as string;
     expect(variableSql).toMatch(/is_installment\s*=\s*false/i);
     expect(variableSql).toMatch(/exclude_from_budget\s*=\s*false/i);
   });

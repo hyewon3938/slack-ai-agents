@@ -33,14 +33,17 @@ function hexToHsl(hex: string): [number, number, number] {
   if (max === min) return [0, 0, Math.round(l * 100)];
   const d = max - min;
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h = 0;
+  let h: number;
   if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
   else if (max === g) h = ((b - r) / d + 2) / 6;
   else h = ((r - g) / d + 4) / 6;
   return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
 }
 
-const PRESET_LIST = Object.entries(PRESET_COLORS).filter(([k]) => k !== 'gray') as [string, string][];
+const PRESET_LIST = Object.entries(PRESET_COLORS).filter(([k]) => k !== 'gray') as [
+  string,
+  string,
+][];
 
 export function ColorPicker({ value, onChange, previewLabel }: ColorPickerProps) {
   const [open, setOpen] = useState(false);
@@ -128,32 +131,37 @@ function TagPreview({ label, colorKey }: { label: string; colorKey: string }) {
   );
 }
 
-function HslGradient({ hex, previewLabel, onApply }: { hex: string; previewLabel?: string; onApply: (hex: string) => void }) {
+function HslGradient({
+  hex,
+  previewLabel,
+  onApply,
+}: {
+  hex: string;
+  previewLabel?: string;
+  onApply: (hex: string) => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hue, setHue] = useState(() => hexToHsl(hex)[0]);
   const [preview, setPreview] = useState(hex);
   const dragging = useRef(false);
 
-  const drawCanvas = useCallback(
-    (h: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const w = canvas.width;
-      const hCanvas = canvas.height;
+  const drawCanvas = useCallback((h: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width;
+    const hCanvas = canvas.height;
 
-      for (let x = 0; x < w; x++) {
-        for (let y = 0; y < hCanvas; y++) {
-          const s = (x / w) * 100;
-          const l = 100 - (y / hCanvas) * 100;
-          ctx.fillStyle = `hsl(${h}, ${s}%, ${l}%)`;
-          ctx.fillRect(x, y, 1, 1);
-        }
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < hCanvas; y++) {
+        const s = (x / w) * 100;
+        const l = 100 - (y / hCanvas) * 100;
+        ctx.fillStyle = `hsl(${h}, ${s}%, ${l}%)`;
+        ctx.fillRect(x, y, 1, 1);
       }
-    },
-    [],
-  );
+    }
+  }, []);
 
   useEffect(() => {
     drawCanvas(hue);
