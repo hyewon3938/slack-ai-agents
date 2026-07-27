@@ -38,4 +38,15 @@ export default [
       '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },
+
+  // 화면 컴포넌트는 반환이 JSX 아니면 void라 반환 타입을 적어도 새 정보가 없다.
+  // 이 규칙이 웹에서 내는 경고의 대부분(376건 중 271건)이 여기서 나오는데,
+  // 그 탓에 정작 확인할 가치가 있는 널 단언 경고가 목록에 묻힌다.
+  // 데이터 쪽(.ts — 훅·repository·라우트 핸들러)은 반환 타입이 레이어 간 계약이라 유지한다.
+  {
+    files: ['**/*.tsx'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
 ];
