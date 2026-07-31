@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { queryFixedCosts, createFixedCost } from '@/features/budget/lib/queries';
+import { isKnownPaymentMethod } from '@/features/budget/lib/billing/payment-methods';
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
       amount?: number;
       category?: string;
       day_of_month?: number | null;
+      payment_method?: string | null;
     };
 
     if (!body.name?.trim()) {
@@ -36,12 +38,16 @@ export async function POST(request: Request) {
     if (body.day_of_month != null && (body.day_of_month < 1 || body.day_of_month > 31)) {
       return NextResponse.json({ error: '결제일은 1~31 사이여야 합니다' }, { status: 400 });
     }
+    if (body.payment_method != null && !isKnownPaymentMethod(body.payment_method)) {
+      return NextResponse.json({ error: '등록되지 않은 결제수단입니다' }, { status: 400 });
+    }
 
     const data = await createFixedCost(userId, {
       name: body.name.trim(),
       amount: body.amount,
       category: body.category,
       day_of_month: body.day_of_month,
+      payment_method: body.payment_method,
     });
 
     return NextResponse.json({ data }, { status: 201 });

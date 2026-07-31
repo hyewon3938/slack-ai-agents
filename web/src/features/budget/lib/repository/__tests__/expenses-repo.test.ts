@@ -12,7 +12,10 @@ import {
   readPlannedOverflow,
   readTodayFlexSpent,
   readTotalCycleSpent,
+  readReflectedBudgetOutflow,
+  readReflectedOutflow,
 } from '../expenses-repo';
+import { IMMEDIATE_PAYMENT_METHODS } from '../../billing/payment-methods';
 
 // vi.mocked()는 실제 시그니처(QueryResult)를 요구해서 부분 목 객체를 넘길 수 없다.
 // 목 핸들을 여기서 한 번만 느슨하게 잡고, 각 케이스에서는 캐스팅 없이 쓴다.
@@ -364,5 +367,71 @@ describe('readAvgVariableMonthly (#552)', () => {
   it('행 없음 → 0', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await readAvgVariableMonthly(1, 3, '2026-07')).toBe(0);
+  });
+});
+
+describe('readReflectedBudgetOutflow — 예산 기준선 복원 대상 (#615)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('즉시 출금 수단만 집계 + 기준일 이하만 포함', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: '40000' }] });
+
+    const result = await readReflectedBudgetOutflow(1, '2026-08', '2026-07-20');
+
+    expect(result).toBe(40000);
+    const sql = mockQuery.mock.calls[0]![0] as string;
+    const params = mockQuery.mock.calls[0]![1] as unknown[];
+    expect(sql).toMatch(/payment_method\s*=\s*ANY\(\$4\)/i);
+    expect(sql).toMatch(/date\s*<=\s*\$3/i);
+    expect(sql).toMatch(/billing_month\s*=\s*\$2/i);
+    expect(params[3]).toEqual(IMMEDIATE_PAYMENT_METHODS);
+  });
+
+  it('예산이 안 빼는 일반 제외 건은 복원 대상에서 뺀다 (고정비·할부는 유지)', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
+
+    await readReflectedBudgetOutflow(1, '2026-08', '2026-07-20');
+
+    const sql = mockQuery.mock.calls[0]![0] as string;
+    expect(sql).toMatch(/NOT\s*\(/i);
+    expect(sql).toMatch(/source\s+IS\s+DISTINCT\s+FROM\s+'fixed'/i);
+    expect(sql).toMatch(/is_installment/i);
+  });
+
+  it('수입은 제외', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
+    await readReflectedBudgetOutflow(1, '2026-08', '2026-07-20');
+    const sql = mockQuery.mock.calls[0]![0] as string;
+    expect(sql).toMatch(/type.*=\s*'expense'/i);
+  });
+
+  it('행 없음 → 0', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await readReflectedBudgetOutflow(1, '2026-08', '2026-07-20')).toBe(0);
+  });
+});
+
+describe('readReflectedOutflow — 자금에서 이미 나간 전액 (#615)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('예산 제외 건도 포함 — 실제 통장에서 나갔으므로', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: '70000' }] });
+
+    const result = await readReflectedOutflow(1, '2026-08', '2026-07-20');
+
+    expect(result).toBe(70000);
+    const sql = mockQuery.mock.calls[0]![0] as string;
+    expect(sql).not.toMatch(/exclude_from_budget/i);
+    expect(sql).toMatch(/payment_method\s*=\s*ANY\(\$4\)/i);
+    expect(sql).toMatch(/date\s*<=\s*\$3/i);
+  });
+
+  it('행 없음 → 0', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await readReflectedOutflow(1, '2026-08', '2026-07-20')).toBe(0);
   });
 });

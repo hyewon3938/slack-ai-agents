@@ -56,6 +56,15 @@
 - 구현: [facade.ts `runSettlementIfDue`](../../web/src/features/budget/lib/facade.ts), [assets-repo.ts](../../web/src/features/budget/lib/repository/assets-repo.ts)
 - 판단 근거: [ADR 0051](../adr/0051-budget-model-simplification-runway-locked.md) (ADR 0015·0018 supersede)
 
+**입력 의미와 기준일 (#615, ADR 0062)**
+- 사용자가 넣는 자금 값은 **그 시점의 통장 잔액 그대로**다. 무엇이 이미 빠졌는지 계산해서 보정하지 않는다
+- `assets.balance_as_of` = "이 잔액이 며칠까지의 입출금을 반영한 값인가". 잔액을 고치면 기준일도 같이 옮긴다(미지정 시 오늘)
+- **예산 기준선 복원**: `기준선 = 저장된 잔액 + (이번 주기 즉시 출금분 중 date ≤ 기준일이면서 예산이 별도로 차감하는 몫)`. 통장에서 이미 나간 즉시 출금 지출을 예산이 자유지출·묶인 돈으로 다시 빼기 때문에, 주기 시작 시점으로 되돌려 놓아야 이중 차감이 안 생긴다
+- 그래서 **언제 잔액을 적어 넣든 같은 기준선**이 나온다(입력 시점 독립성)
+- **정산은 미반영분만 적용**: 기준일까지 이미 통장에 반영된 몫을 뺀 나머지만 자금에서 차감·증액하고, 정산 후 기준일을 그 주기 종료일로 전진시킨다
+- 구현: [facade.ts `computeTotalAvailable`](../../web/src/features/budget/lib/facade.ts), [payment-methods.ts](../../web/src/features/budget/lib/billing/payment-methods.ts)
+- 판단 근거: [ADR 0062](../adr/0062-payment-method-withdrawal-timing.md)
+
 ### 자유 예산 (Free Budget)
 - 월 자유 예산 = 월 가용자금 − (월 고정비 + **그 달 묶인 돈** + 예정 지출)
 - 묶인 돈 = 목표 기간 창 안 그 `billing_month`의 할부 락(`readInstallmentLockByMonth`). 현재월/미래월 동일 규칙
@@ -131,7 +140,8 @@ fixed_costs:
   day_of_month INTEGER,
   active BOOLEAN,
   memo TEXT,
-  created_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ,
+  payment_method TEXT                  -- 자동 기록에 쓰이는 결제수단. NULL이면 기본값 폴백 (마이그 109)
 
 -- 자산
 -- #539: 비상금 제외 자산은 단일 '자금'(현금 유동자금)으로 통합 (마이그 092). balance=available_amount로 저장.
@@ -146,7 +156,8 @@ assets:
   is_default BOOLEAN,                  -- user당 1개. 자동 차감/증액 우선순위 (마이그 046)
   memo TEXT,
   updated_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ,
+  balance_as_of DATE                   -- 이 잔액이 며칠까지의 입출금을 반영한 값인가 (마이그 109, #615)
 
 -- 예산 설정 (목표 기간, 시작일)
 budget_settings:
@@ -321,11 +332,16 @@ runSettlementIfDue(userId, now)  ── 매일 실행
        settleMonth(userId, month):
          → ensureFixedCostExpenses(month) — 정산 직전 고정비 자동 기록 보장(조회 부수효과 의존 제거)
          → readFlexibleSpent/Excluded/Income/TotalCycleSpent + getMonthlyAllocation 재실행
-         → available_at_end = available_at_start + income − totalSpent (전체 결제분, depletion 일원화)
+         → readFundsAsOf() → 기준일 있으면 readReflectedOutflow/Income(그 날까지 이미 반영된 몫)
+         → pendingOut = max(0, totalSpent − reflectedOut) / pendingIn = max(0, income − reflectedIn)
+         → available_at_end = available_at_start + income − totalSpent (장부는 전체 결제분 기준 유지)
          → buildSettlementSnapshot() → saveSnapshotIfAbsent (UNIQUE(user, year_month) 멱등)
-         → result.saved 일 때만 applyAssetDeduction/Increase (재실행 시 이중 변동 없음)
+         → result.saved 일 때만 applyAssetDeduction(pendingOut)/Increase(pendingIn)
+                              + advanceFundsAsOf(주기 종료일) — GREATEST라 뒤로 가지 않음
 ```
 > 크론이 특정 날짜에 실패해도 다음 실행이 오래된 순으로 따라잡는 자기치유 구조. 이전 단일-일자 트리거(`detectSettlementTrigger`)는 #553에서 제거.
+
+> 자금에 적용되는 건 **미반영분뿐**이다(#615). 장부(`available_at_end`)는 "그 주기에 얼마가 나갔나"의 기록이라 전체 결제분 기준을 그대로 유지한다 — 자금 반영분의 기록이 아니다. 기준일이 없으면(미상) 반영분 조회 없이 전액 적용하는 기존 동작.
 
 ### 일별 예산 로그 저장 (매일 자정 cron)
 ```
@@ -363,6 +379,18 @@ runSettlementIfDue(userId, now)  ── 매일 실행
 - reservation(월별 락)은 자금값을 안 건드리는 라이브 계산. depletion(자금 차감)은 정산 1곳에서 전체 결제분
 - 한 할부 회차: 결제 전 reservation → 결제 후 depletion + 창 이탈. 이중 카운트 없음
 - `installment_group` UUID 로 원본 거래 추적
+
+### 결제수단별 출금 시점 + 자금 기준일 (#615, ADR 0062)
+
+- **정의 1곳**: [billing/payment-methods.ts](../../web/src/features/budget/lib/billing/payment-methods.ts)가 결제수단 목록 · 출금 시점(`timing`) · 결제주기 시작일(`startDay`)을 함께 갖는다. `CARD_BILLING_CYCLES`는 여기서 파생된다
+- `timing = 'immediate'`(현금·계좌이체) → 쓰는 즉시 통장에서 나감 / `'deferred'`(카드) → 결제일에 나감
+- 미등록 수단·`null`은 **보수적으로 `deferred`** — 즉시 출금으로 잘못 보면 기준선이 부풀기 때문
+- **예산 기준선 복원**(`readReflectedBudgetOutflow`): 다음을 **모두** 만족하는 지출만 되돌린다
+  1. 즉시 출금 수단(`payment_method = ANY(즉시 출금 목록)`)
+  2. 그 주기 귀속이면서 기준일 이전(`billing_month = 대상월 AND date <= 기준일`)
+  3. 예산이 별도로 차감하는 몫 — 자유지출 + 고정비(`source='fixed'`) + 할부. 예산에서 빠지지 않는 일반 제외 지출은 복원 대상이 아니다
+- **정산 미반영분**(`readReflectedOutflow`): 회계라 예산 계상 여부와 무관하게 기준일까지 나간 **전액**을 뺀다. `pendingOut = max(0, totalSpent − reflectedOut)`, `pendingIn = max(0, income − reflectedIn)` (기록 수정으로 반영분이 총액을 넘는 이례적 경우 0 클램프)
+- **`billing_month` 귀속 규칙은 무변경** — 출금 시점은 "언제 통장에서 나가나"만 정하고, "어느 결제월에 속하나"는 종전대로 수단별 경계일(`startDay`)이 정한다. 즉시 출금 수단도 기본 경계(15일)를 그대로 따른다
 
 ### 현재 월 allocatedDays
 - 현재 월도 결제주기 **전체 일수**(`currentAllocatedDays = currentCycle.totalDays`)로 배분 — 잔여일 비례 축소 없음

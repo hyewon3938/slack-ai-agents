@@ -3,6 +3,7 @@ import { getTodayISO } from '@/lib/kst';
 import { getTodayAllocation } from './facade';
 import { getCurrentBillingMonth, getBillingRange, calcCycleDays } from './billing/cycle';
 import { getBillingMonthForExpense } from './billing/card-billing';
+import { DEFAULT_PAYMENT_METHOD } from './billing/payment-methods';
 import { readFlexibleSpent, readTodayFlexSpent } from './repository/expenses-repo';
 import { queryFixedCosts, ensureFixedCostExpenses } from './fixed-cost-ensure';
 import type {
@@ -108,7 +109,10 @@ export async function createExpense(
     distribute_to_budget?: boolean;
   },
 ): Promise<ExpenseRow> {
-  const billingMonth = getBillingMonthForExpense(data.date, data.payment_method ?? '현대카드');
+  const billingMonth = getBillingMonthForExpense(
+    data.date,
+    data.payment_method ?? DEFAULT_PAYMENT_METHOD,
+  );
   const row = await queryOne<ExpenseRow>(
     `INSERT INTO expenses (user_id, date, amount, category, description, payment_method, memo, source, type, planned_expense_id, exclude_from_budget, distribute_to_budget, billing_month)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', $8, $9, $10, $11, $12)
@@ -123,7 +127,7 @@ export async function createExpense(
       data.amount,
       data.category,
       data.description ?? null,
-      data.payment_method ?? '현대카드',
+      data.payment_method ?? DEFAULT_PAYMENT_METHOD,
       data.memo ?? null,
       data.type ?? 'expense',
       data.planned_expense_id ?? null,
@@ -169,7 +173,10 @@ export async function createInstallmentExpenses(
     const baseDate = new Date(`${data.date}T00:00:00`);
     baseDate.setMonth(baseDate.getMonth() + i);
     const expDate = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
-    const billingMonth = getBillingMonthForExpense(expDate, data.payment_method ?? '현대카드');
+    const billingMonth = getBillingMonthForExpense(
+      expDate,
+      data.payment_method ?? DEFAULT_PAYMENT_METHOD,
+    );
 
     const row = await queryOne<ExpenseRow>(
       `INSERT INTO expenses (user_id, date, amount, category, description, payment_method,
@@ -187,7 +194,7 @@ export async function createInstallmentExpenses(
         amount,
         data.category,
         data.description ?? null,
-        data.payment_method ?? '현대카드',
+        data.payment_method ?? DEFAULT_PAYMENT_METHOD,
         i + 1,
         data.months,
         groupId,
@@ -233,20 +240,39 @@ export async function updateExpense(
   const keys = Object.keys(updates).filter((k) => EXPENSE_COLUMNS.has(k));
   if (keys.length === 0) return queryExpense(userId, id);
 
-  // source='fixed' 행: 자유지출/고정비 이중 카운트 방지 — exclude_from_budget 변경 차단.
-  // amount 등 다른 필드는 자유 수정 가능 (변동성 있는 고정비 케이스 지원).
+  // source='fixed' 행: 자유지출/고정비 이중 카운트 방지 — exclude_from_budget "변경"만 차단.
+  // 같은 값을 다시 보내는 저장(금액만 고치는 경우)은 통과시킨다. 변동 고정비는 정의(fixed_costs.amount)가
+  // 아니라 그 달 지출 행에서 실제 금액을 고치기 때문 (#615).
   if (keys.includes('exclude_from_budget')) {
-    const existing = await queryOne<{ source: string | null }>(
-      `SELECT source FROM expenses WHERE id = $1 AND user_id = $2`,
+    const existing = await queryOne<{ source: string | null; exclude_from_budget: boolean }>(
+      `SELECT source, COALESCE(exclude_from_budget, false) AS exclude_from_budget
+       FROM expenses WHERE id = $1 AND user_id = $2`,
       [id, userId],
     );
-    if (existing?.source === 'fixed') {
+    if (
+      existing?.source === 'fixed' &&
+      existing.exclude_from_budget !== Boolean(updates.exclude_from_budget)
+    ) {
       throw new Error(FIXED_SOURCE_EXCLUDE_LOCKED);
     }
   }
 
-  const setClauses = keys.map((k, i) => `${k} = $${i + 3}`);
-  const values = keys.map((k) => updates[k]);
+  // 날짜·결제수단이 바뀌면 귀속 월을 다시 계산한다. 결제수단이 출금 시점까지 좌우하므로
+  // 귀속 월만 옛 값으로 남으면 복원·정산이 어긋난다 (#615).
+  // EXPENSE_COLUMNS 화이트리스트는 그대로 두고 서버 계산값만 별도로 붙인다.
+  const derived: Record<string, unknown> = {};
+  if (keys.includes('date') || keys.includes('payment_method')) {
+    const current = await queryExpense(userId, id);
+    if (current) {
+      const nextDate = (updates.date as string | undefined) ?? current.date;
+      const nextMethod = (updates.payment_method as string | undefined) ?? current.payment_method;
+      derived.billing_month = getBillingMonthForExpense(nextDate, nextMethod);
+    }
+  }
+
+  const allKeys = [...keys, ...Object.keys(derived)];
+  const setClauses = allKeys.map((k, i) => `${k} = $${i + 3}`);
+  const values = allKeys.map((k) => (k in derived ? derived[k] : updates[k]));
   return queryOne<ExpenseRow>(
     `UPDATE expenses SET ${setClauses.join(', ')}
      WHERE id = $1 AND user_id = $2
@@ -375,6 +401,7 @@ const FIXED_COST_COLUMNS = new Set([
   'day_of_month',
   'active',
   'memo',
+  'payment_method',
 ]);
 
 export async function updateFixedCost(
@@ -390,7 +417,7 @@ export async function updateFixedCost(
   return queryOne<FixedCostRow>(
     `UPDATE fixed_costs SET ${setClauses.join(', ')}
      WHERE id = $1 AND user_id = $2
-     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo`,
+     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo, payment_method`,
     [id, userId, ...values],
   );
 }
@@ -398,13 +425,26 @@ export async function updateFixedCost(
 /** 고정비 생성 */
 export async function createFixedCost(
   userId: number,
-  data: { name: string; amount: number; category?: string; day_of_month?: number | null },
+  data: {
+    name: string;
+    amount: number;
+    category?: string;
+    day_of_month?: number | null;
+    payment_method?: string | null;
+  },
 ): Promise<FixedCostRow> {
   const row = await queryOne<FixedCostRow>(
-    `INSERT INTO fixed_costs (user_id, name, amount, category, day_of_month)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo`,
-    [userId, data.name, data.amount, data.category ?? null, data.day_of_month ?? null],
+    `INSERT INTO fixed_costs (user_id, name, amount, category, day_of_month, payment_method)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo, payment_method`,
+    [
+      userId,
+      data.name,
+      data.amount,
+      data.category ?? null,
+      data.day_of_month ?? null,
+      data.payment_method ?? null,
+    ],
   );
   if (!row) throw new Error('createFixedCost: INSERT returned no rows');
   return row;
@@ -425,7 +465,7 @@ export async function deleteFixedCost(userId: number, id: number): Promise<boole
 export async function queryAssets(userId: number): Promise<AssetRow[]> {
   const { rows } = await query<AssetRow>(
     `SELECT id, name, balance, type, available_amount, is_emergency,
-            COALESCE(is_default, false) as is_default, memo, updated_at::text
+            COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text
      FROM assets WHERE user_id = $1
      ORDER BY is_emergency ASC, is_default DESC, type, name`,
     [userId],
@@ -437,18 +477,32 @@ export async function queryAssets(userId: number): Promise<AssetRow[]> {
 export async function updateAsset(
   userId: number,
   id: number,
-  data: { balance?: number; available_amount?: number; memo?: string | null },
+  data: {
+    balance?: number;
+    available_amount?: number;
+    memo?: string | null;
+    /** 이 잔액이 며칠까지의 입출금을 반영한 값인가 (#615) */
+    balance_as_of?: string;
+  },
 ): Promise<AssetRow | null> {
   return queryOne<AssetRow>(
     `UPDATE assets
      SET balance = COALESCE($3, balance),
          available_amount = COALESCE($4, available_amount),
          memo = COALESCE($5, memo),
+         balance_as_of = COALESCE($6::date, balance_as_of),
          updated_at = NOW()
      WHERE id = $1 AND user_id = $2
      RETURNING id, name, balance, type, available_amount, is_emergency,
-               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
-    [id, userId, data.balance ?? null, data.available_amount ?? null, data.memo ?? null],
+               COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text`,
+    [
+      id,
+      userId,
+      data.balance ?? null,
+      data.available_amount ?? null,
+      data.memo ?? null,
+      data.balance_as_of ?? null,
+    ],
   );
 }
 
@@ -473,7 +527,7 @@ export async function setDefaultAsset(userId: number, id: number): Promise<Asset
     `UPDATE assets SET is_default = true, updated_at = NOW()
      WHERE id = $1 AND user_id = $2
      RETURNING id, name, balance, type, available_amount, is_emergency,
-               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
+               COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text`,
     [id, userId],
   );
 }
@@ -484,7 +538,7 @@ export async function clearDefaultAsset(userId: number, id: number): Promise<Ass
     `UPDATE assets SET is_default = false, updated_at = NOW()
      WHERE id = $1 AND user_id = $2
      RETURNING id, name, balance, type, available_amount, is_emergency,
-               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
+               COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text`,
     [id, userId],
   );
 }

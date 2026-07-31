@@ -246,11 +246,12 @@ export function useBudget() {
   const updateExpense = useCallback(
     async (
       id: number,
+      // 부분 수정 — 모달이 바뀐 필드만 보낸다 (#615)
       updates: {
-        date: string;
-        amount: number;
-        category: string;
-        description: string | null;
+        date?: string;
+        amount?: number;
+        category?: string;
+        description?: string | null;
         exclude_from_budget?: boolean;
         planned_expense_id?: number | null;
       },
@@ -273,11 +274,16 @@ export function useBudget() {
   );
 
   const updateAssetBalance = useCallback(
-    async (id: number, balance: number, available_amount: number): Promise<void> => {
+    async (
+      id: number,
+      balance: number,
+      available_amount: number,
+      balanceAsOf?: string,
+    ): Promise<void> => {
       const res = await fetch(`/api/budget/assets/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ balance, available_amount }),
+        body: JSON.stringify({ balance, available_amount, balance_as_of: balanceAsOf }),
       });
       if (!res.ok) throw new Error('자산 수정 실패');
       const { data } = (await res.json()) as { data: AssetRow };

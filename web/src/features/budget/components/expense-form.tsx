@@ -13,6 +13,11 @@ import { formatAmount } from '@/lib/types';
 import { Input, Select } from '@/components/ui/input';
 import { getTodayISO } from '@/lib/kst';
 import { getBillingMonthForExpense } from '@/features/budget/lib/billing/card-billing';
+import {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHOD_OPTIONS,
+  getWithdrawalTiming,
+} from '@/features/budget/lib/billing/payment-methods';
 
 interface ExpenseFormProps {
   onAdd: (data: {
@@ -32,8 +37,6 @@ interface ExpenseFormProps {
 }
 
 const INSTALLMENT_OPTIONS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-const PAYMENT_OPTIONS = ['현대카드', '국민카드', '현금'] as const;
-type PaymentOption = (typeof PAYMENT_OPTIONS)[number];
 
 export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const today = getTodayISO();
@@ -44,7 +47,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
   const [description, setDescription] = useState('');
   const [selectedPlanned, setSelectedPlanned] = useState<number | null>(null);
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpenseRow[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentOption>('현대카드');
+  const [paymentMethod, setPaymentMethod] = useState<string>(DEFAULT_PAYMENT_METHOD);
   const [installmentMonths, setInstallmentMonths] = useState<number>(1);
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
   const [distributeToBudget, setDistributeToBudget] = useState(false);
@@ -75,10 +78,10 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     }
   };
 
-  const handlePaymentMethodChange = (method: PaymentOption) => {
+  const handlePaymentMethodChange = (method: string) => {
     setPaymentMethod(method);
-    // 현금으로 바꾸면 할부 초기화
-    if (method === '현금') setInstallmentMonths(1);
+    // 즉시 출금 수단으로 바꾸면 할부 초기화
+    if (getWithdrawalTiming(method) === 'immediate') setInstallmentMonths(1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,7 +103,9 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
         planned_expense_id: selectedPlanned,
         payment_method: entryType === 'expense' ? paymentMethod : '기타',
         installment_months:
-          entryType === 'expense' && paymentMethod !== '현금' ? installmentMonths : undefined,
+          entryType === 'expense' && getWithdrawalTiming(paymentMethod) === 'deferred'
+            ? installmentMonths
+            : undefined,
         exclude_from_budget: entryType === 'expense' ? excludeFromBudget : false,
         distribute_to_budget: entryType === 'income' ? distributeToBudget : false,
       });
@@ -235,8 +240,8 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
           {/* 결제수단 토글 */}
           <div>
             <label className="mb-1 block text-xs text-gray-500">결제수단</label>
-            <div className="flex rounded-lg border border-gray-200 p-0.5">
-              {PAYMENT_OPTIONS.map((method) => (
+            <div className="flex flex-wrap rounded-lg border border-gray-200 p-0.5">
+              {PAYMENT_METHOD_OPTIONS.map((method) => (
                 <button
                   key={method}
                   type="button"
@@ -253,8 +258,8 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
             </div>
           </div>
 
-          {/* 할부 (카드 선택 시만) */}
-          {paymentMethod !== '현금' && (
+          {/* 할부 (후불 수단 선택 시만) */}
+          {getWithdrawalTiming(paymentMethod) === 'deferred' && (
             <div>
               <Select
                 label="할부"

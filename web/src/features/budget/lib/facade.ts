@@ -13,19 +13,27 @@ import { ensureFixedCostExpenses } from './fixed-cost-ensure';
 
 import {
   readDistributableAssetBalance,
+  readFundsAsOf,
+  advanceFundsAsOf,
   applyAssetDeduction,
   applyAssetIncrease,
 } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readInstallmentLockByMonth } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
-import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
+import {
+  readIncomeTotal,
+  readCurrentMonthOnlyIncome,
+  readReflectedIncome,
+} from './repository/incomes-repo';
 import {
   readFlexibleSpent,
   readExcludedSpent,
   readTodayFlexSpent,
   readTotalCycleSpent,
   readAvgVariableMonthly,
+  readReflectedBudgetOutflow,
+  readReflectedOutflow,
 } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-snapshot-repo';
@@ -76,9 +84,22 @@ function formatKSTDate(d: Date): string {
   return kst.toISOString().slice(0, 10);
 }
 
-/** 가용자금 = 현재 자산 잔액 (사용자가 갱신하는 실제 재정 상태) */
-async function computeTotalAvailable(userId: number, _today: string): Promise<number> {
-  return readDistributableAssetBalance(userId);
+/**
+ * 가용자금 = 저장된 잔액 + 기준일까지 이미 나간 즉시 출금분 중 예산이 별도로 차감하는 몫.
+ *
+ * 사용자가 넣는 값은 "기준일 시점의 통장 잔액 그대로"다. 그 잔액엔 이번 주기 즉시 출금
+ * 지출이 이미 빠져 있는데 예산은 그 지출을 자유지출·묶인 돈으로 다시 빼므로,
+ * 예산 계산에 쓸 기준선은 주기 시작 시점으로 되돌려 놓아야 한다 (#615, ADR 0062).
+ */
+async function computeTotalAvailable(userId: number, billingMonth: string): Promise<number> {
+  const [balance, asOf] = await Promise.all([
+    readDistributableAssetBalance(userId),
+    readFundsAsOf(userId),
+  ]);
+  if (!asOf) return balance; // 기준일 미상 → 복원 0 (보수적)
+
+  const reflected = await readReflectedBudgetOutflow(userId, billingMonth, asOf);
+  return balance + reflected;
 }
 
 /** 월 예산 배분 */
@@ -89,7 +110,7 @@ export async function getMonthlyAllocation(
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
   const [totalAvailable, fixedMonthly, targetMonth, currentMonthOnlyIncome] = await Promise.all([
-    computeTotalAvailable(userId, todayStr),
+    computeTotalAvailable(userId, cycle.yearMonth),
     readFixedCostsMonthlyTotal(userId),
     readTargetMonth(userId),
     readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
@@ -161,7 +182,6 @@ export async function getRunwayProjection(
   now: Date,
 ): Promise<RunwayProjectionResponse> {
   const cycle = getBillingCycle(now);
-  const todayStr = formatKSTDate(now);
 
   // 페이스 전망용 창: [현재 결제월, +120] — 시뮬레이션 maxMonths(120)를 넉넉히 덮음.
   // target 유무와 무관하게 항상 조회 (페이스 전망은 target 너머까지 이어짐).
@@ -176,7 +196,7 @@ export async function getRunwayProjection(
       readInstallmentLockByMonth(userId, cycle.yearMonth, paceWindowEnd),
     ]);
 
-  const totalAvailable = await computeTotalAvailable(userId, todayStr);
+  const totalAvailable = await computeTotalAvailable(userId, cycle.yearMonth);
   const freePerMonth = monthly.freePerMonth;
 
   // 페이스 전망 (항상): 최근 실지출(avgVariableMonthly)을 자유 지출 추정치로 소진 시뮬레이션.
@@ -226,7 +246,7 @@ export async function getBudgetPreview(
   const todayStr = formatKSTDate(now);
 
   const [totalAvailable, fixedMonthly, currentMonthOnlyIncome] = await Promise.all([
-    computeTotalAvailable(userId, todayStr),
+    computeTotalAvailable(userId, cycle.yearMonth),
     readFixedCostsMonthlyTotal(userId),
     readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
   ]);
@@ -309,12 +329,20 @@ async function settleMonth(
 
   const range = getBillingRange(targetMonth);
 
-  const [flex, excluded, income, totalSpent] = await Promise.all([
+  const asOf = await readFundsAsOf(userId);
+  const [flex, excluded, income, totalSpent, reflectedOut, reflectedIn] = await Promise.all([
     readFlexibleSpent(userId, targetMonth, range.to),
     readExcludedSpent(userId, targetMonth),
     readIncomeTotal(userId, targetMonth),
     readTotalCycleSpent(userId, targetMonth),
+    asOf ? readReflectedOutflow(userId, targetMonth, asOf) : Promise.resolve(0),
+    asOf ? readReflectedIncome(userId, targetMonth, asOf) : Promise.resolve(0),
   ]);
+
+  // 기준일까지 이미 통장에 반영된 몫은 빼고 미반영분만 자금에 적용 (#615, ADR 0062).
+  // 음수 방어: 기록 수정으로 reflected가 total을 넘는 이례적 경우 0으로 클램프.
+  const pendingOut = Math.max(0, totalSpent - reflectedOut);
+  const pendingIn = Math.max(0, income - reflectedIn);
 
   // 정산 대상 월 기준 allocator 재실행 — T12:00:00Z = KST 21:00 (15일 이내)
   const targetEnd = new Date(`${range.to}T12:00:00Z`);
@@ -329,7 +357,8 @@ async function settleMonth(
   const availableAtStart =
     prevSnapshot?.available_at_end ?? (await readDistributableAssetBalance(userId));
   // depletion 일원화 (#539, ADR 0051): 그 주기 전체 결제분을 자금에서 차감.
-  // 장부(available_at_end → 다음 주기 시작값)도 전체 결제분 기준이라야 실제 자금과 어긋나지 않음.
+  // 장부(available_at_end → 다음 주기 시작값)는 주기 전체 결제분 기준을 유지한다 —
+  // 스냅샷은 "그 주기에 얼마가 나갔나"의 기록이지 자금 반영분의 기록이 아니다 (#615).
   // flex/excluded는 snapshot 분해 표시용으로만 별도 기록.
   const availableAtEnd = availableAtStart + income - totalSpent;
 
@@ -347,8 +376,10 @@ async function settleMonth(
   // snapshot 신규 저장 시에만 자산 변동 (UNIQUE(user, year_month)로 재실행 시 중복 차감 방지).
   // 등록 시점 차감을 폐지했으므로 할부 회차는 결제(이 주기)될 때 비로소 자금에서 빠진다.
   if (result.saved) {
-    await applyAssetDeduction(userId, totalSpent);
-    await applyAssetIncrease(userId, income);
+    await applyAssetDeduction(userId, pendingOut);
+    await applyAssetIncrease(userId, pendingIn);
+    // 정산으로 이 주기 종료일까지의 흐름이 자금에 반영됐다 (뒤로 가지 않게 GREATEST)
+    await advanceFundsAsOf(userId, range.to);
   }
 
   // 금액 로그 금지 — 월·신규저장 여부(불리언)만 기록.

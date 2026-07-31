@@ -15,12 +15,12 @@ interface ExpenseEditModalProps {
   onSave: (
     id: number,
     updates: {
-      date: string;
-      amount: number;
-      category: string;
-      description: string | null;
-      exclude_from_budget: boolean;
-      planned_expense_id: number | null;
+      date?: string;
+      amount?: number;
+      category?: string;
+      description?: string | null;
+      exclude_from_budget?: boolean;
+      planned_expense_id?: number | null;
     },
   ) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -75,16 +75,32 @@ export function ExpenseEditModal({
       return;
     }
 
+    // 바뀐 필드만 보낸다 — 안 바뀐 값을 같이 보내면 서버의 고정비 잠금 판정에 걸린다 (#615)
+    const patch: {
+      date?: string;
+      amount?: number;
+      category?: string;
+      description?: string | null;
+      exclude_from_budget?: boolean;
+      planned_expense_id?: number | null;
+    } = {};
+    if (date !== expense.date) patch.date = date;
+    if (amount !== expense.amount) patch.amount = amount;
+    if (category !== expense.category) patch.category = category;
+    if ((description || null) !== expense.description) patch.description = description || null;
+    if (excludeFromBudget !== expense.exclude_from_budget) {
+      patch.exclude_from_budget = excludeFromBudget;
+    }
+    if (selectedPlanned !== expense.planned_expense_id) patch.planned_expense_id = selectedPlanned;
+
+    if (Object.keys(patch).length === 0) {
+      onClose();
+      return;
+    }
+
     setLoading(true);
     try {
-      await onSave(expense.id, {
-        date,
-        amount,
-        category,
-        description: description || null,
-        exclude_from_budget: excludeFromBudget,
-        planned_expense_id: selectedPlanned,
-      });
+      await onSave(expense.id, patch);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : '수정 실패');

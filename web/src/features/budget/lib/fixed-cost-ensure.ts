@@ -2,6 +2,7 @@ import { query } from '@/lib/db';
 import { getTodayISO } from '@/lib/kst';
 import { resolveFixedCostExpenseDate } from './billing/fixed-cost-date';
 import { getBillingMonthForExpense } from './billing/card-billing';
+import { DEFAULT_PAYMENT_METHOD } from './billing/payment-methods';
 import type { FixedCostRow } from './types';
 
 // 고정비 조회 + 자동 기록.
@@ -12,7 +13,7 @@ import type { FixedCostRow } from './types';
 /** 고정비 목록 (active 먼저) */
 export async function queryFixedCosts(userId: number): Promise<FixedCostRow[]> {
   const { rows } = await query<FixedCostRow>(
-    `SELECT id, name, amount, category, is_variable, day_of_month, active, memo
+    `SELECT id, name, amount, category, is_variable, day_of_month, active, memo, payment_method
      FROM fixed_costs WHERE user_id = $1 ORDER BY active DESC, category, name`,
     [userId],
   );
@@ -31,15 +32,16 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
 
   const todayStr = getTodayISO();
 
+  // 결제수단 미지정 고정비는 기본값으로 폴백 — 컬럼 도입 전 동작을 그대로 유지 (#615)
   const candidates = activeCostsWithDay
     .map((fc) => {
       const expenseDate = resolveFixedCostExpenseDate(yearMonth, fc.day_of_month!);
-      return { fc, expenseDate };
+      return { fc, expenseDate, paymentMethod: fc.payment_method ?? DEFAULT_PAYMENT_METHOD };
     })
     .filter((c) => c.expenseDate <= todayStr)
     .map((c) => ({
       ...c,
-      billingMonth: getBillingMonthForExpense(c.expenseDate, '현대카드'),
+      billingMonth: getBillingMonthForExpense(c.expenseDate, c.paymentMethod),
     }));
 
   if (candidates.length === 0) return 0;
@@ -47,10 +49,10 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
   const result = await query(
     `INSERT INTO expenses
        (user_id, date, amount, category, description, payment_method, source, memo, type, exclude_from_budget, billing_month)
-     SELECT $1, d.date, d.amount, d.category, d.description, '현대카드', 'fixed', d.memo, 'expense', true, d.billing_month
+     SELECT $1, d.date, d.amount, d.category, d.description, d.payment_method, 'fixed', d.memo, 'expense', true, d.billing_month
      FROM UNNEST(
-       $2::date[], $3::numeric[], $4::text[], $5::text[], $6::text[], $7::text[]
-     ) AS d(date, amount, category, description, memo, billing_month)
+       $2::date[], $3::numeric[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]
+     ) AS d(date, amount, category, description, memo, billing_month, payment_method)
      WHERE NOT EXISTS (
        SELECT 1 FROM expenses e
        WHERE e.user_id = $1 AND e.source = 'fixed' AND e.date = d.date AND e.description = d.description
@@ -63,6 +65,7 @@ export async function ensureFixedCostExpenses(userId: number, yearMonth: string)
       candidates.map((c) => c.fc.name),
       candidates.map((c) => `고정비 자동 기록 (fixed_cost_id: ${c.fc.id})`),
       candidates.map((c) => c.billingMonth),
+      candidates.map((c) => c.paymentMethod),
     ],
   );
 

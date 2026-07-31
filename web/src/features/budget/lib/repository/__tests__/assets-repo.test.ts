@@ -5,7 +5,13 @@ vi.mock('@/lib/db', () => ({
 }));
 
 import { query } from '@/lib/db';
-import { applyAssetDeduction, applyAssetIncrease, getDefaultAssetId } from '../assets-repo';
+import {
+  applyAssetDeduction,
+  applyAssetIncrease,
+  getDefaultAssetId,
+  readFundsAsOf,
+  advanceFundsAsOf,
+} from '../assets-repo';
 
 // vi.mocked()는 실제 시그니처(QueryResult)를 요구해서 부분 목 객체를 넘길 수 없다.
 // 목 핸들을 여기서 한 번만 느슨하게 잡고, 각 케이스에서는 캐스팅 없이 쓴다.
@@ -155,5 +161,52 @@ describe('getDefaultAssetId', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const id = await getDefaultAssetId(1);
     expect(id).toBeNull();
+  });
+});
+
+describe('readFundsAsOf — 자금 기준일 (#615)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('비상금 제외 자산의 기준일을 반환', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ as_of: '2026-07-20' }] });
+
+    const asOf = await readFundsAsOf(1);
+
+    expect(asOf).toBe('2026-07-20');
+    const sql = mockQuery.mock.calls[0]![0] as string;
+    expect(sql).toMatch(/is_emergency\s*=\s*false/i);
+    expect(sql).toMatch(/MIN\(balance_as_of\)/i);
+  });
+
+  it('기준일 미상 자산이 하나라도 있으면 null (보수적)', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ as_of: null }] });
+    expect(await readFundsAsOf(1)).toBeNull();
+  });
+
+  it('행 없음 → null', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await readFundsAsOf(1)).toBeNull();
+  });
+});
+
+describe('advanceFundsAsOf — 기준일 전진 (#615)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('GREATEST로 갱신 — 기준일이 뒤로 가지 않는다', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await advanceFundsAsOf(1, '2026-08-14');
+
+    const sql = mockQuery.mock.calls[0]![0] as string;
+    const params = mockQuery.mock.calls[0]![1] as unknown[];
+    // 밀린 정산이 과거 주기를 처리할 때 기준일을 되돌리면
+    // 이미 나간 즉시 출금이 되살아나 한 번 더 차감된다.
+    expect(sql).toMatch(/GREATEST/i);
+    expect(sql).toMatch(/is_emergency\s*=\s*false/i);
+    expect(params).toEqual([1, '2026-08-14']);
   });
 });
