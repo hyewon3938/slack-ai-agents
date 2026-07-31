@@ -12,6 +12,7 @@ vi.mock('@/lib/kst', () => ({
 import { query, queryOne } from '@/lib/db';
 import { getTodayISO } from '@/lib/kst';
 import { ensureFixedCostExpenses } from '../queries';
+import { DEFAULT_PAYMENT_METHOD } from '../billing/payment-methods';
 
 // vi.mocked()는 실제 시그니처(QueryResult)를 요구해서 부분 목 객체를 넘길 수 없다.
 // 목 핸들을 여기서 한 번만 느슨하게 잡고, 각 케이스에서는 캐스팅 없이 쓴다.
@@ -132,5 +133,56 @@ describe('ensureFixedCostExpenses', () => {
     // INSERT 대상 후보는 a, d (필터 통과) — 배열 길이 2
     const params = mockQuery.mock.calls[1][1];
     expect(params[1]).toHaveLength(2);
+  });
+});
+
+describe('ensureFixedCostExpenses — 고정비 결제수단 (#615)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(getTodayISO).mockReturnValue('2026-04-15');
+  });
+
+  it('결제수단 미지정 → 기본값으로 폴백 (컬럼 도입 전 동작 유지)', async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ ...baseFC, name: 'a', day_of_month: 5, payment_method: null }],
+      })
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    await ensureFixedCostExpenses(1, '2026-04');
+
+    const params = mockQuery.mock.calls[1][1];
+    expect(params[7]).toEqual([DEFAULT_PAYMENT_METHOD]); // payment_method 배열
+    expect(params[6]).toEqual(['2026-04']); // billing_month 배열
+  });
+
+  it('결제수단 지정 → 그 값으로 저장하고 귀속 월도 그 수단의 경계로 계산', async () => {
+    // 4/13 결제: 기본 경계(15일)면 2026-04, 국민카드 경계(13일)면 다음 주기
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ ...baseFC, name: 'b', day_of_month: 13, payment_method: '국민카드' }],
+      })
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    await ensureFixedCostExpenses(1, '2026-04');
+
+    const params = mockQuery.mock.calls[1][1];
+    expect(params[1]).toEqual(['2026-04-13']);
+    expect(params[7]).toEqual(['국민카드']);
+    expect(params[6]).toEqual(['2026-05']);
+  });
+
+  it('즉시 출금 수단도 귀속 월 규칙은 동일 — 출금 시점만 다르다', async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ ...baseFC, name: 'c', day_of_month: 5, payment_method: '계좌이체' }],
+      })
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    await ensureFixedCostExpenses(1, '2026-04');
+
+    const params = mockQuery.mock.calls[1][1];
+    expect(params[7]).toEqual(['계좌이체']);
+    expect(params[6]).toEqual(['2026-04']);
   });
 });

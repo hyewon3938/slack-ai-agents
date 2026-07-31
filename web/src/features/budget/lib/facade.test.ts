@@ -643,3 +643,142 @@ describe('getBudgetPreview', () => {
     expect(typeof mb.daily).toBe('number');
   });
 });
+
+// ─── #615 결제수단 출금 시점 ────────────────────────────
+
+describe('가용자금 기준선 복원 (computeTotalAvailable)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setupCommonMocks();
+  });
+
+  it('기준일 미상 → 복원 0, 저장된 잔액을 그대로 기준선으로 쓴다', async () => {
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFundsAsOf).mockResolvedValue(null);
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(result.effective_available).toBe(5_000_000);
+    expect(readReflectedBudgetOutflow).not.toHaveBeenCalled();
+  });
+
+  it('기준일이 주기 시작 이전 → 이 주기에 반영된 출금이 없어 복원 0', async () => {
+    // 반영분 0은 repo의 date<=asOf 필터 결과 (expenses-repo 테스트에서 SQL로 검증).
+    // 여기서는 그 0이 기준선을 부풀리지 않는지만 본다.
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-03-14'); // 2026-04 주기 시작(3/15) 이전
+    vi.mocked(readReflectedBudgetOutflow).mockResolvedValue(0);
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(readReflectedBudgetOutflow).toHaveBeenCalledWith(1, '2026-04', '2026-03-14');
+    expect(result.effective_available).toBe(5_000_000);
+  });
+
+  it('기준일이 주기 중간 → 그날까지 나간 즉시 출금분만 되돌린다', async () => {
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(4_800_000);
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-04-10');
+    vi.mocked(readReflectedBudgetOutflow).mockResolvedValue(200_000);
+
+    const result = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(readReflectedBudgetOutflow).toHaveBeenCalledWith(1, '2026-04', '2026-04-10');
+    expect(result.effective_available).toBe(5_000_000);
+  });
+
+  it('입력 시점 독립성 — 주기 초 입력과 주기 말 입력이 같은 기준선을 낸다', async () => {
+    // 같은 지출 집합(즉시 출금 200_000)에서 언제 잔액을 적어 넣든 기준선은 동일해야 한다.
+    // (a) 주기 시작일에 입력: 아직 아무것도 안 나갔으니 잔액 5_000_000, 복원 0
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-03-15');
+    vi.mocked(readReflectedBudgetOutflow).mockResolvedValue(0);
+    const atCycleStart = await getRunwayProjection(1, DEFAULT_NOW);
+
+    // (b) 주기 말에 입력: 200_000이 이미 빠진 잔액 4_800_000, 복원 200_000
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(4_800_000);
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-04-14');
+    vi.mocked(readReflectedBudgetOutflow).mockResolvedValue(200_000);
+    const atCycleEnd = await getRunwayProjection(1, DEFAULT_NOW);
+
+    expect(atCycleEnd.effective_available).toBe(atCycleStart.effective_available);
+  });
+});
+
+describe('정산 시 미반영분만 자금에 적용 (settleMonth)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setupCommonMocks();
+  });
+
+  it('기준일까지 이미 통장에서 빠진 몫은 다시 차감하지 않는다', async () => {
+    // DEFAULT_NOW(4/10) → 정산 대상 2026-03 (2026-02-15 ~ 2026-03-14)
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-03-10');
+    vi.mocked(readIncomeTotal).mockResolvedValue(200_000);
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
+    vi.mocked(readReflectedOutflow).mockResolvedValue(120_000);
+    vi.mocked(readReflectedIncome).mockResolvedValue(200_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    const result = await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(readReflectedOutflow).toHaveBeenCalledWith(1, '2026-03', '2026-03-10');
+    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 230_000); // 350_000 - 120_000
+    expect(applyAssetIncrease).toHaveBeenCalledWith(1, 0); // 200_000 - 200_000
+    // 장부(available_at_end)는 주기 전체 결제분 기준을 유지 — 자금 반영분의 기록이 아니다
+    expect(result.snapshots[0]?.available_at_end).toBe(4_850_000);
+  });
+
+  it('반영분이 총액을 넘는 이례적 기록 → 0으로 클램프 (역방향 변동 금지)', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readDistributableAssetBalance).mockResolvedValue(5_000_000);
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-03-14');
+    vi.mocked(readIncomeTotal).mockResolvedValue(100_000);
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
+    vi.mocked(readReflectedOutflow).mockResolvedValue(400_000);
+    vi.mocked(readReflectedIncome).mockResolvedValue(150_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 0);
+    expect(applyAssetIncrease).toHaveBeenCalledWith(1, 0);
+  });
+
+  it('기준일 미상 → 반영분 조회 없이 전액 차감 (기존 동작 보존)', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readFundsAsOf).mockResolvedValue(null);
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(readReflectedOutflow).not.toHaveBeenCalled();
+    expect(readReflectedIncome).not.toHaveBeenCalled();
+    expect(applyAssetDeduction).toHaveBeenCalledWith(1, 350_000);
+  });
+
+  it('신규 저장 시 기준일을 그 주기 종료일까지 전진', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(null);
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-03-10');
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: true });
+
+    await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(advanceFundsAsOf).toHaveBeenCalledWith(1, '2026-03-14');
+  });
+
+  it('멱등 — 이미 저장된 주기는 자금도 기준일도 건드리지 않는다', async () => {
+    vi.mocked(readLatestSnapshot).mockResolvedValue(storedSnapshot('2026-02'));
+    vi.mocked(readFundsAsOf).mockResolvedValue('2026-03-10');
+    vi.mocked(readTotalCycleSpent).mockResolvedValue(350_000);
+    vi.mocked(saveSnapshotIfAbsent).mockResolvedValue({ saved: false });
+
+    await runSettlementIfDue(1, DEFAULT_NOW);
+
+    expect(applyAssetDeduction).not.toHaveBeenCalled();
+    expect(applyAssetIncrease).not.toHaveBeenCalled();
+    expect(advanceFundsAsOf).not.toHaveBeenCalled();
+  });
+});
