@@ -1,5 +1,6 @@
 import { query } from '@/lib/db';
 import { addBillingMonths } from '../billing/cycle';
+import { IMMEDIATE_PAYMENT_METHODS } from '../billing/payment-methods';
 
 function subtractOneDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -62,6 +63,53 @@ export async function readExcludedSpent(userId: number, billingMonth: string): P
        AND is_installment = false
        AND billing_month = $2`,
     [userId, billingMonth],
+  );
+  return Number(result.rows[0]?.total ?? 0);
+}
+
+// 예산 기준선 복원분 — "이미 통장에서 나갔는데 예산이 또 뺄" 지출의 합 (#615, ADR 0062).
+// 복원 제외: 예산이 애초에 세지 않는 지출(비할부 일반 지출의 exclude). 복원하면 없는 돈이 생긴다.
+// 복원 포함: 고정비 자동 기록(source='fixed')과 할부 회차 — exclude 플래그와 무관하게
+//            묶인 돈으로 계상되므로 잔액과 예산 양쪽에서 이중으로 빠진다.
+export async function readReflectedBudgetOutflow(
+  userId: number,
+  billingMonth: string,
+  asOf: string,
+): Promise<number> {
+  const result = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS total
+     FROM expenses
+     WHERE user_id = $1
+       AND COALESCE(type, 'expense') = 'expense'
+       AND billing_month = $2
+       AND date <= $3
+       AND payment_method = ANY($4)
+       AND NOT (
+         COALESCE(exclude_from_budget, false) = true
+         AND source IS DISTINCT FROM 'fixed'
+         AND COALESCE(is_installment, false) = false
+       )`,
+    [userId, billingMonth, asOf, IMMEDIATE_PAYMENT_METHODS],
+  );
+  return Number(result.rows[0]?.total ?? 0);
+}
+
+// 정산 오프셋 — 기준일까지 이미 통장에서 나간 전액 (예산 계상 여부 무관).
+// 정산은 회계라 raw 총액 기준. readTotalCycleSpent에서 이만큼 빼야 이중 차감이 안 된다.
+export async function readReflectedOutflow(
+  userId: number,
+  billingMonth: string,
+  asOf: string,
+): Promise<number> {
+  const result = await query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS total
+     FROM expenses
+     WHERE user_id = $1
+       AND COALESCE(type, 'expense') = 'expense'
+       AND billing_month = $2
+       AND date <= $3
+       AND payment_method = ANY($4)`,
+    [userId, billingMonth, asOf, IMMEDIATE_PAYMENT_METHODS],
   );
   return Number(result.rows[0]?.total ?? 0);
 }

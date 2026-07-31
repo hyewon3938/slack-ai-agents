@@ -14,6 +14,38 @@ export async function readDistributableAssetBalance(userId: number): Promise<num
   return Number(result.rows[0]?.total ?? 0);
 }
 
+/**
+ * 자금 기준일 — "이 잔액은 며칠까지의 입출금을 반영한 값인가" (#615, ADR 0062).
+ * 비상금 제외 자산 중 하나라도 NULL이면 null을 반환한다(복원 0, 보수적).
+ * 여러 자산의 기준일이 다르면 가장 이른 날 기준으로만 복원한다.
+ */
+export async function readFundsAsOf(userId: number): Promise<string | null> {
+  const result = await query<{ as_of: string | null }>(
+    `SELECT CASE
+              WHEN COUNT(*) FILTER (WHERE balance_as_of IS NULL) > 0 THEN NULL
+              ELSE MIN(balance_as_of)::text
+            END AS as_of
+     FROM assets
+     WHERE user_id = $1 AND is_emergency = false`,
+    [userId],
+  );
+  return result.rows[0]?.as_of ?? null;
+}
+
+/**
+ * 정산 후 기준일 전진 — 뒤로 가지 않게 GREATEST.
+ * catch-up 정산은 과거 주기를 따라잡으므로, 기준일이 이미 그 주기 종료일보다 뒤인데
+ * 되돌리면 그 사이 즉시 출금분이 "아직 안 나간 것"으로 되살아나 다음 정산에서 또 빠진다.
+ */
+export async function advanceFundsAsOf(userId: number, asOf: string): Promise<void> {
+  await query(
+    `UPDATE assets
+     SET balance_as_of = GREATEST(COALESCE(balance_as_of, $2::date), $2::date)
+     WHERE user_id = $1 AND is_emergency = false`,
+    [userId, asOf],
+  );
+}
+
 /** 자동 차감/증액 실제 반영 내역 (감사/로그용) */
 export interface AssetMutation {
   assetId: number;

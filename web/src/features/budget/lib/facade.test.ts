@@ -7,6 +7,8 @@ vi.mock('./snapshot/monthly-snapshot-repo', () => ({
 }));
 vi.mock('./repository/assets-repo', () => ({
   readDistributableAssetBalance: vi.fn(),
+  readFundsAsOf: vi.fn(),
+  advanceFundsAsOf: vi.fn(),
   applyAssetDeduction: vi.fn(),
   applyAssetIncrease: vi.fn(),
 }));
@@ -16,6 +18,7 @@ vi.mock('./repository/planned-repo', () => ({ readPlannedExpenses: vi.fn() }));
 vi.mock('./repository/incomes-repo', () => ({
   readIncomeTotal: vi.fn(),
   readCurrentMonthOnlyIncome: vi.fn(),
+  readReflectedIncome: vi.fn(),
 }));
 vi.mock('./repository/expenses-repo', () => ({
   readFlexibleSpent: vi.fn(),
@@ -23,6 +26,8 @@ vi.mock('./repository/expenses-repo', () => ({
   readTodayFlexSpent: vi.fn(),
   readTotalCycleSpent: vi.fn(),
   readAvgVariableMonthly: vi.fn(),
+  readReflectedBudgetOutflow: vi.fn(),
+  readReflectedOutflow: vi.fn(),
 }));
 vi.mock('./repository/settings-repo', () => ({
   readTargetMonth: vi.fn(),
@@ -42,19 +47,27 @@ import { readLatestSnapshot, saveSnapshotIfAbsent } from './snapshot/monthly-sna
 import { ensureFixedCostExpenses } from './fixed-cost-ensure';
 import {
   readDistributableAssetBalance,
+  readFundsAsOf,
+  advanceFundsAsOf,
   applyAssetDeduction,
   applyAssetIncrease,
 } from './repository/assets-repo';
 import { readFixedCostsMonthlyTotal } from './repository/fixed-costs-repo';
 import { readInstallmentLockByMonth } from './repository/installments-repo';
 import { readPlannedExpenses } from './repository/planned-repo';
-import { readIncomeTotal, readCurrentMonthOnlyIncome } from './repository/incomes-repo';
+import {
+  readIncomeTotal,
+  readCurrentMonthOnlyIncome,
+  readReflectedIncome,
+} from './repository/incomes-repo';
 import {
   readFlexibleSpent,
   readExcludedSpent,
   readTodayFlexSpent,
   readTotalCycleSpent,
   readAvgVariableMonthly,
+  readReflectedBudgetOutflow,
+  readReflectedOutflow,
 } from './repository/expenses-repo';
 import { readTargetMonth } from './repository/settings-repo';
 
@@ -64,6 +77,12 @@ const DEFAULT_NOW = new Date('2026-04-10T12:00:00Z');
 function setupCommonMocks() {
   vi.mocked(readLatestSnapshot).mockResolvedValue(null);
   vi.mocked(readDistributableAssetBalance).mockResolvedValue(0);
+  // 기준일 미상이 기본 — 복원 0이라 기존 기대값이 그대로 유지된다 (#615).
+  vi.mocked(readFundsAsOf).mockResolvedValue(null);
+  vi.mocked(advanceFundsAsOf).mockResolvedValue(undefined);
+  vi.mocked(readReflectedBudgetOutflow).mockResolvedValue(0);
+  vi.mocked(readReflectedOutflow).mockResolvedValue(0);
+  vi.mocked(readReflectedIncome).mockResolvedValue(0);
   vi.mocked(readFixedCostsMonthlyTotal).mockResolvedValue(0);
   vi.mocked(readInstallmentLockByMonth).mockResolvedValue(new Map());
   vi.mocked(readTargetMonth).mockResolvedValue('2026-04');
