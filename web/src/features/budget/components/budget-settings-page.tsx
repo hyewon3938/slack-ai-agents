@@ -13,6 +13,7 @@ import {
   PAYMENT_METHOD_OPTIONS,
 } from '@/features/budget/lib/billing/payment-methods';
 import { formatAmount } from '@/lib/types';
+import { getTodayISO } from '@/lib/kst';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 
 // ─── 고정비 수정 아이템 ─────────────────────────────────
@@ -478,24 +479,33 @@ function AssetItem({
   onToggleDefault,
 }: {
   asset: AssetRow;
-  onUpdate: (id: number, balance: number, available_amount: number) => Promise<void>;
+  onUpdate: (
+    id: number,
+    balance: number,
+    available_amount: number,
+    balanceAsOf?: string,
+  ) => Promise<void>;
   onToggleDefault: (id: number, next: boolean) => Promise<void>;
 }) {
+  const today = getTodayISO();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [togglingDefault, setTogglingDefault] = useState(false);
-  // 자금 단일화 (#539): 잔액·가용액을 단일 '자금'(현금 유동자금)으로 입력.
+  // 자금 단일화 (#539): 잔액·가용액을 단일 '자금'으로 입력. 입력 의미는 기준일 시점의 통장 잔액 (#615).
   const [value, setValue] = useState(String(asset.available_amount ?? asset.balance));
+  // 기준일 (#615): 이 잔액이 며칠까지의 입출금을 반영한 값인가.
+  const [asOf, setAsOf] = useState(today);
 
   const valueLabel = asset.is_emergency ? '잔액' : '자금';
 
   const handleSave = async () => {
     const v = Number(value);
     if (isNaN(v)) return;
+    if (asOf > today) return;
     setSaving(true);
     try {
       // 단일 필드 — balance·available_amount를 같은 값으로 저장.
-      await onUpdate(asset.id, v, v);
+      await onUpdate(asset.id, v, v, asOf);
       setEditing(false);
     } finally {
       setSaving(false);
@@ -525,6 +535,7 @@ function AssetItem({
           <button
             onClick={() => {
               setValue(String(asset.available_amount ?? asset.balance));
+              setAsOf(today);
               setEditing(true);
             }}
             className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
@@ -546,7 +557,21 @@ function AssetItem({
             />
           </div>
           {!asset.is_emergency && (
-            <p className="text-[10px] text-gray-400">통장 잔액 − 지난 결제 대금 = 현금 유동자금</p>
+            <div className="flex items-center gap-2">
+              <label className="w-16 text-xs text-gray-400">기준일</label>
+              <input
+                type="date"
+                value={asOf}
+                max={today}
+                onChange={(e) => setAsOf(e.target.value)}
+                className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
+              />
+            </div>
+          )}
+          {!asset.is_emergency && (
+            <p className="text-[10px] text-gray-400">
+              통장 잔액 그대로 — 기준일까지의 입출금이 반영된 값
+            </p>
           )}
           {!asset.is_emergency && (
             <label className="flex items-center gap-2 text-xs text-gray-500">
@@ -582,6 +607,9 @@ function AssetItem({
           <span className="font-semibold text-gray-800">
             {formatAmount(asset.available_amount ?? asset.balance)}
           </span>
+          {!asset.is_emergency && asset.balance_as_of && (
+            <span className="ml-2 text-xs text-gray-400">{asset.balance_as_of} 기준</span>
+          )}
         </div>
       )}
     </div>
@@ -863,11 +891,16 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
     onSettingsChange?.();
   };
 
-  const handleUpdateAsset = async (id: number, balance: number, available_amount: number) => {
+  const handleUpdateAsset = async (
+    id: number,
+    balance: number,
+    available_amount: number,
+    balanceAsOf?: string,
+  ) => {
     const res = await fetch(`/api/budget/assets/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ balance, available_amount }),
+      body: JSON.stringify({ balance, available_amount, balance_as_of: balanceAsOf }),
     });
     if (!res.ok) throw new Error('자산 수정 실패');
     const { data } = (await res.json()) as { data: AssetRow };
@@ -1044,8 +1077,8 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
 
         <div className="border-t border-gray-100 px-4 py-2.5">
           <p className="text-xs text-gray-400">
-            자금은 현금 유동자금(통장 잔액 − 지난 결제 대금) 기준으로 입력합니다. 결제 주기 정산 때
-            자동으로 차감·가산되고, 자잘한 차이는 수기로 한 번 더 보정하면 됩니다.
+            자금은 통장 잔액을 그대로 입력하고, 그 잔액이 며칠까지의 입출금을 반영한 값인지 기준일로
+            같이 알려주세요. 아직 안 빠진 카드 대금은 결제 주기 정산 때 자동으로 차감됩니다.
           </p>
         </div>
       </div>

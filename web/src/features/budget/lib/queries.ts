@@ -439,7 +439,7 @@ export async function deleteFixedCost(userId: number, id: number): Promise<boole
 export async function queryAssets(userId: number): Promise<AssetRow[]> {
   const { rows } = await query<AssetRow>(
     `SELECT id, name, balance, type, available_amount, is_emergency,
-            COALESCE(is_default, false) as is_default, memo, updated_at::text
+            COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text
      FROM assets WHERE user_id = $1
      ORDER BY is_emergency ASC, is_default DESC, type, name`,
     [userId],
@@ -451,18 +451,32 @@ export async function queryAssets(userId: number): Promise<AssetRow[]> {
 export async function updateAsset(
   userId: number,
   id: number,
-  data: { balance?: number; available_amount?: number; memo?: string | null },
+  data: {
+    balance?: number;
+    available_amount?: number;
+    memo?: string | null;
+    /** 이 잔액이 며칠까지의 입출금을 반영한 값인가 (#615) */
+    balance_as_of?: string;
+  },
 ): Promise<AssetRow | null> {
   return queryOne<AssetRow>(
     `UPDATE assets
      SET balance = COALESCE($3, balance),
          available_amount = COALESCE($4, available_amount),
          memo = COALESCE($5, memo),
+         balance_as_of = COALESCE($6::date, balance_as_of),
          updated_at = NOW()
      WHERE id = $1 AND user_id = $2
      RETURNING id, name, balance, type, available_amount, is_emergency,
-               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
-    [id, userId, data.balance ?? null, data.available_amount ?? null, data.memo ?? null],
+               COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text`,
+    [
+      id,
+      userId,
+      data.balance ?? null,
+      data.available_amount ?? null,
+      data.memo ?? null,
+      data.balance_as_of ?? null,
+    ],
   );
 }
 
@@ -487,7 +501,7 @@ export async function setDefaultAsset(userId: number, id: number): Promise<Asset
     `UPDATE assets SET is_default = true, updated_at = NOW()
      WHERE id = $1 AND user_id = $2
      RETURNING id, name, balance, type, available_amount, is_emergency,
-               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
+               COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text`,
     [id, userId],
   );
 }
@@ -498,7 +512,7 @@ export async function clearDefaultAsset(userId: number, id: number): Promise<Ass
     `UPDATE assets SET is_default = false, updated_at = NOW()
      WHERE id = $1 AND user_id = $2
      RETURNING id, name, balance, type, available_amount, is_emergency,
-               COALESCE(is_default, false) as is_default, memo, updated_at::text`,
+               COALESCE(is_default, false) as is_default, memo, updated_at::text, balance_as_of::text`,
     [id, userId],
   );
 }
