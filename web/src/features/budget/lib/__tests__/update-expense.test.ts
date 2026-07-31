@@ -104,11 +104,11 @@ describe('updateExpense — 고정비 지출 금액 수정 (#615)', () => {
     // 변동 고정비는 정의가 아니라 그 달 지출 행에서 실제 금액을 고친다.
     mockQueryOne
       .mockResolvedValueOnce({ source: 'fixed', exclude_from_budget: true }) // 가드 SELECT
-      .mockResolvedValueOnce({ id: 686, amount: 167776 }); // UPDATE RETURNING
+      .mockResolvedValueOnce({ id: 686, amount: 120_000 }); // UPDATE RETURNING
 
-    const result = await updateExpense(1, 686, { amount: 167776, exclude_from_budget: true });
+    const result = await updateExpense(1, 686, { amount: 120_000, exclude_from_budget: true });
 
-    expect(result).toEqual({ id: 686, amount: 167776 });
+    expect(result).toEqual({ id: 686, amount: 120_000 });
     expect(queryOne).toHaveBeenCalledTimes(2);
     const updateSql = mockQueryOne.mock.calls[1]![0] as string;
     expect(updateSql).toMatch(/UPDATE\s+expenses\s+SET/i);
