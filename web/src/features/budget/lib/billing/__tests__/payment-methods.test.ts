@@ -9,9 +9,8 @@ import {
 import { CARD_BILLING_CYCLES, getBillingMonthForExpense } from '../card-billing';
 
 describe('getWithdrawalTiming', () => {
-  it('현금·계좌이체는 즉시 출금', () => {
+  it('현금은 즉시 출금', () => {
     expect(getWithdrawalTiming('현금')).toBe('immediate');
-    expect(getWithdrawalTiming('계좌이체')).toBe('immediate');
   });
 
   it('카드는 후불', () => {
@@ -28,7 +27,12 @@ describe('getWithdrawalTiming', () => {
 
 describe('결제수단 목록', () => {
   it('IMMEDIATE_PAYMENT_METHODS는 즉시 출금 수단만 포함', () => {
-    expect([...IMMEDIATE_PAYMENT_METHODS].sort()).toEqual(['계좌이체', '현금']);
+    expect(IMMEDIATE_PAYMENT_METHODS).toEqual(['현금']);
+  });
+
+  it('은퇴한 수단은 미등록 취급 — 보수적으로 후불', () => {
+    expect(isKnownPaymentMethod('계좌이체')).toBe(false);
+    expect(getWithdrawalTiming('계좌이체')).toBe('deferred');
   });
 
   it('기본 결제수단은 등록된 수단', () => {

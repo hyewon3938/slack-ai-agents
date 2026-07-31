@@ -1,6 +1,6 @@
 /** 출금 시점 — 통장에서 돈이 실제로 나가는 때 */
 export type WithdrawalTiming =
-  | 'immediate' // 기록 시점에 이미 나감 (현금·계좌이체)
+  | 'immediate' // 기록 시점에 이미 나감 (현금)
   | 'deferred'; // 결제주기 종료 후 카드사에 결제
 
 export interface PaymentMethodSpec {
@@ -13,7 +13,6 @@ export const PAYMENT_METHODS: Record<string, PaymentMethodSpec> = {
   현대카드: { timing: 'deferred', startDay: 15 },
   국민카드: { timing: 'deferred', startDay: 13 },
   현금: { timing: 'immediate' },
-  계좌이체: { timing: 'immediate' },
   기타: { timing: 'deferred' },
 };
 

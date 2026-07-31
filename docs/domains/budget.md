@@ -383,7 +383,7 @@ runSettlementIfDue(userId, now)  ── 매일 실행
 ### 결제수단별 출금 시점 + 자금 기준일 (#615, ADR 0062)
 
 - **정의 1곳**: [billing/payment-methods.ts](../../web/src/features/budget/lib/billing/payment-methods.ts)가 결제수단 목록 · 출금 시점(`timing`) · 결제주기 시작일(`startDay`)을 함께 갖는다. `CARD_BILLING_CYCLES`는 여기서 파생된다
-- `timing = 'immediate'`(현금·계좌이체) → 쓰는 즉시 통장에서 나감 / `'deferred'`(카드) → 결제일에 나감
+- `timing = 'immediate'`(현금) → 쓰는 즉시 통장에서 나감 / `'deferred'`(카드·기타) → 결제일에 나감
 - 미등록 수단·`null`은 **보수적으로 `deferred`** — 즉시 출금으로 잘못 보면 기준선이 부풀기 때문
 - **예산 기준선 복원**(`readReflectedBudgetOutflow`): 다음을 **모두** 만족하는 지출만 되돌린다
   1. 즉시 출금 수단(`payment_method = ANY(즉시 출금 목록)`)
