@@ -150,9 +150,11 @@ function FixedCostItem({
           ) : (
             <span className="text-xs text-amber-500">결제일 미설정</span>
           )}
-          <span className="text-xs text-gray-400">
-            {cost.payment_method ?? DEFAULT_PAYMENT_METHOD}
-          </span>
+          {cost.payment_method ? (
+            <span className="text-xs text-gray-400">{cost.payment_method}</span>
+          ) : (
+            <span className="text-xs text-amber-500">결제수단 미설정</span>
+          )}
         </div>
       )}
     </div>

@@ -141,7 +141,7 @@ fixed_costs:
   active BOOLEAN,
   memo TEXT,
   created_at TIMESTAMPTZ,
-  payment_method TEXT                  -- 자동 기록에 쓰이는 결제수단. NULL이면 기본값 폴백 (마이그 109)
+  payment_method TEXT                  -- 자동 기록에 쓰이는 결제수단. NULL이면 기본값 폴백 (마이그 109, 기존 행은 110에서 백필)
 
 -- 자산
 -- #539: 비상금 제외 자산은 단일 '자금'(현금 유동자금)으로 통합 (마이그 092). balance=available_amount로 저장.
