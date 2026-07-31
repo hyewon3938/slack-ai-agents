@@ -175,14 +175,14 @@ describe('ensureFixedCostExpenses — 고정비 결제수단 (#615)', () => {
   it('즉시 출금 수단도 귀속 월 규칙은 동일 — 출금 시점만 다르다', async () => {
     mockQuery
       .mockResolvedValueOnce({
-        rows: [{ ...baseFC, name: 'c', day_of_month: 5, payment_method: '계좌이체' }],
+        rows: [{ ...baseFC, name: 'c', day_of_month: 5, payment_method: '현금' }],
       })
       .mockResolvedValueOnce({ rowCount: 1 });
 
     await ensureFixedCostExpenses(1, '2026-04');
 
     const params = mockQuery.mock.calls[1][1];
-    expect(params[7]).toEqual(['계좌이체']);
+    expect(params[7]).toEqual(['현금']);
     expect(params[6]).toEqual(['2026-04']);
   });
 });
