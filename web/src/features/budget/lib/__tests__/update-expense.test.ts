@@ -49,11 +49,11 @@ describe('updateExpense — 단순 화이트리스트 UPDATE (#539, 자산 보�
   });
 
   it('amount만 변경 → 가드 SELECT 없이 단일 UPDATE', async () => {
-    mockQueryOne.mockResolvedValueOnce({ id: 686, amount: 167776 });
+    mockQueryOne.mockResolvedValueOnce({ id: 686, amount: 50_000 });
 
-    const result = await updateExpense(1, 686, { amount: 167776 });
+    const result = await updateExpense(1, 686, { amount: 50_000 });
 
-    expect(result).toEqual({ id: 686, amount: 167776 });
+    expect(result).toEqual({ id: 686, amount: 50_000 });
     // exclude 미변경 → 가드 SELECT 없음. UPDATE 한 번만.
     expect(queryOne).toHaveBeenCalledTimes(1);
     const sql = mockQueryOne.mock.calls[0]![0] as string;
