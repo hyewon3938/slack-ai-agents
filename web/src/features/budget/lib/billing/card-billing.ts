@@ -1,8 +1,14 @@
-/** 카드별 대금기간 상수 (startDay: 해당 일 이상이면 다음 달 대금) */
-export const CARD_BILLING_CYCLES: Record<string, { startDay: number }> = {
-  현대카드: { startDay: 15 },
-  국민카드: { startDay: 13 },
-};
+import { PAYMENT_METHODS } from './payment-methods';
+
+/**
+ * 카드별 대금기간 상수 (startDay: 해당 일 이상이면 다음 달 대금).
+ * 결제수단 정의(payment-methods.ts)에서 파생 — startDay를 가진 수단만 추린다.
+ */
+export const CARD_BILLING_CYCLES: Record<string, { startDay: number }> = Object.fromEntries(
+  Object.entries(PAYMENT_METHODS).flatMap(([name, spec]) =>
+    spec.startDay === undefined ? [] : [[name, { startDay: spec.startDay }] as const],
+  ),
+);
 
 /** 시스템 기본 대금기간 시작일 (현대카드 기준) */
 const DEFAULT_START_DAY = 15;
