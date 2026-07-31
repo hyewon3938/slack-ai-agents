@@ -246,11 +246,12 @@ export function useBudget() {
   const updateExpense = useCallback(
     async (
       id: number,
+      // 부분 수정 — 모달이 바뀐 필드만 보낸다 (#615)
       updates: {
-        date: string;
-        amount: number;
-        category: string;
-        description: string | null;
+        date?: string;
+        amount?: number;
+        category?: string;
+        description?: string | null;
         exclude_from_budget?: boolean;
         planned_expense_id?: number | null;
       },
