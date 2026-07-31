@@ -39,6 +39,8 @@ export interface FixedCostRow {
   day_of_month: number | null;
   active: boolean;
   memo: string | null;
+  /** 자동 기록에 쓸 결제수단. NULL이면 기본 결제수단으로 폴백 */
+  payment_method: string | null;
 }
 
 export interface BudgetRow {
@@ -60,6 +62,8 @@ export interface AssetRow {
   is_default: boolean;
   memo: string | null;
   updated_at: string;
+  /** 이 잔액이 며칠까지의 입출금을 반영한 값인가 (#615, ADR 0062) */
+  balance_as_of: string | null;
 }
 
 export interface CategoryStat {

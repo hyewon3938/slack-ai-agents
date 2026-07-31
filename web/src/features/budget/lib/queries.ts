@@ -375,6 +375,7 @@ const FIXED_COST_COLUMNS = new Set([
   'day_of_month',
   'active',
   'memo',
+  'payment_method',
 ]);
 
 export async function updateFixedCost(
@@ -390,7 +391,7 @@ export async function updateFixedCost(
   return queryOne<FixedCostRow>(
     `UPDATE fixed_costs SET ${setClauses.join(', ')}
      WHERE id = $1 AND user_id = $2
-     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo`,
+     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo, payment_method`,
     [id, userId, ...values],
   );
 }
@@ -398,13 +399,26 @@ export async function updateFixedCost(
 /** 고정비 생성 */
 export async function createFixedCost(
   userId: number,
-  data: { name: string; amount: number; category?: string; day_of_month?: number | null },
+  data: {
+    name: string;
+    amount: number;
+    category?: string;
+    day_of_month?: number | null;
+    payment_method?: string | null;
+  },
 ): Promise<FixedCostRow> {
   const row = await queryOne<FixedCostRow>(
-    `INSERT INTO fixed_costs (user_id, name, amount, category, day_of_month)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo`,
-    [userId, data.name, data.amount, data.category ?? null, data.day_of_month ?? null],
+    `INSERT INTO fixed_costs (user_id, name, amount, category, day_of_month, payment_method)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, amount, category, is_variable, day_of_month, active, memo, payment_method`,
+    [
+      userId,
+      data.name,
+      data.amount,
+      data.category ?? null,
+      data.day_of_month ?? null,
+      data.payment_method ?? null,
+    ],
   );
   if (!row) throw new Error('createFixedCost: INSERT returned no rows');
   return row;

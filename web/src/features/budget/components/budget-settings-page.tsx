@@ -8,6 +8,10 @@ import {
   ALL_EXPENSE_CATEGORIES,
 } from '@/features/budget/lib/types';
 import { getCurrentBillingMonth } from '@/features/budget/lib/billing/cycle';
+import {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHOD_OPTIONS,
+} from '@/features/budget/lib/billing/payment-methods';
 import { formatAmount } from '@/lib/types';
 import { PencilIcon, CheckCircleIcon, XMarkIcon } from '@/components/ui/icons';
 
@@ -26,6 +30,7 @@ function FixedCostItem({
   const [saving, setSaving] = useState(false);
   const [amount, setAmount] = useState(String(cost.amount));
   const [dayOfMonth, setDayOfMonth] = useState(String(cost.day_of_month ?? ''));
+  const [paymentMethod, setPaymentMethod] = useState(cost.payment_method ?? DEFAULT_PAYMENT_METHOD);
 
   const handleSave = async () => {
     const a = Number(amount);
@@ -34,7 +39,7 @@ function FixedCostItem({
     if (day !== null && (isNaN(day) || day < 1 || day > 31)) return;
     setSaving(true);
     try {
-      await onUpdate(cost.id, { amount: a, day_of_month: day });
+      await onUpdate(cost.id, { amount: a, day_of_month: day, payment_method: paymentMethod });
       setEditing(false);
     } finally {
       setSaving(false);
@@ -60,6 +65,7 @@ function FixedCostItem({
             onClick={() => {
               setAmount(String(cost.amount));
               setDayOfMonth(String(cost.day_of_month ?? ''));
+              setPaymentMethod(cost.payment_method ?? DEFAULT_PAYMENT_METHOD);
               setEditing(true);
             }}
             className="rounded-md p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-500"
@@ -92,6 +98,20 @@ function FixedCostItem({
               className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
             />
             <span className="text-xs text-gray-400">일</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="w-16 text-xs text-gray-400">결제수단</label>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-700 focus:border-blue-400 focus:outline-none"
+            >
+              {PAYMENT_METHOD_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex justify-between">
             <button
@@ -129,6 +149,9 @@ function FixedCostItem({
           ) : (
             <span className="text-xs text-amber-500">결제일 미설정</span>
           )}
+          <span className="text-xs text-gray-400">
+            {cost.payment_method ?? DEFAULT_PAYMENT_METHOD}
+          </span>
         </div>
       )}
     </div>
@@ -145,6 +168,7 @@ function FixedCostAddForm({
     amount: number;
     category?: string;
     day_of_month?: number | null;
+    payment_method?: string | null;
   }) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -152,6 +176,7 @@ function FixedCostAddForm({
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [dayOfMonth, setDayOfMonth] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
@@ -166,11 +191,13 @@ function FixedCostAddForm({
         amount: a,
         category: category || undefined,
         day_of_month: day,
+        payment_method: paymentMethod,
       });
       setName('');
       setAmount('');
       setCategory('');
       setDayOfMonth('');
+      setPaymentMethod(DEFAULT_PAYMENT_METHOD);
       setOpen(false);
     } finally {
       setSaving(false);
@@ -229,6 +256,17 @@ function FixedCostAddForm({
           {FIXED_COST_CATEGORIES.map((c) => (
             <option key={c} value={c}>
               {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={paymentMethod}
+          onChange={(e) => setPaymentMethod(e.target.value)}
+          className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-700 focus:border-blue-400 focus:outline-none"
+        >
+          {PAYMENT_METHOD_OPTIONS.map((m) => (
+            <option key={m} value={m}>
+              {m}
             </option>
           ))}
         </select>
@@ -793,6 +831,7 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
     amount: number;
     category?: string;
     day_of_month?: number | null;
+    payment_method?: string | null;
   }) => {
     const res = await fetch('/api/budget/fixed-costs', {
       method: 'POST',

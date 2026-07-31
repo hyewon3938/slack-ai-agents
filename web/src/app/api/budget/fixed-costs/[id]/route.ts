@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { updateFixedCost, deleteFixedCost } from '@/features/budget/lib/queries';
+import { isKnownPaymentMethod } from '@/features/budget/lib/billing/payment-methods';
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -15,6 +13,11 @@ export async function PATCH(
     if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
     const body = (await request.json()) as Record<string, unknown>;
+    const method = body.payment_method;
+    if (method != null && (typeof method !== 'string' || !isKnownPaymentMethod(method))) {
+      return NextResponse.json({ error: '등록되지 않은 결제수단입니다' }, { status: 400 });
+    }
+
     const data = await updateFixedCost(userId, id, body);
     if (!data) return NextResponse.json({ error: '고정비를 찾을 수 없습니다' }, { status: 404 });
 
@@ -25,10 +28,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
