@@ -56,6 +56,8 @@
 - 구현: [facade.ts `runSettlementIfDue`](../../web/src/features/budget/lib/facade.ts), [assets-repo.ts](../../web/src/features/budget/lib/repository/assets-repo.ts)
 - 판단 근거: [ADR 0051](../adr/0051-budget-model-simplification-runway-locked.md) (ADR 0015·0018 supersede)
 
+> TODO(`/build`, #615): 결제수단별 출금 시점 + 자금 기준일 도입 후 본문 갱신. 입력 의미("통장 잔액 그대로"), `balance_as_of`의 뜻, 예산 기준선 복원식, 정산이 미반영분만 적용하는 규칙. 판단 근거 [ADR 0062](../adr/0062-payment-method-withdrawal-timing.md) 추가
+
 ### 자유 예산 (Free Budget)
 - 월 자유 예산 = 월 가용자금 − (월 고정비 + **그 달 묶인 돈** + 예정 지출)
 - 묶인 돈 = 목표 기간 창 안 그 `billing_month`의 할부 락(`readInstallmentLockByMonth`). 현재월/미래월 동일 규칙
@@ -132,6 +134,7 @@ fixed_costs:
   active BOOLEAN,
   memo TEXT,
   created_at TIMESTAMPTZ
+  -- TODO(/build, #615): payment_method TEXT 추가 (자동 기록 하드코딩 대체)
 
 -- 자산
 -- #539: 비상금 제외 자산은 단일 '자금'(현금 유동자금)으로 통합 (마이그 092). balance=available_amount로 저장.
@@ -147,6 +150,7 @@ assets:
   memo TEXT,
   updated_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ
+  -- TODO(/build, #615): balance_as_of DATE 추가 (이 잔액이 며칠까지 반영된 값인가)
 
 -- 예산 설정 (목표 기간, 시작일)
 budget_settings:
@@ -327,6 +331,8 @@ runSettlementIfDue(userId, now)  ── 매일 실행
 ```
 > 크론이 특정 날짜에 실패해도 다음 실행이 오래된 순으로 따라잡는 자기치유 구조. 이전 단일-일자 트리거(`detectSettlementTrigger`)는 #553에서 제거.
 
+> TODO(`/build`, #615): 정산이 **미반영분만** 적용하도록 바뀐 뒤 흐름 갱신 — 차감액에서 기준일 이전 즉시 출금분 차감, 증액에서 기준일 이전 수입 차감, 정산 후 `balance_as_of` 이동.
+
 ### 일별 예산 로그 저장 (매일 자정 cron)
 ```
 /api/cron/daily-budget-log
@@ -363,6 +369,10 @@ runSettlementIfDue(userId, now)  ── 매일 실행
 - reservation(월별 락)은 자금값을 안 건드리는 라이브 계산. depletion(자금 차감)은 정산 1곳에서 전체 결제분
 - 한 할부 회차: 결제 전 reservation → 결제 후 depletion + 창 이탈. 이중 카운트 없음
 - `installment_group` UUID 로 원본 거래 추적
+
+### 결제수단별 출금 시점 + 자금 기준일 (#615, ADR 0062)
+
+> TODO(`/build`): 구현 후 본문 채우기 — 결제수단 정의 위치와 `timing` 값, 미등록 수단 기본값, 예산 기준선 복원식(복원 대상 조건 3개), 정산 미반영분 산식, `billing_month` 귀속 규칙 무변경 명시.
 
 ### 현재 월 allocatedDays
 - 현재 월도 결제주기 **전체 일수**(`currentAllocatedDays = currentCycle.totalDays`)로 배분 — 잔여일 비례 축소 없음
