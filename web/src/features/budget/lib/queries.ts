@@ -152,14 +152,15 @@ export async function createInstallmentExpenses(
     payment_method?: string;
     memo?: string | null;
     type?: 'expense' | 'income';
-    exclude_from_budget?: boolean;
   },
 ): Promise<ExpenseRow> {
   const monthlyAmount = Math.round(data.totalAmount / data.months);
   // 끝전 보정: 마지막 회차에서 나머지 흡수
   const lastMonthAmount = data.totalAmount - monthlyAmount * (data.months - 1);
   const groupId = crypto.randomUUID();
-  const excludeFromBudget = data.exclude_from_budget ?? false;
+  // 할부는 예외 없이 묶인 돈 — exclude_from_budget=true 조합은 존재할 수 없다 (#549, 마이그 095의
+  // CHECK 제약). 호출부가 제외 토글 값을 넘길 수 없도록 파라미터 자체를 두지 않고 false로 고정한다.
+  const excludeFromBudget = false;
 
   // 할부 회차는 등록 시점에 자산을 차감하지 않는다 (#539, ADR 0051).
   // 목표 기간 창 안 회차는 묶인 돈(reservation)으로 라이브 계산되고, 실제 자금 차감은

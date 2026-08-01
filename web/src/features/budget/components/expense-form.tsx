@@ -84,6 +84,14 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
     if (getWithdrawalTiming(method) === 'immediate') setInstallmentMonths(1);
   };
 
+  // 할부 회차는 예외 없이 묶인 돈이라 예산 제외가 성립하지 않는다 (#549). 예산 제외가 기본인
+  // 카테고리(리커밋 사업 등)를 할부로 고르면 두 값이 충돌해 저장 자체가 막히므로, 할부일 때는
+  // 토글을 감추고 제외 값도 보내지 않는다. 수정 모달도 같은 규칙으로 토글을 감춘다.
+  const isInstallment =
+    entryType === 'expense' &&
+    getWithdrawalTiming(paymentMethod) === 'deferred' &&
+    installmentMonths >= 2;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -106,7 +114,7 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
           entryType === 'expense' && getWithdrawalTiming(paymentMethod) === 'deferred'
             ? installmentMonths
             : undefined,
-        exclude_from_budget: entryType === 'expense' ? excludeFromBudget : false,
+        exclude_from_budget: entryType === 'expense' && !isInstallment ? excludeFromBudget : false,
         distribute_to_budget: entryType === 'income' ? distributeToBudget : false,
       });
       setAmountStr('');
@@ -283,32 +291,38 @@ export function ExpenseForm({ onAdd, yearMonth }: ExpenseFormProps) {
             </p>
           )}
 
-          {/* 예산 포함/제외 토글 */}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">예산</label>
-            <div className="flex rounded-lg border border-gray-200 p-0.5">
-              <button
-                type="button"
-                onClick={() => setExcludeFromBudget(false)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  !excludeFromBudget
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                포함
-              </button>
-              <button
-                type="button"
-                onClick={() => setExcludeFromBudget(true)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  excludeFromBudget ? 'bg-gray-500 text-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                제외
-              </button>
+          {/* 예산 포함/제외 토글 — 일반 지출만 (할부는 항상 묶인 돈, #549) */}
+          {!isInstallment ? (
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">예산</label>
+              <div className="flex rounded-lg border border-gray-200 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setExcludeFromBudget(false)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    !excludeFromBudget
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  포함
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExcludeFromBudget(true)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    excludeFromBudget
+                      ? 'bg-gray-500 text-white'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  제외
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <p className="pb-1 text-[10px] text-gray-400">할부는 예산에 항상 묶인 돈으로 포함</p>
+          )}
         </div>
       )}
 

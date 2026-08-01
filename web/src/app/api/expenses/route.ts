@@ -119,6 +119,8 @@ export async function POST(request: Request) {
       typeof body.exclude_from_budget === 'boolean' ? body.exclude_from_budget : false;
 
     // 할부 처리 (카드 2~12개월)
+    // 예산 제외 카테고리(리커밋 사업 등)를 할부로 넣으면 클라이언트가 exclude 토글 값을 실어 보내는데,
+    // 할부 행은 예외 없이 묶인 돈이라 그 조합을 저장할 수 없다 (#549). 여기서 값을 넘기지 않는다.
     const installmentMonths = body.installment_months ?? 1;
     if (installmentMonths >= 2 && installmentMonths <= 12) {
       const data = await createInstallmentExpenses(userId, {
@@ -130,7 +132,6 @@ export async function POST(request: Request) {
         payment_method: body.payment_method,
         memo: body.memo,
         type: entryType,
-        exclude_from_budget: excludeFromBudget,
       });
       return NextResponse.json({ data }, { status: 201 });
     }
