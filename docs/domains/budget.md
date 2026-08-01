@@ -406,6 +406,7 @@ runSettlementIfDue(userId, now)  ── 매일 실행
 - `assets.is_emergency=true` → `readDistributableAssetBalance` 에서 제외 (예산 분배 밖 '최후의 보루')
 - `expenses.exclude_from_budget=true` → 자유 예산 계산 대상 아님 (별도 `excluded_spent`로 집계). 할부는 `is_installment` 필터로 이미 flex에서 빠지므로 exclude와 무관 (#539)
 - **할부 × exclude 조합 금지**(#549, 마이그 095): 할부는 예외 없이 묶인 돈이라 `exclude_from_budget=true`가 될 수 없다. 기존 할부 exclude 행은 정규화하고 CHECK 제약(`expenses_installment_not_excluded`)으로 재발 차단. `queryMonthSummary`의 할부 합계는 exclude 필터 없이 락 집합과 동일하게, `readExcludedSpent`는 비할부 지출로 한정
+  - 입력 경로 강제(#620): 예산 제외가 기본인 카테고리(`BUDGET_EXCLUDED_CATEGORIES`)를 할부로 고르면 두 값이 충돌해 INSERT가 막혔다. 지출 추가 폼은 할부 선택 시 예산 토글을 감추고(수정 모달과 동일 규칙), `createInstallmentExpenses`는 `exclude_from_budget` 파라미터 자체를 받지 않고 false로 고정한다
 - 고정비 자동 기록은 현재 **항상** `exclude_from_budget=true`로 저장 (정책 재검토 대상)
 - Vercel cron 드리프트 보정: 발화 시각에서 1시간 버퍼 차감 후 KST 날짜 결정
 
