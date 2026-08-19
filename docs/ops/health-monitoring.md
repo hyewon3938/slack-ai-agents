@@ -47,8 +47,12 @@ curl -H "Authorization: Bearer $DB_PROXY_API_KEY" https://<봇-호스트>/health
 2. **웹 health** — `WEB_HEALTH_URL`을 fetch → HTTP 200 + body `"ok":true` 검증
    - 정상 → `HC_PING_URL_WEB`으로 GET
    - 실패 → `HC_PING_URL_WEB + '/fail'`로 GET (즉시 알림)
+3. **저하 사이클 기록** — 헬스 확인이 3초를 넘으면 "저하"로 판정해 인메모리 장부에 적는다
+   - **알림을 내지 않는다.** 저하는 죽음이 아니므로 알리면 알림 무감각만 늘고 진짜 다운 알림의 신뢰도가 깎인다
+   - 다음 **정상** ping을 POST로 보내며 장부를 body에 동봉 → healthchecks.io ping 로그에 뒤늦게라도 남는다
+   - 전송에 성공한 분량만 비우므로, 침묵 구간을 건너뛴 이력도 다음 사이클로 이월된다
 
-healthchecks.io는 이 ping이 정해진 주기 안에 도착하지 않으면 장애로 보고 알림을 낸다. **dead-man's-switch** — "핑이 끊기는 것"이 곧 신호다.
+healthchecks.io는 이 ping이 정해진 주기 안에 도착하지 않으면 장애로 보고 알림을 낸다. **dead-man's-switch** — "핑이 끊기는 것"이 곧 신호다. 다만 "핑 없음"은 죽음·느려짐·네트워크 손실을 구분하지 못한다 → 3의 저하 기록이 그 해상도를 보완한다 ([ADR-0063](../adr/0063-resource-contention-uptime-judgment.md)).
 
 ### 구현 위치
 
@@ -59,7 +63,9 @@ healthchecks.io는 이 ping이 정해진 주기 안에 도착하지 않으면 �
 ### 안전 설계
 
 - **세 env 전부 선택적** — 하나라도 미설정이면 해당 대상은 스킵, 셋 다 없으면 부팅 로그 한 줄 남기고 완전 no-op. healthchecks.io 가입 전에 배포돼도 안전
-- **heartbeat는 봇을 죽이지 않는다** — 모든 fetch에 \~10초 타임아웃 + try-catch. ping 전송 실패는 로그만 (재시도 루프 없음 — healthchecks.io grace가 흡수)
+- **heartbeat는 봇을 죽이지 않는다** — 모든 fetch에 타임아웃 + try-catch. ping 전송 실패는 로그만 (재시도 루프 없음 — healthchecks.io grace가 흡수)
+- **타임아웃은 30초** — 자원 경합 구간에서 응답이 느려지는 것은 죽음이 아니라 저하다. 짧은 타임아웃은 저하를 죽음으로 오판해 ping 자체를 소실시키고, dead-man은 그 침묵을 다운으로 읽는다. heartbeat 주기(5분) 대비 30초는 충분히 짧아 진짜 다운 감지 시점을 늦추지 않는다
+- **저하는 알림이 아니라 기록** — 판정 근거가 아닌 진단 보조다. 인메모리 장부라 봇 재시작으로 소실돼도 기능 손실이 아니다 (최대 12사이클 = \~1시간치 보관)
 
 ### 설정 절차
 
@@ -159,6 +165,42 @@ gh workflow run uptime-check.yml
    - Vercel `/api/health` 장애 → Vercel 배포 상태 확인
 3. 원인에 따라 복구 → 봇 heartbeat 재개 시 healthchecks.io가 자동으로 up 처리
 
+### 다운 알림 오탐 판별 (재배포 **전** 필수)
+
+같은 VM에서 도는 다른 워크로드(빌드 등)가 메모리를 잠식하면, 봇은 죽지 않았는데도 스왑 스래싱으로 모든 응답이 느려져 ping이 유실되고 dead-man이 다운으로 읽는다(2026-08-19 실측). 이 경우 **재배포는 해법이 아니라 부하 추가**다 — 알림을 받으면 아래 순서로 먼저 판별한다.
+
+1. **컨테이너가 실제로 죽었나** — 재시작 횟수와 상태 확인. 값이 그대로면 프로세스는 산 것이다
+   ```bash
+   ssh oracle-prod "docker inspect -f '{{.State.Status}} restarts={{.RestartCount}} started={{.State.StartedAt}}' slack-ai-agents"
+   ```
+2. **내부 헬스가 응답하나** — 컨테이너 안에서 직접 찔러본다. 200이면 봇·DB는 정상, 문제는 바깥이다
+   ```bash
+   ssh oracle-prod "docker exec slack-ai-agents node -e \"fetch('http://localhost:3100/health').then(r=>console.log(r.status))\""
+   ```
+3. **호스트 자원 압력** — 스왑 사용량이 크고 available이 바닥이면 경합 상황이다
+   ```bash
+   ssh oracle-prod "free -m && uptime"
+   ```
+4. **경합 원인 워크로드** — 같은 VM의 다른 프로젝트가 빌드 중인지 확인 (컨테이너 목록·최근 이미지 빌드 시각)
+5. **저하 기록 확인** — healthchecks.io 해당 check의 **Log** 탭에서 최근 ping body를 본다. `degraded N cycle(s) ... bot=8000ms` 형태가 남아 있으면 "느려졌다가 살아난 것"이 확정된다
+
+1\~2가 정상이고 3\~5가 경합을 가리키면 **아무것도 하지 않는다.** 원인 워크로드가 끝나면 자연 회복되고 healthchecks.io가 자동으로 up 처리한다. 이 판별을 건너뛴 재배포는 경합 중인 호스트에 이미지 pull + 컨테이너 재생성 부하를 얹는다.
+
+### VM 재프로비저닝 체크리스트
+
+호스트를 새로 만들거나 갈아엎을 때 아래 두 가지는 코드 배포로 따라오지 않는다 — 수동으로 다시 넣어야 한다.
+
+1. **스왑 성향 하향** — 커널이 스왑으로 압력을 흡수해버리면 아무도 죽지 않고 다 같이 느려져서 자정(自淨)이 일어나지 않는다. 값을 낮춰 압력이 스래싱 대신 OOM으로 빠르게 판정되게 한다
+   ```bash
+   echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swappiness.conf && sudo sysctl --system
+   ```
+2. **컨테이너 메모리 상한** — `docker-compose.yml`의 `mem_limit`/`mem_reservation`/`oom_score_adj`. 재배포 후 적용 여부 확인
+   ```bash
+   ssh oracle-prod "docker inspect --format '{{.HostConfig.Memory}} {{.HostConfig.MemoryReservation}} {{.HostConfig.OomScoreAdj}}' slack-ai-agents slack-ai-agents-db"
+   ```
+
+> 상한은 **보호가 아니라 억제**다. 이 스택이 경합의 원인이 되지 않게 자기를 묶는 장치이지, 바깥에서 오는 압력을 막아주지 않는다. 상세 근거는 [ADR-0063](../adr/0063-resource-contention-uptime-judgment.md).
+
 ---
 
 ## 알려진 한계
@@ -175,7 +217,13 @@ gh workflow run uptime-check.yml
 
 → 완화: 봇 self-health를 기존 `/health`와, 웹 검증을 기존 폴링과 동일 의미론으로 미러링. 능동 폴링(대상 바깥에서 직접 찔러보는 방식)이 필요해지면 Better Stack 등 SaaS 보완 검토 (ADR-0055 대안 C).
 
-### 3. Slack 웹소켓(Socket Mode) 연결 끊김 미감지
+### 3. 자원 경합 구간의 판정 해상도
+
+dead-man's-switch는 ping의 유무만 본다 — "죽음"과 "느려짐"과 "네트워크 손실"이 같은 신호(침묵)로 들어온다. 관측 실패가 관측 대상과 같은 호스트에서 상관돼 발생하는 구조적 한계다.
+
+→ 완화: 타임아웃 확대(느린 ping도 도착하게) + 저하 사이클 기록(사후에 성격 판별 가능). 실시간으로 "저하 중"을 알려주지는 않는다 — 알림 무감각을 피하려는 의도적 선택 ([ADR-0063](../adr/0063-resource-contention-uptime-judgment.md)).
+
+### 4. Slack 웹소켓(Socket Mode) 연결 끊김 미감지
 
 프로세스는 살아있어 `/health`는 200을 반환하지만, Slack 메시지 응답은 불가능한 상태.
 
