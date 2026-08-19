@@ -3,6 +3,13 @@ services:
     image: postgres:17-alpine
     container_name: slack-ai-agents-db
     restart: unless-stopped
+    # 자기 억제: 이 스택이 호스트 메모리 경합의 "원인"이 되지 않도록 상한을 못박는다.
+    # 상한은 보호가 아니라 억제다 — 외부 압력은 이 값으로 막을 수 없다 (ADR-0063).
+    mem_limit: 320m
+    mem_reservation: 128m
+    # 호스트 swappiness 하향으로 OOM 발생 확률이 의도적으로 올라가므로,
+    # 이 스택이 커널의 첫 희생자가 되지 않게 우선순위를 뒤로 뺀다.
+    oom_score_adj: -500
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-agent}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -40,6 +47,10 @@ services:
     image: ghcr.io/hyewon3938/slack-ai-agents:latest
     container_name: slack-ai-agents
     restart: unless-stopped
+    # 자기 억제 + OOM 우선순위 (db와 동일 취지 — ADR-0063)
+    mem_limit: 384m
+    mem_reservation: 160m
+    oom_score_adj: -500
     env_file:
       - .env
     # DB Proxy API 포트는 호스트 루프백에만 바인딩.

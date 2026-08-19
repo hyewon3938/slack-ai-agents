@@ -11,16 +11,29 @@
  *   미설정이면 부팅 로그 한 줄 남기고 완전 no-op (healthchecks.io 가입 전 배포돼도 안전).
  * - 모든 fetch에 타임아웃 + try-catch. heartbeat는 어떤 경우에도 봇을 죽이지 않는다.
  *   ping 전송 실패는 로그만 (재시도 루프 없음 — healthchecks.io grace가 흡수).
+ * - 자원 경합으로 느려진 사이클은 죽음이 아니라 저하다. 저하는 알리지 않고 장부에
+ *   적어 다음 정상 ping에 동봉한다 (#621, heartbeat-degraded.ts).
  */
 
 import cron from 'node-cron';
 import { query } from '../shared/db.js';
+import {
+  buildDegradedReport,
+  dropDegradedCycles,
+  recordDegradedCycle,
+} from './heartbeat-degraded.js';
 
 /** heartbeat cron 주기 (5분) */
 const HEARTBEAT_CRON = '*/5 * * * *';
 
-/** 외부 요청 타임아웃 (ms) */
-const FETCH_TIMEOUT_MS = 10_000;
+/**
+ * 외부 요청 타임아웃 (ms).
+ *
+ * 자원 경합 구간에서 응답이 느려지는 것은 "죽음"이 아니라 "저하"다. 짧은 타임아웃은
+ * 저하를 죽음으로 오판해 ping을 소실시키고, dead-man은 그 침묵을 다운으로 읽는다
+ * (2026-08-19 오탐). heartbeat 주기(5분)에 비하면 30초는 충분히 짧다.
+ */
+const FETCH_TIMEOUT_MS = 30_000;
 
 /** 웹 헬스 body 검증 — uptime-check.yml과 동일 의미론 ("ok": true 포함) */
 const WEB_OK_PATTERN = /"ok"\s*:\s*true/;
@@ -74,20 +87,38 @@ export const checkWebHealth = async (webHealthUrl: string): Promise<boolean> => 
 
 /**
  * healthchecks.io ping 송신.
- * healthy면 baseUrl로, 아니면 baseUrl + '/fail'로 GET (즉시 알림).
- * 전송 실패는 로그만 남기고 삼킨다 (재시도 없음).
+ * healthy면 baseUrl로, 아니면 baseUrl + '/fail'로 (즉시 알림).
+ * body가 주어지면 POST로 보내 ping 로그에 본문을 남긴다 (저하 이력 동봉).
+ * 전송 실패는 로그만 남기고 삼킨다 (재시도 없음). 반환값은 전달 성공 여부.
  */
-export const sendPing = async (baseUrl: string, healthy: boolean, label: string): Promise<void> => {
+export const sendPing = async (
+  baseUrl: string,
+  healthy: boolean,
+  label: string,
+  body?: string,
+): Promise<boolean> => {
   const url = healthy ? baseUrl : `${baseUrl}/fail`;
   try {
-    await fetch(url, {
-      method: 'GET',
+    const response = await fetch(url, {
+      method: body === undefined ? 'GET' : 'POST',
+      ...(body === undefined ? {} : { body }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
+    return response.ok;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(`[Heartbeat] ${label} ping 전송 실패 (무시): ${msg}`);
+    return false;
   }
+};
+
+/** 헬스 확인을 소요시간과 함께 실행한다 (저하 판정용 계측) */
+const measure = async (
+  check: () => Promise<boolean>,
+): Promise<{ healthy: boolean; elapsedMs: number }> => {
+  const startedAt = Date.now();
+  const healthy = await check();
+  return { healthy, elapsedMs: Date.now() - startedAt };
 };
 
 /**
@@ -96,15 +127,29 @@ export const sendPing = async (baseUrl: string, healthy: boolean, label: string)
  */
 export const runHeartbeatOnce = async (config: HeartbeatConfig): Promise<void> => {
   try {
-    if (config.botPingUrl) {
-      const healthy = await checkBotHealth();
-      await sendPing(config.botPingUrl, healthy, '봇');
-    }
+    const bot = config.botPingUrl ? await measure(checkBotHealth) : null;
+    const web =
+      config.webPingUrl && config.webHealthUrl
+        ? await measure(() => checkWebHealth(config.webHealthUrl))
+        : null;
 
-    if (config.webPingUrl && config.webHealthUrl) {
-      const healthy = await checkWebHealth(config.webHealthUrl);
-      await sendPing(config.webPingUrl, healthy, '웹');
-    }
+    recordDegradedCycle(bot?.elapsedMs ?? null, web?.elapsedMs ?? null);
+
+    // 저하 이력은 알리지 않고 이번 사이클의 정상 ping에 동봉한다.
+    // 전송에 성공한 분량만 장부에서 비우므로, 실패하면 다음 사이클로 이월된다.
+    let pending = buildDegradedReport();
+
+    const ping = async (baseUrl: string, healthy: boolean, label: string): Promise<void> => {
+      const attached = healthy ? pending : null;
+      const delivered = await sendPing(baseUrl, healthy, label, attached?.body);
+      if (attached !== null && delivered) {
+        dropDegradedCycles(attached.count);
+        pending = null;
+      }
+    };
+
+    if (bot) await ping(config.botPingUrl, bot.healthy, '봇');
+    if (web) await ping(config.webPingUrl, web.healthy, '웹');
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`[Heartbeat] 실행 오류 (무시): ${msg}`);
