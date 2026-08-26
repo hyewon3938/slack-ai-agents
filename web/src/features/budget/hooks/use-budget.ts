@@ -136,7 +136,7 @@ export function useBudget() {
       setSummary(null);
       try {
         // ── 1차: 핵심 데이터 (지출목록 + 요약 → 화면 즉시 표시) ──
-        // billing_month 컬럼 기준 조회 → 카드별 결제주기(현대 14일, 국민 13일) 자동 반영
+        // billing_month 컬럼 기준 조회 → 카드별 대금기간(payment-methods.ts startDay) 자동 반영
         const [expData, sumData] = await Promise.all([
           fetchJson<{ data: ExpenseRow[] }>(`/api/expenses?yearMonth=${month}`),
           fetchJson<{ data: MonthSummary }>(`/api/expenses/summary?yearMonth=${month}`),

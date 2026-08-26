@@ -19,72 +19,72 @@ describe('timeToCron', () => {
   });
 });
 
-// ── getBillingMonthForDate: 결제주기 경계 (웹 billing/cycle.ts와 15일 통일) ──
+// ── getBillingMonthForDate: 결제주기 경계 (웹 billing/cycle-config.ts CYCLE_START_DAY와 통일) ──
 
-describe('getBillingMonthForDate — 결제주기 경계 15일', () => {
-  it('14일 → 당월 (경계 직전)', () => {
-    expect(getBillingMonthForDate('2026-07-14')).toBe('2026-07');
+describe('getBillingMonthForDate — 결제주기 경계 16일', () => {
+  it('15일 → 당월 (경계 직전)', () => {
+    expect(getBillingMonthForDate('2026-07-15')).toBe('2026-07');
   });
 
-  it('15일 → 다음 달 (경계 당일, 기존 16일 버그 케이스)', () => {
-    expect(getBillingMonthForDate('2026-07-15')).toBe('2026-08');
-  });
-
-  it('16일 → 다음 달', () => {
+  it('16일 → 다음 달 (경계 당일)', () => {
     expect(getBillingMonthForDate('2026-07-16')).toBe('2026-08');
   });
 
-  it('12월 15일 → 연 넘김 (다음 해 1월)', () => {
-    expect(getBillingMonthForDate('2026-12-15')).toBe('2027-01');
+  it('17일 → 다음 달', () => {
+    expect(getBillingMonthForDate('2026-07-17')).toBe('2026-08');
+  });
+
+  it('12월 16일 → 연 넘김 (다음 해 1월)', () => {
+    expect(getBillingMonthForDate('2026-12-16')).toBe('2027-01');
   });
 });
 
 // ── 목표 기간 만료 알림: 만료일 산식 + 문구 (#554) ──
 
-describe('getTargetExpiryDate — 만료일 산식 (15일-시작 규칙)', () => {
-  it('target 2026-08 → 만료일 2026-08-14', () => {
-    expect(getTargetExpiryDate('2026-08')).toBe('2026-08-14');
+describe('getTargetExpiryDate — 만료일 산식 (16일-시작 규칙)', () => {
+  it('target 2026-08 → 만료일 2026-08-15', () => {
+    expect(getTargetExpiryDate('2026-08')).toBe('2026-08-15');
   });
 
-  it('target 2026-12 → 만료일 2026-12-14', () => {
-    expect(getTargetExpiryDate('2026-12')).toBe('2026-12-14');
+  it('target 2026-12 → 만료일 2026-12-15', () => {
+    expect(getTargetExpiryDate('2026-12')).toBe('2026-12-15');
   });
 });
 
-describe('buildTargetExpiryWarning — 날짜 픽스처 (만료일 2026-08-14 기준)', () => {
+describe('buildTargetExpiryWarning — 날짜 픽스처 (만료일 2026-08-15 기준)', () => {
   it('target_date 없음 → null (안내 없음)', () => {
     expect(buildTargetExpiryWarning(null, '2026-07-03')).toBeNull();
   });
 
   it('43일 전 → null (아직 여유, 무음)', () => {
-    expect(buildTargetExpiryWarning('2026-08', '2026-07-02')).toBeNull();
+    expect(buildTargetExpiryWarning('2026-08', '2026-07-03')).toBeNull();
   });
 
   it('42일 전(6주 경계) → 임박 안내 (N=42)', () => {
-    const msg = buildTargetExpiryWarning('2026-08', '2026-07-03');
+    const msg = buildTargetExpiryWarning('2026-08', '2026-07-04');
     expect(msg).toContain('42일 뒤에 끝나');
     expect(msg).toContain('2026-08');
   });
 
   it('7일 전 → 임박 안내 (N=7)', () => {
-    const msg = buildTargetExpiryWarning('2026-08', '2026-08-07');
+    const msg = buildTargetExpiryWarning('2026-08', '2026-08-08');
     expect(msg).toContain('7일 뒤에 끝나');
   });
 
   it('만료 다음날 → 정지 안내', () => {
-    const msg = buildTargetExpiryWarning('2026-08', '2026-08-15');
+    const msg = buildTargetExpiryWarning('2026-08', '2026-08-16');
     expect(msg).toContain('지났어');
     expect(msg).toContain('멈춰');
   });
 
   it('만료일 당일(남은 일수 0) → 정지 안내', () => {
-    const msg = buildTargetExpiryWarning('2026-08', '2026-08-14');
+    const msg = buildTargetExpiryWarning('2026-08', '2026-08-15');
     expect(msg).toContain('지났어');
   });
 
   it('문구에 금액·재정 표현 없음 (기간·일수만)', () => {
-    const warn = buildTargetExpiryWarning('2026-08', '2026-08-07');
-    const expired = buildTargetExpiryWarning('2026-08', '2026-08-15');
+    const warn = buildTargetExpiryWarning('2026-08', '2026-08-08');
+    const expired = buildTargetExpiryWarning('2026-08', '2026-08-16');
     for (const m of [warn, expired]) {
       expect(m).not.toMatch(/원|만원|잔액|런웨이|금액|자산/);
     }
@@ -497,8 +497,8 @@ describe('warnTargetExpiryIfNear — 월요일 게이트 + 채널 라우팅', ()
     vi.clearAllMocks();
     mockConnect.mockResolvedValue({ release: vi.fn() });
     await connectDB('postgresql://test@localhost/test');
-    // 기본: 임박(만료 2026-08-14, 오늘 7일 전)
-    mockTodayISO.mockReturnValue('2026-08-07');
+    // 기본: 임박(만료 2026-08-15, 오늘 7일 전)
+    mockTodayISO.mockReturnValue('2026-08-08');
     mockDayOfWeek.mockReturnValue(MONDAY);
   });
 
@@ -544,7 +544,7 @@ describe('warnTargetExpiryIfNear — 월요일 게이트 + 채널 라우팅', ()
   });
 
   it('월요일 + 아직 여유(43일 전) → 무음', async () => {
-    mockTodayISO.mockReturnValue('2026-07-02');
+    mockTodayISO.mockReturnValue('2026-07-03');
     setupExpiryMock('2026-08', [mapping()]);
     const app = createMockApp() as { client: { chat: { postMessage: ReturnType<typeof vi.fn> } } };
 

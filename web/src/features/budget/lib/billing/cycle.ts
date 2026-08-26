@@ -1,4 +1,5 @@
 import type { BillingCycle } from '../types-v2';
+import { CYCLE_START_DAY, CYCLE_END_DAY } from './cycle-config';
 
 /** Date를 KST로 변환해 { year, month, day } 반환 */
 function toKST(utc: Date): { year: number; month: number; day: number } {
@@ -11,10 +12,10 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** 현재 결제 주기의 billing month (15일 이후면 다음 달) */
+/** 현재 결제 주기의 billing month (주기 시작일 이후면 다음 달) */
 export function getCurrentBillingMonth(now: Date): string {
   const { year, month, day } = toKST(now);
-  if (day >= 15) {
+  if (day >= CYCLE_START_DAY) {
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
     return `${nextYear}-${pad2(nextMonth)}`;
@@ -22,14 +23,14 @@ export function getCurrentBillingMonth(now: Date): string {
   return `${year}-${pad2(month)}`;
 }
 
-/** 결제 주기 날짜 범위 (전월 15일 ~ 당월 14일) */
+/** 결제 주기 날짜 범위 (전월 16일 ~ 당월 15일) */
 export function getBillingRange(yearMonth: string): { from: string; to: string } {
   const [y, m] = yearMonth.split('-').map(Number);
   const prevMonth = m === 1 ? 12 : m - 1;
   const prevYear = m === 1 ? y - 1 : y;
   return {
-    from: `${prevYear}-${pad2(prevMonth)}-15`,
-    to: `${y}-${pad2(m)}-14`,
+    from: `${prevYear}-${pad2(prevMonth)}-${pad2(CYCLE_START_DAY)}`,
+    to: `${y}-${pad2(m)}-${pad2(CYCLE_END_DAY)}`,
   };
 }
 
@@ -53,7 +54,7 @@ export function getBillingCycle(now: Date): BillingCycle {
   return { yearMonth, from, to, totalDays: calcCycleDays(from, to) };
 }
 
-/** 날짜(YYYY-MM-DD)가 결제 주기 마지막 날(14일)인지 */
+/** 날짜(YYYY-MM-DD)가 결제 주기 마지막 날인지 */
 export function isLastDayOfCycle(date: string): boolean {
-  return date.endsWith('-14');
+  return date.endsWith(`-${pad2(CYCLE_END_DAY)}`);
 }

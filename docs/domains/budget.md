@@ -44,8 +44,8 @@
 ## 핵심 개념
 
 ### 결제주기 (Billing Cycle)
-- 1개 결제월 = **전월 15일 \~ 당월 14일**
-- 예: `2026-04` → `2026-03-15 \~ 2026-04-14`
+- 1개 결제월 = **전월 16일 \~ 당월 15일**
+- 예: `2026-04` → `2026-03-16 \~ 2026-04-15`
 - 모든 예산/정산/고정비 계산의 기준 단위
 - 구현: [billing/cycle.ts](../../web/src/features/budget/lib/billing/cycle.ts)
 
@@ -126,7 +126,7 @@ expenses:
   exclude_from_budget BOOLEAN,
   distribute_to_budget BOOLEAN,
   distribute_to_runway BOOLEAN DEFAULT true,  -- #539: 데드 컬럼(건별 토글 폐지). 드롭하지 않고 보존
-  billing_month VARCHAR(7),            -- 카드별 결제주기 귀속 (전월 15일~당월 14일)
+  billing_month VARCHAR(7),            -- 카드별 결제주기 귀속 (전월 16일~당월 15일)
   created_at TIMESTAMPTZ
 
 -- 고정비 템플릿
@@ -269,7 +269,7 @@ features/budget/
 | 10 | 장기 예산 시뮬레이션 | runway-card | `/api/budget/runway` | runway-projection.ts | 월별 burn 시뮬 |
 | 11 | 일별 예산 로그 | daily-budget-log | `/api/budget/daily-logs` + cron | `saveDailyBudgetLog` | UNIQUE(user, date) |
 | 12 | 월별 예산 스냅샷 + 정산 catch-up | — (내부) | 정산 cron 진입점 | `runSettlementIfDue` / `listUnsettledMonths` / `settleMonth` | 매일 실행, 미정산 종료 주기 오래된 순 최대 3개 순차 정산, 정산 전 고정비 보장, 멱등 (#551) |
-| 13 | 결제주기 유틸 | — | — | billing/cycle.ts, billing/card-billing.ts | 전월 15일\~당월 14일, 카드별 startDay |
+| 13 | 결제주기 유틸 | — | — | billing/cycle.ts, billing/card-billing.ts, billing/cycle-config.ts | 전월 16일\~당월 15일(`CYCLE_START_DAY` 단일 상수), 카드별 startDay |
 | 14 | 내역 type 필터 (수입/지출 세그먼트) | [expense-list.tsx](../../web/src/features/budget/components/expense-list.tsx) 세그먼트 + [manage/page.tsx](../../web/src/app/budget/manage/page.tsx) 상태 | — (클라이언트 필터) | `expense-list.tsx` 의 `filtered` (type AND 카테고리), `categoryPool` type별 분기 | 세그먼트(전체/지출/수입). type 변경 시 카테고리 자동 해제. 일별 합계는 `type === 'income'` 기준 차감으로 변경 (환불 특수처리 제거 — 환불은 migration 032에 의해 income으로 저장됨) |
 
 > **#539로 은퇴**: "할부 자산 차감 범위 토글"(`distribute_to_runway`)·"할부 exclude 그룹 동기화"는 폐지. 묶인 돈을 목표 기간 창 일괄 reservation으로 단순화하면서 건별 토글·등록시점 차감·그룹 자산 보정이 모두 사라졌다.
@@ -390,7 +390,7 @@ runSettlementIfDue(userId, now)  ── 매일 실행
   2. 그 주기 귀속이면서 기준일 이전(`billing_month = 대상월 AND date <= 기준일`)
   3. 예산이 별도로 차감하는 몫 — 자유지출 + 고정비(`source='fixed'`) + 할부. 예산에서 빠지지 않는 일반 제외 지출은 복원 대상이 아니다
 - **정산 미반영분**(`readReflectedOutflow`): 회계라 예산 계상 여부와 무관하게 기준일까지 나간 **전액**을 뺀다. `pendingOut = max(0, totalSpent − reflectedOut)`, `pendingIn = max(0, income − reflectedIn)` (기록 수정으로 반영분이 총액을 넘는 이례적 경우 0 클램프)
-- **`billing_month` 귀속 규칙은 무변경** — 출금 시점은 "언제 통장에서 나가나"만 정하고, "어느 결제월에 속하나"는 종전대로 수단별 경계일(`startDay`)이 정한다. 즉시 출금 수단도 기본 경계(15일)를 그대로 따른다
+- **`billing_month` 귀속 규칙은 무변경** — 출금 시점은 "언제 통장에서 나가나"만 정하고, "어느 결제월에 속하나"는 종전대로 수단별 경계일(`startDay`)이 정한다. 즉시 출금 수단도 기본 경계(결제주기 시작일)를 그대로 따른다
 
 ### 현재 월 allocatedDays
 - 현재 월도 결제주기 **전체 일수**(`currentAllocatedDays = currentCycle.totalDays`)로 배분 — 잔여일 비례 축소 없음
@@ -433,7 +433,7 @@ runSettlementIfDue(userId, now)  ── 매일 실행
 
 - **채널**: #money
 - **에이전트**: money 에이전트 (SQL 도구 기반, 지출 기록 + 분석)
-- **목표 기간 만료 임박 알림**(#554): 목표 기간(`target_date`)이 만료되면 예산 계산이 정지되는데, 배너가 대시보드 안에만 있어 봇이 만료 6주 전부터 주 1회 채널로 안내한다. `morningTask`에 `warnTargetExpiryIfNear` — 월요일에만 실행(주 1회, 별도 상태 저장 불필요, try/catch 격리). 만료일 = `target_date` 그 달 14일(15일-시작 결제주기 규칙). 남은 일수 `0 < N ≤ 42`면 임박 안내, `≤ 0`이면 정지 안내. 채널은 money 전용이 없어 `#life`로 라우팅(없으면 DM). 문구는 기간·일수만 노출(금액·재정 상황 표현 없음). 순수 함수 `buildTargetExpiryWarning` + `TARGET_EXPIRY_WARN_DAYS = 42`
+- **목표 기간 만료 임박 알림**(#554): 목표 기간(`target_date`)이 만료되면 예산 계산이 정지되는데, 배너가 대시보드 안에만 있어 봇이 만료 6주 전부터 주 1회 채널로 안내한다. `morningTask`에 `warnTargetExpiryIfNear` — 월요일에만 실행(주 1회, 별도 상태 저장 불필요, try/catch 격리). 만료일 = `target_date` 그 달 15일(16일-시작 결제주기 규칙). 남은 일수 `0 < N ≤ 42`면 임박 안내, `≤ 0`이면 정지 안내. 채널은 money 전용이 없어 `#life`로 라우팅(없으면 DM). 문구는 기간·일수만 노출(금액·재정 상황 표현 없음). 순수 함수 `buildTargetExpiryWarning` + `TARGET_EXPIRY_WARN_DAYS = 42`
 
 ## 향후 개선 과제
 

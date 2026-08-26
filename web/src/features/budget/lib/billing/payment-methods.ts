@@ -1,3 +1,5 @@
+import { CYCLE_START_DAY } from './cycle-config';
+
 /** 출금 시점 — 통장에서 돈이 실제로 나가는 때 */
 export type WithdrawalTiming =
   | 'immediate' // 기록 시점에 이미 나감 (현금)
@@ -10,7 +12,8 @@ export interface PaymentMethodSpec {
 }
 
 export const PAYMENT_METHODS: Record<string, PaymentMethodSpec> = {
-  현대카드: { timing: 'deferred', startDay: 15 },
+  // 기준 카드 — 대금기간 시작일이 곧 시스템 결제주기 시작일이다.
+  현대카드: { timing: 'deferred', startDay: CYCLE_START_DAY },
   국민카드: { timing: 'deferred', startDay: 13 },
   현금: { timing: 'immediate' },
   기타: { timing: 'deferred' },

@@ -296,7 +296,7 @@ export async function deleteExpense(userId: number, id: number): Promise<boolean
 
 /**
  * 월간 요약: 총 지출, 카테고리별, 예산 대비.
- * 카드 결제주기 기준: 전월 15일 ~ 당월 14일.
+ * 카드 결제주기 기준: 전월 16일 ~ 당월 15일.
  */
 export async function queryMonthSummary(userId: number, yearMonth: string): Promise<MonthSummary> {
   const { from, to } = getBillingRange(yearMonth);
@@ -363,7 +363,7 @@ export async function queryMonthSummary(userId: number, yearMonth: string): Prom
   const plannedRows = await queryPlannedExpenses(userId, yearMonth);
   const plannedTotal = plannedRows.reduce((s, p) => s + p.amount, 0);
 
-  // 결제주기 일수 계산 (전월 15일 ~ 당월 14일)
+  // 결제주기 일수 계산 (전월 16일 ~ 당월 15일)
   const daysInCycle = calcCycleDays(from, to);
   const dailyAvg = variableTotal > 0 ? Math.round(variableTotal / daysInCycle) : 0;
 

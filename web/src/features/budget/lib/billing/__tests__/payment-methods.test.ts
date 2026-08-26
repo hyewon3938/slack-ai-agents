@@ -49,14 +49,14 @@ describe('결제수단 목록', () => {
 describe('CARD_BILLING_CYCLES 파생 (payment-methods 단일 정의)', () => {
   it('startDay를 가진 수단만 추려진다', () => {
     expect(CARD_BILLING_CYCLES).toEqual({
-      현대카드: { startDay: 15 },
+      현대카드: { startDay: 16 },
       국민카드: { startDay: 13 },
     });
   });
 
   it('귀속 월 계산은 파생 이후에도 동일 — 현대카드 경계일 전후', () => {
-    expect(getBillingMonthForExpense('2026-07-14', '현대카드')).toBe('2026-07');
-    expect(getBillingMonthForExpense('2026-07-15', '현대카드')).toBe('2026-08');
+    expect(getBillingMonthForExpense('2026-07-15', '현대카드')).toBe('2026-07');
+    expect(getBillingMonthForExpense('2026-07-16', '현대카드')).toBe('2026-08');
   });
 
   it('귀속 월 계산은 파생 이후에도 동일 — 국민카드 경계일 전후', () => {
@@ -64,8 +64,8 @@ describe('CARD_BILLING_CYCLES 파생 (payment-methods 단일 정의)', () => {
     expect(getBillingMonthForExpense('2026-07-13', '국민카드')).toBe('2026-08');
   });
 
-  it('현금은 기본 경계(15일)를 따른다 — 즉시 출금이어도 귀속 월 규칙은 무변경', () => {
-    expect(getBillingMonthForExpense('2026-07-14', '현금')).toBe('2026-07');
-    expect(getBillingMonthForExpense('2026-07-15', '현금')).toBe('2026-08');
+  it('현금은 기본 경계(16일)를 따른다 — 즉시 출금이어도 귀속 월 규칙은 무변경', () => {
+    expect(getBillingMonthForExpense('2026-07-15', '현금')).toBe('2026-07');
+    expect(getBillingMonthForExpense('2026-07-16', '현금')).toBe('2026-08');
   });
 });

@@ -133,18 +133,18 @@ describe('updateExpense — 귀속 월 재계산 (#615)', () => {
   it('날짜가 경계를 넘으면 billing_month 를 다시 계산해 같이 UPDATE', async () => {
     mockQueryOne
       .mockResolvedValueOnce({ id: 686, date: '2026-07-10', payment_method: '현대카드' }) // 현재 행
-      .mockResolvedValueOnce({ id: 686, date: '2026-07-15' }); // UPDATE RETURNING
+      .mockResolvedValueOnce({ id: 686, date: '2026-07-16' }); // UPDATE RETURNING
 
-    await updateExpense(1, 686, { date: '2026-07-15' });
+    await updateExpense(1, 686, { date: '2026-07-16' });
 
     const updateSql = mockQueryOne.mock.calls[1]![0] as string;
     const params = mockQueryOne.mock.calls[1]![1] as unknown[];
     expect(updateSql).toMatch(/date = \$3, billing_month = \$4/);
-    expect(params).toEqual([686, 1, '2026-07-15', '2026-08']);
+    expect(params).toEqual([686, 1, '2026-07-16', '2026-08']);
   });
 
   it('결제수단이 바뀌면 그 수단의 경계일로 billing_month 재계산', async () => {
-    // 7/13: 현대카드(15일 경계) 기준 2026-07 → 국민카드(13일 경계) 기준 2026-08
+    // 7/13: 현대카드(16일 경계) 기준 2026-07 → 국민카드(13일 경계) 기준 2026-08
     mockQueryOne
       .mockResolvedValueOnce({ id: 700, date: '2026-07-13', payment_method: '현대카드' })
       .mockResolvedValueOnce({ id: 700, payment_method: '국민카드' });
