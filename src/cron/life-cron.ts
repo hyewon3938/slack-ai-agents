@@ -325,16 +325,22 @@ export const calcYesterdayFlexSpent = async (
   return direct + dailyOverflow;
 };
 
+/** 결제주기 시작일 — 웹 billing/cycle-config.ts CYCLE_START_DAY와 같은 값을 유지해야 한다. */
+export const CYCLE_START_DAY = 16;
+
+/** 결제주기 마지막 날 = 시작일 하루 전 */
+const CYCLE_END_DAY = CYCLE_START_DAY - 1;
+
 /**
- * 결제일 사이클(전월 15일 ~ 당월 14일)을 적용해 해당 날짜의 billing_month 'YYYY-MM' 반환.
- * 웹 billing/cycle.ts getCurrentBillingMonth와 동일 규칙 (15일부터 다음 달) — 변경 시 양쪽 동기화.
+ * 결제일 사이클(전월 16일 ~ 당월 15일)을 적용해 해당 날짜의 billing_month 'YYYY-MM' 반환.
+ * 웹 billing/cycle.ts getCurrentBillingMonth와 동일 규칙 — 변경 시 양쪽 동기화.
  */
 export const getBillingMonthForDate = (isoDate: string): string => {
   const [yStr, mStr, dStr] = isoDate.split('-');
   let year = Number(yStr);
   let month = Number(mStr);
   const day = Number(dStr);
-  if (day >= 15) {
+  if (day >= CYCLE_START_DAY) {
     month += 1;
     if (month > 12) {
       month = 1;
@@ -359,10 +365,11 @@ const diffDaysISO = (from: string, to: string): number => {
 
 /**
  * 목표 기간(target_date 'YYYY-MM')의 만료일 = 그 달 결제 주기의 마지막 날.
- * getBillingMonthForDate와 같은 15일-시작 규칙(전월 15일 ~ 당월 14일) → 만료일 = target_date 그 달 14일.
- * (예: target '2026-08' → 만료일 '2026-08-14')
+ * getBillingMonthForDate와 같은 주기 규칙(전월 16일 ~ 당월 15일) → 만료일 = target_date 그 달 15일.
+ * (예: target '2026-08' → 만료일 '2026-08-15')
  */
-export const getTargetExpiryDate = (targetDate: string): string => `${targetDate}-14`;
+export const getTargetExpiryDate = (targetDate: string): string =>
+  `${targetDate}-${String(CYCLE_END_DAY).padStart(2, '0')}`;
 
 /**
  * 목표 기간 만료 임박/경과 안내 문구 생성 (순수 함수).

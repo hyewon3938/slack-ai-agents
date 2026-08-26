@@ -1,12 +1,18 @@
 'use client';
 
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons';
+import { getBillingRange } from '@/features/budget/lib/billing/cycle';
 
-/** 결제주기 날짜 범위 계산 (표시용) */
+/** 'YYYY-MM-DD' → 'M/D' */
+function toShortDate(iso: string): string {
+  const [, month, day] = iso.split('-').map(Number);
+  return `${month}/${day}`;
+}
+
+/** 결제주기 날짜 범위 라벨 — 계산과 같은 소스를 써야 표시가 어긋나지 않는다 */
 function getBillingRangeLabel(yearMonth: string): string {
-  const [, month] = yearMonth.split('-').map(Number);
-  const prevMonth = month === 1 ? 12 : month - 1;
-  return `${prevMonth}/14~${month}/13`;
+  const { from, to } = getBillingRange(yearMonth);
+  return `${toShortDate(from)}~${toShortDate(to)}`;
 }
 
 export function MonthNavigator({
@@ -31,7 +37,10 @@ export function MonthNavigator({
   return (
     <div className="flex flex-col items-end gap-0.5">
       <div className="flex items-center gap-2">
-        <button onClick={prev} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+        <button
+          onClick={prev}
+          className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        >
           <ChevronLeftIcon size={18} />
         </button>
         <span className="min-w-[80px] text-center text-sm font-semibold text-gray-800">

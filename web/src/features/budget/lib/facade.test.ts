@@ -774,7 +774,7 @@ describe('정산 시 미반영분만 자금에 적용 (settleMonth)', () => {
 
     await runSettlementIfDue(1, DEFAULT_NOW);
 
-    expect(advanceFundsAsOf).toHaveBeenCalledWith(1, '2026-03-14');
+    expect(advanceFundsAsOf).toHaveBeenCalledWith(1, '2026-03-15');
   });
 
   it('멱등 — 이미 저장된 주기는 자금도 기준일도 건드리지 않는다', async () => {
