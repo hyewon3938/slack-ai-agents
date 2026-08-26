@@ -646,7 +646,7 @@ describe('getBudgetPreview', () => {
 
 // ─── #615 결제수단 출금 시점 ────────────────────────────
 
-describe('가용자금 기준선 복원 (computeTotalAvailable)', () => {
+describe('가용자금 기준선 복원 (computeFundsBaseline)', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     setupCommonMocks();
@@ -659,6 +659,9 @@ describe('가용자금 기준선 복원 (computeTotalAvailable)', () => {
     const result = await getRunwayProjection(1, DEFAULT_NOW);
 
     expect(result.effective_available).toBe(5_000_000);
+    expect(result.funds_balance).toBe(5_000_000);
+    expect(result.funds_restored).toBe(0);
+    expect(result.funds_as_of).toBeNull();
     expect(readReflectedBudgetOutflow).not.toHaveBeenCalled();
   });
 
@@ -684,6 +687,11 @@ describe('가용자금 기준선 복원 (computeTotalAvailable)', () => {
 
     expect(readReflectedBudgetOutflow).toHaveBeenCalledWith(1, '2026-04', '2026-04-10');
     expect(result.effective_available).toBe(5_000_000);
+    // 화면에 그대로 노출되는 산출 근거 — 입력 + 복원 = 기준선이 어긋나면 안 된다
+    expect(result.funds_balance).toBe(4_800_000);
+    expect(result.funds_restored).toBe(200_000);
+    expect(result.funds_as_of).toBe('2026-04-10');
+    expect(result.funds_balance + result.funds_restored).toBe(result.effective_available);
   });
 
   it('입력 시점 독립성 — 주기 초 입력과 주기 말 입력이 같은 기준선을 낸다', async () => {

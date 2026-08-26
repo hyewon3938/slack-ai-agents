@@ -208,11 +208,17 @@ export function RunwayCard() {
       {/* 4. 참고 수치 */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-          <div>
-            <div className="text-gray-400">자금 (수기 기준)</div>
+          <div className={runway.funds_restored > 0 ? 'col-span-2' : undefined}>
+            <div className="text-gray-400">예산 기준선</div>
             <div className="font-medium text-gray-700">
               {formatAmount(runway.effective_available)}
             </div>
+            {runway.funds_restored > 0 && (
+              <div className="mt-0.5 text-[10px] text-gray-400">
+                입력 {formatAmount(runway.funds_balance)} + {runway.funds_as_of}까지 통장에서 나간
+                지출 {formatAmount(runway.funds_restored)}
+              </div>
+            )}
           </div>
           <div>
             <div className="text-gray-400">월 고정비</div>
