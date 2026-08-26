@@ -54,6 +54,12 @@ export interface RunwayProjectionResponse {
   actual_runway_date: string;
   free_per_month: number | null;
   effective_available: number;
+  /** 사용자가 입력한 잔액 — effective_available 의 산출 근거 (#615) */
+  funds_balance: number;
+  /** 입력 잔액에 되돌린 금액 — 기준일까지 이미 나갔지만 예산이 다시 빼는 몫 */
+  funds_restored: number;
+  /** 입력 잔액의 기준일. 미상이면 null */
+  funds_as_of: string | null;
   fixed_monthly: number;
   avg_variable_monthly: number;
   target_date: string | null;
@@ -84,6 +90,18 @@ function formatKSTDate(d: Date): string {
   return kst.toISOString().slice(0, 10);
 }
 
+/** 예산 기준선과 그 산출 근거 — 화면에 관계를 그대로 보여주기 위해 분해해서 반환 */
+interface FundsBaseline {
+  /** 예산 계산에 쓰는 기준선 = balance + restored */
+  total: number;
+  /** 사용자가 입력한 잔액 (비상금 제외 자산 합) */
+  balance: number;
+  /** 기준일까지 이미 나갔지만 예산이 다시 빼는 몫 */
+  restored: number;
+  /** 입력 잔액의 기준일. 미상이면 null */
+  asOf: string | null;
+}
+
 /**
  * 가용자금 = 저장된 잔액 + 기준일까지 이미 나간 즉시 출금분 중 예산이 별도로 차감하는 몫.
  *
@@ -91,15 +109,16 @@ function formatKSTDate(d: Date): string {
  * 지출이 이미 빠져 있는데 예산은 그 지출을 자유지출·묶인 돈으로 다시 빼므로,
  * 예산 계산에 쓸 기준선은 주기 시작 시점으로 되돌려 놓아야 한다 (#615, ADR 0062).
  */
-async function computeTotalAvailable(userId: number, billingMonth: string): Promise<number> {
+async function computeFundsBaseline(userId: number, billingMonth: string): Promise<FundsBaseline> {
   const [balance, asOf] = await Promise.all([
     readDistributableAssetBalance(userId),
     readFundsAsOf(userId),
   ]);
-  if (!asOf) return balance; // 기준일 미상 → 복원 0 (보수적)
+  // 기준일 미상 → 복원 0 (보수적)
+  if (!asOf) return { total: balance, balance, restored: 0, asOf: null };
 
-  const reflected = await readReflectedBudgetOutflow(userId, billingMonth, asOf);
-  return balance + reflected;
+  const restored = await readReflectedBudgetOutflow(userId, billingMonth, asOf);
+  return { total: balance + restored, balance, restored, asOf };
 }
 
 /** 월 예산 배분 */
@@ -109,8 +128,8 @@ export async function getMonthlyAllocation(
 ): Promise<MonthAllocatorResult> {
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
-  const [totalAvailable, fixedMonthly, targetMonth, currentMonthOnlyIncome] = await Promise.all([
-    computeTotalAvailable(userId, cycle.yearMonth),
+  const [funds, fixedMonthly, targetMonth, currentMonthOnlyIncome] = await Promise.all([
+    computeFundsBaseline(userId, cycle.yearMonth),
     readFixedCostsMonthlyTotal(userId),
     readTargetMonth(userId),
     readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
@@ -122,7 +141,7 @@ export async function getMonthlyAllocation(
     readInstallmentLockByMonth(userId, cycle.yearMonth, windowEnd),
   ]);
   return allocateMonthlyBudgets({
-    totalAvailable,
+    totalAvailable: funds.total,
     fixedMonthly,
     installmentLockByMonth,
     plannedExpenses: planned,
@@ -196,7 +215,8 @@ export async function getRunwayProjection(
       readInstallmentLockByMonth(userId, cycle.yearMonth, paceWindowEnd),
     ]);
 
-  const totalAvailable = await computeTotalAvailable(userId, cycle.yearMonth);
+  const funds = await computeFundsBaseline(userId, cycle.yearMonth);
+  const totalAvailable = funds.total;
   const freePerMonth = monthly.freePerMonth;
 
   // 페이스 전망 (항상): 최근 실지출(avgVariableMonthly)을 자유 지출 추정치로 소진 시뮬레이션.
@@ -223,6 +243,9 @@ export async function getRunwayProjection(
     actual_runway_date: primary.actualRunwayDate,
     free_per_month: freePerMonth,
     effective_available: totalAvailable,
+    funds_balance: funds.balance,
+    funds_restored: funds.restored,
+    funds_as_of: funds.asOf,
     fixed_monthly: fixedMonthly,
     avg_variable_monthly: avgVariableMonthly,
     target_date: targetDate,
@@ -245,8 +268,8 @@ export async function getBudgetPreview(
   const cycle = getBillingCycle(now);
   const todayStr = formatKSTDate(now);
 
-  const [totalAvailable, fixedMonthly, currentMonthOnlyIncome] = await Promise.all([
-    computeTotalAvailable(userId, cycle.yearMonth),
+  const [funds, fixedMonthly, currentMonthOnlyIncome] = await Promise.all([
+    computeFundsBaseline(userId, cycle.yearMonth),
     readFixedCostsMonthlyTotal(userId),
     readCurrentMonthOnlyIncome(userId, cycle.yearMonth, todayStr),
   ]);
@@ -257,7 +280,7 @@ export async function getBudgetPreview(
   ]);
 
   const result = allocateMonthlyBudgets({
-    totalAvailable,
+    totalAvailable: funds.total,
     fixedMonthly,
     installmentLockByMonth,
     plannedExpenses: planned,
