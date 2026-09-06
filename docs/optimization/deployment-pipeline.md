@@ -269,16 +269,19 @@ git reset --hard origin/main
 # 새 이미지 pull (인증은 ~/.docker/config.json에 저장되어 있음)
 docker compose pull app
 
-# 재기동 전에 현재 컨테이너의 stdout 로그를 파일로 남긴다 (최근 10개 보관)
+# 재기동 전에 현재 컨테이너의 stdout 로그를 파일로 남긴다 (서비스별 최근 10개 보관)
 LOG_DIR="$HOME/deploy-logs"
 mkdir -p "$LOG_DIR"
 chmod 700 "$LOG_DIR"
-LOG_FILE="$LOG_DIR/app-$(date +%Y%m%d-%H%M%S).log"
-docker compose logs --no-color --timestamps --tail 20000 app > "$LOG_FILE" 2>&1 || true
-chmod 600 "$LOG_FILE" 2>/dev/null || true
-ls -1t "$LOG_DIR"/app-*.log 2>/dev/null | tail -n +11 | xargs -r rm -f
+STAMP=$(date +%Y%m%d-%H%M%S)
+for svc in app db; do
+  LOG_FILE="$LOG_DIR/$svc-$STAMP.log"
+  docker compose logs --no-color --timestamps --tail 20000 "$svc" > "$LOG_FILE" 2>&1 || true
+  chmod 600 "$LOG_FILE" 2>/dev/null || true
+  ls -1t "$LOG_DIR/$svc"-*.log 2>/dev/null | tail -n +11 | xargs -r rm -f
+done
 
-# app 컨테이너만 교체 (db는 건드리지 않음)
+# app 컨테이너 교체 (db는 compose 설정이 바뀌지 않는 한 그대로 유지)
 docker compose up -d --force-recreate app
 
 # dangling 이미지 제거
@@ -312,7 +315,8 @@ fi
 | 로그 로테이션 (`max-size: 10m` · `max-file: 3`) | `docker-compose.yml`의 app · db | 오래 떠 있는 컨테이너의 로그가 디스크를 잠식 |
 | 문서 변경 배포 제외 (`paths-ignore`) | `.github/workflows/deploy.yml` | 배포할 이유가 없는 변경으로 컨테이너를 재생성 |
 
-- 로그 로테이션은 컨테이너를 다시 만들 때 적용된다. app은 다음 배포에서, db는 다음 재생성 시점에 반영된다.
+- 로그 로테이션은 컨테이너를 다시 만들 때 적용된다.
+- **db가 함께 재생성되는 경우**: `docker compose up -d --force-recreate app`은 app만 지정해도, `docker-compose.yml`에서 db 설정이 바뀐 배포에서는 의존 서비스인 db도 함께 재생성한다. 데이터는 named volume(`pgdata`)에 있어 그대로 남지만 db가 잠깐 재기동되고 그 컨테이너의 로그도 사라지므로, 로그 저장 단계에서 app과 db를 함께 남긴다. db 설정을 바꾸는 배포는 짧은 DB 재기동을 동반한다고 보면 된다.
 - 문서만 바뀐 푸시는 배포가 아예 돌지 않으므로, 배포가 필요하면 `workflow_dispatch`로 수동 실행한다.
 - 계속 봐야 하는 관측값이라면 로그 사본에 기대지 말고 DB에 적도록 코드를 고치는 쪽이 근본 해결이다.
 
