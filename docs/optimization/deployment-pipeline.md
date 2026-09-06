@@ -269,8 +269,17 @@ git reset --hard origin/main
 # 새 이미지 pull (인증은 ~/.docker/config.json에 저장되어 있음)
 docker compose pull app
 
+# 재기동 전에 현재 컨테이너의 stdout 로그를 파일로 남긴다 (최근 10개 보관)
+LOG_DIR="$HOME/deploy-logs"
+mkdir -p "$LOG_DIR"
+chmod 700 "$LOG_DIR"
+LOG_FILE="$LOG_DIR/app-$(date +%Y%m%d-%H%M%S).log"
+docker compose logs --no-color --timestamps --tail 20000 app > "$LOG_FILE" 2>&1 || true
+chmod 600 "$LOG_FILE" 2>/dev/null || true
+ls -1t "$LOG_DIR"/app-*.log 2>/dev/null | tail -n +11 | xargs -r rm -f
+
 # app 컨테이너만 교체 (db는 건드리지 않음)
-docker compose up -d app
+docker compose up -d --force-recreate app
 
 # dangling 이미지 제거
 docker image prune -f
@@ -293,6 +302,19 @@ fi
 - `docker compose build` 제거
 - `docker image prune -f`: 교체된 dangling 이미지 정리 (볼륨/네트워크는 건드리지 않음)
 - 앱 이미지 2개 유지 정책으로 디스크 사용량 바운드 + 즉시 롤백 가능
+- 재기동 전 로그 저장: `--force-recreate`는 컨테이너와 함께 그 컨테이너의 stdout 로그도 버린다. 배포가 실패하지 않아 그 자리에서는 신호가 없고, 며칠 뒤 그 로그를 보려 할 때 없어진 걸 알게 된다. 배포 직전 사본을 `~/deploy-logs/`에 남겨 두고 최근 10개만 보관한다. 개인 대화 내용이 섞일 수 있어 디렉터리 `700` · 파일 `600`으로 권한을 좁힌다
+
+### 컨테이너 재생성을 안전하게 만드는 세 가지 장치
+
+| 장치 | 위치 | 막는 문제 |
+|---|---|---|
+| 재기동 전 로그 저장 | 배포 서버 `deploy.sh` | 재생성과 함께 사라지는 stdout 로그 |
+| 로그 로테이션 (`max-size: 10m` · `max-file: 3`) | `docker-compose.yml`의 app · db | 오래 떠 있는 컨테이너의 로그가 디스크를 잠식 |
+| 문서 변경 배포 제외 (`paths-ignore`) | `.github/workflows/deploy.yml` | 배포할 이유가 없는 변경으로 컨테이너를 재생성 |
+
+- 로그 로테이션은 컨테이너를 다시 만들 때 적용된다. app은 다음 배포에서, db는 다음 재생성 시점에 반영된다.
+- 문서만 바뀐 푸시는 배포가 아예 돌지 않으므로, 배포가 필요하면 `workflow_dispatch`로 수동 실행한다.
+- 계속 봐야 하는 관측값이라면 로그 사본에 기대지 말고 DB에 적도록 코드를 고치는 쪽이 근본 해결이다.
 
 ---
 

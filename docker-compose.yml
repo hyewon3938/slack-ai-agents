@@ -10,6 +10,13 @@ services:
     # 호스트 swappiness 하향으로 OOM 발생 확률이 의도적으로 올라가므로,
     # 이 스택이 커널의 첫 희생자가 되지 않게 우선순위를 뒤로 뺀다.
     oom_score_adj: -500
+    # 컨테이너 로그는 기본값이 무제한이라, 오래 떠 있는 컨테이너가 디스크를 잠식한다.
+    # 파일당 10MB · 3개로 상한을 두고 오래된 것부터 버린다.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-agent}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -51,6 +58,13 @@ services:
     mem_limit: 384m
     mem_reservation: 160m
     oom_score_adj: -500
+    # 컨테이너 로그는 기본값이 무제한이라, 오래 떠 있는 컨테이너가 디스크를 잠식한다.
+    # 파일당 10MB · 3개로 상한을 두고 오래된 것부터 버린다.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     env_file:
       - .env
     # DB Proxy API 포트는 호스트 루프백에만 바인딩.
