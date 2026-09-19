@@ -6,7 +6,7 @@
 
 | 문서 | 역할 |
 |------|------|
-| `.claude/plans/` | 구현 직전 메모 (휘발) |
+| `LOCAL-SESSIONS.md` | 작업 세션 대기열 (커밋하지 않음) |
 | **`docs/design-notebook/`** | **마스터 단위 서사 — 분기점·포기·회고** |
 | `docs/adr/` | 되돌리기 어려운 결정 (불변 판례) |
 | `docs/features.md` | 현재 어떤 기능이 있는지 한눈에 (카탈로그) |
@@ -37,7 +37,7 @@ docs/design-notebook/
 
 ## 작성 방식
 
-[`/design` 스킬](../../.claude/skills/design/) 5-2 단계에서 자동 갱신. 수동 작성도 가능.
+`/design` 스킬의 설계 문서 단계에서 갱신한다. 수동 작성도 가능.
 
 섹션 템플릿: 스킬의 `templates/design-notebook-section.md` 참조.
 
