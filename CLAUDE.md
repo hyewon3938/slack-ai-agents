@@ -128,17 +128,23 @@
 - 커밋: Conventional Commits (feat:, fix:, refactor:, test:, chore:)
 - 상세 컨벤션 → docs/conventions.md 참조
 
-## 개발 진행 관리 (5문서 아키텍처)
+## 작업 방식
 
-- GitHub Issues에 단계별 개발 계획 정리
+기획은 `/design`, 구현은 `/next`나 `/build <세션 이름>`, 배포한 뒤 운영 확인은 `/track`으로 진행한다.
+
+- 세션은 이슈 1개, 브랜치 1개, PR 1개로 끝내는 작업 단위다. 세션마다 `.claude/worktrees/` 아래 이름 붙인 worktree를 만들어 진행한다.
 - 브랜치: feature/xxx, fix/xxx → main PR
-- PR 단위: Issue 1개 = PR 1개
+- `/design`은 설계 문서와 GitHub 이슈를 만든 뒤 작업을 세션으로 나눠 대기열에 넣는다. 세션이 여럿인 기획은 마스터 이슈에 단계별 계획을 정리한다.
+- 구현은 기획한 대화와 다른 새 대화에서 연다. `/next`는 대기열에서 순서가 가장 앞선 대기 세션을 열고, `/build <세션 이름>`은 이름이 같은 세션을 연다.
+- 대기열 `LOCAL-SESSIONS.md`와 배포 뒤 확인 목록 `LOCAL-TRACK.md`는 커밋하지 않는 파일로 메인 체크아웃 루트에 둔다. worktree에서 작업할 때도 메인 체크아웃 경로의 파일을 고친다.
+- `.claude/plans/` 계획서는 이미 있는 것만 쓴다. 계획서로 여는 세션은 `/build`가 계획서대로 구현하고, 머지한 뒤 계획서를 `_archive/`로 옮긴다.
+
+## 문서 구조
 
 | 문서 | 역할 | 갱신 주체 |
 |------|------|----------|
-| `.claude/plans/<이슈>-*.md` | 구현 직전 메모 (휘발) | /design 생성 · /build 머지 후 `_archive/` 이동 |
 | `docs/design-notebook/<master>.md` | 마스터 단위 서사 (Phase 별 누적) | /design + /build |
-| `docs/adr/NNNN-*.md` | 되돌리기 어려운 결정 (불변) | /design |
+| `docs/adr/NNNN-*.md` | 되돌리기 어려운 결정 (불변) | /design 대상 판단 · /build 작성 |
 | `docs/features.md` | 현재 기능 카탈로그 | /build |
 | `docs/domains/<domain>.md` | 도메인 상세 (스키마·API·로직) | /design (phase 섹션 골격) + /build (본문 채우기) |
 | `docs/project-history.md` | 포트폴리오 timeline (마일스톤급만) | /build |
@@ -161,11 +167,11 @@ DB·백업·모니터링 관련 변경/사고 작업 시 해당 문서 먼저 �
 
 - `budget-internal.md` — 실제 금액·월 고정비 (Claude가 대화에서 자동 갱신)
 - `credentials-internal.md` — 토큰·키 만료일·갱신 절차 (Claude가 자동 갱신)
-- `portfolio-candidates.md` — 이력서·면접·README 어필 포인트 (/design phase 마무리에서 후보 제안)
+- `portfolio-candidates.md` — 이력서·면접·README 어필 포인트 (/build 마무리에서 후보 제안)
 - `design-drafts/` — 비공개 회고 (실수·감정·솔직 분석)
 
 ## Claude 작업 규칙
 
 - 커밋이 3\~5개 쌓이거나, 주제가 바뀌는 시점에 "여기서 커밋 끊자", "새 브랜치 파자", "PR 만들자" 등을 먼저 제안할 것
 - 하나의 브랜치에서 서로 다른 기능이 섞이기 시작하면 PR 머지 → 새 브랜치 전환을 권유할 것
-- 협업 중 눈에 띄는 어필 가능 포인트(기술 결정·작업 방식의 비자명한 패턴) 발견 시, /design phase 마무리에서 portfolio-candidates 후보로 제안
+- 협업 중 눈에 띄는 어필 가능 포인트(기술 결정·작업 방식의 비자명한 패턴) 발견 시, /build 마무리에서 portfolio-candidates 후보로 제안
