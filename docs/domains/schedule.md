@@ -92,16 +92,19 @@ features/schedule/
 │   ├── schedule-card.tsx       # 일정 카드 UI
 │   ├── schedule-form.tsx       # 일정 생성/수정 폼 (모달)
 │   ├── delete-reason-modal.tsx # 삭제 사유 선택 모달 (삭제 확인 단일 지점)
+│   ├── move-toast.tsx          # 일정 이동·되돌리기 결과 토스트 (되돌리기 버튼 포함)
 │   ├── status-badge.tsx        # 상태 뱃지 컴포넌트
 │   ├── saju-pillar-label.tsx   # 사주 일주 라벨 (월/주 뷰 공용)
 │   └── action-menu.tsx         # 일정 컨텍스트 메뉴 (수정/삭제/미루기 등)
 ├── hooks/
 │   ├── use-schedules.ts        # 메인 일정 상태 관리 + CRUD + 필터링 + 폴링
-│   └── use-backlog.ts          # 백로그(날짜 미지정) 일정 관리
+│   ├── use-backlog.ts          # 백로그(날짜 미지정) 일정 관리
+│   └── use-undo-shortcut.ts    # Ctrl+Z / Cmd+Z 되돌리기 단축키
 └── lib/
     ├── types.ts                # ScheduleRow, ScheduleStatus, 정렬 함수
     ├── queries.ts              # 서버 사이드 DB 쿼리 (query, queryOne)
     ├── calendar-utils.ts       # 캘린더 유틸 (WEEK_START 등)
+    ├── date-move.ts            # 드래그 결과 날짜 범위 계산 (이동·양쪽 핸들 조절)
     ├── delete-reasons.ts       # 삭제 사유 고정 어휘 5종 (코드·라벨, 마이그 106 CHECK와 동기)
     └── __tests__/              # 테스트
 ```
@@ -128,9 +131,16 @@ features/schedule/
 6. 카테고리 sort_order
 
 ### 드래그앤드롭
-- `@dnd-kit` 기반
-- 일정 카드를 다른 날짜로 드래그하면 `date` 업데이트
-- `draggable-card.tsx` + `droppable-day.tsx` 조합
+- `@dnd-kit` 기반, `draggable-card.tsx` + `droppable-day.tsx` 조합
+- 카드를 끌어 옮기면 기간을 유지한 채 시작일과 종료일을 함께 옮기고, 카드 양쪽 핸들을 끌면 시작일이나 종료일만 바꾼다
+- 새 날짜 범위는 `date-move.ts`의 `computeDragResult`가 계산하고, `use-schedules.ts`의 `handleMove`가 `date`와 `end_date`를 PATCH 1회로 저장한다. 화면을 먼저 바꾸고 저장에 실패하면 그 일정만 원래 범위로 돌린다
+- 하루 미루기와 백로그로 보내기도 `handleMove`로 저장해서 되돌리기 기록에 함께 남는다
+
+### 이동 되돌리기
+- 최근 이동 20건까지 기록해 두고, Ctrl+Z(macOS는 Cmd+Z)나 토스트의 되돌리기 버튼을 누를 때마다 가장 최근 이동부터 하나씩 이전 날짜 범위로 되돌린다
+- 입력칸에 포커스가 있거나 모달이 열려 있으면 단축키는 브라우저 기본 동작에 맡긴다
+- 이동하거나 되돌린 직후 화면 아래 토스트가 일정 이름과 바뀐 날짜 범위를 5초 동안 보여준다
+- 기록은 캘린더 화면의 메모리에만 두고, 새로고침하면 비운다
 
 ### 캘린더 뷰
 - 3가지 뷰: month / week / day

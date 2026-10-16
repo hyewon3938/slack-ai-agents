@@ -15,6 +15,8 @@ import { WeekView } from '@/features/schedule/components/week-view';
 import { DayView } from '@/features/schedule/components/day-view';
 import { FilterBar } from '@/components/ui/filter-bar';
 import { DndCalendar } from '@/features/schedule/components/dnd-calendar';
+import { MoveToast } from '@/features/schedule/components/move-toast';
+import { useUndoShortcut } from '@/features/schedule/hooks/use-undo-shortcut';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/features/schedule/components/schedule-form';
@@ -85,8 +87,10 @@ function CalendarContent() {
     handleToday,
     handleStatusChange,
     handleToggleImportant,
-    handleDateChange,
-    handleEndDateChange,
+    handleMove,
+    undoLastMove,
+    toast,
+    dismissToast,
     handleCreate,
     handleUpdate,
     handlePostpone,
@@ -118,6 +122,8 @@ function CalendarContent() {
     () => !formDirty || confirm('수정 중인 내용이 있어. 닫을까?'),
     [formDirty],
   );
+
+  useUndoShortcut(undoLastMove);
 
   if (loading) {
     return (
@@ -155,11 +161,7 @@ function CalendarContent() {
         onClearFilters={clearFilters}
       />
 
-      <DndCalendar
-        schedules={filteredSchedules}
-        onDateChange={handleDateChange}
-        onEndDateChange={handleEndDateChange}
-      >
+      <DndCalendar schedules={filteredSchedules} onMove={handleMove}>
         <div
           className={`md:flex md:flex-1 md:min-h-0 ${view === 'month' && selectedDate ? '' : 'md:flex-col'}`}
         >
@@ -283,6 +285,8 @@ function CalendarContent() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
       />
+
+      <MoveToast toast={toast} onUndo={undoLastMove} onDismiss={dismissToast} />
     </>
   );
 }

@@ -12,8 +12,11 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
-
-type DragType = 'move' | 'resize-left' | 'resize-right';
+import {
+  computeDragResult,
+  type DateRange,
+  type DragType,
+} from '@/features/schedule/lib/date-move';
 
 const DRAG_ID_PATTERN = /^(resize-r-|resize-|move-)(\d+)/;
 
@@ -37,16 +40,11 @@ function parseDragId(id: string | number): { type: DragType; scheduleId: number 
 interface DndCalendarProps {
   children: React.ReactNode;
   schedules: ScheduleRow[];
-  onDateChange: (id: number, newDate: string) => void;
-  onEndDateChange?: (id: number, endDate: string | null) => void;
+  /** 드래그로 바뀐 시작일·종료일을 한 번에 전달 */
+  onMove: (id: number, next: DateRange) => void;
 }
 
-export function DndCalendar({
-  children,
-  schedules,
-  onDateChange,
-  onEndDateChange,
-}: DndCalendarProps) {
+export function DndCalendar({ children, schedules, onMove }: DndCalendarProps) {
   const [activeSchedule, setActiveSchedule] = useState<ScheduleRow | null>(null);
   const [dragType, setDragType] = useState<DragType>('move');
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -96,51 +94,14 @@ export function DndCalendar({
       const schedule = schedules.find((s) => s.id === scheduleId);
       if (!schedule) return;
 
-      const scheduleDate = schedule.date ?? '';
-      const endDate = schedule.end_date ?? '';
-
-      if (currentDragType === 'resize-right') {
-        // 오른쪽 핸들: end_date 변경
-        if (targetDate <= scheduleDate) {
-          // 시작일 이하로 당김 → 단일 일정으로 변환
-          onEndDateChange?.(scheduleId, null);
-        } else {
-          onEndDateChange?.(scheduleId, targetDate);
-        }
-      } else if (currentDragType === 'resize-left') {
-        // 왼쪽 핸들: 시작일 변경
-        if (endDate && targetDate >= endDate) {
-          // 종료일 이상으로 밀면 → 종료일 위치에서 단일 일정
-          onDateChange(scheduleId, endDate);
-          onEndDateChange?.(scheduleId, null);
-        } else if (targetDate !== scheduleDate) {
-          // 시작일 변경
-          onDateChange(scheduleId, targetDate);
-          if (!endDate) {
-            // 기존 단일 일정 → 기간 설정
-            onEndDateChange?.(scheduleId, scheduleDate);
-          }
-        }
-      } else {
-        // 이동
-        if (schedule.date !== targetDate) {
-          if (endDate && endDate > scheduleDate) {
-            // 기간 일정: 기간 유지하면서 이동
-            const durationMs =
-              new Date(endDate + 'T12:00:00').getTime() -
-              new Date(scheduleDate + 'T12:00:00').getTime();
-            const newEndStr = new Date(new Date(targetDate + 'T12:00:00').getTime() + durationMs)
-              .toISOString()
-              .slice(0, 10);
-            onDateChange(scheduleId, targetDate);
-            onEndDateChange?.(scheduleId, newEndStr);
-          } else {
-            onDateChange(scheduleId, targetDate);
-          }
-        }
-      }
+      const next = computeDragResult(
+        currentDragType,
+        { date: schedule.date, end_date: schedule.end_date },
+        targetDate,
+      );
+      if (next) onMove(scheduleId, next);
     },
-    [schedules, dragType, onDateChange, onEndDateChange],
+    [schedules, dragType, onMove],
   );
 
   const isResize = dragType === 'resize-left' || dragType === 'resize-right';
