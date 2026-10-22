@@ -2458,6 +2458,10 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 원문 비노출(헌장 ①): `delete_reason_text`는 검증·발굴·제안 어떤 LLM 입력에도 넣지 않는다. 화이트리스트가 테이블 단위 검사라 컬럼을 못 막으므로 [signal-sql-guard.ts](../../src/shared/signal-sql-guard.ts) `BLOCKED_PATTERNS`에 컬럼명 자체를 추가해 LLM 신호 SQL의 참조를 정적으로 차단했다. 존재-윈도우: audit 도메인 dataStart는 `schedule_changes` 최초 행(2026-07-04) 기준이라 사유 도입(마이그 106, 2026-07-10) 전 약 1주는 0으로 관측되는 좌단 아티팩트가 있다 — 삭제가 희소 이벤트라 실질 영향 없음(ADR-0060 명시).
 
+### 47. Slack 일기 수정 (#639)
+
+> TODO(`/build`): 구현 후 본문 채우기. 설계는 [diary-slack-editing.md](../design-notebook/diary-slack-editing.md) 참조.
+
 ## 부록 — e-value 게이트 설계 노트 (S-f)
 
 > [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md) 본문은 불변(Accepted). 이 부록은 운영·후속 판단을 위한 **경계 조건 메모**로, ADR 결정을 바꾸지 않는다.
