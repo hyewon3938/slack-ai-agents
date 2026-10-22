@@ -32,7 +32,7 @@
 - 월운/세운/대운 기간 해석 — 검증가능성 사다리 기반 측정·교과서 분리 발화 (`period_interpretations`, 절기/입춘/대운 전환 시 생성, #529)
 - 월운/세운 예측 장부 — 사전등록 → 사후 채점(방향 적중 + 실측 delta, Brier 금지). baseline 동결·절기 시간게이트 무인 자기검증 (`period_forecasts`, #531, 대운 비편입)
 - 일운 콜 장부 — `weekly-fortune` routine이 일요일 밤 다음 주 일운 콜을 판정 기준 문장 `criterion`과 함께 사전등록하고, 같은 routine이 실행할 때 판정 구간이 지난 콜을 그 기준으로 hit·partial·miss·unmeasurable 중 하나로 판정 → 월요일 `weekly-saju-review-v2` 통합 카드에 지난주 콜 판정 노출. 봇 코드는 이 테이블을 읽거나 쓰지 않음 (`fortune_calls`, #582/PR #584, ADR-0057)
-- 일기 자동 저장 (`diary_entries`)
+- 일기 자동 저장 (`diary_entries`). 맨 앞에 `10/21`처럼 날짜를 붙이면 그 날짜 일기로 저장
 - 삶의 테마 관리 (`life_themes`, 자동 진화)
 - ~~사주 패턴 누적~~ (`saju_patterns` — 갱신 2026-05-26 중단, 봇 프롬프트 참조 2026-07-05 제거 #583. 테이블·누적분은 이력으로 존치, 역할은 프로필 요약 + `pattern_links` 검증축이 대체)
 - 사주 일일 매칭 시드 카탈로그 (`pattern_catalog`, Phase 3 — 결정론 매칭, 마스터 #434 Phase 1 rename per ADR-0026, 마스터 #434 Phase 2에서 6종 풀세트 161개 신규 시드 추가, Phase 2.5에서 `pillar_level` 차원 + `cumulative_pillar_count` trigger + 14 신규 시드 추가)
@@ -92,6 +92,7 @@
 | `#insight` | `내일 일운` | 내일 일운 조회 |
 | `#insight` | `월운` / `세운` / `대운` (정확일치·접미·접두형 전부) | 기간 해석 조회 — `period_interpretations` 최신 행 결정론 렌더. 월운/세운은 예측 장부(`period_forecasts`) 동봉 (LLM 0회, #529·#531·#533 단일화) |
 | `#insight` | `오늘 일기` | 오늘 일기 조회 |
+| `#insight` | `M/D 내용` | 지난 날짜 일기 저장 (오늘 이전의 가장 가까운 M/D) |
 | `#insight` | `사주 시드 보기` | 활성 시드 + hit rate 목록 (Phase 3) |
 | `#insight` | `사주 시드 모두 보기` | 비활성 포함 전체 시드 (Phase 3) |
 | `#insight` | `사주 시드 끄기 #N` | signal_id=N active=false (Phase 3) |

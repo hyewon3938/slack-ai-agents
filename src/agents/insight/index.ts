@@ -4,7 +4,14 @@ import { sendMessage, sendBlockMessage } from '../../shared/slack.js';
 import { query, queryOne } from '../../shared/db.js';
 import { getTodayISO, getEffectiveTodayISO, addDays } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
-import { saveDiaryEntry, pickDiaryConfirmation, naturalDelay } from './diary-fast-path.js';
+import {
+  saveDiaryEntry,
+  pickDiaryConfirmation,
+  naturalDelay,
+  parseDatedDiary,
+  formatDatedConfirmation,
+  backfillDiaryMetaTags,
+} from './diary-fast-path.js';
 import { tryPatternSeedFastPath } from './pattern-seed-fast-path.js';
 import { formatFortuneText } from '../../shared/fortune-format.js';
 import {
@@ -235,9 +242,28 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
       return;
     }
 
+    // ── 날짜 접두("10/21 ~")가 있으면 그 날짜 일기 ──
+    const calendarToday = getTodayISO();
+    const dated = parseDatedDiary(trimmed, calendarToday);
+    if (dated.kind === 'invalid_date') {
+      await sendMessage(say, `${dated.token}는 없는 날짜야. 날짜 다시 확인해줘.`);
+      return;
+    }
+    if (dated.kind === 'no_content') {
+      await sendMessage(say, '날짜 뒤에 일기 내용도 같이 써줘.');
+      return;
+    }
+
     // ── 기본: 일기 저장 (어떤 단어든 무조건 일기로 저장) ──
     try {
-      await saveDiaryEntry(userId, text.trim());
+      if (dated.kind === 'dated') {
+        await saveDiaryEntry(userId, dated.content, dated.date);
+        if (dated.date < getEffectiveTodayISO()) void backfillDiaryMetaTags(userId, dated.date);
+        await naturalDelay();
+        await sendMessage(say, formatDatedConfirmation(dated.date, calendarToday));
+        return;
+      }
+      await saveDiaryEntry(userId, trimmed);
       await naturalDelay();
       await sendMessage(say, pickDiaryConfirmation());
     } catch (error: unknown) {
