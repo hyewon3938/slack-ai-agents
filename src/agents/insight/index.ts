@@ -13,6 +13,8 @@ import {
   backfillDiaryMetaTags,
 } from './diary-fast-path.js';
 import { tryPatternSeedFastPath } from './pattern-seed-fast-path.js';
+import { showDiary } from './diary-edit-actions.js';
+import { parseDiaryLookup } from './diary-edit.js';
 import { formatFortuneText } from '../../shared/fortune-format.js';
 import {
   loadLatestInterpretation,
@@ -177,25 +179,6 @@ const showPendingMetrics = async (
   }
 };
 
-/** 오늘 일기 조회 fast path */
-const showTodayDiary = async (say: Parameters<AgentHandler>[1], userId: number): Promise<void> => {
-  const today = getEffectiveTodayISO();
-  try {
-    const row = await queryOne<{ content: string }>(
-      `SELECT content FROM diary_entries WHERE user_id = $1 AND date = $2`,
-      [userId, today],
-    );
-    if (!row) {
-      await sendMessage(say, '아직 오늘 일기가 없어.');
-    } else {
-      await sendMessage(say, `*오늘의 일기 (${today})*\n${row.content}`);
-    }
-  } catch (error: unknown) {
-    console.error('[Insight Agent] 일기 조회 오류:', error);
-    await sendMessage(say, '일기 조회 중 오류가 발생했어.');
-  }
-};
-
 // ─── 에이전트 ─────────────────────────────────────────
 
 /**
@@ -232,7 +215,7 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
 
     // ── fast path: 오늘 일기 조회 ──
     if (TODAY_DIARY_RE.test(trimmed)) {
-      await showTodayDiary(say, userId);
+      await showDiary(say, userId, getEffectiveTodayISO());
       return;
     }
 
@@ -242,8 +225,19 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
       return;
     }
 
-    // ── 날짜 접두("10/21 ~")가 있으면 그 날짜 일기 ──
+    // ── fast path: "M/D 일기" 조회 — 날짜 접두 일기보다 먼저 (#639) ──
     const calendarToday = getTodayISO();
+    const lookup = parseDiaryLookup(trimmed, calendarToday);
+    if (lookup.kind === 'invalid_date') {
+      await sendMessage(say, `${lookup.token}는 없는 날짜야. 날짜 다시 확인해줘.`);
+      return;
+    }
+    if (lookup.kind === 'date') {
+      await showDiary(say, userId, lookup.date);
+      return;
+    }
+
+    // ── 날짜 접두("10/21 ~")가 있으면 그 날짜 일기 ──
     const dated = parseDatedDiary(trimmed, calendarToday);
     if (dated.kind === 'invalid_date') {
       await sendMessage(say, `${dated.token}는 없는 날짜야. 날짜 다시 확인해줘.`);

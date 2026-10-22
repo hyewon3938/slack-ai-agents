@@ -9,6 +9,7 @@ import { registerLifeActions } from './agents/life/actions.js';
 import { registerHomeTab } from './agents/life/home.js';
 import { createInsightAgent } from './agents/insight/index.js';
 import { registerInsightActions } from './agents/insight/actions.js';
+import { registerDiaryEditActions } from './agents/insight/diary-edit-actions.js';
 import { CronScheduler } from './cron/life-cron.js';
 import { setPostModifyHook, setConfirmCardSender } from './shared/sql-tools.js';
 import { buildConfirmModifyCard } from './agents/life/blocks.js';
@@ -45,6 +46,7 @@ const startApp = async (): Promise<void> => {
     registerAgent(CONFIG.channels.insight, insightAgent);
   }
   registerInsightActions(app);
+  registerDiaryEditActions(app);
 
   // 크론 스케줄러 (DB 기반 동적 스케줄)
   const cronScheduler = new CronScheduler(app, {
