@@ -41,9 +41,7 @@ const DIARY_CONFIRMATIONS = [
 const recentIndices: number[] = [];
 
 export const pickDiaryConfirmation = (): string => {
-  const available = DIARY_CONFIRMATIONS.map((_, i) => i).filter(
-    (i) => !recentIndices.includes(i),
-  );
+  const available = DIARY_CONFIRMATIONS.map((_, i) => i).filter((i) => !recentIndices.includes(i));
   // 전부 최근에 쓴 경우(문구 수 < 5) 전체에서 선택
   const pool = available.length > 0 ? available : DIARY_CONFIRMATIONS.map((_, i) => i);
   const idx = pool[Math.floor(Math.random() * pool.length)] ?? 0;
@@ -69,7 +67,11 @@ export type DatedDiaryParse =
  * 존재하지 않는 날짜(13/1, 2/30 등)는 null.
  */
 export const resolveDiaryDate = (month: number, day: number, todayISO: string): string | null => {
-  const [todayYear, todayMonth, todayDay] = todayISO.split('-').map(Number) as [number, number, number];
+  const [todayYear, todayMonth, todayDay] = todayISO.split('-').map(Number) as [
+    number,
+    number,
+    number,
+  ];
   const isAfterToday = month > todayMonth || (month === todayMonth && day > todayDay);
   const year = isAfterToday ? todayYear - 1 : todayYear;
 
@@ -98,12 +100,15 @@ export const parseDatedDiary = (text: string, todayISO: string): DatedDiaryParse
   return { kind: 'dated', date, content };
 };
 
-/** 날짜 지정 일기 확인 문구. 작년 날짜면 연도를 붙여 오타를 알아챌 수 있게 한다. */
-export const formatDatedConfirmation = (date: string, todayISO: string): string => {
+/** 일기 날짜 표시 "M/D(요)". 올해가 아니면 연도를 붙여 오타를 알아챌 수 있게 한다. */
+export const formatDiaryDateLabel = (date: string, todayISO: string): string => {
   const sameYear = date.slice(0, 4) === todayISO.slice(0, 4);
-  const label = sameYear ? formatDateShort(date) : `${date.slice(0, 4)}년 ${formatDateShort(date)}`;
-  return `${label} 일기에 적어뒀어.`;
+  return sameYear ? formatDateShort(date) : `${date.slice(0, 4)}년 ${formatDateShort(date)}`;
 };
+
+/** 날짜 지정 일기 확인 문구 */
+export const formatDatedConfirmation = (date: string, todayISO: string): string =>
+  `${formatDiaryDateLabel(date, todayISO)} 일기에 적어뒀어.`;
 
 /**
  * 지난 날짜 일기의 메타 태그 추출. 추출 cron은 어제 일기만 보므로
@@ -134,7 +139,6 @@ export const saveDiaryEntry = async (
   content: string,
   date: string = getEffectiveTodayISO(),
 ): Promise<void> => {
-
   const existing = await query<{ id: number }>(
     `SELECT id FROM diary_entries WHERE user_id = $1 AND date = $2 LIMIT 1`,
     [userId, date],
@@ -148,9 +152,10 @@ export const saveDiaryEntry = async (
       [content, userId, date],
     );
   } else {
-    await query(
-      `INSERT INTO diary_entries (user_id, date, content) VALUES ($1, $2, $3)`,
-      [userId, date, content],
-    );
+    await query(`INSERT INTO diary_entries (user_id, date, content) VALUES ($1, $2, $3)`, [
+      userId,
+      date,
+      content,
+    ]);
   }
 };
