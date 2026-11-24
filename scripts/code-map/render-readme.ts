@@ -1,0 +1,95 @@
+/**
+ * docs/code-map/README.md를 만든다. 파일 안내, 읽는 순서, 요약 수치, 한계.
+ */
+import { GENERATED_NOTICE } from './config.js';
+import type { CodeMapData } from './collect.js';
+import { totalLines } from './render-files.js';
+
+const FILES = [
+  '## 파일',
+  '',
+  '| 파일 | 내용 |',
+  '| --- | --- |',
+  '| `bot.md` | 봇 `src/`의 디렉터리별 파일, 줄 수, 역할, export |',
+  '| `web.md` | 웹 `web/src/`의 디렉터리별 파일, 줄 수, 역할, export와 페이지 URL |',
+  '| `web-api.md` | 웹 API 라우트의 URL, HTTP 메서드, 인증 확인 호출 |',
+  '| `cron.md` | 봇 크론 슬롯과 핸들러, `cron.schedule` 호출, Vercel 크론, GitHub Actions 예약 실행 |',
+  '| `slack.md` | 채널별 에이전트, 리스너와 `action_id`, fast path 정규식, 에이전트 도구 |',
+  '| `db.md` | 마이그레이션으로 계산한 테이블과 컬럼, 테이블을 쓰는 소스 파일 |',
+  '',
+];
+
+const ORDER = [
+  '## 읽는 순서',
+  '',
+  '1. 아래 수치로 저장소 규모를 확인한다.',
+  '2. 동작이 시작되는 곳에서 출발한다. Slack 메시지와 버튼은 `slack.md`, 정해진 시각에 도는 작업은 `cron.md`, 웹 요청은 `web-api.md`와 `web.md`의 페이지 표에 있다.',
+  '3. 거기서 나온 파일 이름을 `bot.md`나 `web.md`에서 찾아 역할과 export를 보고 열 파일을 정한다.',
+  '4. 데이터를 따라갈 때는 `db.md`에서 테이블의 컬럼과 그 테이블을 쓰는 파일을 본다.',
+  '',
+];
+
+const LIMITS = [
+  '## 한계',
+  '',
+  '확실하게 뽑지 못한 값은 맵에 싣지 않았다. 아래 항목은 맵에 나오지 않으니 필요하면 코드를 직접 확인한다.',
+  '',
+  '- 역할은 파일 맨 위 주석의 첫 문장이고, 주석이 없는 파일은 비어 있다. 주석이 코드와 맞는지는 검사하지 않는다.',
+  '- `export * from`으로 다시 내보낸 이름은 하나씩 풀지 않고 모듈 경로만 적는다.',
+  '- 인증 확인은 라우트 메서드 함수의 본문만 본다. 본문이 부르는 다른 함수 안이나 프록시에서 하는 확인은 표에 나오지 않는다.',
+  '- 크론 슬롯은 이름에 SLOT이 들어가고 값이 모두 함수 이름인 최상위 객체 상수에서 찾는다. 발송 시각은 싣지 않는다.',
+  '- Slack 리스너 ID가 문자열 상수로 풀리지 않으면 코드에 적힌 식을 그대로 적는다.',
+  '- fast path는 정규식 상수만 찾는다. 문자열 비교로 처리하는 명령과 정규식을 다른 파일로 넘겨 쓰는 경우는 나오지 않는다.',
+  '- 테이블과 컬럼은 마이그레이션 SQL을 읽어 계산한 값이다. `DO` 블록 안의 조건문은 따지지 않고 실행된 것으로 본다. 고정 문자열이 아닌 `EXECUTE`는 해석하지 못한 문장으로 세고 `db.md` 끝에 목록을 둔다.',
+  '- 외래 키, CHECK, UNIQUE 제약과 인덱스는 싣지 않는다.',
+  '- 테이블을 쓰는 파일은 SQL 키워드 바로 뒤에 이름이 올 때만 찾는다. 테이블 이름을 변수로 조립하는 코드와 LLM이 실행 중에 쓰는 SQL은 나오지 않는다.',
+  '- `.env`로 시작하는 파일과 `docs/_personal/`은 읽지 않는다.',
+  '',
+];
+
+const renderNumbers = (data: CodeMapData): string[] => {
+  const methods = data.routes.reduce((sum, r) => sum + r.methods.length, 0);
+  const rows: [string, number][] = [
+    ['봇 소스 파일', data.bot.files.length],
+    ['봇 소스 줄 수', totalLines(data.bot)],
+    ['봇 테스트 파일', data.bot.tests.length],
+    ['웹 소스 파일', data.web.files.length],
+    ['웹 소스 줄 수', totalLines(data.web)],
+    ['웹 테스트 파일', data.web.tests.length],
+    ['웹 페이지', data.pages.length],
+    ['웹 API 라우트 파일', data.routes.length],
+    ['웹 API 메서드', methods],
+    ['봇 크론 슬롯', data.cron.slots.length],
+    ['Slack 리스너', data.slack.listeners.length],
+    ['fast path 정규식', data.slack.regexes.length],
+    ['에이전트 도구', data.slack.tools.length],
+    ['마이그레이션 파일', data.db.migrationCount],
+    ['테이블', data.db.schema.tables.size],
+    ['뷰', data.db.schema.views.size],
+    ['해석하지 못한 마이그레이션 문장', data.db.schema.unparsed.length],
+  ];
+  return [
+    '## 수치',
+    '',
+    '소스 파일과 줄 수는 테스트 파일을 뺀 값이다.',
+    '',
+    '| 항목 | 값 |',
+    '| --- | ---: |',
+    ...rows.map(([label, value]) => `| ${label} | ${value} |`),
+    '',
+  ];
+};
+
+export const renderReadme = (data: CodeMapData): string =>
+  [
+    '# 코드 맵',
+    '',
+    GENERATED_NOTICE,
+    '',
+    '코드에서 뽑아 만든 저장소 현황이다. 파일을 찾아다니기 전에 이 폴더를 먼저 읽으면 어느 파일을 열어야 하는지 정할 수 있다.',
+    '',
+    ...FILES,
+    ...ORDER,
+    ...renderNumbers(data),
+    ...LIMITS,
+  ].join('\n');
