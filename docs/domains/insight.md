@@ -149,7 +149,7 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 - 해결 시 `active = false`
 
 ### 4. 사주 패턴 (saju_patterns) — 🗑️ 봇 프롬프트 미사용 (2026-07-05)
-> 갱신 routine(구 `weekly-saju-review`)은 2026-05-26 비활성화. 봇 시스템 프롬프트(`buildInsightSystemPrompt`)에서도 2026-07-05 참조 제거 — 테이블·누적 row는 이력으로 존치, 새 조회 경로 없음. 역할은 `saju_profiles.profile_summary`(실측 패턴 포함) + 검증 시드 파이프라인(`pattern_links`)이 대체.
+> 갱신 routine(구 `weekly-saju-review`)은 2026-05-26 비활성화. 봇 프롬프트에서도 2026-07-05 참조 제거 — 테이블·누적 row는 이력으로 존치, 새 조회 경로 없음. 역할은 `saju_profiles.profile_summary`(실측 패턴 포함) + 검증 시드 파이프라인(`pattern_links`)이 대체.
 
 - pattern_type: sipsin(십신) / ganji(특정 글자) / relation(합/형/충) / sibiunsung(십이운성)
 - **분석 도메인**: 일기, 수면, 지출, 일정, 루틴 (cross-domain 통합 분석, 28일 롤링 윈도우)
@@ -159,21 +159,8 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 - 비활성화 시 `active = false`, `deactivated_at = NOW()`
 - **일일 종합 인사이트(§23)는 `saju_patterns`를 쓰지 않는다** — `saju_influence_summary` view(#477 P3: verified/emerging/recent 3-tier, ### 26)를 사용.
 
-### 5. 시스템 프롬프트 구성
-`buildInsightSystemPrompt()`가 실시간으로 아래 데이터를 로드하여 프롬프트에 주입:
-- 활성 life_themes (현재 삶의 맥락)
-- 오늘/내일 fortune_analyses (일운 컨텍스트)
-- 십성 매핑표, 오행 상생상극, 사용자 원국 정보 (정적)
-
-### 6. 일기 응답 시 사주 연결 규칙
-- 일기 날짜 = 오늘: 프롬프트에 로드된 오늘 일운 사용
-- 일기 날짜 != 오늘: fortune_analyses에서 해당 날짜 조회 후 사용
-- 일운 데이터 없으면 사주 해석 없이 공감 위주 응답
-- 독립적 오행/십성 분석 금지 (fortune_analyses 기반만)
-
-### 7. 대화 히스토리
-- `ChatHistory` 클래스로 채널별 대화 기록 유지
-- LLM 에이전트 루프에 이전 대화 맥락 전달
+### 5. 메시지 처리 방식
+`#insight` 채널은 LLM을 호출하지 않는다. `createInsightAgent`(`src/agents/insight/index.ts`)가 약속된 명령어를 fast path로 처리하고, 그 밖의 메시지는 모두 일기로 저장한다. 시스템 프롬프트와 대화 히스토리는 이 채널에 없으며, 사주 해석은 `daily-insight` routine과 크론 카드가 맡는다.
 
 ### 8. 프로액티브 인사이트 엔진 (Phase 1)
 
@@ -2210,7 +2197,6 @@ derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십�
 ```
 src/agents/insight/
 ├── index.ts                       # 에이전트 생성, fast path 매칭, LLM 에이전트 루프
-├── prompt.ts                      # 시스템 프롬프트 빌더 (DB 데이터 실시간 로드)
 ├── actions.ts                     # 인터랙티브 버튼 핸들러 (#477 P5a 발굴 승인/패스 + P5b LLM 신호 승인/반려, ADR-0040)
 ├── blocks.ts                      # Slack Block Kit 메시지 빌더
 ├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
@@ -2234,7 +2220,6 @@ src/shared/
 ├── quantile.ts                    # #477 P4a tertile 컷 + 밴드 분류 (주간 산출 → 일별 적용 공통 규칙)
 ├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann + P7: Mantel-Haenszel 층화 RR)
 ├── bayesian-posterior.ts          # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
-├── saju-mappings.ts               # 십성 알고리즘 계산 (LLM 프롬프트용)
 ├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification: P2 q + P3 e-value α·emerging 바·discoverQ·blockLen) 임계 단일 관리
 └── insights.ts                    # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 verified tier=P3까지 미노출)
 
