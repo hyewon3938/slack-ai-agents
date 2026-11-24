@@ -15,6 +15,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # docs:freshness가 base 브랜치와 비교하려면 전체 히스토리가 필요하다.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
@@ -42,3 +45,13 @@ jobs:
 
       - name: Test (web)
         run: yarn --cwd web test
+
+      - name: Code map
+        run: yarn code-map:check
+
+      - name: Docs
+        run: yarn docs:check
+
+      - name: Docs freshness
+        if: github.event_name == 'pull_request'
+        run: yarn docs:freshness -- --base origin/${{ github.base_ref }}
