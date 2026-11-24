@@ -1,0 +1,37 @@
+[
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "src/shared/saju-hypothesis.ts",
+    "reason": "삭제된 통계 모듈을 설명하는 절의 제목"
+  },
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "src/shared/saju-match.ts",
+    "reason": "이름 변경 표의 변경 전 이름"
+  },
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "src/cron/daily-saju-matching.ts",
+    "reason": "이름 변경 표의 변경 전 이름"
+  },
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "src/shared/__tests__/saju-match.test.ts",
+    "reason": "이름 변경 표의 변경 전 이름"
+  },
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "scripts/saju-hypothesis-backtest.ts",
+    "reason": "당시 남아 있던 파일을 적은 문장"
+  },
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "src/cron/weekly-hypothesis-review.ts",
+    "reason": "삭제된 크론의 당시 변경 내역"
+  },
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "src/shared/pattern-match.ts",
+    "reason": "이름 변경 표의 당시 변경 후 이름"
+  }
+]

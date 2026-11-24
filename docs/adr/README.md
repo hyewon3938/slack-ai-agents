@@ -171,6 +171,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0061](0061-routine-tracking-modes.md) | 루틴 추적 모드 이원화 — 템플릿 `tracking_mode`(정의, 변경 가능) + 기록 `entry_type`(사실, 불변) 분리로 모드 전환의 소급 왜곡 차단, 기대된 발생 기반 집계는 `scheduled`만 계수 | Accepted | 2026-07-26 | routine, data-model, measurement |
 | [0062](0062-payment-method-withdrawal-timing.md) | 결제수단별 출금 시점(immediate/deferred) + 자금 기준일 도입 — 저장 잔액에서 예산 기준선을 복원하고 정산은 미반영분만 적용. ADR 0051 정련 | Accepted | 2026-07-31 | data, budget |
 | [0063](0063-resource-contention-uptime-judgment.md) | 자원 경합 구간의 업타임 판정 — 컨테이너 리소스 경계(자기 억제)+스왑 정책+OOM 우선순위로 실패 성질을 바꾸고, heartbeat는 타임아웃 확대 + 저하 이력 사후 동봉. 저하는 알림 없이 기록만 | Accepted | 2026-08-19 | infra, observability, reliability |
+| [0065](0065-generated-code-map-and-doc-kinds.md) | 자동 생성 코드 맵과 문서 종류 등록 — 코드에서 뽑을 수 있는 사실은 `yarn code-map`으로 만들어 커밋하고, 문서는 현황과 기록으로 등록해 현황 문서의 경로만 CI에서 검사 | Accepted | 2026-11-24 | process, docs, tooling |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 

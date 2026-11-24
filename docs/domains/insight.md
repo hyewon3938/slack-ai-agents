@@ -430,7 +430,7 @@ LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack
 - `DISCOVERY_MAX_FDR_Q` (0.2) → multiple testing 보정 후
 - `DISCOVERY_MIN_RATE_RATIO` (1.3)
 
-`rate_ratio` 내림차순 정렬. CLI 백테스트는 `scripts/saju-hypothesis-backtest.ts` (`yarn tsx scripts/saju-hypothesis-backtest.ts --user 1 --lookback 60`).
+`rate_ratio` 내림차순 정렬.
 
 #### Block Kit 카드 (`src/agents/insight/hypothesis-cards.ts`)
 
@@ -794,7 +794,7 @@ GROUP BY c.id;
 
 마이그레이션 070은 직접 SQL을 손으로 쓰지 않고 `scripts/generate-saju-seed-pool.ts`가 stdout으로 생성한 SQL을 파일로 저장한 형태. 십신 매핑·description·기존 시드 제외 규칙을 모두 TypeScript 코드로 표현해 휴먼 에러 차단.
 
-#### Evidence-only 흐름 (`src/shared/saju-match.ts`)
+#### Evidence-only 흐름 (`src/shared/pattern/match-types.ts`)
 
 매칭 결과 인터페이스 확장:
 
@@ -1138,7 +1138,7 @@ import 일괄 갱신(15+ 파일): 8 life-signal-evaluator + 6 evaluator test + `
 #### 결정 기록
 
 - [ADR-0023](../adr/0023-metric-unit-counter-and-summary-view.md) (counter source of truth) — Phase 4가 실행 단계
-- [ADR-0024](../adr/0024-beta-binomial-bayesian-posterior.md) (Beta-Binomial posterior) — `posterior_alpha/beta/p` 산식
+- [ADR-0024](../adr/0024-bayesian-posterior-update.md) (Beta-Binomial posterior) — `posterior_alpha/beta/p` 산식
 - [ADR-0026](../adr/0026-pattern-prefix-rename.md) (pattern_* prefix) — 파일명까지 확장
 
 ### 19. 본인 1명 패턴 발견 시스템 — Phase 5 (가설 발견·검증 파이프라인 target-type 확장 대응)
@@ -1633,7 +1633,7 @@ strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보�
 - **병행 산출**: `computeAbsoluteStrengthState`(절대 신강/중화/신약 — 생조 비율, **검정 비사용**, 맥락·미래용), `computeElementRatios`(노출·covariate용, 별도 시드 없음 — 강도에 흡수).
 - 명리학 정밀도는 간결판 선택(월령=월지 본기, 분일 사령 무시 / 통근=지장간 뿌리 이진). 정밀 분일 사령은 calibration 노브로 유보([ADR-0036](../adr/0036-relative-quantile-strength-bands.md) 회고).
 
-**상대 분위수 밴드** ([ADR-0036](../adr/0036-relative-quantile-strength-bands.md), `pattern/quantile.ts`): 윈도우 강도값을 tertile 3등분 → 약/적정/강. 일별 cron은 윈도우가 없어 분위수를 못 내므로 **컷을 주간 산출 → 저장 → 일별 적용**(value-vs-cut 규칙 공통, rank 금지). 결정론 정합 — 같은 윈도우 → 같은 분위수 → 같은 밴드(SET 리플레이·e-value 불변, [ADR-0034](../adr/0034-evalue-confirmation-gate.md)).
+**상대 분위수 밴드** ([ADR-0036](../adr/0036-relative-quantile-strength-bands.md), `pattern/quantile.ts`): 윈도우 강도값을 tertile 3등분 → 약/적정/강. 일별 cron은 윈도우가 없어 분위수를 못 내므로 **컷을 주간 산출 → 저장 → 일별 적용**(value-vs-cut 규칙 공통, rank 금지). 결정론 정합 — 같은 윈도우 → 같은 분위수 → 같은 밴드(SET 리플레이·e-value 불변, [ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md)).
 
 **데이터 모델** (마이그레이션 081):
 
@@ -1775,7 +1775,7 @@ LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 
 
 **P5a vs P5b 경계** (겹침 없음): 발굴(P5a) = *기존 신호*를 시드와 off-day로 연결(가설 발견) / LLM(P5b) = *새 신호*를 생성(측정 정의). 둘 다 같은 승인 게이트(pending→active) + 통계가 심판(헌장 ①). LLM은 생성만, 판정은 통계.
 
-**월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-work-as-claude-app-routines.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency = 최초 액션에서 `signal_suggest_runs` 원자적 클레임(`INSERT ... ON CONFLICT (user_id, month_start) DO NOTHING RETURNING` → 빈 결과면 후보 생성·발송 전에 즉시 종료). 재실행·스케줄러 중복 fire 어떤 원인이든 하나만 승리 — 마이그 [094](../../db/migrations/094_signal_suggest_runs.sql), 선택 근거·weekly(062) 대비 최초-클레임 이유는 [ADR-0053](../adr/0053-signal-suggest-idempotency.md). cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
+**월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-routine-unification.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency = 최초 액션에서 `signal_suggest_runs` 원자적 클레임(`INSERT ... ON CONFLICT (user_id, month_start) DO NOTHING RETURNING` → 빈 결과면 후보 생성·발송 전에 즉시 종료). 재실행·스케줄러 중복 fire 어떤 원인이든 하나만 승리 — 마이그 [094](../../db/migrations/094_signal_suggest_runs.sql), 선택 근거·weekly(062) 대비 최초-클레임 이유는 [ADR-0053](../adr/0053-signal-suggest-idempotency.md). cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
 
 **기각 이력 신호 재생성 가드** (#557): 동일 측정 정의가 기각→재등장→기각 루프를 돌며 승인 카드 피로 + 통계 가족 m-인플레이션을 만드는 것을 차단. 신호 자동 생성 직전 동일 정의를 판정하는 공통 헬퍼 `findEquivalentSignal`([pattern/signal-defs.ts](../../src/shared/pattern/signal-defs.ts)) 신설.
 

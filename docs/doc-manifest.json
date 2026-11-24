@@ -1,0 +1,164 @@
+{
+  "documents": [
+    {
+      "glob": "docs/adr/**",
+      "kind": "record"
+    },
+    {
+      "glob": "docs/design-notebook/**",
+      "kind": "record"
+    },
+    {
+      "glob": "docs/history/**",
+      "kind": "record"
+    },
+    {
+      "glob": "docs/project-history.md",
+      "kind": "record"
+    },
+    {
+      "glob": "docs/optimization/**",
+      "kind": "record"
+    },
+    {
+      "glob": "CLAUDE.md",
+      "kind": "current",
+      "sources": [
+        "package.json",
+        ".github/workflows/**",
+        "src/cron/**",
+        "src/shared/sql-tools/**",
+        "src/**/personality.ts",
+        "docs/doc-manifest.json"
+      ]
+    },
+    {
+      "glob": "README.md",
+      "kind": "current",
+      "sources": [
+        "package.json",
+        "web/package.json",
+        "Dockerfile",
+        "docker-compose.yml",
+        ".env.example",
+        ".github/workflows/**",
+        "src/app.ts",
+        "src/router.ts"
+      ]
+    },
+    {
+      "glob": "docs/README.md",
+      "kind": "current",
+      "sources": [
+        "docs/doc-manifest.json",
+        "scripts/docs/**",
+        "scripts/code-map/**",
+        "package.json"
+      ]
+    },
+    {
+      "glob": "docs/code-map/**",
+      "kind": "current",
+      "sources": []
+    },
+    {
+      "glob": "docs/features.md",
+      "kind": "current",
+      "sources": ["src/**", "web/src/**", "db/migrations/**"]
+    },
+    {
+      "glob": "docs/conventions.md",
+      "kind": "current",
+      "sources": [
+        "eslint.config.mjs",
+        "web/eslint.config.mjs",
+        "tsconfig.json",
+        "web/tsconfig.json",
+        "package.json",
+        "web/package.json",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "glob": "docs/domains/schedule.md",
+      "kind": "current",
+      "sources": [
+        "src/agents/life/**",
+        "src/shared/life/**",
+        "web/src/features/schedule/**",
+        "web/src/app/schedules/**",
+        "web/src/app/backlog/**",
+        "web/src/app/api/schedules/**"
+      ]
+    },
+    {
+      "glob": "docs/domains/routine.md",
+      "kind": "current",
+      "sources": [
+        "src/agents/life/**",
+        "src/shared/life/**",
+        "web/src/features/routine/**",
+        "web/src/app/routines/**",
+        "web/src/app/api/routines/**"
+      ]
+    },
+    {
+      "glob": "docs/domains/sleep.md",
+      "kind": "current",
+      "sources": [
+        "src/agents/life/**",
+        "src/shared/life/**",
+        "web/src/features/sleep/**",
+        "web/src/app/life/**",
+        "web/src/app/api/sleep/**"
+      ]
+    },
+    {
+      "glob": "docs/domains/insight.md",
+      "kind": "current",
+      "sources": ["src/agents/insight/**", "src/cron/**", "src/shared/**"]
+    },
+    {
+      "glob": "docs/domains/budget.md",
+      "kind": "current",
+      "sources": [
+        "web/src/features/budget/**",
+        "web/src/app/budget/**",
+        "web/src/app/categories/**",
+        "web/src/app/api/budget/**",
+        "web/src/app/api/expenses/**",
+        "web/src/app/api/categories/**",
+        "web/src/app/api/cron/**"
+      ]
+    },
+    {
+      "glob": "docs/ops/db-backup.md",
+      "kind": "current",
+      "sources": ["scripts/backup-db.sh", "scripts/restore-db.sh", "docker-compose.yml"]
+    },
+    {
+      "glob": "docs/ops/health-monitoring.md",
+      "kind": "current",
+      "sources": [
+        "src/ops/**",
+        "src/app.ts",
+        "web/src/app/api/health/**",
+        ".github/workflows/uptime-check.yml"
+      ]
+    },
+    {
+      "glob": "docs/ops/verification-rebaseline.md",
+      "kind": "current",
+      "sources": [
+        "src/ops/rebaseline-pattern-links.ts",
+        "src/cron/weekly-verification/**",
+        "src/shared/pattern/verify-*.ts"
+      ]
+    },
+    {
+      "glob": "docs/explainers/**",
+      "kind": "current",
+      "sources": ["src/agents/insight/**", "src/cron/**", "src/shared/**"]
+    }
+  ]
+}

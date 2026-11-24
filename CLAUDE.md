@@ -153,6 +153,12 @@
 - 2026-04-07 이전 초기 마일스톤 archive: docs/history/archive-v1-v2.md
 - 도메인 문서 owner 명시 (2026-05-17~): phase 작업이 도메인 기능에 영향을 주면 `/design`이 도메인 문서 phase 섹션 골격(TODO 마커)을 미리 작성, `/build`가 구현 후 본문 채우기. 누락 방지 의무.
 
+### 코드 맵과 문서 종류
+
+- 코드를 찾아다니기 전에 `docs/code-map/README.md`를 먼저 읽고 열 파일을 정한다.
+- 현재 상태는 코드 맵과 현황 문서를 기준으로 판단한다. `docs/adr/`, `docs/design-notebook/`, `docs/history/` 같은 기록 문서는 쓴 날짜의 내용이라 현재 상태의 근거로 쓰지 않는다. 문서 종류는 `docs/README.md`에 있다.
+- 코드를 바꾸면 `yarn code-map`을 다시 돌려 바뀐 맵을 같은 커밋에 넣는다. CI의 `yarn code-map:check`와 `yarn docs:check`가 이를 확인한다.
+
 ## 운영 가이드 (사고 대응)
 
 평소엔 안 보지만 사고 발생 시 즉시 참조:

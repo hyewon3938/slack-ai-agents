@@ -13,6 +13,10 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "dev:web": "yarn --cwd web dev",
+    "code-map": "node --import tsx scripts/code-map/index.ts",
+    "code-map:check": "node --import tsx scripts/code-map/index.ts --check",
+    "docs:check": "node --import tsx scripts/docs/check.ts",
+    "docs:freshness": "node --import tsx scripts/docs/freshness.ts",
     "prepare": "husky"
   },
   "lint-staged": {
