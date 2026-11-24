@@ -8,7 +8,12 @@ import { getDailyContext } from './match-context.js';
 import { evaluateMetric } from './match-metric.js';
 import { loadActiveSeeds } from './match-seeds.js';
 import { evaluateTrigger } from './match-trigger.js';
-import type { MetricEvaluation, SeedMatchResult } from './match-types.js';
+import type {
+  DailyContext,
+  MetricEvaluation,
+  SajuSeedWithMetrics,
+  SeedMatchResult,
+} from './match-types.js';
 
 // ─── 시드 단일 평가 + 결과 기록 ──────────────────────────
 
@@ -47,6 +52,73 @@ export const loadStrengthCutpoints = async (userId: number): Promise<Map<string,
   return map;
 };
 
+/** trigger 통과 시드의 metric 평가 — metric 단위 격리(일부만 fail해도 나머지 보존). */
+const evaluateSeedMetrics = async (
+  seed: SajuSeedWithMetrics,
+  userId: number,
+  date: string,
+): Promise<MetricEvaluation[]> => {
+  const metricEvaluations: MetricEvaluation[] = [];
+  for (const m of seed.metrics) {
+    try {
+      const ev = await evaluateMetric(m, userId, date);
+      metricEvaluations.push(ev);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[pattern-match] metric 평가 실패 seed=${seed.name} metric=${m.metric_name}: ${errMsg}`,
+      );
+    }
+  }
+  return metricEvaluations;
+};
+
+const evaluateSeedForDay = async (
+  seed: SajuSeedWithMetrics,
+  ctx: DailyContext,
+  userId: number,
+  date: string,
+  stemMap: Map<string, number>,
+  branchMap: Map<string, number>,
+  strengthCuts: Map<string, BandCuts>,
+): Promise<SeedMatchResult> => {
+  // Phase 8a: per-seed try/catch — 한 시드 trigger SQL 실패가 cron 전체를 죽이지 않게 격리.
+  // 내부 metric try/catch는 trigger 통과 후 일부 metric만 fail하는 케이스 보호 → 보존.
+  try {
+    const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap, strengthCuts);
+
+    const metricEvaluations: MetricEvaluation[] = triggerActivated
+      ? await evaluateSeedMetrics(seed, userId, date)
+      : [];
+
+    // 풀셋 evidence-only 시드(매트릭 없음)는 채점 스킵 — matched=null
+    // 마스터 #434 Phase 2: 60+일 evidence 누적 후 Phase 6 LLM 매트릭 제안 슬롯이 활용
+    const isEvidenceOnly = seed.metrics.length === 0;
+    const matched = isEvidenceOnly
+      ? null
+      : triggerActivated && metricEvaluations.some((e) => e.passed);
+    return {
+      seed,
+      triggerActivated,
+      metricEvaluations,
+      matched,
+      isEvidenceOnly,
+      triggerError: null,
+    };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[pattern-match] seed 평가 실패 seed=${seed.name} id=${seed.id}: ${errMsg}`);
+    return {
+      seed,
+      triggerActivated: false,
+      metricEvaluations: [],
+      matched: null,
+      isEvidenceOnly: seed.metrics.length === 0,
+      triggerError: errMsg,
+    };
+  }
+};
+
 export const matchAllSeedsForDay = async (
   userId: number,
   date: string,
@@ -65,52 +137,9 @@ export const matchAllSeedsForDay = async (
 
   const results: SeedMatchResult[] = [];
   for (const seed of seeds) {
-    // Phase 8a: per-seed try/catch — 한 시드 trigger SQL 실패가 cron 전체를 죽이지 않게 격리.
-    // 내부 metric try/catch는 trigger 통과 후 일부 metric만 fail하는 케이스 보호 → 보존.
-    try {
-      const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap, strengthCuts);
-
-      const metricEvaluations: MetricEvaluation[] = [];
-      if (triggerActivated) {
-        for (const m of seed.metrics) {
-          try {
-            const ev = await evaluateMetric(m, userId, date);
-            metricEvaluations.push(ev);
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            console.error(
-              `[pattern-match] metric 평가 실패 seed=${seed.name} metric=${m.metric_name}: ${errMsg}`,
-            );
-          }
-        }
-      }
-
-      // 풀셋 evidence-only 시드(매트릭 없음)는 채점 스킵 — matched=null
-      // 마스터 #434 Phase 2: 60+일 evidence 누적 후 Phase 6 LLM 매트릭 제안 슬롯이 활용
-      const isEvidenceOnly = seed.metrics.length === 0;
-      const matched = isEvidenceOnly
-        ? null
-        : triggerActivated && metricEvaluations.some((e) => e.passed);
-      results.push({
-        seed,
-        triggerActivated,
-        metricEvaluations,
-        matched,
-        isEvidenceOnly,
-        triggerError: null,
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[pattern-match] seed 평가 실패 seed=${seed.name} id=${seed.id}: ${errMsg}`);
-      results.push({
-        seed,
-        triggerActivated: false,
-        metricEvaluations: [],
-        matched: null,
-        isEvidenceOnly: seed.metrics.length === 0,
-        triggerError: errMsg,
-      });
-    }
+    results.push(
+      await evaluateSeedForDay(seed, ctx, userId, date, stemMap, branchMap, strengthCuts),
+    );
   }
 
   const elapsedMs = Date.now() - t0;
