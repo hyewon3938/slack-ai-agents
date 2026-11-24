@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 182개, 19708줄이고 테스트 파일은 76개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 187개, 21050줄이고 테스트 파일은 79개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -12,7 +12,7 @@
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `app.ts` | 105 |  |  |
-| `db-proxy.ts` | 251 |  | function: `handleRequest`, `startDBProxy` |
+| `db-proxy.ts` | 232 |  | function: `handleRequest`, `startDBProxy` |
 | `router.ts` | 56 |  | function: `registerAgent`, `registerMessageHandler`<br>type: `AgentHandler` |
 
 테스트 파일 2개
@@ -49,13 +49,13 @@
 | --- | ---: | --- | --- |
 | `action-shared.ts` | 18 | Life Agent 액션 핸들러 공용 — 핸들러 인자 타입, Slack body → userId 해석. | function: `resolveBodyUserId`<br>type: `ActionArgs` |
 | `actions.ts` | 153 | v2 Life Agent 인터랙티브 버튼 핸들러. | function: `registerLifeActions` |
-| `confirm-modify-actions.ts` | 131 | Life Agent modify_db 확인 플로우 버튼 핸들러 (실행·취소). | function: `handleConfirmModifyExecute`, `handleConfirmModifyCancel` |
+| `confirm-modify-actions.ts` | 157 | Life Agent modify_db 확인 플로우 버튼 핸들러 (실행·취소). | function: `handleConfirmModifyExecute`, `handleConfirmModifyCancel` |
 | `home.ts` | 118 | Slack App Home 탭 — 오늘의 일정, 루틴, 수면 대시보드. | function: `publishHomeView`, `registerHomeTab` |
 | `index.ts` | 135 |  | function: `createLifeAgent` |
-| `prompt-sections.ts` | 248 |  | function: `buildIntroSection`, `buildUserIdFilterSection`, `buildScheduleInsertSection`, `buildScheduleRulesSection`, `buildSleepModifySection`<br>const: `NAG_GUIDE_SECTION`, `CONVERSATION_SECTION`, `DB_SCHEMA_SECTION`, `SCHEDULE_QUERY_SECTION`, `SCHEDULE_FORMAT_SECTION`, `SLEEP_RECORD_SECTION`, `REMINDER_SECTION`, `DATA_RULES_SECTION`, `CUSTOM_INSTRUCTION_SECTION`, `ANALYSIS_SECTION` |
+| `prompt-sections.ts` | 248 |  | function: `buildIntroSection`, `buildUserIdFilterSection`, `buildScheduleQuerySection`, `buildScheduleInsertSection`, `buildScheduleRulesSection`, `buildSleepModifySection`, `buildDataRulesSection`, `buildAnalysisSection`<br>const: `NAG_GUIDE_SECTION`, `CONVERSATION_SECTION`, `DB_SCHEMA_SECTION`, `SCHEDULE_FORMAT_SECTION`, `SLEEP_RECORD_SECTION`, `REMINDER_SECTION`, `CUSTOM_INSTRUCTION_SECTION` |
 | `prompt.ts` | 102 |  | function: `buildLifeSystemPrompt` |
 
-테스트 파일 4개
+테스트 파일 5개
 
 ## `src/agents/life/blocks`
 
@@ -154,16 +154,16 @@
 | `kst.ts` | 171 | KST (UTC+9) 날짜/시간 유틸리티. | function: `getTodayISO`, `getYesterdayISO`, `getTodayString`, `getKSTTimeString`, `getKSTDayOfWeek`, `getKSTDayOfMonth`, `getEffectiveTodayISO`, `formatDateShort`, `getWeekReference`, `diffDays`, `formatDuration`, `addDays`, `thisWeekMondayISO`<br>const: `DAY_BOUNDARY_HOUR` |
 | `llm.ts` | 264 |  | function: `createLLMClient`, `createCronLLMClient`, `createDiaryMetaLLMClient`, `createPeriodLLMClient`, `toClaudeMessages`, `toClaudeTools`, `fromClaudeResponse`<br>class: `ClaudeLLMClient`<br>type: `LLMMessage`, `LLMToolDefinition`, `LLMToolCall`, `LLMResponse`, `LLMClient` |
 | `migrate.ts` | 49 |  | function: `runMigrations` |
-| `pending-current-state.ts` | 197 | modify_db 확인 플로우: 실행 완료 후 "현재 상태"를 테이블별 Block Kit으로 반환한다. | function: `loadCurrentStateBlocks`<br>type: `CurrentStateContext` |
-| `pending-display.ts` | 148 | modify_db 확인 플로우에서 테이블별로 표시를 담당한다. | function: `formatAffectedRows`, `extractTargetTable`, `extractAffectedDates`<br>type: `AffectedRow`, `DisplayGroup` |
-| `pending-modify.ts` | 75 |  | function: `createPendingModify`, `findActivePending`, `markExecuted`, `markCanceled`<br>type: `PendingModifyRow` |
+| `pending-current-state.ts` | 199 | modify_db 확인 플로우: 실행 완료 후 "현재 상태"를 테이블별 Block Kit으로 반환한다. | function: `loadCurrentStateBlocks`<br>type: `CurrentStateContext` |
+| `pending-display.ts` | 152 | modify_db 확인 플로우에서 테이블별로 표시를 담당한다. | function: `formatAffectedRows`, `extractTargetTable`, `extractAffectedDates`, `hasUndatedRow`<br>type: `AffectedRow`, `DisplayGroup` |
+| `pending-modify.ts` | 103 |  | function: `createPendingModify`, `findActivePending`, `claimPendingExecution`, `releasePendingExecution`, `markCanceled`<br>type: `PendingModifyRow` |
 | `personality.ts` | 17 | 통합 캐릭터 정의 — "잔소리꾼". | const: `CHARACTER_PROMPT` |
 | `rate-limiter.ts` | 64 | 인메모리 슬라이딩 윈도우 Rate Limiter | class: `RateLimiter`<br>type: `RateLimiterConfig` |
 | `saju-calendar.ts` | 11 | 사주 달력 CLI 실행 경로. |  |
 | `slack.ts` | 61 |  | function: `postToChannel`, `postBlockMessage`, `updateMessage`, `resolveActionCard`, `sendMessage`, `sendBlockMessage` |
 | `user-resolver.ts` | 55 |  | function: `resolveUserId`, `queryAllUserMappings`<br>const: `DEFAULT_USER_ID`<br>type: `UserMapping` |
 
-테스트 파일 35개
+테스트 파일 36개
 
 ## `src/shared/agent-loop`
 
@@ -171,8 +171,8 @@
 | --- | ---: | --- | --- |
 | `llm-error.ts` | 71 |  | function: `handleLlmError` |
 | `responses.ts` | 75 |  | function: `handleStopResponse`, `handleAbnormalFinish` |
-| `timing.ts` | 18 |  | function: `withTimeout`, `parseRetryDelay` |
-| `tool-calls.ts` | 82 |  | function: `executeToolCalls`, `handleToolCallsResponse` |
+| `timing.ts` | 25 |  | function: `withTimeout`, `parseRetryDelay`<br>class: `TimeoutError` |
+| `tool-calls.ts` | 89 |  | function: `executeToolCalls`, `handleToolCallsResponse` |
 | `types.ts` | 48 |  | const: `MAX_TOOL_ROUNDS`, `MAX_RETRIES`, `MAX_RATE_LIMIT_RETRIES`, `LLM_TIMEOUT_MS`, `TOOL_TIMEOUT_MS`<br>type: `AgentLoopResult`, `ToolExecutor`, `AgentLoopConfig`, `LoopState` |
 
 테스트 파일 3개
@@ -201,7 +201,7 @@
 | `queries-reminder.ts` | 86 | 리마인더 쿼리. | function: `queryDueReminders`, `queryActiveReminderTimes`, `deactivateReminder`, `decrementReminderCount`<br>type: `ReminderRow` |
 | `queries-routine.ts` | 162 | 루틴 쿼리: 타입 · 빈도 헬퍼 · 템플릿/기록 조회와 변경. | function: `shouldCreateToday`, `frequencyBadge`, `queryActiveTemplates`, `queryTodayRecords`, `queryExistingTemplateIds`, `queryLastRecordDate`, `createRecord`, `completeRecord`<br>type: `RoutineTrackingMode`, `RoutineTemplateRow`, `RoutineRecordRow` |
 | `queries-schedule.ts` | 141 | 일정 쿼리: 타입 · 조회 · 상태 변경. | function: `queryTodaySchedules`, `queryBacklogSchedules`, `countOverdueTasks`, `moveScheduleToDate`, `updateScheduleStatus`, `deleteSchedule`, `toggleScheduleImportant`, `postponeSchedule`<br>type: `ScheduleRow` |
-| `queries-sleep.ts` | 58 | 수면 쿼리 (Home 탭): 타입 · 조회. | function: `querySleepForHome`, `querySleepEventsForHome`<br>type: `SleepRecordRow`, `SleepEventRow` |
+| `queries-sleep.ts` | 61 | 수면 쿼리 (Home 탭): 타입 · 조회. | function: `querySleepForHome`, `querySleepEventsForHome`<br>type: `SleepRecordRow`, `SleepEventRow` |
 
 ## `src/shared/life-signal-evaluators`
 
@@ -210,13 +210,13 @@
 | `behavior-baseline.ts` | 46 | behavior_baseline evaluator — 11종 결정론 패턴 (insights/ detect 함수 위임). | function: `evaluateBehaviorBaseline` |
 | `calendar-event.ts` | 38 | calendar_event evaluator — 한국 공휴일 / 공휴일 다음날 / 자동이체일. | function: `evaluateCalendarEvent` |
 | `index.ts` | 40 | life_signal trigger_aux.kind dispatcher (마스터 #434 Phase 3, ADR-0029). | function: `dispatchLifeSignal` |
-| `korean-holidays.ts` | 29 | 한국 공휴일 정적 상수 (1차). | function: `isKoreanHoliday`<br>const: `KOREAN_HOLIDAYS` |
+| `korean-holidays.ts` | 76 | 한국 공휴일 정적 상수 (매년 수동 갱신). | function: `isKoreanHoliday`<br>const: `KOREAN_HOLIDAYS`, `FIRST_HOLIDAY_DATA_YEAR`, `LAST_HOLIDAY_DATA_YEAR` |
 | `month-position.ts` | 32 | month_position evaluator — 월초 / 월말 / 월중 (KST 기준). | function: `evaluateMonthPosition` |
 | `season.ts` | 26 | season evaluator — 양력 월 기반 4계절 (KST 기준). | function: `evaluateSeason` |
 | `threshold.ts` | 90 | threshold evaluator — 임계치 풀셋 (수면 / 루틴 streak). | function: `evaluateThreshold` |
 | `weekday.ts` | 26 | weekday / weekday_group evaluator. | function: `evaluateWeekday`, `evaluateWeekdayGroup` |
 
-테스트 파일 6개
+테스트 파일 7개
 
 ## `src/shared/pattern`
 
@@ -262,13 +262,13 @@
 | --- | ---: | --- | --- |
 | `forecast-generate.ts` | 164 | 예측 장부 — 사전등록 예측 생성. | function: `generateForecasts` |
 | `forecast-ledger.ts` | 47 | 예측 장부 — fast path 카드용 장부 로드. | function: `loadLedger` |
-| `forecast-rows.ts` | 70 | 예측 장부 — DB 행과 엔트리 변환, 기간별 예측 행 로드. | function: `parseDirection`, `parseSourceCell`, `toForecastEntry`, `toScoredEntry`, `loadForecastsForPeriod`<br>const: `FORECAST_COLUMNS`<br>type: `ForecastDbRow` |
+| `forecast-rows.ts` | 81 | 예측 장부 — DB 행과 엔트리 변환, 기간별 예측 행 로드. | function: `parseDirection`, `parseSourceCell`, `toForecastEntry`, `toScoredEntry`, `loadForecastsForPeriod`<br>const: `FORECAST_COLUMNS`<br>type: `ForecastDbRow` |
 | `forecast-score.ts` | 146 | 예측 장부 — 기간 종료 뒤 사후 채점. | function: `scoreForecasts` |
 | `interpretation-derive.ts` | 30 | 기간 해석 — 기간 pillar의 십성·오행·합충 결정론 도출. | function: `derivePeriodContext` |
 | `interpretation-labels.ts` | 28 | 기간 해석 — 서사·렌더 공용 라벨과 고정 문구. | const: `DOMAIN_LABEL`, `PERIOD_LABEL`, `LADDER_STATUS`, `TRANSFER_HEDGE` |
 | `interpretation-narrative.ts` | 111 | 기간 해석 — LLM 서사 생성과 결정론 fallback. | function: `composeNarrative` |
 | `interpretation-payload.ts` | 132 | 기간 해석 — 측정 셀·교과서 셀·기술통계를 묶는 payload 빌드. | function: `buildInterpretationPayload` |
-| `interpretation-render.ts` | 144 | 기간 해석 — Slack 블록 결정론 렌더(cron·fast path 공용). | function: `renderInterpretationBlocks` |
+| `interpretation-render.ts` | 151 | 기간 해석 — Slack 블록 결정론 렌더(cron·fast path 공용). | function: `renderInterpretationBlocks` |
 | `interpretation-stats.ts` | 144 | 기간 해석 — 누적 기술통계 집계(inline SQL). | function: `buildDescriptiveStats` |
 | `interpretation-store.ts` | 157 | 기간 해석 — 응답 프로필 인덱스 로드와 해석 영속·조회. | function: `loadResponseProfileIndex`, `upsertInterpretation`, `loadLatestInterpretation` |
 | `types.ts` | 111 | 기간 해석·예측 장부 공용 타입 — 해석 쪽과 예측 쪽이 서로의 타입을 여기서 가져온다. | type: `PeriodType`, `ResponseProfileIndex`, `PeriodContext`, `MeasuredCell`, `TextbookCell`, `DescriptiveStats`, `InterpretationPayload`, `PeriodInterpretationRecord`, `LedgerPeriodType`, `ForecastSourceCell`, `NoCallReason`, `ForecastEntry`, `ScoredEntry`, `LedgerCardData`, `ForecastRange` |
@@ -291,7 +291,7 @@
 | `hwa.ts` | 191 | 결정론 합화(合化) 변환 탐지 — #477 P4b (ADR-0038). | function: `isSipsinGroup`, `elementToSipsinGroup`, `detectHwaTransforms`<br>type: `SipsinGroup`, `HwaTransform`, `HwaResult` |
 | `jeolgi-table.ts` | 177 | 절기 테이블. | const: `JEOLGI_TABLE`, `JEOLGI_JIJI`, `JEOLGI_MONTH_OFFSET` |
 | `pillar-utils.ts` | 96 | 오행·Pillar 유틸과 대운 추출. | function: `getElementByCheongan`, `getElementByJiji`, `makePillar`, `parsePillarString`, `getDaeunPillar` |
-| `pillars.ts` | 155 | 기둥(일주·월주·년주) 계산과 절기월 범위. | function: `getDayPillar`, `getYearPillar`, `getIpchunDate`, `getMonthPillar`, `getJeolgiMonthRange`, `isJeolgiTransitionDay` |
+| `pillars.ts` | 163 | 기둥(일주·월주·년주) 계산과 절기월 범위. | function: `getDayPillar`, `getYearPillar`, `getIpchunDate`, `getMonthPillar`, `getJeolgiMonthRange`, `isJeolgiTransitionDay` |
 | `relations.ts` | 170 | 합충형파해 분석. | function: `getRelations` |
 | `sipsung.ts` | 119 | 십성·십이운성·지장간 계산. | function: `getSipsung`, `getJijiSipsung`, `getSipsungResult`, `getSibiunsung`, `getJijanggan` |
 | `strength-params.ts` | 82 | 결정론 사주 실효강도 모델의 명리학 파라미터 — #477 P4a (ADR-0036). | const: `SAJU_STRENGTH_PARAMS`, `SAJU_HWA_PARAMS`<br>type: `SajuStrengthParams`, `HwaParams` |
@@ -306,4 +306,9 @@
 | `definitions.ts` | 57 | LLM에 노출하는 SQL 도구 정의. | const: `SQL_TOOLS` |
 | `execute.ts` | 188 | SQL 도구 실행기: post-modify 훅 · 확인 카드 전송 · 감사 로그 · 실행. | function: `setPostModifyHook`, `setConfirmCardSender`, `clearConfirmCardSender`, `executeSQLTool`<br>type: `PostModifyHook`, `SQLToolContext`, `ConfirmCardSender` |
 | `schema.ts` | 66 | DB 스키마 조회와 캐시. | function: `clearSchemaCache`, `getSchemaInfo` |
-| `validation.ts` | 154 | SQL 검증: 구문 검증과 보안 검증 (user_id 필터, custom_instructions). | function: `extractFirstKeyword`, `hasMultipleStatements`, `validateSelectQuery`, `hasWhereClause`, `validateModifyQuery`, `validateUserIdFilter`, `validateCustomInstruction` |
+| `sql-blocks.ts` | 193 | 토큰 범위 유틸과 WHERE/ON 조건의 user_id 보장 분석. | function: `buildMatch`, `isWord`, `isPunct`, `identName`, `afterGroup`, `topLevel`, `splitTop`, `findTop`, `closeOver`, `conditionGuarantee`<br>const: `UNQUALIFIED`<br>type: `Ctx`, `Range`, `Guarantee` |
+| `sql-guards.ts` | 117 | 토큰 단위 보안 검사: 시스템 함수·카탈로그 차단, 키워드 위치 제한, user_id 비교 값 제한. | function: `findDangerousIdentifier`, `findWriteKeyword`, `findExtraWriteKeyword`, `otherUserMessage`, `findOtherUserValue` |
+| `sql-lexer.ts` | 220 | SQL 토크나이저: PostgreSQL 어휘 규칙을 따라 문자열·주석·달러 인용을 구분한다. | function: `tokenize`, `hasStatementAfterSemicolon`, `withoutTrailingSemicolon`, `maskedText`<br>type: `TokenKind`, `Token`, `LexResult` |
+| `user-scope-dml.ts` | 215 | 변경 쿼리(INSERT·UPDATE·DELETE)의 user_id 범위 분석. | function: `analyzeUpdate`, `analyzeDelete`, `analyzeInsert` |
+| `user-scope.ts` | 458 | 조회 쿼리의 user_id 범위 분석. | function: `fail`, `startsQuery`, `scanGroups`, `splitClauses`, `parseSource`, `parseFromList`, `uncoveredSources`, `requireCoverage`, `analyzeQuery`, `hasUnhandledQuery`<br>const: `USER_ID_EXEMPT_TABLES`, `BLOCKED_TABLES`, `MSG`, `SELECT_CLAUSES`<br>type: `ScopeCtx`, `Clauses`, `JoinKind`, `Source` |
+| `validation.ts` | 162 | SQL 검증: 구문 검증과 보안 검증 (user_id 필터, custom_instructions). | function: `extractFirstKeyword`, `hasMultipleStatements`, `validateSelectQuery`, `hasWhereClause`, `validateModifyQuery`, `validateUserIdFilter`, `validateCustomInstruction` |

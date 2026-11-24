@@ -7,16 +7,16 @@ import {
   CONVERSATION_SECTION,
   DB_SCHEMA_SECTION,
   buildUserIdFilterSection,
-  SCHEDULE_QUERY_SECTION,
+  buildScheduleQuerySection,
   buildScheduleInsertSection,
   SCHEDULE_FORMAT_SECTION,
   buildScheduleRulesSection,
   SLEEP_RECORD_SECTION,
   buildSleepModifySection,
   REMINDER_SECTION,
-  DATA_RULES_SECTION,
+  buildDataRulesSection,
   CUSTOM_INSTRUCTION_SECTION,
-  ANALYSIS_SECTION,
+  buildAnalysisSection,
 } from './prompt-sections.js';
 
 /** 커스텀 지시사항 상한. 초과 시 오래된 auto부터 비활성화 */
@@ -86,16 +86,16 @@ export const buildLifeSystemPrompt = async (channelId: string, userId: number): 
     CONVERSATION_SECTION,
     DB_SCHEMA_SECTION,
     buildUserIdFilterSection(userId),
-    SCHEDULE_QUERY_SECTION,
+    buildScheduleQuerySection(userId),
     buildScheduleInsertSection(userId),
     SCHEDULE_FORMAT_SECTION,
     buildScheduleRulesSection(userId),
     SLEEP_RECORD_SECTION,
     buildSleepModifySection(userId),
     REMINDER_SECTION,
-    DATA_RULES_SECTION,
+    buildDataRulesSection(userId),
     CUSTOM_INSTRUCTION_SECTION,
-    ANALYSIS_SECTION,
+    buildAnalysisSection(userId),
   ];
 
   return `${sections.join('\n\n')}${customInstructions}`;

@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`web/src/` 아래 소스 파일 207개, 21590줄이고 테스트 파일은 48개다. 줄 수는 테스트를 뺀 값이다.
+`web/src/` 아래 소스 파일 208개, 21988줄이고 테스트 파일은 59개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
@@ -38,7 +38,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `proxy.ts` | 77 |  | function: `proxy`<br>const: `config` |
+| `proxy.ts` | 78 |  | function: `proxy`<br>const: `config` |
 
 테스트 파일 1개
 
@@ -86,37 +86,47 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 76 |  | function: `PATCH` |
+| `route.ts` | 90 |  | function: `PATCH` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/budget/category-limits`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 50 |  | function: `GET`, `POST`<br>const: `dynamic` |
+| `route.ts` | 54 |  | function: `GET`, `POST`<br>const: `dynamic` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/budget/category-limits/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 51 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 47 |  | function: `PATCH`, `DELETE` |
 
 ## `web/src/app/api/budget/daily-logs`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 27 |  | function: `GET`<br>const: `dynamic` |
+| `route.ts` | 24 |  | function: `GET`<br>const: `dynamic` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/budget/fixed-costs`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 58 |  | function: `GET`, `POST` |
+| `route.ts` | 34 |  | function: `GET`, `POST` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/budget/fixed-costs/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 48 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 46 |  | function: `PATCH`, `DELETE` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/budget/monthly`
 
@@ -128,7 +138,9 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 85 |  | function: `GET`, `POST`, `PATCH`, `DELETE`<br>const: `dynamic` |
+| `route.ts` | 99 |  | function: `GET`, `POST`, `PATCH`, `DELETE`<br>const: `dynamic` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/budget/runway`
 
@@ -152,13 +164,17 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 66 |  | function: `GET`, `POST`<br>const: `dynamic` |
+| `route.ts` | 83 |  | function: `GET`, `POST`<br>const: `dynamic` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/categories/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 65 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 86 |  | function: `PATCH`, `DELETE` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/categories/reorder`
 
@@ -186,7 +202,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 160 |  | function: `GET`, `POST` |
+| `route.ts` | 151 |  | function: `GET`, `POST` |
 
 테스트 파일 1개
 
@@ -194,7 +210,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 83 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 69 |  | function: `PATCH`, `DELETE` |
 
 테스트 파일 1개
 
@@ -214,13 +230,15 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 81 |  | function: `GET`, `POST`<br>const: `dynamic` |
+| `route.ts` | 84 |  | function: `GET`, `POST`<br>const: `dynamic` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/routines/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 96 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 116 |  | function: `PATCH`, `DELETE` |
 
 테스트 파일 1개
 
@@ -228,25 +246,27 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 25 |  | function: `GET`<br>const: `dynamic` |
+| `route.ts` | 37 |  | function: `GET`<br>const: `dynamic` |
 
 ## `web/src/app/api/routines/[id]/inactive-periods`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 46 |  | function: `GET`, `POST`<br>const: `dynamic` |
+| `route.ts` | 59 |  | function: `GET`, `POST`<br>const: `dynamic` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/routines/[id]/inactive-periods/[periodId]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 46 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 51 |  | function: `PATCH`, `DELETE` |
 
 ## `web/src/app/api/routines/[id]/records`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 26 |  | function: `DELETE` |
+| `route.ts` | 29 |  | function: `DELETE` |
 
 ## `web/src/app/api/routines/records`
 
@@ -258,7 +278,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 47 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 52 |  | function: `PATCH`, `DELETE` |
 
 ## `web/src/app/api/routines/stats`
 
@@ -276,7 +296,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 132 |  | function: `GET`, `PATCH`, `DELETE`<br>const: `dynamic` |
+| `route.ts` | 135 |  | function: `GET`, `PATCH`, `DELETE`<br>const: `dynamic` |
 
 테스트 파일 1개
 
@@ -308,7 +328,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 46 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 45 |  | function: `PATCH`, `DELETE` |
 
 ## `web/src/app/backlog`
 
@@ -451,8 +471,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `expense-edit-modal.tsx` | 280 |  | function: `ExpenseEditModal` |
 | `expense-form.tsx` | 408 |  | function: `ExpenseForm` |
 | `expense-list.tsx` | 275 |  | function: `ExpenseList`<br>type: `TypeFilter` |
-| `fixed-cost-add-form.tsx` | 138 |  | function: `FixedCostAddForm` |
-| `fixed-cost-item.tsx` | 153 |  | function: `FixedCostItem` |
+| `fixed-cost-add-form.tsx` | 139 |  | function: `FixedCostAddForm` |
+| `fixed-cost-item.tsx` | 154 |  | function: `FixedCostItem` |
 | `income-edit-modal.tsx` | 181 |  | function: `IncomeEditModal` |
 | `month-navigator.tsx` | 59 |  | function: `MonthNavigator` |
 | `month-summary.tsx` | 294 |  | function: `MonthSummaryCard` |
@@ -478,8 +498,9 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `queries.ts` | 14 |  | const: `queryFixedCosts`, `ensureFixedCostExpenses`<br>re-export: `* from ./queries/expenses`, `* from ./queries/month-summary`, `* from ./queries/fixed-costs`, `* from ./queries/assets`, `* from ./queries/planned`, `* from ./queries/daily-log` |
 | `types-v2.ts` | 101 | ─── 빌링 ────────────────────────────────────────────────────── | type: `BillingCycle`, `PlannedInput`, `MonthAllocatorInput`, `MonthlyBudget`, `MonthAllocatorResult`, `DayAllocatorInput`, `DayAllocatorResult`, `SettlementInput`, `SettlementSnapshot` |
 | `types.ts` | 199 |  | const: `BUDGET_EXCLUDED_CATEGORIES`, `MIN_DAILY_BUDGET`, `EXPENSE_CATEGORIES`, `INCOME_CATEGORIES`, `FIXED_COST_CATEGORIES`, `ALL_EXPENSE_CATEGORIES`, `VALID_CATEGORIES`<br>type: `ExpenseRow`, `PlannedExpenseRow`, `FixedCostRow`, `BudgetRow`, `AssetRow`, `CategoryStat`, `CategoryLimitRow`, `CategoryLimitWithUsage`, `MonthSummary`, `DailyBudgetLog`, `MonthProjection`, `ExpenseCategory`, `IncomeCategory` |
+| `validate-input.ts` | 263 |  | function: `isPositiveInteger`, `isNonNegativeInteger`, `parseIdParam`, `parseInstallmentMonths`, `validateExpenseFields`, `parseFixedCostCreate`, `parseFixedCostUpdate`, `validatePlannedMemo`, `isValidTargetCount`, `isValidLimitCategory`<br>const: `MIN_INSTALLMENT_MONTHS`, `MAX_INSTALLMENT_MONTHS`<br>type: `ParseResult`, `FixedCostCreateInput`, `FixedCostUpdateInput` |
 
-테스트 파일 6개
+테스트 파일 7개
 
 ## `web/src/features/budget/lib/allocator`
 
@@ -512,9 +533,9 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `assets.ts` | 86 |  | function: `queryAssets`, `updateAsset`, `setDefaultAsset`, `clearDefaultAsset` |
 | `daily-log.ts` | 79 |  | function: `saveDailyBudgetLog`, `queryDailyBudgetLogs`<br>type: `DailyBudgetLog`, `DailyBudgetLogSummary` |
 | `expenses.ts` | 276 |  | function: `queryExpenses`, `queryExpensesByBillingMonth`, `queryExpense`, `createExpense`, `createInstallmentExpenses`, `updateExpense`, `deleteExpense`<br>const: `FIXED_SOURCE_EXCLUDE_LOCKED` |
-| `fixed-costs.ts` | 71 |  | function: `updateFixedCost`, `createFixedCost`, `deleteFixedCost` |
+| `fixed-costs.ts` | 75 |  | function: `updateFixedCost`, `createFixedCost`, `deleteFixedCost` |
 | `month-summary.ts` | 105 |  | function: `queryMonthSummary` |
-| `planned.ts` | 73 |  | function: `queryPlannedExpenses`, `createPlannedExpense`, `updatePlannedExpense`, `deletePlannedExpense` |
+| `planned.ts` | 82 |  | function: `queryPlannedExpenses`, `isPlannedExpenseOwned`, `createPlannedExpense`, `updatePlannedExpense`, `deletePlannedExpense` |
 
 ## `web/src/features/budget/lib/repository`
 
@@ -573,8 +594,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `queries.ts` | 603 |  | function: `queryRoutineTemplates`, `createRoutineTemplate`, `updateRoutineTemplate`, `queryRoutineTemplate`, `deleteRecordsBefore`, `countCompletedRecordsBefore`, `deleteRoutineTemplate`, `queryRoutineRecords`, `createFreeRecord`, `deleteFreeRecord`, `deleteIncompleteScheduledRecordOn`, `toggleRoutineRecord`, `updateRoutineRecordMemo`, `ensureTodayRecords`, `queryRoutineStats`, `queryRoutinePerStats`, `queryInactivePeriods`, `createInactivePeriod`, `updateInactivePeriod`, `deleteInactivePeriod`, `closeOpenInactivePeriod`, `queryRoutineHeatmap`, `backfillRecords` |
-| `types.ts` | 88 |  | const: `TRACKING_MODES`, `ROUTINE_FREQUENCIES`, `ROUTINE_TIME_SLOTS`<br>type: `RoutineTrackingMode`, `RoutineEntryType`, `RoutineTemplateRow`, `RoutineRecordRow`, `RoutineDayStat`, `RoutinePerStat`, `RoutineInactivePeriod`, `RoutineHeatmapDay`, `RoutineHeatmapData` |
+| `queries.ts` | 593 |  | function: `queryRoutineTemplates`, `createRoutineTemplate`, `updateRoutineTemplate`, `queryRoutineTemplate`, `deleteRecordsBefore`, `countCompletedRecordsBefore`, `deleteRoutineTemplate`, `queryRoutineRecords`, `createFreeRecord`, `deleteFreeRecord`, `deleteIncompleteScheduledRecordOn`, `toggleRoutineRecord`, `updateRoutineRecordMemo`, `ensureTodayRecords`, `queryRoutineStats`, `queryRoutinePerStats`, `queryInactivePeriods`, `createInactivePeriod`, `updateInactivePeriod`, `deleteInactivePeriod`, `closeOpenInactivePeriod`, `queryRoutineHeatmap`, `backfillRecords` |
+| `types.ts` | 107 |  | function: `parseIntervalDays`, `isValidFrequency`<br>const: `TRACKING_MODES`, `ROUTINE_FREQUENCIES`, `ROUTINE_TIME_SLOTS`<br>type: `RoutineTrackingMode`, `RoutineEntryType`, `RoutineTemplateRow`, `RoutineRecordRow`, `RoutineDayStat`, `RoutinePerStat`, `RoutineInactivePeriod`, `RoutineHeatmapDay`, `RoutineHeatmapData` |
 
 테스트 파일 1개
 
@@ -585,9 +606,9 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `action-menu.tsx` | 131 |  | function: `ActionMenu` |
 | `backlog-panel.tsx` | 186 |  | function: `BacklogPanel` |
 | `calendar-header.tsx` | 96 |  | function: `CalendarHeader`<br>type: `CalendarView` |
-| `categories-panel.tsx` | 455 |  | function: `CategoriesPanel` |
+| `categories-panel.tsx` | 457 |  | function: `CategoriesPanel` |
 | `category-badge.tsx` | 15 |  | function: `CategoryBadge` |
-| `category-panel-parts.tsx` | 58 |  | function: `CategoryBadge`, `TypeBadge`, `TypeSelector` |
+| `category-panel-parts.tsx` | 59 |  | function: `CategoryBadge`, `TypeBadge`, `TypeSelector` |
 | `day-detail-panel.tsx` | 69 |  | function: `DayDetailPanel` |
 | `day-view.tsx` | 174 |  | function: `DayView` |
 | `delete-reason-modal.tsx` | 103 |  | function: `DeleteReasonModal` |
@@ -626,8 +647,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `calendar-utils.ts` | 108 |  | function: `computeWeekLayout`<br>const: `WEEK_START`<br>type: `WeekSpan`, `WeekLayout` |
 | `date-move.ts` | 75 |  | function: `isSameRange`, `computeDragResult`, `formatRangeLabel`<br>const: `UNDO_LIMIT`<br>type: `DragType`, `DateRange`, `MoveEntry` |
 | `delete-reasons.ts` | 21 |  | function: `isDeleteReasonCategory`<br>const: `DELETE_REASONS`<br>type: `DeleteReasonCategory`, `DeleteReason` |
-| `queries.ts` | 277 |  | function: `querySchedulesByRange`, `queryBacklogSchedules`, `queryScheduleById`, `createSchedule`, `updateSchedule`, `deleteSchedule`, `recordDeleteReason`, `queryCategories`, `createCategory`, `updateCategory`, `deleteCategory`, `reorderCategories`, `validateCategoryOwnership` |
-| `types.ts` | 126 |  | function: `isValidStatus`, `compareByStatus`, `isMultiDaySchedule`, `lookupCategory`, `getScheduleType`, `getScheduleTopCategoryName`, `compareSchedulePriority`<br>const: `SCHEDULE_STATUSES`, `STATUS_LABELS`, `NEXT_STATUS`<br>type: `ScheduleRow`, `ScheduleStatus` |
+| `queries.ts` | 285 |  | function: `querySchedulesByRange`, `queryBacklogSchedules`, `queryScheduleById`, `createSchedule`, `updateSchedule`, `deleteSchedule`, `recordDeleteReason`, `queryCategories`, `createCategory`, `updateCategory`, `deleteCategory`, `reorderCategories`, `validateCategoryOwnership` |
+| `types.ts` | 129 |  | function: `isValidStatus`, `compareByStatus`, `isMultiDaySchedule`, `lookupCategory`, `getScheduleType`, `getScheduleTopCategoryName`, `compareSchedulePriority`<br>const: `SCHEDULE_STATUSES`, `STATUS_LABELS`, `NEXT_STATUS`<br>type: `ScheduleRow`, `ScheduleStatus` |
 
 테스트 파일 4개
 
@@ -677,8 +698,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `saju.ts` | 110 | 사주 일주 계산 (web용 복제본). | function: `getDayPillar`<br>type: `Cheongan`, `Jiji`, `Pillar` |
 | `send-json.ts` | 12 |  | function: `sendJson` |
 | `slack.ts` | 83 | Slack Web API 클라이언트 — 웹에서 알림용 메시지 전송 | function: `postSlackMessage`, `notifyNewSignup` |
-| `types.ts` | 78 | ─── 카테고리 (공통) ───────────────────────────────── | function: `hexToStyles`, `getCategoryStyle`, `colorToHex`, `formatAmount`<br>const: `CATEGORY_TYPES`, `VALID_CATEGORY_TYPES`, `PRESET_COLORS`<br>type: `CategoryType`, `CategoryRow` |
+| `types.ts` | 79 | ─── 카테고리 (공통) ───────────────────────────────── | function: `hexToStyles`, `getCategoryStyle`, `colorToHex`, `formatAmount`<br>const: `CATEGORY_TYPES`, `VALID_CATEGORY_TYPES`, `PRESET_COLORS`<br>type: `CategoryType`, `CategoryRow` |
 | `users.ts` | 84 |  | function: `findUserByKakaoId`, `listAllUserIds`, `getUserCount`, `findOrCreateUser`<br>type: `UserRow` |
-| `validation.ts` | 40 |  | function: `validateStringLength`, `validateFields`<br>const: `MAX_LENGTHS` |
+| `validation.ts` | 58 |  | function: `validateStringLength`, `parseRouteId`, `isPositiveId`, `isISODate`, `validateFields`<br>const: `MAX_LENGTHS` |
 
 테스트 파일 4개

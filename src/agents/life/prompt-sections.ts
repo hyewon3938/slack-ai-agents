@@ -34,7 +34,7 @@ export const CONVERSATION_SECTION = `## 대화 방식
 /** DB 스키마 */
 export const DB_SCHEMA_SECTION = `## DB 스키마 (모든 테이블에 id SERIAL PK, created_at TIMESTAMPTZ, user_id INTEGER 있음)
 - schedules: user_id, title, date(DATE), end_date, status(todo/in-progress/done/cancelled), category_id(FK → categories.id, NULL 가능), memo, important(bool)
-- categories: name(UNIQUE), type('task'/'event'), color, sort_order, parent_id(FK → categories.id, 최상위면 NULL)
+- categories: user_id, name(UNIQUE), type('task'/'event'), color, sort_order, parent_id(FK → categories.id, 최상위면 NULL)
 - routine_templates: user_id, name, time_slot(낮/밤), frequency(매일/격일/3일마다/주1회), active, tracking_mode(scheduled=주기형/free=자율)
 - routine_records: user_id, template_id(FK), date, completed, completed_at(완료 시점), memo, entry_type(scheduled/free)
 - sleep_records: user_id, date, bedtime, wake_time, duration_minutes, sleep_type(night/nap), memo, tags(TEXT[])
@@ -46,19 +46,19 @@ export const DB_SCHEMA_SECTION = `## DB 스키마 (모든 테이블에 id SERIAL
 /** user_id 필터 절대 규칙 */
 export const buildUserIdFilterSection = (userId: number): string => `## ⚠️ user_id 필터 (절대 규칙)
 모든 SELECT/INSERT/UPDATE/DELETE 쿼리에 반드시 user_id = ${userId} 조건을 포함해.
-- SELECT: WHERE user_id = ${userId} AND ...
+- SELECT/UPDATE/DELETE: WHERE user_id = ${userId} AND ...
 - INSERT: user_id 컬럼에 ${userId} 포함
-- UPDATE/DELETE: WHERE user_id = ${userId} AND ...
-이 규칙은 notification_settings, categories, reminders를 제외한 모든 테이블에 적용. (sleep_events도 이제 user_id 포함)`;
+- JOIN·서브쿼리로 읽는 테이블마다 별칭.user_id = ${userId} 조건을 넣어. 예: LEFT JOIN categories c ON c.id = s.category_id AND c.user_id = ${userId}
+이 규칙은 notification_settings, reminders를 제외한 모든 테이블에 적용 (categories, sleep_events 포함).`;
 
 /** 일정 조회 SQL 3대 필수 규칙 */
-export const SCHEDULE_QUERY_SECTION = `## 일정 조회 SQL — 3대 필수 규칙
+export const buildScheduleQuerySection = (userId: number): string => `## 일정 조회 SQL — 3대 필수 규칙
 
 일정 조회 시 아래 3가지를 반드시 지켜. 하나라도 빠지면 잘못된 결과가 나와.
 
 ### 1. 기간 일정 포함
 date만 비교하면 기간 일정(end_date가 있는 일정)을 빠뜨려. 반드시 이 WHERE 패턴 사용:
-WHERE status != 'cancelled' AND (date = '날짜' OR (date <= '날짜' AND end_date >= '날짜'))
+WHERE s.user_id = ${userId} AND s.status != 'cancelled' AND (s.date = '날짜' OR (s.date <= '날짜' AND s.end_date >= '날짜'))
 
 ### 2. 요일은 SQL로만
 요일을 직접 계산하면 높은 확률로 틀려. 반드시 SQL 결과를 사용해:
@@ -69,8 +69,8 @@ SELECT *, EXTRACT(DOW FROM date) as dow FROM schedules WHERE ...
 ### 3. 정렬 순서
 event 타입 상단 + 카테고리 내에서 완료 → 진행중 → 할일 순서. 반드시 이 JOIN + ORDER BY 사용:
 FROM schedules s
-LEFT JOIN categories c ON c.id = s.category_id
-LEFT JOIN categories p ON p.id = c.parent_id
+LEFT JOIN categories c ON c.id = s.category_id AND c.user_id = ${userId}
+LEFT JOIN categories p ON p.id = c.parent_id AND p.user_id = ${userId}
 ORDER BY CASE WHEN COALESCE(c.type, p.type) = 'event' THEN 0 ELSE 1 END,
          COALESCE(p.name, c.name) NULLS LAST,
          c.name NULLS LAST,
@@ -159,11 +159,11 @@ export const buildSleepModifySection = (
   - 분할 수면이 있을 수 있으니 특정 구간만 고칠 땐 bedtime 조건이나 id까지 좁혀.
   - 예: UPDATE sleep_records SET wake_time='03:00' WHERE user_id = ${userId} AND date = '2026-04-11' AND sleep_type = 'night' AND bedtime = '00:30'
 - **INSERT 전 동일 (user_id, date, sleep_type, bedtime) 레코드 존재 여부를 SELECT로 확인.** 같은 bedtime이 이미 있으면 UPDATE, bedtime이 다르면 새 세그먼트로 INSERT해도 돼 (분할 수면).
-- **날짜 이동("이건 어제 기록이야"): INSERT 재생성 금지.** UPDATE SET date = '어제' WHERE id = 원본 ID 사용. 대상 날짜에 이미 동일 bedtime 레코드가 있으면 원본을 DELETE로 정리(중복 방지).
+- **날짜 이동("이건 어제 기록이야"): INSERT 재생성 금지.** UPDATE SET date = '어제' WHERE user_id = ${userId} AND id = 원본 ID 사용. 대상 날짜에 이미 동일 bedtime 레코드가 있으면 원본을 DELETE로 정리(중복 방지).
 
 ### 특이사항 태그 (tags TEXT[])
 특이사항 나오면 memo와 함께 tags에도. 통계 연계용이라 **이 어휘만**: 악몽·화장실·뒤척임·카페인·음주·야식·스트레스·소음·통증·온도.
-- INSERT 시 tags 컬럼에 ARRAY['악몽']. 기존에 추가: UPDATE sleep_records SET tags = array_append(tags, '악몽') WHERE id = 원본ID AND NOT ('악몽' = ANY(tags)).
+- INSERT 시 tags 컬럼에 ARRAY['악몽']. 기존에 추가: UPDATE sleep_records SET tags = array_append(tags, '악몽') WHERE user_id = ${userId} AND id = 원본ID AND NOT ('악몽' = ANY(tags)).
 - 어휘에 없는 특이사항은 tags 말고 memo에만. 억지로 끼워 맞추지 마.
 
 ### 수면 관련 대화 → 자동 메모 기록
@@ -199,18 +199,18 @@ export const REMINDER_SECTION = `## 알림/리마인더
   - 요일 번호: 0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토`;
 
 /** 데이터 규칙 */
-export const DATA_RULES_SECTION = `## 데이터 규칙
+export const buildDataRulesSection = (userId: number): string => `## 데이터 규칙
 - important 기본 FALSE, 명시적 요청만 TRUE. status 기본 'todo', 날짜 없으면 NULL(백로그).
 - 루틴 추가: templates INSERT + 오늘 records INSERT (단 tracking_mode='free'면 records INSERT 하지 마). 삭제: active=false.
 - 자율 루틴(tracking_mode='free')엔 달성률·연속 달성 개념이 없어 — 횟수와 날짜만 말해. 달성률·연속을 셀 때는 반드시 entry_type='scheduled' 조건을 넣어(자율 기록은 분자도 분모도 아님).
 - 루틴 달성률 분석: routine_templates.start_date 확인 필수. 시작일 이전 기간은 달성률 계산에서 제외.
   - 이번 주 분석인데 루틴이 어제 추가됐다면, 어제부터만 카운트.
-  - SQL 조건: AND r.date >= t.start_date (routine_templates t JOIN 필요)
+  - SQL 조건: AND r.date >= t.start_date (JOIN routine_templates t ON t.id = r.template_id AND t.user_id = ${userId} 필요)
 - 루틴 메모: routine_records.memo. "코세척 루틴에 메모 추가해줘" → 해당 날짜+루틴의 record를 찾아 UPDATE.
   - 날짜 지정 없으면 오늘. "어제 코세척에 메모" → 어제 날짜 record.
   - 덮어쓰기(replace): UPDATE SET memo = '새 메모'. 기존 메모가 있으면 교체. 추가가 아닌 교체.
   - "메모 추가해줘"도 교체. 사용자가 "기존 메모에 이어서/추가로"라고 명시할 때만 append(memo || E'\\n' || '새 메모').
-  - 루틴명 매칭: WHERE template_id = (SELECT id FROM routine_templates WHERE name LIKE '%키워드%')`;
+  - 루틴명 매칭: WHERE user_id = ${userId} AND template_id = (SELECT id FROM routine_templates WHERE user_id = ${userId} AND name LIKE '%키워드%')`;
 
 /** 커스텀 지시사항 */
 export const CUSTOM_INSTRUCTION_SECTION = `## 커스텀 지시사항
@@ -218,7 +218,7 @@ export const CUSTOM_INSTRUCTION_SECTION = `## 커스텀 지시사항
 - 지속적 선호 자동 감지 → INSERT(source='auto'). 겹치면 통합. user 지시는 보호.`;
 
 /** 분석 가이드 */
-export const ANALYSIS_SECTION = `## 분석 가이드
+export const buildAnalysisSection = (userId: number): string => `## 분석 가이드
 "분석", "패턴", "추세", "비교", "인사이트" 등의 키워드가 나오면 적극적으로 데이터 분석해.
 
 ### 크로스 분석 SQL 패턴
@@ -226,20 +226,20 @@ export const ANALYSIS_SECTION = `## 분석 가이드
 SELECT s.date, s.duration_minutes, ROUND(COUNT(*) FILTER (WHERE r.completed)::numeric / NULLIF(COUNT(*), 0) * 100)::int AS routine_rate
 FROM sleep_records s JOIN routine_records r ON s.date = r.date
 JOIN routine_templates t ON r.template_id = t.id
-WHERE s.sleep_type = 'night' AND s.date BETWEEN $1 AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
+WHERE s.user_id = ${userId} AND r.user_id = ${userId} AND t.user_id = ${userId} AND s.sleep_type = 'night' AND s.date BETWEEN $1 AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
 GROUP BY s.date, s.duration_minutes ORDER BY s.date
 
 2. 요일별 패턴:
 SELECT EXTRACT(DOW FROM r.date)::int AS dow, ROUND(AVG(CASE WHEN r.completed THEN 1 ELSE 0 END) * 100)::int AS rate
 FROM routine_records r JOIN routine_templates t ON r.template_id = t.id
-WHERE r.date BETWEEN $1 AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
+WHERE r.user_id = ${userId} AND t.user_id = ${userId} AND r.date BETWEEN $1 AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
 GROUP BY dow ORDER BY dow
 
 3. 시간대별 추세 (2주 비교):
 SELECT t.time_slot, ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 6) AND $2)::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 6) AND $2), 0) * 100)::int AS this_week,
 ROUND(COUNT(*) FILTER (WHERE r.completed AND r.date BETWEEN ($2::date - 13) AND ($2::date - 7))::numeric / NULLIF(COUNT(*) FILTER (WHERE r.date BETWEEN ($2::date - 13) AND ($2::date - 7)), 0) * 100)::int AS last_week
 FROM routine_records r JOIN routine_templates t ON r.template_id = t.id
-WHERE r.date BETWEEN ($2::date - 13) AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
+WHERE r.user_id = ${userId} AND t.user_id = ${userId} AND r.date BETWEEN ($2::date - 13) AND $2 AND r.date >= t.start_date AND r.entry_type = 'scheduled'
 GROUP BY t.time_slot
 
 ### 해석 규칙
