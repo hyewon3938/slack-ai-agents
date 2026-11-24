@@ -39,7 +39,7 @@ export interface MoveToastState {
 
 const TOAST_DURATION_MS = 5_000;
 
-function getInitialView(): CalendarView {
+export function getInitialView(): CalendarView {
   if (typeof window === 'undefined') return 'day';
   return window.innerWidth >= 768 ? 'week' : 'day';
 }

@@ -44,6 +44,13 @@ export const STATUS_LABELS: Record<ScheduleStatus, string> = {
   cancelled: '취소',
 };
 
+/** 상태 배지를 누를 때 넘어가는 다음 상태 (cancelled는 순환에 없음) */
+export const NEXT_STATUS: Record<string, string> = {
+  todo: 'in-progress',
+  'in-progress': 'done',
+  done: 'todo',
+};
+
 /** 기간 일정 여부 */
 export function isMultiDaySchedule(s: ScheduleRow): boolean {
   return !!s.end_date && s.end_date !== s.date;

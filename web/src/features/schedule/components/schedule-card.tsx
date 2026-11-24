@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { NEXT_STATUS } from '@/features/schedule/lib/types';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
@@ -17,12 +18,6 @@ interface ScheduleCardProps {
   compact?: boolean;
   action?: React.ReactNode;
 }
-
-const NEXT_STATUS: Record<string, string> = {
-  todo: 'in-progress',
-  'in-progress': 'done',
-  done: 'todo',
-};
 
 export function ScheduleCard({
   schedule,
