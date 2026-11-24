@@ -17,9 +17,9 @@ import {
   buildDiaryLookupBlocks,
   buildDiaryEditModal,
   buildDiaryNotFoundModal,
-  decodeDiaryEditMeta,
   readDiaryEditSubmission,
 } from './diary-edit.js';
+import { decodeDiaryEditMeta } from './diary-edit-meta.js';
 import {
   applyDiaryEdit,
   findDiaryEntryById,

@@ -25,7 +25,7 @@ vi.mock('../../../shared/llm.js', () => ({ createDiaryMetaLLMClient: vi.fn() }))
 vi.mock('../../../cron/diary-meta-extract.js', () => ({ extractAndPersistForUser: vi.fn() }));
 
 const { applyDiaryEdit } = await import('../diary-edit-store.js');
-const { hashDiaryContent } = await import('../diary-edit.js');
+const { hashDiaryContent } = await import('../diary-edit-meta.js');
 
 const CURRENT = { id: 7, date: '2026-10-20', content: '원래 일기' };
 const base = {
