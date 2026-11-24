@@ -5,7 +5,14 @@ import {
   type LoopState,
   type ToolExecutor,
 } from './types.js';
-import { withTimeout } from './timing.js';
+import { TimeoutError, withTimeout } from './timing.js';
+
+/**
+ * 타임아웃 결과 안내. 타임아웃은 기다림만 멈추고 실행을 취소하지 않으므로
+ * 쓰기가 뒤늦게 반영됐을 수 있다 — LLM이 같은 쓰기를 바로 다시 시도하지 않게 확인을 먼저 요구한다.
+ */
+const TIMEOUT_GUIDANCE =
+  '실행이 끝났는지 알 수 없어. 데이터를 바꾸는 도구였다면 다시 실행하기 전에 조회로 반영됐는지 먼저 확인해.';
 
 /** 도구 호출 실행 (병렬) */
 export const executeToolCalls = async (
@@ -29,11 +36,11 @@ export const executeToolCalls = async (
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
         console.error(`[${label}] 도구 오류: ${tc.name}`, errorMessage);
-        return {
-          role: 'tool',
-          content: `도구 실행 오류: ${errorMessage}`,
-          toolCallId: tc.id,
-        };
+        const content =
+          error instanceof TimeoutError
+            ? `도구 실행 오류: ${errorMessage}. ${TIMEOUT_GUIDANCE}`
+            : `도구 실행 오류: ${errorMessage}`;
+        return { role: 'tool', content, toolCallId: tc.id };
       }
     }),
   );

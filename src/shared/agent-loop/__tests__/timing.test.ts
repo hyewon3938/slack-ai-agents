@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { parseRetryDelay, withTimeout } from '../timing.js';
+import { parseRetryDelay, TimeoutError, withTimeout } from '../timing.js';
 
 // ─── parseRetryDelay ────────────────────────────────────
 
@@ -36,5 +36,18 @@ describe('withTimeout', () => {
     await vi.advanceTimersByTimeAsync(30_000);
 
     await assertion;
+    await expect(pending).rejects.toBeInstanceOf(TimeoutError);
+  });
+
+  it('먼저 끝나면 타이머를 해제해 남겨두지 않는다', async () => {
+    vi.useFakeTimers();
+
+    await expect(withTimeout(Promise.resolve('ok'), 30_000, '작업')).resolves.toBe('ok');
+    expect(vi.getTimerCount()).toBe(0);
+
+    await expect(withTimeout(Promise.reject(new Error('실패')), 30_000, '작업')).rejects.toThrow(
+      '실패',
+    );
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
