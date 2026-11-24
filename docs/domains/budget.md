@@ -212,8 +212,6 @@ monthly_budget_snapshots:
 ```
 features/budget/
 ├── components/
-│   ├── budget-tab.tsx              # 탭 진입점
-│   ├── budget-overview.tsx         # 월 개요 (달력 + 요약)
 │   ├── expense-list.tsx            # 지출 목록
 │   ├── expense-form.tsx            # 지출 등록/수정 폼
 │   ├── month-summary.tsx           # 월간 요약 카드

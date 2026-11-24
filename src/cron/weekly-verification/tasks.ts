@@ -2,7 +2,7 @@ import type { App } from '@slack/bolt';
 import { query } from '../../shared/db.js';
 import { getKSTDayOfWeek, getTodayISO } from '../../shared/kst.js';
 import { postToChannel } from '../../shared/slack.js';
-import { DEFAULT_USER_ID, queryAllUserMappings } from '../../shared/user-resolver.js';
+import { forEachInsightUser } from '../insight-user-loop.js';
 import type { LifeCronConfig } from '../life/types.js';
 import { previousMondayISO } from './week-start.js';
 import { processUser } from './process-user.js';
@@ -14,25 +14,12 @@ export const weeklyVerificationTask = async (app: App, config: LifeCronConfig): 
   if (getKSTDayOfWeek() !== 1) return;
   const today = getTodayISO();
   const weekStart = previousMondayISO(today);
-  const mappings = await queryAllUserMappings();
-  const insightFallback = process.env['INSIGHT_CHANNEL_ID'] ?? config.channelId;
-
-  if (mappings.length === 0) {
-    if (!insightFallback) return;
-    await processUser(app, DEFAULT_USER_ID, insightFallback, weekStart, today);
-    return;
-  }
-
-  for (const mapping of mappings) {
-    const channelId = mapping.insightChannelId ?? insightFallback;
-    if (!channelId) continue;
-    try {
-      await processUser(app, mapping.userId, channelId, weekStart, today);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Verification] user=${mapping.userId} 처리 실패: ${msg}`);
-    }
-  }
+  // 매핑 0건 분기의 오류는 잡지 않고 올린다(기존 동작 유지).
+  await forEachInsightUser(
+    config,
+    { logPrefix: 'Verification', fallbackErrors: 'propagate' },
+    (userId, channelId) => processUser(app, userId, channelId, weekStart, today),
+  );
 };
 
 /**
@@ -47,7 +34,6 @@ export const weeklyVerificationTask = async (app: App, config: LifeCronConfig): 
 export const weeklyReviewFallbackTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   if (getKSTDayOfWeek() !== 1) return; // 월요일만 (매일 등록, 내부 가드)
   const today = getTodayISO(); // 이번 주 월요일 = SKILL의 week_start
-  const insightFallback = process.env['INSIGHT_CHANNEL_ID'] ?? config.channelId;
 
   const notifyIfMissing = async (userId: number, channelId: string): Promise<void> => {
     const res = await query<{ exists: boolean }>(
@@ -65,26 +51,9 @@ export const weeklyReviewFallbackTask = async (app: App, config: LifeCronConfig)
     console.warn(`[WeeklyReviewFallback] user=${userId} 미발송 — 수동 실행 알림 전송`);
   };
 
-  const mappings = await queryAllUserMappings();
-  if (mappings.length === 0) {
-    if (!insightFallback) return;
-    try {
-      await notifyIfMissing(DEFAULT_USER_ID, insightFallback);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[WeeklyReviewFallback] 폴백 실행 실패: ${msg}`);
-    }
-    return;
-  }
-
-  for (const mapping of mappings) {
-    const channelId = mapping.insightChannelId ?? insightFallback;
-    if (!channelId) continue;
-    try {
-      await notifyIfMissing(mapping.userId, channelId);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[WeeklyReviewFallback] user=${mapping.userId} 처리 실패: ${msg}`);
-    }
-  }
+  await forEachInsightUser(
+    config,
+    { logPrefix: 'WeeklyReviewFallback', fallbackErrors: 'isolate' },
+    notifyIfMissing,
+  );
 };

@@ -11,11 +11,11 @@ import type { App } from '@slack/bolt';
 import { query } from '../shared/db.js';
 import { postBlockMessage } from '../shared/slack.js';
 import { getTodayISO, thisWeekMondayISO } from '../shared/kst.js';
-import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 import { INSIGHT_THRESHOLDS } from '../shared/insight-thresholds.js';
 import { discoverCandidates } from '../agents/insight/hypothesis-discovery.js';
 import { insertPendingDiscoveryLink } from '../agents/insight/hypothesis-discovery-persist.js';
 import { buildDiscoveryCandidateCard } from '../agents/insight/hypothesis-cards.js';
+import { forEachInsightUser } from './insight-user-loop.js';
 import type { LifeCronConfig } from './life/types.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
@@ -87,23 +87,10 @@ const maybeRecommend = async (
  */
 export const discoveryRecommendTask = async (app: App, config: LifeCronConfig): Promise<void> => {
   const today = getTodayISO();
-  const mappings = await queryAllUserMappings();
-  const insightFallback = process.env['INSIGHT_CHANNEL_ID'] ?? config.channelId;
-
-  if (mappings.length === 0) {
-    if (!insightFallback) return;
-    await maybeRecommend(app, DEFAULT_USER_ID, insightFallback, today);
-    return;
-  }
-
-  for (const mapping of mappings) {
-    const channelId = mapping.insightChannelId ?? insightFallback;
-    if (!channelId) continue;
-    try {
-      await maybeRecommend(app, mapping.userId, channelId, today);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Discovery] user=${mapping.userId} 재추천 실패: ${msg}`);
-    }
-  }
+  // 매핑 0건 분기의 오류는 잡지 않고 올린다(기존 동작 유지).
+  await forEachInsightUser(
+    config,
+    { logPrefix: 'Discovery', userFailureLabel: '재추천 실패', fallbackErrors: 'propagate' },
+    (userId, channelId) => maybeRecommend(app, userId, channelId, today),
+  );
 };
