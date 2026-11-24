@@ -19,6 +19,7 @@ import {
   MSG,
   type ScopeCtx,
   SELECT_CLAUSES,
+  SHARED_READONLY_TABLES,
   type Source,
   USER_ID_EXEMPT_TABLES,
   analyzeQuery,
@@ -39,6 +40,8 @@ const DML_MSG = {
   setUserId: '보안 규칙: user_id 값은 바꿀 수 없어.',
   insertUserId: '보안 규칙: INSERT에 user_id 컬럼을 포함해줘.',
   conflict: '보안 규칙: ON CONFLICT DO UPDATE는 충돌 대상에 user_id를 포함해야 해.',
+  schema: '보안 규칙: 변경 대상은 public 스키마 테이블만 쓸 수 있어.',
+  readOnly: (name: string): string => `보안 규칙: ${name} 테이블은 조회만 할 수 있어.`,
 };
 
 const isComma = (ctx: ScopeCtx) => (i: number): boolean => isPunct(ctx.tokens[i], ',');
@@ -57,10 +60,22 @@ const checkSetList = (ctx: ScopeCtx, start: number, end: number): void => {
   }
 };
 
+/** 변경 대상 테이블: public 밖 스키마와 공용 조회 테이블은 대상이 될 수 없다 */
+const isWritableTarget = (ctx: ScopeCtx, schema: string | null, name: string): boolean => {
+  if (schema !== null && schema !== 'public') fail(ctx, DML_MSG.schema);
+  else if (SHARED_READONLY_TABLES.has(name)) fail(ctx, DML_MSG.readOnly(name));
+  else return true;
+  return false;
+};
+
 /** UPDATE·DELETE 대상: 실제 테이블 하나 */
 const parseTarget = (ctx: ScopeCtx, [start, end]: Range): Source | null => {
   const parsed = parseSource(ctx, start, end, EMPTY_SCOPE);
   if (!parsed || !parsed.source.isTable || parsed.end !== end) return null;
+  const t = ctx.tokens;
+  const first = isWord(t[start], 'only') ? start + 1 : start;
+  const schema = isPunct(t[first + 1], '.') ? identName(t[first]) : null;
+  if (!isWritableTarget(ctx, schema, parsed.source.label)) return null;
   return { ...parsed.source, join: 'base', on: null };
 };
 
@@ -110,6 +125,7 @@ export const analyzeDelete = (ctx: ScopeCtx, end: number): void => {
 // ---- INSERT ----
 
 interface InsertTarget {
+  schema: string | null;
   name: string;
   columns: string[] | null;
   next: number;
@@ -118,21 +134,23 @@ interface InsertTarget {
 const parseInsertTarget = (ctx: ScopeCtx, end: number): InsertTarget | null => {
   const t = ctx.tokens;
   if (!isWord(t[1], 'into')) return null;
-  let i = isPunct(t[3], '.') ? 4 : 2;
+  const qualified = isPunct(t[3], '.');
+  const schema = qualified ? identName(t[2]) : null;
+  let i = qualified ? 4 : 2;
   const name = identName(t[i]);
-  if (name === null) return null;
+  if (name === null || (qualified && schema === null)) return null;
   i += 1;
   if (isWord(t[i], 'as')) {
     if (identName(t[i + 1]) === null) return null;
     i += 2;
   }
-  if (!isPunct(t[i], '(')) return { name, columns: null, next: i };
+  if (!isPunct(t[i], '(')) return { schema, name, columns: null, next: i };
   const close = ctx.match[i] ?? end;
   const columns = splitTop(ctx, i + 1, close, isComma(ctx)).map(([s, e]) =>
     e - s === 1 ? identName(t[s]) : null,
   );
   if (columns.some((c) => c === null)) return null;
-  return { name, columns: columns.map((c) => c ?? ''), next: close + 1 };
+  return { schema, name, columns: columns.map((c) => c ?? ''), next: close + 1 };
 };
 
 const isUserIdLiteral = (ctx: ScopeCtx, start: number): boolean => {
@@ -245,6 +263,7 @@ export const analyzeInsert = (ctx: ScopeCtx, end: number): void => {
   const target = parseInsertTarget(ctx, end);
   if (!target) return fail(ctx, MSG.structure);
   if (BLOCKED_TABLES.has(target.name)) return fail(ctx, MSG.blockedTable(target.name));
+  if (!isWritableTarget(ctx, target.schema, target.name)) return;
   const userIdx = target.columns?.indexOf('user_id') ?? -1;
   if (userIdx < 0 && !USER_ID_EXEMPT_TABLES.has(target.name)) {
     return fail(ctx, DML_MSG.insertUserId);

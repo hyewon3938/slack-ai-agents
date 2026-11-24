@@ -20,6 +20,14 @@ const DANGEROUS_NAMES = new Set([
   'inet_server_addr',
   'inet_server_port',
   'inet_client_addr',
+  // 읽기 전용 트랜잭션 안에서도 세션·저장 상태를 바꾸는 함수
+  'setseed',
+  'txid_current',
+  'pg_current_xact_id',
+  'gin_clean_pending_list',
+  'brin_summarize_new_values',
+  'brin_summarize_range',
+  'brin_desummarize_range',
 ]);
 
 const isDangerousName = (name: string): boolean => {

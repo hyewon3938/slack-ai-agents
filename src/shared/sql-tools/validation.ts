@@ -117,7 +117,9 @@ const analyzeStatement = (ctx: ScopeCtx): void => {
  * - UPDATE/DELETE: 대상과 FROM/USING 테이블마다 같은 보장 필요, user_id 값 변경 금지
  * - INSERT: user_id 컬럼 값이 {userId}이어야 함
  * - user_id를 {userId} 이외의 값과 비교하거나 시스템 함수·카탈로그를 쓰면 거부
- * - user_id 컬럼이 없는 면제 테이블과 information_schema는 보장 없이 허용
+ * - user_id 컬럼이 없는 면제 테이블·공용 조회 테이블과 information_schema는 보장 없이 허용
+ *   (공용 조회 테이블은 변경 대상 불가, 이런 테이블만 읽는 블록의 비한정 user_id는 거부)
+ * - 변경 대상은 public 스키마 테이블만 허용
  * 통과 시 null, 실패 시 에러 메시지 반환.
  */
 export const validateUserIdFilter = (sql: string, userId: number): string | null => {

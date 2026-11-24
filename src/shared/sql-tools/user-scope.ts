@@ -30,13 +30,26 @@ type Scope = ReadonlySet<string>;
 /** user_id 컬럼이 없는 테이블 (user_id 조건 면제) */
 export const USER_ID_EXEMPT_TABLES = new Set(['notification_settings', 'reminders']);
 
-/** 계정 정보 테이블: user_id 컬럼이 없어 범위를 보장할 수 없으므로 읽지 않는다 */
-export const BLOCKED_TABLES = new Set(['users']);
+/** 사주 기준표: 모든 사용자가 같이 읽는 공용 데이터. 조건 없이 읽고, 변경 대상으로는 쓰지 않는다 */
+export const SHARED_READONLY_TABLES = new Set([
+  'branch_relations',
+  'branches_master',
+  'ganji_master',
+  'sibiunsung_lookup',
+  'sipsin_lookup',
+  'stem_relations',
+  'stems_master',
+]);
+
+/** 계정 정보·마이그레이션 기록 테이블: user_id 컬럼이 없어 범위를 보장할 수 없으므로 읽지 않는다 */
+export const BLOCKED_TABLES = new Set(['users', 'schema_migrations']);
 
 export const MSG = {
   structure:
     '보안 규칙: 쿼리 구조를 확인할 수 없어. 단순한 SELECT/INSERT/UPDATE/DELETE 형태로 다시 써줘.',
   blockedTable: (name: string): string => `보안 규칙: ${name} 테이블은 쓸 수 없어.`,
+  noUserColumn:
+    '보안 규칙: user_id 컬럼이 없는 테이블만 읽는 곳에는 user_id 조건을 쓸 수 없어. 그 조건을 빼줘.',
   missing: (userId: number, labels: string[]): string =>
     `보안 규칙: 이 쿼리에는 user_id = ${userId} 조건이 필요해. ` +
     `JOIN·서브쿼리·UNION으로 읽는 테이블마다 WHERE에 별칭.user_id = ${userId} 조건을 AND로 넣어줘. ` +
@@ -172,6 +185,7 @@ const tableKind = (parts: string[], scope: Scope): 'cte' | 'exempt' | 'required'
   const name = parts[parts.length - 1] ?? '';
   if (parts.length === 1 && scope.has(name)) return 'cte';
   if (parts.length === 2 && parts[0] === 'information_schema') return 'exempt';
+  if (SHARED_READONLY_TABLES.has(name)) return 'exempt';
   return USER_ID_EXEMPT_TABLES.has(name) ? 'exempt' : 'required';
 };
 
@@ -349,7 +363,30 @@ export const uncoveredSources = (ctx: Ctx, sources: Source[], where: Range | nul
     .map((s) => s.label);
 };
 
+/** 범위 안(하위 서브쿼리 제외)에 별칭 없이 쓴 user_id가 있는지 */
+const hasBareUserId = (ctx: Ctx, [start, end]: Range): boolean => {
+  const t = ctx.tokens;
+  let i = start;
+  while (i < end) {
+    if (startsQuery(ctx, i)) {
+      i = (ctx.match[i] ?? end) + 1;
+      continue;
+    }
+    const bare = !isPunct(t[i - 1], '.') && !isPunct(t[i + 1], '.');
+    if (identName(t[i]) === 'user_id' && bare) return true;
+    i += 1;
+  }
+  return false;
+};
+
+/**
+ * 블록의 소스가 모두 user_id 컬럼이 없는 테이블이면 비한정 user_id는 해석이 애매하므로 거절하고,
+ * 그 밖에는 필수 테이블마다 user_id = N 보장을 확인한다.
+ */
 export const requireCoverage = (ctx: ScopeCtx, sources: Source[], where: Range | null): void => {
+  const noUserColumn = sources.length > 0 && sources.every((s) => s.isTable && !s.required);
+  const conds = [where, ...sources.map((s) => s.on)].filter((r): r is Range => r !== null);
+  if (noUserColumn && conds.some((r) => hasBareUserId(ctx, r))) fail(ctx, MSG.noUserColumn);
   const missing = uncoveredSources(ctx, sources, where);
   if (missing.length > 0) fail(ctx, MSG.missing(ctx.userId, missing));
 };
