@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`web/src/` 아래 소스 파일 211개, 21945줄이고 테스트 파일은 34개다. 줄 수는 테스트를 뺀 값이다.
+`web/src/` 아래 소스 파일 207개, 21590줄이고 테스트 파일은 34개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
@@ -409,16 +409,13 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `app-shell.tsx` | 157 |  | function: `AppShell` |
 | `bottom-sheet.tsx` | 52 |  | function: `BottomSheet` |
 | `button.tsx` | 37 |  | const: `Button` |
-| `card.tsx` | 17 |  | function: `Card` |
 | `color-picker.tsx` | 253 |  | function: `ColorPicker` |
 | `filter-bar.tsx` | 133 |  | function: `FilterBar` |
-| `icons.tsx` | 279 | SVG 아이콘 컴포넌트 모음. | function: `CalendarIcon`, `ArrowPathIcon`, `ClipboardListIcon`, `TagIcon`, `WalletIcon`, `EllipsisHorizontalIcon`, `ArrowRightStartOnRectangleIcon`, `PlusIcon`, `TrashIcon`, `PencilIcon`, `ChevronLeftIcon`, `ChevronRightIcon`, `ChevronDownIcon`, `FunnelIcon`, `XMarkIcon`, `BanknotesIcon`, `ArrowTrendingDownIcon`, `ClockIcon`, `CheckCircleIcon`, `ExclamationTriangleIcon`, `Cog6ToothIcon`, `Bars3Icon`, `SunIcon`, `MoonIcon` |
+| `icons.tsx` | 193 | SVG 아이콘 컴포넌트 모음. | function: `CalendarIcon`, `WalletIcon`, `ArrowRightStartOnRectangleIcon`, `PlusIcon`, `TrashIcon`, `PencilIcon`, `ChevronLeftIcon`, `ChevronRightIcon`, `ChevronDownIcon`, `FunnelIcon`, `XMarkIcon`, `BanknotesIcon`, `ArrowTrendingDownIcon`, `ClockIcon`, `CheckCircleIcon`, `Bars3Icon`, `SunIcon` |
 | `input.tsx` | 39 |  | const: `Input`, `Select` |
 | `modal.tsx` | 82 |  | function: `Modal` |
-| `page-layout.tsx` | 17 |  | function: `PageContent` |
-| `section-header.tsx` | 15 |  | function: `SectionHeader` |
 | `skeleton.tsx` | 37 |  | function: `Skeleton`, `TabsSkeleton`, `CardSkeleton`, `ListSkeleton` |
-| `tabs.tsx` | 123 |  | function: `LinkTopTabs`, `LinkPillTabs`, `TopTabs`, `PillTabs` |
+| `tabs.tsx` | 92 |  | function: `LinkTopTabs`, `LinkPillTabs`, `PillTabs` |
 
 ## `web/src/features/budget/components`
 
@@ -542,7 +539,6 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `routine-form.tsx` | 211 |  | function: `RoutineForm` |
 | `routine-heatmap.tsx` | 199 |  | function: `RoutineHeatmap` |
 | `routine-list.tsx` | 83 |  | function: `RoutineList` |
-| `routine-page.tsx` | 188 |  | function: `RoutinePage` |
 | `routine-record-detail.tsx` | 71 |  | function: `RoutineRecordDetail` |
 | `routine-stats.tsx` | 248 |  | function: `RoutineStats` |
 | `yearly-heatmap.tsx` | 141 |  | function: `YearlyHeatmap` |
@@ -661,7 +657,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `saju.ts` | 110 | 사주 일주 계산 (web용 복제본). | function: `getDayPillar`<br>type: `Cheongan`, `Jiji`, `Pillar` |
 | `send-json.ts` | 12 |  | function: `sendJson` |
 | `slack.ts` | 83 | Slack Web API 클라이언트 — 웹에서 알림용 메시지 전송 | function: `postSlackMessage`, `notifyNewSignup` |
-| `types.ts` | 79 | ─── 카테고리 (공통) ───────────────────────────────── | function: `hexToStyles`, `getCategoryStyle`, `colorToHex`, `formatAmount`<br>const: `CATEGORY_TYPES`, `VALID_CATEGORY_TYPES`, `PRESET_COLORS`, `COLOR_OPTIONS`<br>type: `CategoryType`, `CategoryRow` |
+| `types.ts` | 78 | ─── 카테고리 (공통) ───────────────────────────────── | function: `hexToStyles`, `getCategoryStyle`, `colorToHex`, `formatAmount`<br>const: `CATEGORY_TYPES`, `VALID_CATEGORY_TYPES`, `PRESET_COLORS`<br>type: `CategoryType`, `CategoryRow` |
 | `users.ts` | 84 |  | function: `findUserByKakaoId`, `listAllUserIds`, `getUserCount`, `findOrCreateUser`<br>type: `UserRow` |
 | `validation.ts` | 40 |  | function: `validateStringLength`, `validateFields`<br>const: `MAX_LENGTHS` |
 
