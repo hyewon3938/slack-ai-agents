@@ -3,7 +3,7 @@
  */
 
 import { query } from '../db.js';
-import { findEquivalentSignal } from '../signal-defs.js';
+import { findEquivalentSignal } from './signal-defs.js';
 import type { SignalDefRow } from './load-signal-defs.js';
 import type { SignalDirection } from './types.js';
 

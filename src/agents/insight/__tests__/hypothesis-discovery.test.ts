@@ -100,8 +100,8 @@ vi.mock('../../../shared/pattern/series.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../shared/stats.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../shared/stats.js')>();
+vi.mock('../../../shared/pattern/stats.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/pattern/stats.js')>();
   return {
     ...actual,
     // 결정론 block-perm: survivor 순회 순서대로 큐 소비(없으면 강한 연관 가정 0.001).

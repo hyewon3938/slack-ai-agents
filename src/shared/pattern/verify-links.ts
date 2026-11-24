@@ -7,17 +7,17 @@ import {
   cumulativePosteriorFromHitMiss,
   empiricalBetaPrior,
   posteriorMean,
-} from '../bayesian-posterior.js';
+} from './bayesian-posterior.js';
 import { query } from '../db.js';
 import { seedLabel, signalLabel } from '../insight-labels.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import type { BandCuts } from '../quantile.js';
+import type { BandCuts } from './quantile.js';
 import {
   type MannWhitneyResult,
   blockPermutationP,
   evalueTestMartingale,
   mannWhitneyU,
-} from '../stats.js';
+} from './stats.js';
 import { buildWindowDates } from './binarize.js';
 import {
   buildContingency,

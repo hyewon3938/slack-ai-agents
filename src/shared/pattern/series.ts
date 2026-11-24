@@ -4,13 +4,13 @@
 
 import { query } from '../db.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import { type BandCuts, classifyBand, isBand, tertileCuts } from '../quantile.js';
+import { type BandCuts, classifyBand, isBand, tertileCuts } from './quantile.js';
 import type { PillarSet } from '../saju/types.js';
 import {
   type StrengthTarget,
   computeStrengthForTarget,
   isStrengthTarget,
-} from '../saju-strength.js';
+} from '../saju/strength.js';
 import { binarizeSqlSeries } from './binarize.js';
 import { getDailyContext } from './match-context.js';
 import { runLlmSignalSql, runMetricSql } from './match-metric.js';

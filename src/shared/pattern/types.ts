@@ -2,7 +2,7 @@
  * off-day 대조 검증 엔진의 공용 타입 (pattern-verification에서 분리).
  */
 
-import type { MannWhitneyResult } from '../stats.js';
+import type { MannWhitneyResult } from './stats.js';
 import type { FdrFamily } from './fdr-family.js';
 
 export type SignalDirection =

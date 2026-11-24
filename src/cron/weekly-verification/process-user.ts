@@ -3,7 +3,7 @@ import { verifyUserLinks } from '../../shared/pattern/verify-links.js';
 import { computeStrengthCutpoints } from '../../shared/pattern/strength-cutpoints.js';
 import { ensureMirrorSignalDef } from '../../shared/pattern/mirror-signal.js';
 import { flagConfounds } from '../../shared/pattern/confound-flag.js';
-import { runSaturationSweep, type SaturationSweepResult } from '../../shared/seed-saturation.js';
+import { runSaturationSweep, type SaturationSweepResult } from '../../shared/pattern/seed-saturation.js';
 import { recommendDiscoveries } from '../discovery-recommend.js';
 import {
   persistLinkVerification,

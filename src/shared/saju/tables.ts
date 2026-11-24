@@ -187,7 +187,7 @@ export const JIJI_HAE: readonly [number, number][] = [
 
 // ─── 합/충 규칙 (문자 기반, 외부 결정론 엔진용) ───────────
 // index 기반 상수(CHEONGAN_HAP/JIJI_*)를 단일 출처로 두고 문자 기반으로 파생.
-// saju-hwa.ts(합화 변환 탐지)가 합화오행·충 쌍을 글자 단위로 소비 (#477 P4b).
+// hwa.ts(합화 변환 탐지)가 합화오행·충 쌍을 글자 단위로 소비 (#477 P4b).
 
 /** 천간합 규칙: 두 천간 → 합화오행 */
 export interface StemHapRule {

@@ -2,7 +2,7 @@
 
 import { getElementByCheongan, getElementByJiji } from '../saju/pillar-utils.js';
 import { type Cheongan, type Jiji, type Element, type Sipsung } from '../saju/types.js';
-import { elementToSipsinGroup, isSipsinGroup, type SipsinGroup } from '../saju-hwa.js';
+import { elementToSipsinGroup, isSipsinGroup, type SipsinGroup } from '../saju/hwa.js';
 
 /** 글자 레벨은 천간/지지 분리(동음이의 차단). 십성·그룹은 통합, element_band는 별도 축. */
 export type AxisLevel = 'char_stem' | 'char_branch' | 'sipsung' | 'group' | 'element_band';

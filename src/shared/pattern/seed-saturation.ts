@@ -17,18 +17,18 @@
  * evidence-only 시드는 null)가 아니라 트리거 자체의 발현 빈도. off-day 대조의 활성/비활성 축과 일치.
  */
 
-import { query } from './db.js';
-import { buildWindowDates } from './pattern/binarize.js';
-import { computeSeedActivationSeries } from './pattern/series.js';
-import { computeUserDataStarts, seedDataStart } from './pattern/data-window.js';
-import { buildNameIdMap } from './pattern/match-day.js';
+import { query } from '../db.js';
+import { buildWindowDates } from './binarize.js';
+import { computeSeedActivationSeries } from './series.js';
+import { computeUserDataStarts, seedDataStart } from './data-window.js';
+import { buildNameIdMap } from './match-day.js';
 import {
   type SajuSeed,
   type SajuSeedWithMetrics,
   type DailyContext,
-} from './pattern/match-types.js';
-import { seedLabel } from './insight-labels.js';
-import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
+} from './match-types.js';
+import { seedLabel } from '../insight-labels.js';
+import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
 
 const S = INSIGHT_THRESHOLDS.patternVerification;
 

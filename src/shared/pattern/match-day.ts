@@ -3,7 +3,7 @@
  */
 
 import { query } from '../db.js';
-import type { BandCuts } from '../quantile.js';
+import type { BandCuts } from './quantile.js';
 import { getDailyContext } from './match-context.js';
 import { evaluateMetric } from './match-metric.js';
 import { loadActiveSeeds } from './match-seeds.js';

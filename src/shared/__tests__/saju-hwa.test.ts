@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { makePillar } from '../saju/pillar-utils.js';
 import { type PillarSet } from '../saju/types.js';
-import { detectHwaTransforms, elementToSipsinGroup } from '../saju-hwa.js';
-import { SAJU_HWA_PARAMS } from '../saju-strength-params.js';
+import { detectHwaTransforms, elementToSipsinGroup } from '../saju/hwa.js';
+import { SAJU_HWA_PARAMS } from '../saju/strength-params.js';
 
 // 모든 fixture는 추상 조합(개인 원국 아님). 일간은 경(금)으로 고정해 합이 일간에 닿지 않게 분리.
 

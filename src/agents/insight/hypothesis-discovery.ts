@@ -13,7 +13,7 @@
  */
 
 import { query } from '../../shared/db.js';
-import { blockPermutationP, mannWhitneyU, type MannWhitneyResult } from '../../shared/stats.js';
+import { blockPermutationP, mannWhitneyU, type MannWhitneyResult } from '../../shared/pattern/stats.js';
 import { buildWindowDates } from '../../shared/pattern/binarize.js';
 import {
   computeSignalSeries,
@@ -42,7 +42,7 @@ import {
 import { loadActiveSeeds } from '../../shared/pattern/match-seeds.js';
 import { buildNameIdMap } from '../../shared/pattern/match-day.js';
 import { type SajuSeedWithMetrics, type DailyContext } from '../../shared/pattern/match-types.js';
-import type { BandCuts } from '../../shared/quantile.js';
+import type { BandCuts } from '../../shared/pattern/quantile.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 import { seedLabel, signalLabel } from '../../shared/insight-labels.js';
 import { BEHAVIOR_SIGNAL_DOMAIN, type InsightDomain } from '../../shared/insights/types.js';

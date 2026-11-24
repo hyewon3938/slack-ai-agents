@@ -4,12 +4,12 @@
 
 import { query } from '../db.js';
 import { dispatchLifeSignal } from '../life-signal-evaluators/index.js';
-import { type BandCuts, classifyBand, isBand } from '../quantile.js';
+import { type BandCuts, classifyBand, isBand } from './quantile.js';
 import { type Cheongan, type Jiji } from '../saju/types.js';
 import { getElementByCheongan } from '../saju/pillar-utils.js';
-import { detectHwaTransforms, elementToSipsinGroup, isSipsinGroup } from '../saju-hwa.js';
-import { SAJU_HWA_PARAMS } from '../saju-strength-params.js';
-import { computeStrengthForTarget, isStrengthTarget } from '../saju-strength.js';
+import { detectHwaTransforms, elementToSipsinGroup, isSipsinGroup } from '../saju/hwa.js';
+import { SAJU_HWA_PARAMS } from '../saju/strength-params.js';
+import { computeStrengthForTarget, isStrengthTarget } from '../saju/strength.js';
 import { isLifeSignalAux } from './match-aux-types.js';
 import {
   ELEMENT_BY_BRANCH,

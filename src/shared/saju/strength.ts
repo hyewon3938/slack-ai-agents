@@ -8,21 +8,21 @@
  *     월령(간결판): 원국 월지 본기 오행과 같은 글자는 ×W_WOLLYEONG (득령)
  *     통근(게이트): 대상 오행이 천간 투출 + 지장간 뿌리를 동시에 가지면 +W_TONGGEUN
  *
- * 전부 파라미터(saju-strength-params.ts) — 0이면 그 규칙 비활성(헌장 ⑤).
+ * 전부 파라미터(strength-params.ts) — 0이면 그 규칙 비활성(헌장 ⑤).
  * 상대 분위수 밴드(ADR-0036)로 검정에 태우므로 절대 스케일이 아니라 "내 안 상대 강/약"만 의미.
  * 본 모듈은 순수 계산(DB·시각 의존 0) → 단위 테스트 용이.
  */
 
-import { getElementByCheongan, getElementByJiji } from './saju/pillar-utils.js';
-import { getJijanggan } from './saju/sipsung.js';
-import { type Cheongan, type Element, type Pillar, type PillarSet } from './saju/types.js';
+import { getElementByCheongan, getElementByJiji } from './pillar-utils.js';
+import { getJijanggan } from './sipsung.js';
+import { type Cheongan, type Element, type Pillar, type PillarSet } from './types.js';
 import {
   SAJU_STRENGTH_PARAMS,
   SAJU_HWA_PARAMS,
   type SajuStrengthParams,
   type HwaParams,
-} from './saju-strength-params.js';
-import { detectHwaTransforms, type HwaResult } from './saju-hwa.js';
+} from './strength-params.js';
+import { detectHwaTransforms, type HwaResult } from './hwa.js';
 
 const ELEMENTS: readonly Element[] = ['목', '화', '토', '금', '수'];
 const ELEMENT_INDEX: Record<Element, number> = { 목: 0, 화: 1, 토: 2, 금: 3, 수: 4 };

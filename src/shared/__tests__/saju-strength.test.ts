@@ -7,8 +7,8 @@ import {
   computeAbsoluteStrengthState,
   computeElementRatios,
   isStrengthTarget,
-} from '../saju-strength.js';
-import { SAJU_STRENGTH_PARAMS, SAJU_HWA_PARAMS } from '../saju-strength-params.js';
+} from '../saju/strength.js';
+import { SAJU_STRENGTH_PARAMS, SAJU_HWA_PARAMS } from '../saju/strength-params.js';
 
 // 금/토 일색 — 일간 경(금)이 비겁·인성으로 가득 → 신강. 월지 유(금)로 월령=금.
 const STRONG_METAL: PillarSet = {

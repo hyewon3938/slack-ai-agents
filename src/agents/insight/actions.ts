@@ -11,8 +11,8 @@
 import type { App } from '@slack/bolt';
 import type { KnownBlock } from '@slack/types';
 import { query } from '../../shared/db.js';
-import { findEquivalentSignal } from '../../shared/signal-defs.js';
-import { validateSignalSql } from '../../shared/signal-sql-guard.js';
+import { findEquivalentSignal } from '../../shared/pattern/signal-defs.js';
+import { validateSignalSql } from '../../shared/pattern/signal-sql-guard.js';
 import { resolveActionCard, updateMessage } from '../../shared/slack.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {

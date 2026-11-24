@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { quantileSorted, tertileCuts, classifyBand, isBand } from '../quantile.js';
+import { quantileSorted, tertileCuts, classifyBand, isBand } from '../pattern/quantile.js';
 
 describe('quantileSorted', () => {
   it('빈 배열 → NaN', () => {
