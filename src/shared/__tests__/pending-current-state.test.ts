@@ -67,10 +67,11 @@ describe('loadCurrentStateBlocks — schedules', () => {
     expect(mockQueryTodaySchedules).toHaveBeenCalledWith(TODAY, 7);
   });
 
-  it('날짜가 빈 값인 항목이 있으면 백로그를 조회', async () => {
+  it('백로그 일정이 영향받았으면 백로그를 조회', async () => {
     const result = await loadCurrentStateBlocks('schedules', {
       userId: 7,
-      affectedDates: ['', '2026-03-05'],
+      affectedDates: ['2026-03-05'],
+      hasBacklog: true,
     });
     expect(mockQueryBacklogSchedules).toHaveBeenCalledWith(7);
     expect(mockQueryTodaySchedules).not.toHaveBeenCalled();
@@ -100,7 +101,7 @@ describe('loadCurrentStateBlocks — 날짜 기준 테이블', () => {
         affectedDates: ['2026-03-05'],
       });
       expect(mockQuerySleepForHome).toHaveBeenCalledWith('2026-03-05', 7);
-      expect(mockQuerySleepEventsForHome.mock.calls[0]?.[0]).toBe('2026-03-05');
+      expect(mockQuerySleepEventsForHome).toHaveBeenCalledWith('2026-03-05', 7);
       expect(result?.text).toBe('2026-03-05 수면 기록');
     },
   );
@@ -127,6 +128,28 @@ describe('loadCurrentStateBlocks — 목록 테이블', () => {
     await loadCurrentStateBlocks('custom_instructions', { userId: 7 });
     expect(mockQuery).toHaveBeenCalledTimes(1);
     expect(mockQuery.mock.calls[0]?.[1]).toEqual([7]);
+  });
+
+  it('categories는 해당 유저 기준으로 조회', async () => {
+    mockQuery.mockResolvedValue({ rows: [{ name: '운동', type: 'task' }] });
+    const result = await loadCurrentStateBlocks('categories', { userId: 7 });
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('FROM categories');
+    expect(sql).toContain('user_id = $1');
+    expect(params).toEqual([7]);
+    expect(result?.text).toBe('카테고리 1개');
+  });
+
+  it('reminders는 유저 컬럼이 없는 공용 테이블이라 활성 리마인더 전체를 조회', async () => {
+    mockQuery.mockResolvedValue({
+      rows: [{ title: '약 먹기', time_value: '09:00', frequency: '매일' }],
+    });
+    const result = await loadCurrentStateBlocks('reminders', { userId: 7 });
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[] | undefined];
+    expect(sql).toContain('FROM reminders');
+    expect(sql).not.toContain('user_id');
+    expect(params).toBeUndefined();
+    expect(result?.text).toBe('활성 리마인더 1개');
   });
 });
 

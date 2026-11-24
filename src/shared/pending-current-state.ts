@@ -16,6 +16,8 @@ export interface CurrentStateContext {
   userId: number;
   /** 영향받은 row에서 추출한 날짜들 (실행 전 row 기준) */
   affectedDates?: string[];
+  /** 영향받은 row 중 날짜가 없는 일정(백로그)이 있었는지 */
+  hasBacklog?: boolean;
 }
 
 /** schedules: 영향받은 날짜(또는 백로그) 기준 일정 목록 */
@@ -23,8 +25,8 @@ const loadScheduleState = async (
   ctx: CurrentStateContext,
   today: string,
 ): Promise<{ text: string; blocks: KnownBlock[] }> => {
-  const hasBacklog = ctx.affectedDates?.some((d) => !d) ?? false;
-  const targetDate = ctx.affectedDates?.find((d) => !!d) ?? today;
+  const hasBacklog = ctx.hasBacklog ?? false;
+  const targetDate = ctx.affectedDates?.[0] ?? today;
   const items = hasBacklog
     ? await queryBacklogSchedules(ctx.userId)
     : await queryTodaySchedules(targetDate, ctx.userId);
@@ -80,7 +82,7 @@ export const loadCurrentStateBlocks = async (
       const targetDate = ctx.affectedDates?.[0] ?? today;
       const [records, events] = await Promise.all([
         querySleepForHome(targetDate, ctx.userId),
-        querySleepEventsForHome(targetDate),
+        querySleepEventsForHome(targetDate, ctx.userId),
       ]);
       return {
         text: `${targetDate} 수면 기록`,
@@ -88,28 +90,25 @@ export const loadCurrentStateBlocks = async (
       };
     }
     case 'reminders':
-      return loadReminderList(ctx.userId);
+      return loadReminderList();
     case 'notification_settings':
       return loadNotificationList();
     case 'custom_instructions':
       return loadCustomInstructionList(ctx.userId);
     case 'categories':
-      return loadCategoryList();
+      return loadCategoryList(ctx.userId);
     default:
       return null;
   }
 };
 
-/** 활성 리마인더 간단 리스트 */
-const loadReminderList = async (
-  userId: number,
-): Promise<{ text: string; blocks: KnownBlock[] }> => {
+/** 활성 리마인더 간단 리스트 (reminders는 유저 컬럼이 없는 공용 테이블) */
+const loadReminderList = async (): Promise<{ text: string; blocks: KnownBlock[] }> => {
   const rows = (
     await query<{ title: string; time_value: string; frequency: string | null }>(
       `SELECT title, time_value, frequency FROM reminders
-       WHERE active = true AND user_id = $1
+       WHERE active = true
        ORDER BY time_value, title`,
-      [userId],
     )
   ).rows;
   const lines = rows.map((r) =>
@@ -175,10 +174,13 @@ const loadCustomInstructionList = async (
   };
 };
 
-const loadCategoryList = async (): Promise<{ text: string; blocks: KnownBlock[] }> => {
+const loadCategoryList = async (
+  userId: number,
+): Promise<{ text: string; blocks: KnownBlock[] }> => {
   const rows = (
     await query<{ name: string; type: string }>(
-      `SELECT name, type FROM categories ORDER BY sort_order, name`,
+      `SELECT name, type FROM categories WHERE user_id = $1 ORDER BY sort_order, name`,
+      [userId],
     )
   ).rows;
   const lines = rows.map((r) => `• ${r.name} (${r.type})`);

@@ -33,7 +33,7 @@ export const publishHomeView = async (
     queryTodayRecords(today, dbUserId),
     queryTodaySchedules(today, dbUserId),
     querySleepForHome(today, dbUserId),
-    querySleepEventsForHome(today),
+    querySleepEventsForHome(today, dbUserId),
   ]);
 
   const blocks: KnownBlock[] = [];

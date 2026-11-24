@@ -7,7 +7,8 @@ import type { PendingModifyRow } from '../../../shared/pending-modify.js';
 const mockQueryWithRowLimit = vi.fn();
 const mockDryRun = vi.fn();
 const mockFindActivePending = vi.fn();
-const mockMarkExecuted = vi.fn();
+const mockClaim = vi.fn();
+const mockRelease = vi.fn();
 const mockMarkCanceled = vi.fn();
 const mockLoadCurrentState = vi.fn();
 
@@ -18,7 +19,8 @@ vi.mock('../../../shared/db.js', () => ({
 
 vi.mock('../../../shared/pending-modify.js', () => ({
   findActivePending: (...args: unknown[]): unknown => mockFindActivePending(...args),
-  markExecuted: (...args: unknown[]): unknown => mockMarkExecuted(...args),
+  claimPendingExecution: (...args: unknown[]): unknown => mockClaim(...args),
+  releasePendingExecution: (...args: unknown[]): unknown => mockRelease(...args),
   markCanceled: (...args: unknown[]): unknown => mockMarkCanceled(...args),
 }));
 
@@ -84,13 +86,14 @@ beforeEach(() => {
   ack = vi.fn().mockResolvedValue(undefined);
   mockDryRun.mockResolvedValue({ rowCount: 1, rows: [{ id: 10, date: '2026-03-05' }] });
   mockQueryWithRowLimit.mockResolvedValue({ rowCount: 1, rows: [] });
-  mockMarkExecuted.mockResolvedValue(undefined);
+  mockClaim.mockResolvedValue(true);
+  mockRelease.mockResolvedValue(undefined);
   mockMarkCanceled.mockResolvedValue(undefined);
   mockLoadCurrentState.mockResolvedValue({ text: '현재 상태', blocks: [STATE_BLOCK] });
 });
 
 describe('handleConfirmModifyExecute', () => {
-  it('확인한 SQL을 실행하고 실행 완료로 표시, 결과 메시지에 현재 상태를 붙임', async () => {
+  it('실행 전에 pending을 선점하고 SQL을 실행, 결과 메시지에 현재 상태를 붙임', async () => {
     mockFindActivePending.mockResolvedValue(makePending());
     mockQueryWithRowLimit.mockResolvedValue({ rowCount: 3, rows: [] });
 
@@ -98,11 +101,16 @@ describe('handleConfirmModifyExecute', () => {
 
     expect(ack).toHaveBeenCalledTimes(1);
     expect(mockFindActivePending).toHaveBeenCalledWith('tok-1', 7);
+    expect(mockClaim).toHaveBeenCalledWith(99);
+    expect(mockClaim.mock.invocationCallOrder[0]).toBeLessThan(
+      mockQueryWithRowLimit.mock.invocationCallOrder[0] ?? 0,
+    );
     expect(mockQueryWithRowLimit).toHaveBeenCalledWith(SQL, 10_000, 50);
-    expect(mockMarkExecuted).toHaveBeenCalledWith(99);
+    expect(mockRelease).not.toHaveBeenCalled();
     expect(mockLoadCurrentState).toHaveBeenCalledWith('schedules', {
       userId: 7,
       affectedDates: ['2026-03-05'],
+      hasBacklog: false,
     });
     const update = lastUpdate();
     expect(update.channel).toBe('C1');
@@ -122,9 +130,21 @@ describe('handleConfirmModifyExecute', () => {
 
     expect(mockDryRun).not.toHaveBeenCalled();
     expect(mockQueryWithRowLimit).not.toHaveBeenCalled();
-    expect(mockMarkExecuted).not.toHaveBeenCalled();
+    expect(mockClaim).not.toHaveBeenCalled();
     expect(lastUpdate().text).toBe('이 요청은 만료됐거나 이미 처리됐어. 다시 요청해줘.');
     expect(lastUpdate().blocks).toEqual([]);
+  });
+
+  it('선점에 실패하면(동시 클릭 등 이미 처리 중) SQL을 실행하지 않고 만료 안내로 갱신', async () => {
+    mockFindActivePending.mockResolvedValue(makePending());
+    mockClaim.mockResolvedValue(false);
+
+    await handleConfirmModifyExecute(makeArgs());
+
+    expect(mockClaim).toHaveBeenCalledWith(99);
+    expect(mockDryRun).not.toHaveBeenCalled();
+    expect(mockQueryWithRowLimit).not.toHaveBeenCalled();
+    expect(lastUpdate().text).toBe('이 요청은 만료됐거나 이미 처리됐어. 다시 요청해줘.');
   });
 
   it('버튼 value가 비어 있으면 pending 조회도 실행도 하지 않음', async () => {
@@ -136,16 +156,42 @@ describe('handleConfirmModifyExecute', () => {
     expect(chatUpdate).not.toHaveBeenCalled();
   });
 
-  it('실행이 실패하면 실행 완료로 표시하지 않고 실패 메시지로 갱신', async () => {
+  it('SQL 실행이 실패하면 선점을 풀고 실패 메시지로 갱신', async () => {
     mockFindActivePending.mockResolvedValue(makePending());
     mockQueryWithRowLimit.mockRejectedValue(new Error('statement timeout'));
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await handleConfirmModifyExecute(makeArgs());
 
-    expect(mockMarkExecuted).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledWith(99);
     expect(lastUpdate().text).toBe('실행 실패: statement timeout');
     expect(lastUpdate().blocks).toEqual([]);
+    errorSpy.mockRestore();
+  });
+
+  it('선점 해제까지 실패해도 원래 실행 오류를 실패 메시지로 보여줌', async () => {
+    mockFindActivePending.mockResolvedValue(makePending());
+    mockQueryWithRowLimit.mockRejectedValue(new Error('statement timeout'));
+    mockRelease.mockRejectedValue(new Error('db down'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await handleConfirmModifyExecute(makeArgs());
+
+    expect(lastUpdate().text).toBe('실행 실패: statement timeout');
+    errorSpy.mockRestore();
+  });
+
+  it('SQL 실행 뒤 메시지 갱신이 실패해도 실행 실패로 덮어쓰지 않고 선점도 풀지 않음', async () => {
+    mockFindActivePending.mockResolvedValue(makePending());
+    chatUpdate.mockRejectedValue(new Error('slack down'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await handleConfirmModifyExecute(makeArgs());
+
+    expect(mockQueryWithRowLimit).toHaveBeenCalledTimes(1);
+    expect(mockRelease).not.toHaveBeenCalled();
+    expect(chatUpdate).toHaveBeenCalledTimes(1);
+    expect(lastUpdate().text).toBe('✅ 실행 완료 — 1개 행 변경됐어.');
     errorSpy.mockRestore();
   });
 
@@ -156,12 +202,25 @@ describe('handleConfirmModifyExecute', () => {
     await handleConfirmModifyExecute(makeArgs());
 
     expect(mockQueryWithRowLimit).toHaveBeenCalledWith(SQL, 10_000, 50);
-    expect(mockMarkExecuted).toHaveBeenCalledWith(99);
     expect(mockLoadCurrentState).toHaveBeenCalledWith('schedules', {
       userId: 7,
       affectedDates: [],
+      hasBacklog: false,
     });
     expect(lastUpdate().text).toBe('✅ 실행 완료 — 1개 행 변경됐어.');
+  });
+
+  it('영향받은 일정에 날짜 없는 백로그가 있으면 백로그 기준으로 현재 상태를 조회', async () => {
+    mockFindActivePending.mockResolvedValue(makePending());
+    mockDryRun.mockResolvedValue({ rowCount: 1, rows: [{ id: 10, date: null }] });
+
+    await handleConfirmModifyExecute(makeArgs());
+
+    expect(mockLoadCurrentState).toHaveBeenCalledWith('schedules', {
+      userId: 7,
+      affectedDates: [],
+      hasBacklog: true,
+    });
   });
 
   it('현재 상태 조회가 실패해도 실행 완료 메시지는 그대로 보냄', async () => {
@@ -170,7 +229,6 @@ describe('handleConfirmModifyExecute', () => {
 
     await handleConfirmModifyExecute(makeArgs());
 
-    expect(mockMarkExecuted).toHaveBeenCalledWith(99);
     expect(lastUpdate().text).toBe('✅ 실행 완료 — 1개 행 변경됐어.');
     expect(lastUpdate().blocks).toHaveLength(1);
   });
@@ -194,7 +252,7 @@ describe('handleConfirmModifyCancel', () => {
     expect(mockFindActivePending).toHaveBeenCalledWith('tok-1', 7);
     expect(mockMarkCanceled).toHaveBeenCalledWith(99);
     expect(mockQueryWithRowLimit).not.toHaveBeenCalled();
-    expect(mockMarkExecuted).not.toHaveBeenCalled();
+    expect(mockClaim).not.toHaveBeenCalled();
     expect(lastUpdate().text).toBe('취소했어. 아무것도 바뀌지 않았어.');
   });
 

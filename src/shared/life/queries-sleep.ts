@@ -48,11 +48,14 @@ export const querySleepForHome = async (
 };
 
 /** Home 탭용 수면 중간 기상 이벤트 조회 */
-export const querySleepEventsForHome = async (today: string): Promise<SleepEventRow[]> =>
+export const querySleepEventsForHome = async (
+  today: string,
+  userId: number,
+): Promise<SleepEventRow[]> =>
   (
     await query<SleepEventRow>(
       `SELECT id, date::text, event_time, memo FROM sleep_events
-     WHERE date = $1 ORDER BY event_time`,
-      [today],
+     WHERE date = $1 AND user_id = $2 ORDER BY event_time`,
+      [today, userId],
     )
   ).rows;

@@ -146,3 +146,7 @@ export const extractAffectedDates = (rows: AffectedRow[]): string[] => {
   }
   return [...dates];
 };
+
+/** date 컬럼이 있는데 값이 비어 있는 row가 있는지 (schedules에서는 백로그 일정) */
+export const hasUndatedRow = (rows: AffectedRow[]): boolean =>
+  rows.some((r) => 'date' in r && (r['date'] === null || r['date'] === ''));

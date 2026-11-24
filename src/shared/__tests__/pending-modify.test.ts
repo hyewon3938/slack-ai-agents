@@ -18,7 +18,8 @@ vi.mock('pg', () => {
 describe('pending-modify', () => {
   let createPendingModify: typeof import('../pending-modify.js').createPendingModify;
   let findActivePending: typeof import('../pending-modify.js').findActivePending;
-  let markExecuted: typeof import('../pending-modify.js').markExecuted;
+  let claimPendingExecution: typeof import('../pending-modify.js').claimPendingExecution;
+  let releasePendingExecution: typeof import('../pending-modify.js').releasePendingExecution;
   let markCanceled: typeof import('../pending-modify.js').markCanceled;
 
   beforeEach(async () => {
@@ -37,7 +38,8 @@ describe('pending-modify', () => {
     const pm = await import('../pending-modify.js');
     createPendingModify = pm.createPendingModify;
     findActivePending = pm.findActivePending;
-    markExecuted = pm.markExecuted;
+    claimPendingExecution = pm.claimPendingExecution;
+    releasePendingExecution = pm.releasePendingExecution;
     markCanceled = pm.markCanceled;
   });
 
@@ -89,12 +91,29 @@ describe('pending-modify', () => {
     expect(await findActivePending('missing', 1)).toBeNull();
   });
 
-  it('markExecuted: executed_at = NOW() UPDATE', async () => {
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
-    await markExecuted(42);
+  it('claimPendingExecution: 활성 상태일 때만 executed_at을 채우고 선점 성공 반환', async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: 42 }], rowCount: 1 });
+    expect(await claimPendingExecution(42)).toBe(true);
     const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('UPDATE pending_modify');
     expect(sql).toContain('executed_at = NOW()');
+    expect(sql).toContain('executed_at IS NULL');
+    expect(sql).toContain('canceled_at IS NULL');
+    expect(sql).toContain('expires_at > NOW()');
+    expect(params).toEqual([42]);
+  });
+
+  it('claimPendingExecution: 이미 실행·취소·만료됐으면 선점 실패', async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    expect(await claimPendingExecution(42)).toBe(false);
+  });
+
+  it('releasePendingExecution: executed_at을 비워 다시 실행할 수 있게 되돌림', async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+    await releasePendingExecution(42);
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('UPDATE pending_modify');
+    expect(sql).toContain('executed_at = NULL');
     expect(params).toEqual([42]);
   });
 
