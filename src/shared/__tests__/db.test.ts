@@ -14,7 +14,8 @@ vi.mock('pg', () => {
   return { default: { Pool: MockPool, types: { setTypeParser: vi.fn() } } };
 });
 
-const { connectDB, query, queryOne, queryReadOnly, disconnectDB } = await import('../db.js');
+const { connectDB, query, queryOne, queryReadOnly, queryReadOnlyWithTimeout, disconnectDB } =
+  await import('../db.js');
 
 /** 읽기 전용 TX 제어문은 빈 결과로 처리하고 데이터 쿼리만 dataResult로 응답하는 클라이언트 mock. */
 const makeReadOnlyClient = (dataResult: { rows: unknown[]; rowCount: number }) => {
@@ -122,6 +123,69 @@ describe('db', () => {
       await expect(queryReadOnly('SELECT bad', 5000, 5)).rejects.toThrow('boom');
       expect(calls.some((c) => /^\s*ROLLBACK/i.test(c))).toBe(true);
       expect(mockRelease).toHaveBeenCalled();
+    });
+  });
+
+  describe('queryReadOnlyWithTimeout — 조회 도구 실행', () => {
+    it('타임아웃을 걸고 읽기 전용 TX에서 실행한 뒤 ROLLBACK한다', async () => {
+      await connectDB('postgresql://test@localhost/test');
+      mockRelease.mockClear();
+      const { client, calls } = makeReadOnlyClient({ rows: [{ id: 1 }], rowCount: 1 });
+      mockConnect.mockResolvedValue(client);
+
+      const result = await queryReadOnlyWithTimeout('SELECT id FROM t', 5000);
+      expect(result.rows).toEqual([{ id: 1 }]);
+      expect(calls).toEqual([
+        'SET statement_timeout = 5000',
+        'BEGIN',
+        'SET TRANSACTION READ ONLY',
+        'SELECT id FROM t',
+        'ROLLBACK',
+        'SET statement_timeout = 0',
+      ]);
+      expect(mockRelease).toHaveBeenCalledTimes(1);
+    });
+
+    it('행 수 제한 없이 결과를 그대로 돌려준다', async () => {
+      await connectDB('postgresql://test@localhost/test');
+      mockRelease.mockClear();
+      const rows = new Array(50).fill({ x: 1 });
+      const { client } = makeReadOnlyClient({ rows, rowCount: 50 });
+      mockConnect.mockResolvedValue(client);
+
+      const result = await queryReadOnlyWithTimeout('SELECT x FROM t', 5000);
+      expect(result.rowCount).toBe(50);
+    });
+
+    it('실행 오류·타임아웃 시 ROLLBACK하고 타임아웃을 되돌린 뒤 커넥션을 반환한다', async () => {
+      await connectDB('postgresql://test@localhost/test');
+      mockRelease.mockClear();
+      const calls: string[] = [];
+      const clientQuery = vi.fn(async (text: string) => {
+        calls.push(text);
+        if (/^\s*(SET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
+        throw new Error('canceling statement due to statement timeout');
+      });
+      mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
+
+      await expect(queryReadOnlyWithTimeout('SELECT pg_sleep(10)', 100)).rejects.toThrow(/timeout/);
+      expect(calls.slice(-2)).toEqual(['ROLLBACK', 'SET statement_timeout = 0']);
+      expect(calls.some((c) => /^\s*COMMIT/i.test(c))).toBe(false);
+      expect(mockRelease).toHaveBeenCalledTimes(1);
+    });
+
+    it('ROLLBACK이 실패해도 원래 오류를 전파하고 커넥션을 반환한다', async () => {
+      await connectDB('postgresql://test@localhost/test');
+      mockRelease.mockClear();
+      const clientQuery = vi.fn(async (text: string) => {
+        if (/^\s*ROLLBACK/i.test(text)) throw new Error('connection lost');
+        if (/^\s*(SET|BEGIN)/i.test(text)) return { rows: [], rowCount: 0 };
+        throw new Error('boom');
+      });
+      mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
+
+      await expect(queryReadOnlyWithTimeout('SELECT bad', 5000)).rejects.toThrow('boom');
+      expect(mockRelease).toHaveBeenCalledTimes(1);
     });
   });
 

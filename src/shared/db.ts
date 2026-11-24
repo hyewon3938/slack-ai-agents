@@ -97,6 +97,36 @@ export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResu
   }
 };
 
+/**
+ * 읽기 전용 트랜잭션에서 타임아웃 적용 쿼리 실행 (query_db 조회 도구용).
+ * `SET TRANSACTION READ ONLY`로 DB가 쓰기를 거부하게 하고, 결과와 무관하게 항상 ROLLBACK한다.
+ */
+export const queryReadOnlyWithTimeout = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
+  text: string,
+  timeoutMs: number,
+): Promise<pg.QueryResult<T>> => {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
+    await client.query('BEGIN');
+    await client.query('SET TRANSACTION READ ONLY');
+    const result = await client.query<T>(text);
+    await client.query('ROLLBACK');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {
+      /* 무시 */
+    });
+    throw err;
+  } finally {
+    await client.query('SET statement_timeout = 0').catch(() => {
+      /* 무시 */
+    });
+    client.release();
+  }
+};
+
 /** 트랜잭션 내 쿼리 실행 — rowCount가 maxRows 초과 시 ROLLBACK (SQL 도구 보안용) */
 export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,

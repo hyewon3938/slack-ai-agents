@@ -401,6 +401,8 @@ describe('executeSQLTool', () => {
   it('query_db: SELECT 쿼리 결과를 JSON으로 반환한다', async () => {
     mockClientQuery
       .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // SET statement_timeout
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // SET TRANSACTION READ ONLY
       .mockResolvedValueOnce({ rows: [{ id: 1, title: '테스트' }], rowCount: 1 }); // 실제 쿼리
 
     const result = await executeSQLTool('query_db', {
@@ -412,6 +414,20 @@ describe('executeSQLTool', () => {
     };
     expect(parsed.rows).toEqual([{ id: 1, title: '테스트' }]);
     expect(parsed.rowCount).toBe(1);
+  });
+
+  it('query_db: 읽기 전용 트랜잭션에서 실행하고 ROLLBACK한다', async () => {
+    await executeSQLTool('query_db', { sql: 'SELECT * FROM schedules WHERE user_id = 1' });
+    const texts = mockClientQuery.mock.calls.map((call) => String(call[0]));
+    expect(texts).toEqual([
+      expect.stringMatching(/^SET statement_timeout = \d+$/),
+      'BEGIN',
+      'SET TRANSACTION READ ONLY',
+      'SELECT * FROM schedules WHERE user_id = 1',
+      'ROLLBACK',
+      'SET statement_timeout = 0',
+    ]);
+    expect(mockRelease).toHaveBeenCalled();
   });
 
   it('query_db: SELECT 아닌 쿼리는 에러를 반환한다', async () => {

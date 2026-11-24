@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 188개, 21258줄이고 테스트 파일은 79개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 188개, 21288줄이고 테스트 파일은 79개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -147,7 +147,7 @@
 | `agent-loop.ts` | 90 |  | function: `runAgentLoop` |
 | `chat-history.ts` | 72 | 채널별 대화 맥락 저장 (인메모리 슬라이딩 윈도우) | class: `ChatHistory` |
 | `config.ts` | 48 |  | const: `CONFIG` |
-| `db.ts` | 230 |  | function: `connectDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>type: `DryRunResult` |
+| `db.ts` | 260 |  | function: `connectDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryReadOnlyWithTimeout`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>type: `DryRunResult` |
 | `fortune-format.ts` | 18 | fortune_analyses 표시 포맷터. | function: `formatFortuneText`<br>type: `FortuneFormatInput` |
 | `insight-labels.ts` | 266 | 카드 라벨 레이어 — 시드·신호 내부 식별자를 사용자가 읽을 수 있는 자연어로 (#504 Phase 2, ADR-0045). | function: `seedLabel`, `signalLabel`<br>const: `SEED_LABEL_OVERRIDES`<br>type: `SeedLabelInput`, `SignalLabelInput` |
 | `insight-thresholds.ts` | 129 |  | const: `INSIGHT_THRESHOLDS` |
