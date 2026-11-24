@@ -271,6 +271,54 @@ describe('DB Proxy Server', () => {
       });
       expect(status).toBe(200);
     });
+
+    it.each([
+      ['닫히지 않은 문자열', "SELECT 'abc"],
+      ['닫히지 않은 주석', 'SELECT 1 /* x'],
+      ['닫히지 않은 달러 인용', 'SELECT $$abc'],
+    ])('해석할 수 없는 SQL은 거절: %s', async (_name, sql) => {
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: sql },
+      });
+      expect(status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['달러 인용 뒤', "SELECT $$a$$; DROP TABLE schedules"],
+      ['E 문자열 뒤', "SELECT E'a\\''; DROP TABLE schedules"],
+      ['중첩 주석 뒤', 'SELECT 1 /* a /* b */ */; DROP TABLE schedules'],
+    ])('문자열·주석 경계를 PostgreSQL과 같게 읽어 두 번째 문장을 거절: %s', async (_name, sql) => {
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: sql },
+      });
+      expect(status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['달러 인용', 'SELECT $tag$; DROP TABLE x $tag$ AS t'],
+      ['주석 안 세미콜론', 'SELECT 1 -- ; DROP TABLE x'],
+      ['E 문자열', "SELECT E'pg_ls_dir \\' ;'"],
+    ])('허용: 문자열·주석 안 키워드와 세미콜론은 검사하지 않음 (%s)', async (_name, sql) => {
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: sql },
+      });
+      expect(status).toBe(200);
+    });
+
+    it('차단 대상 함수는 큰따옴표 식별자여도 거절', async () => {
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: 'SELECT "pg_ls_dir"(\'.\')' },
+      });
+      expect(status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
   });
 
   // ── 입력 검증 ──
