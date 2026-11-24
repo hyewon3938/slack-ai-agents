@@ -311,6 +311,29 @@ describe('DB Proxy Server', () => {
       expect(status).toBe(200);
     });
 
+    it.each([
+      ['16진 리터럴 뒤 함수', "SELECT 0xe-pg_read_file('/etc/hostname')::int"],
+      ['16진 리터럴 뒤 함수 (대문자 접두)', "SELECT 0XE-pg_ls_dir('.')"],
+      ['숫자 뒤 이어진 문자', 'SELECT 1ex'],
+      ['별칭 자리의 CASE', 'SELECT 1 case FROM schedules'],
+    ])('숫자·CASE 표기를 DB와 같게 읽어 거절: %s', async (_name, sql) => {
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: sql },
+      });
+      expect(status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('허용: 16진·지수 숫자 표기', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: 'SELECT * FROM schedules WHERE id > 0x1F AND id < 1e3' },
+      });
+      expect(status).toBe(200);
+    });
+
     it('차단 대상 함수는 큰따옴표 식별자여도 거절', async () => {
       const { status } = await makeRequest(port, {
         headers: AUTH,

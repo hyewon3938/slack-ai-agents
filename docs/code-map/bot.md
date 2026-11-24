@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 187개, 21050줄이고 테스트 파일은 79개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 187개, 21145줄이고 테스트 파일은 79개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -306,9 +306,9 @@
 | `definitions.ts` | 57 | LLM에 노출하는 SQL 도구 정의. | const: `SQL_TOOLS` |
 | `execute.ts` | 188 | SQL 도구 실행기: post-modify 훅 · 확인 카드 전송 · 감사 로그 · 실행. | function: `setPostModifyHook`, `setConfirmCardSender`, `clearConfirmCardSender`, `executeSQLTool`<br>type: `PostModifyHook`, `SQLToolContext`, `ConfirmCardSender` |
 | `schema.ts` | 66 | DB 스키마 조회와 캐시. | function: `clearSchemaCache`, `getSchemaInfo` |
-| `sql-blocks.ts` | 193 | 토큰 범위 유틸과 WHERE/ON 조건의 user_id 보장 분석. | function: `buildMatch`, `isWord`, `isPunct`, `identName`, `afterGroup`, `topLevel`, `splitTop`, `findTop`, `closeOver`, `conditionGuarantee`<br>const: `UNQUALIFIED`<br>type: `Ctx`, `Range`, `Guarantee` |
+| `sql-blocks.ts` | 194 | 토큰 범위 유틸과 WHERE/ON 조건의 user_id 보장 분석. | function: `buildMatch`, `isWord`, `isPunct`, `identName`, `afterGroup`, `topLevel`, `splitTop`, `findTop`, `closeOver`, `conditionGuarantee`<br>const: `UNQUALIFIED`<br>type: `Ctx`, `Range`, `Guarantee` |
 | `sql-guards.ts` | 117 | 토큰 단위 보안 검사: 시스템 함수·카탈로그 차단, 키워드 위치 제한, user_id 비교 값 제한. | function: `findDangerousIdentifier`, `findWriteKeyword`, `findExtraWriteKeyword`, `otherUserMessage`, `findOtherUserValue` |
-| `sql-lexer.ts` | 220 | SQL 토크나이저: PostgreSQL 어휘 규칙을 따라 문자열·주석·달러 인용을 구분한다. | function: `tokenize`, `hasStatementAfterSemicolon`, `withoutTrailingSemicolon`, `maskedText`<br>type: `TokenKind`, `Token`, `LexResult` |
+| `sql-lexer.ts` | 313 | SQL 토크나이저: PostgreSQL 어휘 규칙을 따라 문자열·주석·달러 인용을 구분한다. | function: `tokenize`, `hasStatementAfterSemicolon`, `withoutTrailingSemicolon`, `maskedText`<br>type: `TokenKind`, `Token`, `LexResult` |
 | `user-scope-dml.ts` | 215 | 변경 쿼리(INSERT·UPDATE·DELETE)의 user_id 범위 분석. | function: `analyzeUpdate`, `analyzeDelete`, `analyzeInsert` |
-| `user-scope.ts` | 458 | 조회 쿼리의 user_id 범위 분석. | function: `fail`, `startsQuery`, `scanGroups`, `splitClauses`, `parseSource`, `parseFromList`, `uncoveredSources`, `requireCoverage`, `analyzeQuery`, `hasUnhandledQuery`<br>const: `USER_ID_EXEMPT_TABLES`, `BLOCKED_TABLES`, `MSG`, `SELECT_CLAUSES`<br>type: `ScopeCtx`, `Clauses`, `JoinKind`, `Source` |
+| `user-scope.ts` | 459 | 조회 쿼리의 user_id 범위 분석. | function: `fail`, `startsQuery`, `scanGroups`, `splitClauses`, `parseSource`, `parseFromList`, `uncoveredSources`, `requireCoverage`, `analyzeQuery`, `hasUnhandledQuery`<br>const: `USER_ID_EXEMPT_TABLES`, `BLOCKED_TABLES`, `MSG`, `SELECT_CLAUSES`<br>type: `ScopeCtx`, `Clauses`, `JoinKind`, `Source` |
 | `validation.ts` | 162 | SQL 검증: 구문 검증과 보안 검증 (user_id 필터, custom_instructions). | function: `extractFirstKeyword`, `hasMultipleStatements`, `validateSelectQuery`, `hasWhereClause`, `validateModifyQuery`, `validateUserIdFilter`, `validateCustomInstruction` |

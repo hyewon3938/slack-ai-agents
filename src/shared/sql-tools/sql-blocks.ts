@@ -33,8 +33,9 @@ export const buildMatch = (tokens: Token[]): number[] => {
   return match;
 };
 
+/** 키워드 판정. `.` 뒤·AS 뒤처럼 이름 자리에 있는 word는 키워드로 보지 않는다 */
 export const isWord = (t: Token | undefined, ...values: string[]): boolean =>
-  t?.kind === 'word' && values.includes(t.value);
+  t?.kind === 'word' && !t.ident && values.includes(t.value);
 
 export const isPunct = (t: Token | undefined, value: string): boolean =>
   t?.kind === 'punct' && t.value === value;

@@ -61,6 +61,116 @@ describe('sql-lexer', () => {
   it('끝의 세미콜론 하나는 떼어낸다', () => {
     expect(withoutTrailingSemicolon(tokensOf('SELECT 1 ;')).map((t) => t.value)).toEqual(['select', '1']);
   });
+
+  it('16진 리터럴 뒤 주석을 DB와 같게 해석', () => {
+    expect(tokensOf('SELECT 0xe-- AND x').map((t) => t.value)).toEqual(['select', '0xe']);
+    expect(tokensOf('SELECT 0xe-f(1)').map((t) => t.value)).toEqual(['select', '0xe', '-', 'f', '(', '1', ')']);
+  });
+
+  it.each([
+    ['정수', '42'],
+    ['밑줄 구분', '1_000'],
+    ['지수', '1e3'],
+    ['부호 있는 지수', '1E+3'],
+    ['음수 지수 소수', '.5e-2'],
+    ['소수점으로 끝나는 수', '1.'],
+    ['점 뒤 지수', '1.e3'],
+    ['16진', '0x1F'],
+    ['밑줄 뒤 16진', '0x_1F'],
+    ['8진', '0o17'],
+    ['2진', '0b101'],
+  ])('숫자 리터럴을 한 토큰으로 읽는다: %s', (_name, literal) => {
+    expect(tokensOf(`SELECT ${literal}`).map((t) => t.value)).toEqual(['select', literal]);
+  });
+
+  it.each([
+    ['숫자 없는 16진 접두', 'SELECT 0x'],
+    ['숫자 없는 지수', 'SELECT 1e'],
+    ['부호 뒤 숫자 없는 지수', 'SELECT 1e+'],
+    ['숫자 뒤 이어진 문자', 'SELECT 1ex'],
+    ['진법 밖 숫자', 'SELECT 0b12'],
+    ['파라미터 뒤 이어진 문자', 'SELECT $1abc'],
+    ['별칭 자리의 CASE', 'SELECT 1 case FROM schedules'],
+    ['괄호 뒤 CASE', 'SELECT (1) case FROM schedules'],
+    ['닫히지 않은 CASE', 'SELECT CASE WHEN true THEN 1 FROM schedules'],
+  ])('DB가 오류로 보거나 다르게 읽을 수 있는 표기는 거절: %s', (_name, sql) => {
+    expect(tokenize(sql).ok).toBe(false);
+  });
+
+  it('점 뒤와 AS 뒤의 단어는 이름으로 표시한다', () => {
+    const tokens = tokensOf('SELECT x.case AS where FROM t');
+    expect(tokens.filter((t) => t.ident).map((t) => t.value)).toEqual(['case', 'where']);
+  });
+
+  it('CTE의 AS [NOT] MATERIALIZED는 키워드로 둔다', () => {
+    const tokens = tokensOf('WITH c AS NOT MATERIALIZED (SELECT 1) SELECT * FROM c');
+    expect(tokens.some((t) => t.ident)).toBe(false);
+  });
+});
+
+describe('user_id 범위 — 토큰 해석을 DB 문법에 맞춤', () => {
+  it.each([
+    ['16진 뒤 주석 (조회)', 'SELECT * FROM schedules WHERE id > 0xe-- AND user_id = 1'],
+    ['16진 뒤 주석 (UPDATE)', "UPDATE schedules SET title = 'x' WHERE id = 0x1e-- AND user_id = 1"],
+    ['16진 뒤 주석 (DELETE)', 'DELETE FROM schedules WHERE id > 0xe-- AND user_id = 1'],
+    ['점 뒤 case', 'SELECT s.* FROM schedules s, (SELECT true AS "case") x WHERE s.user_id = 1 AND x.case OR true'],
+    ['점 뒤 where', 'SELECT s.* FROM schedules s JOIN (SELECT true AS "where") x ON true OR x.where AND s.user_id = 1'],
+    [
+      '점 뒤 end',
+      'SELECT s.* FROM schedules s, (SELECT true AS "end") x WHERE CASE WHEN x.end AND s.user_id = 1 AND true THEN true ELSE true END',
+    ],
+    [
+      'UPDATE FROM의 점 뒤 case',
+      'UPDATE schedules s SET title = \'x\' FROM (SELECT true AS "case") x WHERE s.user_id = 1 AND x.case OR s.id = 30',
+    ],
+    [
+      'DELETE USING의 점 뒤 case',
+      'DELETE FROM schedules s USING (SELECT true AS "case") x WHERE s.user_id = 1 AND x.case OR s.id = 31',
+    ],
+  ])('user_id 조건이 보장되지 않는 것으로 본다: %s', (_name, sql) => {
+    const isModify = /^(UPDATE|DELETE)/.test(sql);
+    expect(isModify ? checkModify(sql) : checkQuery(sql)).toMatch(COVERAGE);
+  });
+
+  it.each([
+    "SELECT 0xe-setval('schedules_id_seq', 1)",
+    "SELECT 0xe-nextval('schedules_id_seq')",
+    "SELECT 0xe-query_to_xml('select * from schedules', true, false, '')::text::int",
+    "SELECT 0xe-pg_read_file('/etc/hostname')::int",
+    'SELECT 0xe-pg_terminate_backend(0)::int',
+    'SELECT 0xe-lo_unlink(1)',
+  ])('16진 리터럴 뒤 함수 이름도 함수로 읽는다: %s', (sql) => {
+    expect(checkQuery(sql)).toMatch(/시스템 함수/);
+  });
+
+  it.each([
+    ['별칭 자리의 case', 'SELECT 1 case FROM schedules'],
+    ['별칭 자리의 case와 end', 'SELECT title case, 2 end FROM schedules WHERE user_id = 1'],
+    ['별 뒤 case', 'SELECT s.* case FROM schedules s WHERE s.user_id = 1'],
+    ['RETURNING 별칭 자리의 case', 'DELETE FROM schedules WHERE user_id = 1 RETURNING id case'],
+  ])('범위를 정할 수 없는 CASE는 해석 오류로 거절: %s', (_name, sql) => {
+    const isModify = sql.startsWith('DELETE');
+    expect(isModify ? checkModify(sql) : checkQuery(sql)).toMatch(/SQL을 해석할 수 없어/);
+  });
+
+  it.each([
+    ['16진 비교', 'SELECT * FROM schedules WHERE user_id = 1 AND id > 0x1F'],
+    ['지수 표기', 'SELECT * FROM schedules WHERE user_id = 1 AND id < 1e3'],
+    ['여러 숫자 표기', 'SELECT * FROM schedules WHERE user_id = 1 AND id < 1E+3 AND id > .5 AND id <> 1_000'],
+    ['end_date 컬럼', 'SELECT s.end_date, s.title FROM schedules s WHERE s.user_id = 1'],
+    ['type 컬럼', 'SELECT c.type, c.name FROM categories c WHERE c.user_id = 1'],
+    ['별칭 컬럼 정렬', 'SELECT x.name FROM schedules x WHERE x.user_id = 1 ORDER BY x.end_date'],
+    ['곱셈 뒤 CASE', "SELECT id * CASE WHEN status = 'done' THEN 1 ELSE 0 END AS score FROM schedules WHERE user_id = 1"],
+    ['ORDER BY CASE', "SELECT id FROM schedules WHERE user_id = 1 ORDER BY CASE WHEN status = 'done' THEN 1 ELSE 0 END"],
+    ['GROUP BY CASE', "SELECT COUNT(*) FROM schedules WHERE user_id = 1 GROUP BY CASE WHEN id > 1 THEN 'a' END"],
+    ['집계 안 CASE', "SELECT SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) FROM schedules WHERE user_id = 1"],
+    ['NOT MATERIALIZED CTE', 'WITH c AS NOT MATERIALIZED (SELECT * FROM schedules WHERE user_id = 1) SELECT * FROM c'],
+    ['AS 뒤 키워드 별칭', 'SELECT true AS where FROM schedules WHERE user_id = 1'],
+    ['점 뒤 키워드 컬럼', 'SELECT s.id, x.from FROM schedules s, (SELECT 1 AS from) x WHERE s.user_id = 1'],
+    ['CAST AS 타입', 'SELECT CAST(id AS text) FROM schedules WHERE user_id = 1'],
+  ])('정상 형태는 통과: %s', (_name, sql) => {
+    expect(checkQuery(sql)).toBeNull();
+  });
 });
 
 describe('user_id 범위 — 봇이 쓰는 정상 조회는 통과', () => {

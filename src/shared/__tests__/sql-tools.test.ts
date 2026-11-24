@@ -82,6 +82,19 @@ describe('validateSelectQuery', () => {
   it('주석 포함 SELECT 문을 허용한다', () => {
     expect(validateSelectQuery('-- query\nSELECT * FROM schedules')).toBeNull();
   });
+
+  it('16진 리터럴 뒤 함수 이름을 함수로 읽는다', () => {
+    expect(validateSelectQuery("SELECT 0xe-pg_read_file('/etc/hostname')::int")).toMatch(/시스템 함수/);
+    expect(validateSelectQuery('SELECT 0xe-lo_unlink(1)')).toMatch(/시스템 함수/);
+  });
+
+  it('숫자 뒤에 문자가 이어진 표기는 해석 오류로 거부한다', () => {
+    expect(validateSelectQuery('SELECT 1ex FROM schedules')).toMatch(/SQL을 해석할 수 없어/);
+  });
+
+  it('숫자 표기와 점 뒤 키워드 컬럼을 허용한다', () => {
+    expect(validateSelectQuery('SELECT 0x1F, 1e3, s.end_date FROM schedules s')).toBeNull();
+  });
 });
 
 describe('validateModifyQuery', () => {
@@ -121,6 +134,12 @@ describe('validateModifyQuery', () => {
     expect(
       validateModifyQuery('DELETE FROM schedules WHERE id = 1; DROP TABLE schedules'),
     ).not.toBeNull();
+  });
+
+  it('점 뒤 where는 WHERE 절로 세지 않는다', () => {
+    expect(
+      validateModifyQuery('UPDATE schedules s SET title = x.where FROM (SELECT \'a\' AS "where") x'),
+    ).toMatch(/WHERE 절이 필요/);
   });
 });
 

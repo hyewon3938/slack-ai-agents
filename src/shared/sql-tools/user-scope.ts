@@ -91,7 +91,8 @@ export const splitClauses = (
   const found = new Map<string, number>();
   for (const i of topLevel(ctx, start, end)) {
     const tok = ctx.tokens[i];
-    if (tok?.kind !== 'word' || !keywords.includes(tok.value) || isInlineKeyword(ctx, i)) continue;
+    if (tok?.kind !== 'word' || tok.ident || !keywords.includes(tok.value)) continue;
+    if (isInlineKeyword(ctx, i)) continue;
     if (found.has(tok.value)) return null;
     found.set(tok.value, i);
   }

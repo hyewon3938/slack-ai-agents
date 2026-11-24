@@ -11,6 +11,8 @@ export interface Token {
   value: string;
   /** 달러 인용 문자열 여부 */
   dollar?: boolean;
+  /** word가 `.` 뒤나 AS 뒤처럼 DB가 키워드로 읽지 않는 이름 자리에 있다 */
+  ident?: boolean;
 }
 
 export type LexResult = { ok: true; tokens: Token[] } | { ok: false; reason: string };
@@ -95,6 +97,7 @@ const scanDollar = (sql: string, start: number): Step => {
   if (isDigit(sql[start + 1])) {
     let i = start + 1;
     while (isDigit(sql[i])) i += 1;
+    if (isIdentStart(sql[i] ?? '')) return { error: '파라미터 뒤에 이어진 문자' };
     return { end: i, token: { kind: 'param', value: sql.slice(start, i) } };
   }
   let i = start + 1;
@@ -110,16 +113,43 @@ const scanDollar = (sql: string, start: number): Step => {
   return { end: close + tag.length, token: { kind: 'string', value, dollar: true } };
 };
 
-/** 숫자: 뒤에 붙은 영숫자까지 한 토큰으로 묶어 값 비교를 원문 그대로 한다 */
-const scanNumber = (sql: string, start: number): Step => {
+const DEC_DIGIT = /[0-9]/;
+const RADIX_DIGIT: Record<string, RegExp> = { x: /[0-9A-Fa-f]/, o: /[0-7]/, b: /[01]/ };
+const BAD_NUMBER = '숫자 표기를 해석할 수 없음';
+
+/** 밑줄 하나씩을 사이에 둘 수 있는 숫자열의 끝 위치 */
+const scanDigits = (sql: string, start: number, digit: RegExp): number => {
   let i = start;
-  while (i < sql.length) {
-    const c = sql[i] ?? '';
-    const prev = sql[i - 1] ?? '';
-    if (/[0-9A-Za-z_.]/.test(c)) i += 1;
-    else if ((c === '+' || c === '-') && /[eE]/.test(prev) && i > start) i += 1;
-    else break;
+  while (digit.test(sql[i] ?? '')) {
+    i += 1;
+    if (sql[i] === '_' && digit.test(sql[i + 1] ?? '')) i += 1;
   }
+  return i;
+};
+
+/** 0x·0o·0b 정수: 해당 진법 숫자만 읽고, 이어진 식별자 문자는 DB처럼 오류로 본다 */
+const scanRadixInteger = (sql: string, start: number, digit: RegExp): Step => {
+  const from = start + 2;
+  const i = scanDigits(sql, sql[from] === '_' ? from + 1 : from, digit);
+  if (i === from || sql[i - 1] === '_' || isIdentCont(sql[i] ?? '')) return { error: BAD_NUMBER };
+  return { end: i, token: { kind: 'number', value: sql.slice(start, i) } };
+};
+
+/**
+ * 숫자 리터럴: PostgreSQL 16+ 규칙대로 정수·소수·지수·진법 접두를 읽는다.
+ * 지수는 e 뒤에 (부호와) 숫자가 실제로 올 때만 포함하고, 숫자 바로 뒤의 식별자 문자는 오류로 본다.
+ */
+const scanNumber = (sql: string, start: number): Step => {
+  const radix = sql[start] === '0' ? RADIX_DIGIT[asciiLower(sql[start + 1] ?? '')] : undefined;
+  if (radix) return scanRadixInteger(sql, start, radix);
+  let i = scanDigits(sql, start, DEC_DIGIT);
+  if (sql[i] === '.' && sql[i + 1] !== '.') i = scanDigits(sql, i + 1, DEC_DIGIT);
+  if (sql[i] === 'e' || sql[i] === 'E') {
+    const sign = sql[i + 1] === '+' || sql[i + 1] === '-' ? 1 : 0;
+    if (!isDigit(sql[i + 1 + sign])) return { error: BAD_NUMBER };
+    i = scanDigits(sql, i + 1 + sign, DEC_DIGIT);
+  }
+  if (isIdentStart(sql[i] ?? '')) return { error: BAD_NUMBER };
   return { end: i, token: { kind: 'number', value: sql.slice(start, i) } };
 };
 
@@ -184,7 +214,68 @@ const isBalanced = (tokens: Token[]): boolean => {
   return stack.length === 0;
 };
 
-/** SQL을 토큰 목록으로 분해. 닫히지 않은 문자열·주석·괄호는 실패로 돌려준다 */
+// ---- 이름 자리 표시와 CASE 위치 ----
+
+const isWordTok = (t: Token | undefined, value: string): boolean =>
+  t?.kind === 'word' && !t.ident && t.value === value;
+const isPunctTok = (t: Token | undefined, value: string): boolean =>
+  t?.kind === 'punct' && t.value === value;
+
+/** CTE의 AS [NOT] MATERIALIZED ( 는 이름이 아니라 키워드 */
+const isCteMaterialized = (tokens: Token[], i: number): boolean => {
+  const at = isWordTok(tokens[i], 'not') ? i + 1 : i;
+  return isWordTok(tokens[at], 'materialized') && isPunctTok(tokens[at + 1], '(');
+};
+
+/** `.` 뒤와 AS 뒤의 word는 DB가 키워드가 아닌 이름(컬럼·별칭)으로 읽는다 */
+const markNameWords = (tokens: Token[]): void => {
+  tokens.forEach((t, i) => {
+    if (t.kind !== 'word') return;
+    const prev = tokens[i - 1];
+    if (isPunctTok(prev, '.')) t.ident = true;
+    else if (isWordTok(prev, 'as') && !isCteMaterialized(tokens, i)) t.ident = true;
+  });
+};
+
+/** 바로 뒤에 CASE 식이 올 수 있는 키워드. 이 밖의 자리에서 CASE는 DB가 별칭으로 읽을 수 있다 */
+const CASE_AFTER_WORDS = new Set([
+  'select', 'distinct', 'all', 'where', 'and', 'or', 'not', 'when', 'then', 'else', 'case',
+  'on', 'having', 'returning', 'limit', 'offset', 'symmetric', 'asymmetric', 'like', 'ilike',
+  'to', 'from',
+]);
+const CASE_AFTER_PUNCT = new Set(['(', ',', '[', ':']);
+
+/** i 위치 CASE가 식의 시작으로만 읽히는 자리인지 */
+const isCaseStart = (tokens: Token[], i: number): boolean => {
+  const prev = tokens[i - 1];
+  if (!prev) return true;
+  if (prev.kind === 'op') return !(prev.value === '*' && isPunctTok(tokens[i - 2], '.'));
+  if (prev.kind === 'punct') return CASE_AFTER_PUNCT.has(prev.value);
+  if (prev.kind !== 'word' || prev.ident) return false;
+  if (prev.value !== 'by') return CASE_AFTER_WORDS.has(prev.value);
+  const owner = tokens[i - 2];
+  return ['group', 'order', 'partition'].some((w) => isWordTok(owner, w));
+};
+
+/** CASE마다 식 시작 자리에 있고, 같은 괄호 깊이에서 END로 닫혀야 한다 */
+const hasClearCases = (tokens: Token[]): boolean => {
+  const stack: string[] = [];
+  for (const [i, t] of tokens.entries()) {
+    if (isWordTok(t, 'case')) {
+      if (!isCaseStart(tokens, i)) return false;
+      stack.push('case');
+    } else if (isWordTok(t, 'end') && stack[stack.length - 1] === 'case') {
+      stack.pop();
+    } else if (isPunctTok(t, '(') || isPunctTok(t, '[')) {
+      stack.push('group');
+    } else if (isPunctTok(t, ')') || isPunctTok(t, ']')) {
+      if (stack.pop() !== 'group') return false;
+    }
+  }
+  return stack.length === 0;
+};
+
+/** SQL을 토큰 목록으로 분해. 닫히지 않은 문자열·주석·괄호와 위치가 애매한 CASE는 실패로 돌려준다 */
 export const tokenize = (sql: string): LexResult => {
   const tokens: Token[] = [];
   let i = 0;
@@ -195,6 +286,8 @@ export const tokenize = (sql: string): LexResult => {
     i = step.end;
   }
   if (!isBalanced(tokens)) return { ok: false, reason: '괄호 짝이 맞지 않음' };
+  markNameWords(tokens);
+  if (!hasClearCases(tokens)) return { ok: false, reason: 'CASE 식의 범위를 정할 수 없음' };
   return { ok: true, tokens };
 };
 
