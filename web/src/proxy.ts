@@ -5,6 +5,10 @@ import { unsealData } from 'iron-session';
 const PUBLIC_PATHS = ['/login', '/api/auth', '/api/cron', '/api/health'];
 const SESSION_COOKIE = 'life-dashboard-session';
 
+/** 공개 경로 자신이거나 그 하위 경로일 때만 공개로 본다 (앞부분만 같은 다른 경로는 제외) */
+const isPublicPath = (pathname: string): boolean =>
+  PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+
 /** Next.js 16 — proxy는 기본 Node.js 런타임에서 동작 */
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
@@ -29,7 +33,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // 공개 경로
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isPublicPath(pathname)) {
     return setSecurityHeaders(NextResponse.next());
   }
 
@@ -58,16 +62,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  try {
-    // iron-session 봉인 해제 — 위변조/만료 시 throw
-    const data = await unsealData<{ userId?: number }>(cookie.value, {
-      password: secret,
-    });
-    if (!data || typeof data.userId !== 'number') {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-  } catch {
-    // 위변조된 쿠키 — 강제 로그아웃
+  // iron-session 8의 unsealData는 위변조·만료·형식 오류여도 throw하지 않고 {}를 돌려준다.
+  // 그래서 결과에 userId가 없으면 쓸 수 없는 쿠키로 보고 지운 뒤 로그인으로 보낸다.
+  const data = await unsealData<{ userId?: unknown }>(cookie.value, { password: secret }).catch(
+    () => null,
+  );
+
+  if (!data || typeof data.userId !== 'number') {
     const res = NextResponse.redirect(new URL('/login', request.url));
     res.cookies.delete(SESSION_COOKIE);
     return res;

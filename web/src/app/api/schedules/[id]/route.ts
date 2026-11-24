@@ -9,7 +9,7 @@ import {
 } from '@/features/schedule/lib/queries';
 import { isValidStatus } from '@/features/schedule/lib/types';
 import { isDeleteReasonCategory, type DeleteReason } from '@/features/schedule/lib/delete-reasons';
-import { validateFields } from '@/lib/validation';
+import { parseRouteId, validateFields } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +20,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const { id } = await params;
-    const data = await queryScheduleById(userId, Number(id));
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+    const data = await queryScheduleById(userId, id);
     if (!data) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
@@ -38,7 +39,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   try {
-    const { id } = await params;
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
     const body = (await request.json()) as Partial<{
       title: string;
       date: string | null;
@@ -71,7 +73,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    const data = await updateSchedule(userId, Number(id), body);
+    const data = await updateSchedule(userId, id, body);
     if (!data) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
@@ -88,7 +90,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   try {
-    const { id } = await params;
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
     // 삭제 사유 (선택 body) — 카테고리는 고정 어휘, 텍스트는 길이 제한 (#590)
     let reason: DeleteReason | null = null;
@@ -111,7 +114,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       reason = { category: body.reason_category, text };
     }
 
-    const deleted = await deleteSchedule(userId, Number(id));
+    const deleted = await deleteSchedule(userId, id);
     if (!deleted) {
       return NextResponse.json({ error: '일정을 찾을 수 없어' }, { status: 404 });
     }
@@ -119,13 +122,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (reason) {
       // 삭제는 이미 커밋됨 — 사유 기록 실패는 유실로만 처리하고 응답은 성공 유지
       try {
-        await recordDeleteReason(userId, Number(id), reason.category, reason.text);
+        await recordDeleteReason(userId, id, reason.category, reason.text);
       } catch (err) {
         console.error('삭제 사유 기록 실패:', err);
       }
     }
 
-    return NextResponse.json({ data: { id: Number(id) } });
+    return NextResponse.json({ data: { id: id } });
   } catch {
     return NextResponse.json({ error: '일정 삭제 실패' }, { status: 500 });
   }

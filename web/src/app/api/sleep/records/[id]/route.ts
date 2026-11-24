@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { parseRouteId } from '@/lib/validation';
 import { updateSleepRecord, deleteSleepRecord } from '@/features/sleep/lib/queries';
 import { parseSleepRecordInput } from '@/features/sleep/lib/validate-input';
 
@@ -8,9 +9,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
     const parsed = parseSleepRecordInput(await request.json());
     if ('error' in parsed) {
@@ -31,9 +31,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
     const deleted = await deleteSleepRecord(userId, id);
     if (!deleted)
