@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Related: #661, ADR-0001, ADR-0004
+- Related: #661, #662, ADR-0001, ADR-0004
 - Tags: security, data, agent
 
 ## Context
