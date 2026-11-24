@@ -1,16 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { mannWhitneyU, hodgesLehmann, blockPermutationP } from '../pattern/stats.js';
 import {
-  fisherExact,
-  bhFdr,
   evalueTestMartingale,
   DEFAULT_EVALUE_OPTIONS,
-  mannWhitneyU,
-  hodgesLehmann,
-  blockPermutationP,
-  mantelHaenszelRR,
   type DayObservation,
-  type Stratum2x2,
-} from '../pattern/stats.js';
+} from '../pattern/stats-evalue.js';
+import { fisherExact, bhFdr, mantelHaenszelRR, type Stratum2x2 } from '../pattern/stats-table.js';
 
 // 결정론 PRNG (mulberry32) — 시뮬 테스트 재현성 보장(고정 seed → flaky 없음).
 const mulberry32 = (seed: number): (() => number) => {

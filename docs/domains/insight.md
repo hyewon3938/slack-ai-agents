@@ -1566,7 +1566,7 @@ P2(주간 off-day 검증 엔진)에 ADR-0032 통계 풀스택을 얹는다. 핵�
 
 매주 들여다보는 구조(optional stopping)에서 q를 반복 보는 건 거짓양성을 부풀린다. 누적 **e-value**(test martingale)는 anytime-valid라 언제 멈춰 봐도 `P(sup_t e_t ≥ 1/α) ≤ α`(Ville). 판정 `e ≥ 20`(α=0.05).
 
-- **구성**(`pattern/stats.ts` `evalueTestMartingale`): 매 발현일에 "귀무 기준율 r 대비 pass율 상승"에 예측가능 베팅. r = 직전까지 **전체 일** running pass율(풀링 → Jensen 편향 억제), φ = active-day running pass율. 희석 대안 φ'=r+λ(φ−r), λ=0.5, one-sided(φ>r일 때만). off-day는 r만 갱신.
+- **구성**(`pattern/stats-evalue.ts` `evalueTestMartingale`): 매 발현일에 "귀무 기준율 r 대비 pass율 상승"에 예측가능 베팅. r = 직전까지 **전체 일** running pass율(풀링 → Jensen 편향 억제), φ = active-day running pass율. 희석 대안 φ'=r+λ(φ−r), λ=0.5, one-sided(φ>r일 때만). off-day는 r만 갱신.
 - **결정론 리플레이**: prequential 추정이라 매주 전체 윈도우를 처음부터 재계산해도 prefix factor 동일 → sup 단조 증가. SET(전체 재계산) 아키텍처와 정합(ADR-0033 §2 긴장 해소). confirmed는 sticky(`verifyUserLinks`가 active만 재검증).
 - **빌드 게이트**(`stats.test.ts`): 무관 데이터 null 시뮬(p×activeProb 그리드 + AR(1) ρ=0.8 자기상관 케이스, 각 1500 trial)에서 거짓 확정율 ≤ α 실측. **통과 못 하면 머지 금지.** 자기상관에도 강건(ρ=0.8에서 \~0.026).
 
@@ -1839,7 +1839,7 @@ P6는 marginal 교란을 **플래그**하고 각 (링크 × 교란 Z)의 공동�
 
 **방법 = Mantel-Haenszel 층화** (vs [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 지명 elastic-net): 시드 S·신호 X·교란 Z가 전부 결정론 binary + 교란 2\~3개 캡 + n=1 희소 → 층화가 교과서적·가볍다(층별 2×2 = P6 프리미티브 재사용). elastic-net은 새 통계 코어(페널티 GLM 솔버)·log-odds 이질 척도·λ 불안정 → **교란이 층화 한계(joint strata 폭발) 넘는 다수일 때**를 위한 후속 노브(기본 off, [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §1).
 
-**MH 조정 알고리즘** ([pattern/confound-calc.ts](../../src/shared/pattern/confound-calc.ts) `adjustConfounders` + [pattern/stats.ts](../../src/shared/pattern/stats.ts) `mantelHaenszelRR`), 링크(S × X)마다:
+**MH 조정 알고리즘** ([pattern/confound-calc.ts](../../src/shared/pattern/confound-calc.ts) `adjustConfounders` + [pattern/stats-table.ts](../../src/shared/pattern/stats-table.ts) `mantelHaenszelRR`), 링크(S × X)마다:
 
 1. **게이트 통과 교란** = P6 `suspected` 중 `nCofire ≥ adjustMinCofire`(30). 0개면 조정 스킵(dormant — `confound.adjusted` 미기록, 뷰 무변화).
 2. **층 구성** (joint, cap 3): 게이트 통과 Z들의 값 조합으로 윈도우 일자 분할(1개 → 2층, k개 → 최대 2^k층). 층 k에서 `buildContingency(actS\|층k, sigX)` → 2×2.
@@ -2218,7 +2218,9 @@ src/shared/
 ├── saju/strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
 ├── saju/hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
 ├── pattern/quantile.ts            # #477 P4a tertile 컷 + 밴드 분류 (주간 산출 → 일별 적용 공통 규칙)
-├── pattern/stats.ts               # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann + P7: Mantel-Haenszel 층화 RR)
+├── pattern/stats.ts               # 순수 통계 — 순위·순열 검정 (#477 P3: block permutation·Mann-Whitney·Hodges-Lehmann)
+├── pattern/stats-table.ts         # 순수 통계 — 분할표 검정 (Fisher·BH-FDR + P7: Mantel-Haenszel 층화 RR)
+├── pattern/stats-evalue.ts        # 순수 통계 — #477 P3 e-value 마틴게일
 ├── pattern/bayesian-posterior.ts  # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
 ├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification: P2 q + P3 e-value α·emerging 바·discoverQ·blockLen) 임계 단일 관리
 └── insights/                      # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 verified tier=P3까지 미노출)

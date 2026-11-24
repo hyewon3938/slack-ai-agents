@@ -28,6 +28,37 @@ export interface MirrorSignalResult {
   mirrorSignalId: number | null;
 }
 
+/** 거울 신호 정의 INSERT(status='active') + 생성 로그. */
+const insertMirrorSignal = async (
+  userId: number,
+  signalId: number,
+  row: SignalDefRow,
+  mirror: SignalDirection,
+): Promise<MirrorSignalResult> => {
+  const ins = await query<{ id: number }>(
+    `INSERT INTO signal_defs
+        (user_id, name, kind, sql_body, value_type, direction, threshold, domain, window_days, description, source, status)
+     VALUES ($1, $2, 'sql', $3, $4, $5, $6, $7, $8, $9, 'seed', 'active')
+     RETURNING id`,
+    [
+      userId,
+      row.name,
+      row.sql_body,
+      row.value_type,
+      mirror,
+      row.threshold,
+      row.domain,
+      row.window_days,
+      row.description ?? '',
+    ],
+  );
+  const mirrorSignalId = ins.rows[0]?.id ?? null;
+  console.warn(
+    `[MirrorSignal] user=${userId} signal=${signalId} 거울 신호 생성(${row.name} ${row.direction}→${mirror}) id=${mirrorSignalId}`,
+  );
+  return { outcome: 'created', mirrorSignalId };
+};
+
 /**
  * 종결된 링크의 신호에 대해 반대 방향(above_avg↔below_avg) 신호 정의를 보장한다 (#555).
  *   - 대상: kind='sql' AND direction ∈ {above_avg, below_avg} 인 신호만.
@@ -77,26 +108,5 @@ export const ensureMirrorSignalDef = async (
     return { outcome: 'skipped_rejected', mirrorSignalId: null };
   }
 
-  const ins = await query<{ id: number }>(
-    `INSERT INTO signal_defs
-        (user_id, name, kind, sql_body, value_type, direction, threshold, domain, window_days, description, source, status)
-     VALUES ($1, $2, 'sql', $3, $4, $5, $6, $7, $8, $9, 'seed', 'active')
-     RETURNING id`,
-    [
-      userId,
-      row.name,
-      row.sql_body,
-      row.value_type,
-      mirror,
-      row.threshold,
-      row.domain,
-      row.window_days,
-      row.description ?? '',
-    ],
-  );
-  const mirrorSignalId = ins.rows[0]?.id ?? null;
-  console.warn(
-    `[MirrorSignal] user=${userId} signal=${signalId} 거울 신호 생성(${row.name} ${row.direction}→${mirror}) id=${mirrorSignalId}`,
-  );
-  return { outcome: 'created', mirrorSignalId };
+  return insertMirrorSignal(userId, signalId, row, mirror);
 };
