@@ -5,7 +5,6 @@
 import { query } from '../db.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
 import { type BandCuts, classifyBand, isBand, tertileCuts } from './quantile.js';
-import type { PillarSet } from '../saju/types.js';
 import {
   type StrengthTarget,
   computeStrengthForTarget,
@@ -15,6 +14,7 @@ import { binarizeSqlSeries } from './binarize.js';
 import { getDailyContext } from './match-context.js';
 import { runLlmSignalSql, runMetricSql } from './match-metric.js';
 import { evaluateTrigger } from './match-trigger.js';
+import { pillarSetOf } from './match-trigger-lookups.js';
 import type { DailyContext, SajuSeedWithMetrics } from './match-types.js';
 import type { DaySeries, SignalDef } from './types.js';
 
@@ -102,15 +102,6 @@ export const splitRawByActivation = (
   }
   return { active, off };
 };
-
-/** DailyContext → 운 풀셋 PillarSet (강도 계산 입력). */
-const pillarSetOf = (ctx: DailyContext): PillarSet => ({
-  wonguk: ctx.natal.pillars,
-  daeun: ctx.daeun,
-  seun: ctx.seun,
-  wolun: ctx.wolun,
-  ilun: ctx.ilun,
-});
 
 /** target('day_master'|오행)의 윈도우 강도 시리즈 (강도 계산 불가일은 제외). target별 1회. */
 export const computeTargetStrengthSeries = async (

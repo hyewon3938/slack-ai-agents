@@ -1,6 +1,7 @@
 /** 생활 맥락 — 수면 조회. */
 
 import { query } from '../db.js';
+import { formatDuration } from '../kst.js';
 import type { ContextTiming, DateParams } from './context-types.js';
 
 interface SleepRow {
@@ -19,13 +20,6 @@ interface SleepAvgRow {
 }
 
 // ─── 수면 서브 쿼리 ─────────────────────────────────────
-
-/** 분 → "N시간 M분" 포맷 */
-const fmtDuration = (minutes: number): string => {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
-};
 
 /**
  * 오늘 날짜의 밤잠 + 아침잠(bedtime < 12:00 낮잠) 합산.
@@ -66,8 +60,8 @@ const queryLastNight = async (
   const nightTotal = timed.reduce((sum, r) => sum + (r.duration_minutes ?? 0), 0);
   const nightText =
     timed.length === 1
-      ? `어젯밤 ${fmtDuration(nightTotal)} (${timed[0].bedtime}~${timed[0].wake_time})`
-      : `어젯밤 ${fmtDuration(nightTotal)} (${timed
+      ? `어젯밤 ${formatDuration(nightTotal)} (${timed[0].bedtime}~${timed[0].wake_time})`
+      : `어젯밤 ${formatDuration(nightTotal)} (${timed
           .map((r) => `${r.bedtime}-${r.wake_time}`)
           .join(' · ')})`;
 
@@ -75,7 +69,7 @@ const queryLastNight = async (
   const morningTotal = morningNaps.reduce((sum, r) => sum + (r.duration_minutes ?? 0), 0);
   if (morningTotal > 0) {
     const total = nightTotal + morningTotal;
-    return `${nightText} + 아침잠 ${fmtDuration(morningTotal)} = 총 ${fmtDuration(total)}`;
+    return `${nightText} + 아침잠 ${formatDuration(morningTotal)} = 총 ${formatDuration(total)}`;
   }
 
   return nightText;
@@ -155,7 +149,10 @@ const queryNaps = async ({ today, userId }: DateParams): Promise<string | null> 
 // ─── 수면 맥락 ──────────────────────────────────────────
 
 /** 어젯밤 수면 + 7일 패턴 + 낮잠 */
-export const querySleepContext = async (dates: DateParams, timing: ContextTiming): Promise<string> => {
+export const querySleepContext = async (
+  dates: DateParams,
+  timing: ContextTiming,
+): Promise<string> => {
   const parts: string[] = [];
 
   const lastNight = await queryLastNight(dates, timing);

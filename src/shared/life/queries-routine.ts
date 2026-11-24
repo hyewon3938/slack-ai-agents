@@ -3,6 +3,7 @@
  */
 
 import { query } from '../db.js';
+import { diffDays } from '../kst.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -32,14 +33,6 @@ export interface RoutineRecordRow {
 
 // ─── 빈도 헬퍼 ─────────────────────────────────────────
 
-/** 두 날짜 사이의 일수 (YYYY-MM-DD) */
-const daysBetween = (from: string, to: string): number => {
-  const msPerDay = 86_400_000;
-  const fromDate = new Date(from + 'T00:00:00+09:00');
-  const toDate = new Date(to + 'T00:00:00+09:00');
-  return Math.round((toDate.getTime() - fromDate.getTime()) / msPerDay);
-};
-
 /** 빈도에서 간격 일수 추출 (예: '3일마다' → 3, '격일' → 2, '주1회' → 7) */
 const parseIntervalDays = (frequency: string): number | null => {
   if (frequency === '격일') return 2;
@@ -63,13 +56,13 @@ export const shouldCreateToday = (
   // 간격 빈도(격일, N일마다): start_date 기준 모듈러 연산
   const intervalDays = parseIntervalDays(frequency);
   if (intervalDays && startDate) {
-    const gap = daysBetween(startDate, today);
+    const gap = diffDays(startDate, today);
     return gap >= 0 && gap % intervalDays === 0;
   }
 
   // startDate 없는 경우 (폴백): gap 기반
   if (!lastDate) return true;
-  const gap = daysBetween(lastDate, today);
+  const gap = diffDays(lastDate, today);
   if (intervalDays) return gap >= intervalDays;
 
   return true;

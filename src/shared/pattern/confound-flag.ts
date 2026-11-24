@@ -19,7 +19,8 @@ import { buildNameIdMap } from './match-day.js';
 import { loadActiveSeeds } from './match-seeds.js';
 import type { DailyContext, SajuSeedWithMetrics } from './match-types.js';
 import { computeSeedActivationSeries, computeSignalSeries } from './series.js';
-import type { DaySeries, SignalDef, SignalDirection } from './types.js';
+import type { DaySeries } from './types.js';
+import { toSignalDef, type SignalDefRow } from './load-signal-defs.js';
 
 const T = INSIGHT_THRESHOLDS.confound;
 const V = INSIGHT_THRESHOLDS.patternVerification;
@@ -30,34 +31,6 @@ interface ClaimableLinkRow {
   seed_id: number;
   signal_id: number;
 }
-
-interface SignalDefRow {
-  id: number;
-  name: string;
-  kind: 'sql' | 'tag';
-  source: 'seed' | 'llm';
-  sql_body: string | null;
-  value_type: 'binary' | 'continuous' | null;
-  direction: SignalDirection | null;
-  threshold: string | null;
-  tag_name: string | null;
-  window_days: number | null;
-  domain: string | null;
-}
-
-const toSignalDef = (r: SignalDefRow): SignalDef => ({
-  id: r.id,
-  name: r.name,
-  kind: r.kind,
-  source: r.source,
-  sqlBody: r.sql_body,
-  valueType: r.value_type,
-  direction: r.direction,
-  threshold: r.threshold === null ? null : Number(r.threshold),
-  tagName: r.tag_name,
-  windowDays: r.window_days,
-  domain: r.domain,
-});
 
 const queryClaimableLinks = (userId: number): Promise<{ rows: ClaimableLinkRow[] }> =>
   query<ClaimableLinkRow>(
@@ -133,7 +106,7 @@ const loadLinkSignalSeries = async (
   windowDates: string[],
 ): Promise<LinkSignalSeries> => {
   const signalIds = [...new Set(linkRows.map((r) => r.signal_id))];
-  const signalRes = await query<SignalDefRow>(
+  const signalRes = await query<Omit<SignalDefRow, 'description'>>(
     `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain
        FROM signal_defs
       WHERE user_id = $1 AND id = ANY($2::int[]) AND status = 'active'`,

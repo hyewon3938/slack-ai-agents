@@ -1,6 +1,7 @@
 /** 응답 프로필 — 사주 축·셀 정의와 시드 → source 셀 매핑. */
 
 import { getElementByCheongan, getElementByJiji } from '../saju/pillar-utils.js';
+import { CHEONGAN_LIST, JIJI_LIST } from '../saju/tables.js';
 import { type Cheongan, type Jiji, type Element, type Sipsung } from '../saju/types.js';
 import { elementToSipsinGroup, isSipsinGroup, type SipsinGroup } from '../saju/hwa.js';
 
@@ -8,25 +9,10 @@ import { elementToSipsinGroup, isSipsinGroup, type SipsinGroup } from '../saju/h
 export type AxisLevel = 'char_stem' | 'char_branch' | 'sipsung' | 'group' | 'element_band';
 export type CellTier = 'verified' | 'emerging';
 
-const CHEONGAN: readonly Cheongan[] = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계'];
-const JIJI: readonly Jiji[] = [
-  '자',
-  '축',
-  '인',
-  '묘',
-  '진',
-  '사',
-  '오',
-  '미',
-  '신',
-  '유',
-  '술',
-  '해',
-];
 const ELEMENTS: readonly Element[] = ['목', '화', '토', '금', '수'];
 
-const isCheongan = (s: string): s is Cheongan => (CHEONGAN as readonly string[]).includes(s);
-const isJiji = (s: string): s is Jiji => (JIJI as readonly string[]).includes(s);
+const isCheongan = (s: string): s is Cheongan => (CHEONGAN_LIST as readonly string[]).includes(s);
+const isJiji = (s: string): s is Jiji => (JIJI_LIST as readonly string[]).includes(s);
 const isElement = (s: string): s is Element => (ELEMENTS as readonly string[]).includes(s);
 
 /** 십성 → 십성그룹 (편/정 한 쌍이 한 그룹). 결정론 룩업. */

@@ -4,15 +4,9 @@
 
 import type { KnownBlock } from '@slack/types';
 import type { SleepRecordRow, SleepEventRow } from '../../../shared/life/queries-sleep.js';
+import { formatDuration } from '../../../shared/kst.js';
 
 // ─── 수면 블록 ──────────────────────────────────────────
-
-/** 분 → "N시간 M분" 포맷 */
-const formatDuration = (minutes: number): string => {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
-};
 
 /** 낮잠 라벨 판별: bedtime < 12:00이면 아침잠 (밤잠 연장) */
 const napLabel = (bedtime: string | null): string =>

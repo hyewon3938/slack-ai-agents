@@ -1,16 +1,9 @@
 import type { Insight } from '../../shared/insights/types.js';
-import { formatDateShort } from '../../shared/kst.js';
+import { formatDateShort, formatDuration } from '../../shared/kst.js';
 import type { KnownBlock } from '@slack/types';
 import type { SajuOutcomeData, WeeklyReportData } from './types.js';
 
 // ─── Block Kit 빌드 ─────────────────────────────────────
-
-/** 분 → "N시간 M분" 포맷 */
-const formatDuration = (minutes: number): string => {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
-};
 
 /** 주간 리포트 Block Kit 빌드: 인사이트 우선 → 한눈에 보기 → 총평. */
 export const buildWeeklyReportBlocks = (

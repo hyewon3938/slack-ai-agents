@@ -1,7 +1,7 @@
 import type { App } from '@slack/bolt';
 import { query } from '../../shared/db.js';
 import { postToChannel } from '../../shared/slack.js';
-import { getTodayISO, getKSTDayOfWeek } from '../../shared/kst.js';
+import { diffDays, getTodayISO, getKSTDayOfWeek } from '../../shared/kst.js';
 import type { LifeCronConfig } from './types.js';
 import { forEachUser } from './user-loop.js';
 import { CYCLE_END_DAY } from './budget-backfill.js';
@@ -10,14 +10,6 @@ import { CYCLE_END_DAY } from './budget-backfill.js';
 
 /** 만료 임박 경고를 시작하는 남은 일수 (6주). */
 export const TARGET_EXPIRY_WARN_DAYS = 42;
-
-/** 두 날짜(YYYY-MM-DD) 사이의 일수 (to − from). */
-const diffDaysISO = (from: string, to: string): number => {
-  const msPerDay = 86_400_000;
-  const fromMs = new Date(`${from}T00:00:00+09:00`).getTime();
-  const toMs = new Date(`${to}T00:00:00+09:00`).getTime();
-  return Math.round((toMs - fromMs) / msPerDay);
-};
 
 /**
  * 목표 기간(target_date 'YYYY-MM')의 만료일 = 그 달 결제 주기의 마지막 날.
@@ -42,7 +34,7 @@ export const buildTargetExpiryWarning = (
   if (!targetDate) return null;
 
   const expiry = getTargetExpiryDate(targetDate);
-  const remaining = diffDaysISO(today, expiry);
+  const remaining = diffDays(today, expiry);
 
   if (remaining > TARGET_EXPIRY_WARN_DAYS) return null;
 
