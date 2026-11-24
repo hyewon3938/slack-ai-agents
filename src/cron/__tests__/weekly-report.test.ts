@@ -35,13 +35,11 @@ vi.mock('../../shared/kst.js', () => ({
 }));
 
 import { connectDB } from '../../shared/db.js';
-import {
-  aggregateWeeklySleep,
-  aggregateWeeklyRoutine,
-  aggregateWeeklySchedule,
-  aggregateSleepRoutineCorrelation,
-  aggregateSajuOutcome,
-} from '../weekly-report.js';
+import { aggregateWeeklySleep } from '../weekly-report/aggregate-sleep.js';
+import { aggregateWeeklyRoutine } from '../weekly-report/aggregate-routine.js';
+import { aggregateWeeklySchedule } from '../weekly-report/aggregate-schedule.js';
+import { aggregateSleepRoutineCorrelation } from '../weekly-report/aggregate-correlation.js';
+import { aggregateSajuOutcome } from '../weekly-report/aggregate-saju.js';
 
 beforeEach(async () => {
   vi.clearAllMocks();

@@ -4,19 +4,12 @@
  * - loadCurrentStateBlocks: 실행 완료 후 "현재 상태"를 Block Kit으로 반환
  */
 import type { KnownBlock } from '@slack/types';
-import {
-  queryTodaySchedules,
-  queryBacklogSchedules,
-  queryTodayRecords,
-  queryActiveTemplates,
-  querySleepForHome,
-  querySleepEventsForHome,
-} from './life-queries.js';
-import {
-  buildRoutineBlocks,
-  buildSleepBlocks,
-  formatSchedulesAsText,
-} from '../agents/life/blocks.js';
+import { queryTodaySchedules, queryBacklogSchedules } from './life/queries-schedule.js';
+import { queryTodayRecords, queryActiveTemplates } from './life/queries-routine.js';
+import { querySleepForHome, querySleepEventsForHome } from './life/queries-sleep.js';
+import { buildRoutineBlocks } from '../agents/life/blocks/routine.js';
+import { buildSleepBlocks } from '../agents/life/blocks/sleep.js';
+import { formatSchedulesAsText } from '../agents/life/blocks/schedule.js';
 import { getTodayISO } from './kst.js';
 import { query } from './db.js';
 

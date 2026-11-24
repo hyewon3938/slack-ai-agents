@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SajuSeedWithMetrics } from '../../../shared/pattern-match.js';
-import type { DaySeries, SignalSeriesResult } from '../../../shared/pattern-verification.js';
+import type { SajuSeedWithMetrics } from '../../../shared/pattern/match-types.js';
+import type { DaySeries } from '../../../shared/pattern/types.js';
+import type { SignalSeriesResult } from '../../../shared/pattern/series.js';
 
 // ─── fixtures ────────────────────────────────────────────
 interface SignalRow {
@@ -72,17 +73,18 @@ vi.mock('../../../shared/db.js', () => ({
   }),
 }));
 
-vi.mock('../../../shared/pattern-match.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../shared/pattern-match.js')>();
-  return {
-    ...actual,
-    loadActiveSeeds: vi.fn(async () => fixture.seeds),
-    buildNameIdMap: vi.fn(async () => new Map<string, number>()),
-  };
+vi.mock('../../../shared/pattern/match-seeds.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/pattern/match-seeds.js')>();
+  return { ...actual, loadActiveSeeds: vi.fn(async () => fixture.seeds) };
 });
 
-vi.mock('../../../shared/pattern-verification.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../shared/pattern-verification.js')>();
+vi.mock('../../../shared/pattern/match-day.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/pattern/match-day.js')>();
+  return { ...actual, buildNameIdMap: vi.fn(async () => new Map<string, number>()) };
+});
+
+vi.mock('../../../shared/pattern/series.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/pattern/series.js')>();
   return {
     ...actual,
     computeSignalSeries: vi.fn(

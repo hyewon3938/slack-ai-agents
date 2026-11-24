@@ -1,11 +1,11 @@
-import type { RoutineRecordRow } from '../../shared/life-queries.js';
+import type { RoutineRecordRow } from '../../shared/life/queries-routine.js';
 import {
   queryActiveTemplates,
   queryExistingTemplateIds,
   queryLastRecordDate,
   createRecord,
   shouldCreateToday,
-} from '../../shared/life-queries.js';
+} from '../../shared/life/queries-routine.js';
 import { DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 
 // ─── 루틴 통계 ───────────────────────────────────────────

@@ -26,12 +26,14 @@ import {
   queryLastRecordDate,
   createRecord,
   completeRecord,
+} from '../life/queries-routine.js';
+import {
   queryTodaySchedules,
   countOverdueTasks,
   updateScheduleStatus,
   postponeSchedule,
-  querySleepForHome,
-} from '../life-queries.js';
+} from '../life/queries-schedule.js';
+import { querySleepForHome } from '../life/queries-sleep.js';
 
 const TEST_USER_ID = 1;
 

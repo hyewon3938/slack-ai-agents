@@ -3,15 +3,9 @@
  */
 
 import { query } from '../db.js';
-import {
-  type Cheongan,
-  type Jiji,
-  getDaeunPillar,
-  getDayPillar,
-  getMonthPillar,
-  getYearPillar,
-  makePillar,
-} from '../saju-calendar.js';
+import { type Cheongan, type Jiji } from '../saju/types.js';
+import { getDaeunPillar, makePillar } from '../saju/pillar-utils.js';
+import { getDayPillar, getMonthPillar, getYearPillar } from '../saju/pillars.js';
 import type { DailyContext, NatalContext } from './match-types.js';
 
 // ─── 본명 / 일운 컨텍스트 ────────────────────────────────

@@ -14,37 +14,38 @@
 
 import { query } from '../../shared/db.js';
 import { blockPermutationP, mannWhitneyU, type MannWhitneyResult } from '../../shared/stats.js';
+import { buildWindowDates } from '../../shared/pattern/binarize.js';
 import {
-  buildWindowDates,
   computeSignalSeries,
   computeSeedActivationSeries,
+  splitRawByActivation,
+  type SignalSeriesResult,
+} from '../../shared/pattern/series.js';
+import {
   buildContingency,
   buildDaySequence,
   verifyContingency,
-  splitRawByActivation,
-  bhFdrByFamily,
-  familyOf,
+} from '../../shared/pattern/contingency.js';
+import { bhFdrByFamily, familyOf, type FdrFamily } from '../../shared/pattern/fdr-family.js';
+import {
   computeUserDataStarts,
   signalDataStart,
   seedDataStart,
   maxDate,
+} from '../../shared/pattern/data-window.js';
+import {
   type SignalDef,
   type SignalDirection,
-  type SignalSeriesResult,
   type Contingency,
   type ContingencyVerification,
-  type FdrFamily,
-} from '../../shared/pattern-verification.js';
-import {
-  loadActiveSeeds,
-  buildNameIdMap,
-  type SajuSeedWithMetrics,
-  type DailyContext,
-} from '../../shared/pattern-match.js';
+} from '../../shared/pattern/types.js';
+import { loadActiveSeeds } from '../../shared/pattern/match-seeds.js';
+import { buildNameIdMap } from '../../shared/pattern/match-day.js';
+import { type SajuSeedWithMetrics, type DailyContext } from '../../shared/pattern/match-types.js';
 import type { BandCuts } from '../../shared/quantile.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 import { seedLabel, signalLabel } from '../../shared/insight-labels.js';
-import { BEHAVIOR_SIGNAL_DOMAIN, type InsightDomain } from '../../shared/insights.js';
+import { BEHAVIOR_SIGNAL_DOMAIN, type InsightDomain } from '../../shared/insights/types.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
 

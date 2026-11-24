@@ -6,7 +6,8 @@ vi.mock('../../db.js', () => ({
   query: (sql: string, params: unknown[]): unknown => mockQuery(sql, params),
 }));
 
-import type { DailyContext, ThresholdAux } from '../../pattern-match.js';
+import type { DailyContext } from '../../pattern/match-types.js';
+import type { ThresholdAux } from '../../pattern/match-aux-types.js';
 import { evaluateThreshold } from '../threshold.js';
 
 const baseCtx = (date: string): DailyContext => ({ date, userId: 1 }) as unknown as DailyContext;

@@ -3,7 +3,8 @@
  * 한국 시간(KST = UTC+9) 기준으로 요일 판정.
  */
 
-import type { DailyContext, WeekdayAux, WeekdayGroupAux } from '../pattern-match.js';
+import type { DailyContext } from '../pattern/match-types.js';
+import type { WeekdayAux, WeekdayGroupAux } from '../pattern/match-aux-types.js';
 
 const dowFromISO = (date: string): number => {
   // ctx.date는 'YYYY-MM-DD' (KST 캘린더 기준). 요일은 timezone과 무관 — y/m/d를 UTC로 해석해 getUTCDay.

@@ -1,10 +1,8 @@
 import type { App } from '@slack/bolt';
-import {
-  verifyUserLinks,
-  computeStrengthCutpoints,
-  ensureMirrorSignalDef,
-} from '../../shared/pattern-verification.js';
-import { flagConfounds } from '../../shared/confound.js';
+import { verifyUserLinks } from '../../shared/pattern/verify-links.js';
+import { computeStrengthCutpoints } from '../../shared/pattern/strength-cutpoints.js';
+import { ensureMirrorSignalDef } from '../../shared/pattern/mirror-signal.js';
+import { flagConfounds } from '../../shared/pattern/confound-flag.js';
 import { runSaturationSweep, type SaturationSweepResult } from '../../shared/seed-saturation.js';
 import { recommendDiscoveries } from '../discovery-recommend.js';
 import {

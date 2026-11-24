@@ -4,7 +4,7 @@
  */
 
 import { query } from '../db.js';
-import type { Cheongan, Jiji, Pillar, PillarSet } from '../saju-calendar.js';
+import type { Cheongan, Jiji, Pillar, PillarSet } from '../saju/types.js';
 import type { DailyContext, PillarLevel } from './match-types.js';
 
 // ─── 트리거 평가 ─────────────────────────────────────────

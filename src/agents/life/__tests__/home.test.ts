@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type {
-  RoutineRecordRow,
-  ScheduleRow,
-  SleepRecordRow,
-  SleepEventRow,
-} from '../../../shared/life-queries.js';
+import type { RoutineRecordRow } from '../../../shared/life/queries-routine.js';
+import type { ScheduleRow } from '../../../shared/life/queries-schedule.js';
+import type { SleepRecordRow, SleepEventRow } from '../../../shared/life/queries-sleep.js';
 
 // ── DB mock ──
 vi.mock('../../../shared/db.js', () => ({
@@ -18,17 +15,21 @@ const mockQueryTodaySchedules = vi.fn<() => Promise<ScheduleRow[]>>(async () => 
 const mockQuerySleepForHome = vi.fn<() => Promise<SleepRecordRow[]>>(async () => []);
 const mockQuerySleepEventsForHome = vi.fn<() => Promise<SleepEventRow[]>>(async () => []);
 
-vi.mock('../../../shared/life-queries.js', () => ({
+vi.mock('../../../shared/life/queries-routine.js', () => ({
   queryTodayRecords: () => mockQueryTodayRecords(),
+  frequencyBadge: vi.fn(() => ''),
+}));
+vi.mock('../../../shared/life/queries-schedule.js', () => ({
   queryTodaySchedules: () => mockQueryTodaySchedules(),
+}));
+vi.mock('../../../shared/life/queries-sleep.js', () => ({
   querySleepForHome: () => mockQuerySleepForHome(),
   querySleepEventsForHome: () => mockQuerySleepEventsForHome(),
-  frequencyBadge: vi.fn(() => ''),
 }));
 
 // ── life-cron mock ──
 const mockCreateTodayRecords = vi.fn(async () => 0);
-vi.mock('../../../cron/life-cron.js', () => ({
+vi.mock('../../../cron/life/routine-records.js', () => ({
   createTodayRecords: () => mockCreateTodayRecords(),
 }));
 

@@ -7,19 +7,14 @@ import type { App } from '@slack/bolt';
 import type { WebClient } from '@slack/web-api';
 import type { KnownBlock } from '@slack/types';
 import { getEffectiveTodayISO, getKSTTimeString, formatDateShort } from '../../shared/kst.js';
-import {
-  buildRoutineBlocks,
-  buildScheduleBlocks,
-  buildSleepBlocks,
-} from './blocks.js';
-import {
-  queryTodayRecords,
-  queryTodaySchedules,
-  querySleepForHome,
-  querySleepEventsForHome,
-} from '../../shared/life-queries.js';
+import { buildRoutineBlocks } from './blocks/routine.js';
+import { buildScheduleBlocks } from './blocks/schedule.js';
+import { buildSleepBlocks } from './blocks/sleep.js';
+import { queryTodayRecords } from '../../shared/life/queries-routine.js';
+import { queryTodaySchedules } from '../../shared/life/queries-schedule.js';
+import { querySleepForHome, querySleepEventsForHome } from '../../shared/life/queries-sleep.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
-import { createTodayRecords } from '../../cron/life-cron.js';
+import { createTodayRecords } from '../../cron/life/routine-records.js';
 
 // ─── Home 탭 빌드 ───────────────────────────────────
 

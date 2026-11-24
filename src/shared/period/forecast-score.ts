@@ -2,12 +2,9 @@
 
 import { query } from '../db.js';
 import { addDays } from '../kst.js';
-import {
-  computeSignalSeries,
-  computeUserDataStarts,
-  signalDataStart,
-  loadSignalDefsByIds,
-} from '../pattern-verification.js';
+import { computeSignalSeries } from '../pattern/series.js';
+import { computeUserDataStarts, signalDataStart } from '../pattern/data-window.js';
+import { loadSignalDefsByIds } from '../pattern/load-signal-defs.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
 import type { LedgerPeriodType, ForecastSourceCell, ScoredEntry } from './types.js';
 import { parseDirection, parseSourceCell } from './forecast-rows.js';

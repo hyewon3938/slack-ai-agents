@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CalendarEventAux, DailyContext } from '../../pattern-match.js';
+import type { CalendarEventAux } from '../../pattern/match-aux-types.js';
+import type { DailyContext } from '../../pattern/match-types.js';
 import { evaluateCalendarEvent } from '../calendar-event.js';
 
 const baseCtx = (date: string): DailyContext => ({ date, userId: 1 }) as unknown as DailyContext;

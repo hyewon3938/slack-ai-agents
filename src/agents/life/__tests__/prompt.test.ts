@@ -6,7 +6,7 @@ vi.mock('../../../shared/db.js', () => ({
   query: vi.fn(async () => ({ rows: [] })),
 }));
 
-vi.mock('../../../shared/life-context.js', () => ({
+vi.mock('../../../shared/life/context-build.js', () => ({
   buildLifeContext: vi.fn(async () => '\n\n## 현재 생활 맥락\n수면: 테스트 맥락'),
 }));
 

@@ -1,6 +1,6 @@
 /**
  * 사주 일주 계산 (web용 복제본).
- * 원본: src/shared/saju-calendar.ts (봇 사용).
+ * 원본: src/shared/saju/pillars.ts · saju/tables.ts (봇 사용).
  * 동기화 대상: getDayPillar 알고리즘 + 천간/지지 상수.
  * 변경 시 양쪽 모두 갱신할 것 (ADR-0021 참조).
  */

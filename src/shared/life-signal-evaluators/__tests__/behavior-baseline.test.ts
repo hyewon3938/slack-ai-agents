@@ -1,23 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// insights.ts 11개 detect 함수 모두 mock
-vi.mock('../../insights.js', () => ({
+// insights/ 11개 detect 함수 모두 mock (정의 파일별)
+vi.mock('../../insights/routine-streak.js', () => ({
   detectStreak: vi.fn(),
-  detectSleepTrend: vi.fn(),
-  detectSlotGap: vi.fn(),
-  detectWeekComparison: vi.fn(),
-  detectOverdue: vi.fn(),
-  detectCategorySkew: vi.fn(),
-  detectDrift: vi.fn(),
   detectRecovery: vi.fn(),
   detectLapseAlert: vi.fn(),
+}));
+vi.mock('../../insights/routine-comparison.js', () => ({
+  detectSlotGap: vi.fn(),
+  detectWeekComparison: vi.fn(),
+}));
+vi.mock('../../insights/routine-decline.js', () => ({
   detectWeeklyRegression: vi.fn(),
   detectSpottyPattern: vi.fn(),
 }));
+vi.mock('../../insights/sleep.js', () => ({
+  detectSleepTrend: vi.fn(),
+  detectDrift: vi.fn(),
+}));
+vi.mock('../../insights/schedule.js', () => ({
+  detectOverdue: vi.fn(),
+  detectCategorySkew: vi.fn(),
+}));
 
-import * as insights from '../../insights.js';
-import type { BehaviorBaselineAux, DailyContext } from '../../pattern-match.js';
+import * as routineStreak from '../../insights/routine-streak.js';
+import * as routineComparison from '../../insights/routine-comparison.js';
+import * as routineDecline from '../../insights/routine-decline.js';
+import * as sleep from '../../insights/sleep.js';
+import * as schedule from '../../insights/schedule.js';
+import type { BehaviorBaselineAux } from '../../pattern/match-aux-types.js';
+import type { DailyContext } from '../../pattern/match-types.js';
 import { evaluateBehaviorBaseline } from '../behavior-baseline.js';
+
+const insights = {
+  ...routineStreak,
+  ...routineComparison,
+  ...routineDecline,
+  ...sleep,
+  ...schedule,
+};
 
 const baseCtx = (date: string): DailyContext => ({ date, userId: 1 }) as unknown as DailyContext;
 

@@ -1,6 +1,7 @@
 /** 기간 해석 — 누적 기술통계 집계(inline SQL). */
 
-import { getJeolgiMonthRange, type Jiji } from '../saju-calendar.js';
+import { getJeolgiMonthRange } from '../saju/pillars.js';
+import { type Jiji } from '../saju/types.js';
 import { query } from '../db.js';
 import { addDays } from '../kst.js';
 import type { PeriodContext, DescriptiveStats } from './types.js';

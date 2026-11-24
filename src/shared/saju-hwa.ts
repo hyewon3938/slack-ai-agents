@@ -18,15 +18,16 @@ import {
   JIJI_YUKHAP_RULES,
   JIJI_SAMHAP_RULES,
   JIJI_CHUNG_PAIRS,
-  getElementByCheongan,
-  getElementByJiji,
-  getJijanggan,
+} from './saju/tables.js';
+import { getElementByCheongan, getElementByJiji } from './saju/pillar-utils.js';
+import { getJijanggan } from './saju/sipsung.js';
+import {
   type Cheongan,
   type Element,
   type Jiji,
   type Pillar,
   type PillarSet,
-} from './saju-calendar.js';
+} from './saju/types.js';
 import type { HwaParams } from './saju-strength-params.js';
 
 /** 효과적 십성 5그룹 (化 오행의 일간 대비 관계 — polarity 무관, 학파 의존성 회피). */

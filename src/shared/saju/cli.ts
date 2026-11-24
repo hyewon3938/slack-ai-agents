@@ -1,5 +1,10 @@
-/** 만세력 CLI 실행부. */
+/**
+ * 만세력 CLI 실행부.
+ *
+ * CLI: npx tsx src/shared/saju/cli.ts [날짜] [일수]
+ */
 
+import { fileURLToPath } from 'node:url';
 import { getTodayISO } from '../kst.js';
 import type { Cheongan, Jiji } from './types.js';
 import { calculateFortuneRange } from './fortune.js';
@@ -123,3 +128,12 @@ export const runCLI = async (): Promise<void> => {
   const results = calculateFortuneRange(startDate, count, dayMaster, wonkukStems, wonkukBranches);
   console.log(JSON.stringify(results, null, 2));
 };
+
+// CLI 진입점
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  runCLI().catch((err: unknown) => {
+    console.error('[saju-calendar] 오류:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

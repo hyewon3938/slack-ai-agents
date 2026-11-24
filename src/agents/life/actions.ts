@@ -5,9 +5,8 @@
 
 import type { App } from '@slack/bolt';
 import type { KnownBlock } from '@slack/types';
+import { completeRecord, queryTodayRecords } from '../../shared/life/queries-routine.js';
 import {
-  completeRecord,
-  queryTodayRecords,
   queryTodaySchedules,
   queryBacklogSchedules,
   updateScheduleStatus,
@@ -15,7 +14,7 @@ import {
   deleteSchedule,
   toggleScheduleImportant,
   moveScheduleToDate,
-} from '../../shared/life-queries.js';
+} from '../../shared/life/queries-schedule.js';
 import { updateMessage } from '../../shared/slack.js';
 import { queryWithRowLimit, dryRunAffectedRows } from '../../shared/db.js';
 import { findActivePending, markExecuted, markCanceled } from '../../shared/pending-modify.js';
@@ -31,12 +30,14 @@ import {
   MOVE_TO_TODAY_ACTION,
   CONFIRM_MODIFY_EXECUTE_ACTION_ID,
   CONFIRM_MODIFY_CANCEL_ACTION_ID,
+} from './blocks/constants.js';
+import {
   parseButtonValue,
-  parseOverflowValue,
   buildRoutineBlocks,
   buildFilteredRoutineBlocks,
-  buildScheduleBlocks,
-} from './blocks.js';
+} from './blocks/routine.js';
+import { parseOverflowValue } from './blocks/schedule-overflow.js';
+import { buildScheduleBlocks } from './blocks/schedule.js';
 import { publishHomeView } from './home.js';
 
 const CONFIRM_EXECUTE_TIMEOUT_MS = 10_000;

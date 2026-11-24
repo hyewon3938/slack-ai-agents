@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { makePillar, type PillarSet } from '../saju-calendar.js';
+import { makePillar } from '../saju/pillar-utils.js';
+import { type PillarSet } from '../saju/types.js';
 import { detectHwaTransforms, elementToSipsinGroup } from '../saju-hwa.js';
 import { SAJU_HWA_PARAMS } from '../saju-strength-params.js';
 

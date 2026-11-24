@@ -1,12 +1,7 @@
 /** 응답 프로필 — 링크 기여를 셀로 집계(롤업·tier·shrunk). */
 
-import {
-  getSipsung,
-  getJijiSipsung,
-  type Cheongan,
-  type Jiji,
-  type Element,
-} from '../saju-calendar.js';
+import { getSipsung, getJijiSipsung } from '../saju/sipsung.js';
+import { type Cheongan, type Jiji, type Element } from '../saju/types.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
 import {
   type AxisLevel,

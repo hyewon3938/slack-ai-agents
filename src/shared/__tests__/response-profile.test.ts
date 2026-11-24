@@ -1,17 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
   mapSeedToCell,
-  buildResponseProfile,
   groupElement,
+  cellKey,
+  type ResponseCell,
+  type SeedForCell,
+} from '../response-profile/axis.js';
+import { buildResponseProfile, type ProfileLink } from '../response-profile/aggregate.js';
+import {
   indexCells,
   resolveHierarchyCell,
   resolveElementBandCell,
-  cellKey,
-  type ProfileLink,
-  type ResponseCell,
-  type SeedForCell,
-} from '../response-profile.js';
-import type { Cheongan } from '../saju-calendar.js';
+} from '../response-profile/resolve.js';
+import type { Cheongan } from '../saju/types.js';
 
 // ─── 고정 일간 갑(양목) — 십성 매핑 결정론 검증 기준 ──────
 const DM: Cheongan = '갑';

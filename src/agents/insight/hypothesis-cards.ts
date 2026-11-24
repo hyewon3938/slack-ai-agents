@@ -7,7 +7,7 @@
  *
  * 주간 검증 리포트 카드(buildVerificationBlocks 등)는 #542(ADR-0052)에서 발송 은퇴 —
  * 사용자-facing 검증 현황은 routine(weekly-saju-review-v2) 통합 카드가 단독 발송한다.
- * 검증 엔진(weekly-verification.ts)은 그대로 — 카드 생성만 사라짐.
+ * 검증 엔진(cron/weekly-verification/)은 그대로 — 카드 생성만 사라짐.
  */
 
 import type { KnownBlock } from '@slack/types';

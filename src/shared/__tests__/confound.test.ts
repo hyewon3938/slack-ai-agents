@@ -5,12 +5,15 @@ import {
   adjustConfounders,
   classifyVerdict,
   buildStrata,
+} from '../pattern/confound-calc.js';
+import {
   type ConfoundCandidate,
   type ConfoundThresholds,
   type ConfoundAdjustThresholds,
   type SuspectedConfounder,
-} from '../confound.js';
-import { buildContingency, type DaySeries } from '../pattern-verification.js';
+} from '../pattern/confound-types.js';
+import { buildContingency } from '../pattern/contingency.js';
+import { type DaySeries } from '../pattern/types.js';
 
 // 합성 시리즈 헬퍼 — 10일 윈도우(d0..d9). buildContingency/verifyContingency는 이미 검증됨(pattern-verification.test) →
 // 여기선 교란 조립 로직(2조건 AND·정렬·topN·자기 제외)에 집중.

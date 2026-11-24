@@ -2,7 +2,7 @@
  * 일일 매칭 엔진의 공용 타입 (pattern-match에서 분리).
  */
 
-import type { Cheongan, Jiji, Pillar } from '../saju-calendar.js';
+import type { Cheongan, Jiji, Pillar } from '../saju/types.js';
 
 export type PillarLevel = 'wonguk' | 'daeun' | 'seun' | 'wolun' | 'ilun';
 

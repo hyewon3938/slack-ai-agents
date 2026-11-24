@@ -31,7 +31,7 @@ vi.mock('../../shared/user-resolver.js', () => ({
   queryAllUserMappings: () => Promise.resolve(mockMappings),
 }));
 
-const { weeklyReviewFallbackTask } = await import('../weekly-verification.js');
+const { weeklyReviewFallbackTask } = await import('../weekly-verification/tasks.js');
 
 const app = { client: {} } as never;
 const config = { channelId: 'C_FALLBACK', llmClient: {} } as never;

@@ -21,23 +21,13 @@ vi.mock('../kst.js', () => ({
 }));
 
 import { connectDB } from '../db.js';
-import type { Insight } from '../insights.js';
-import {
-  detectStreak,
-  detectSleepTrend,
-  detectSlotGap,
-  detectWeekComparison,
-  detectOverdue,
-  detectCategorySkew,
-  detectDrift,
-  detectRecovery,
-  detectLapseAlert,
-  detectWeeklyRegression,
-  detectSpottyPattern,
-  pickMorningNudges,
-  pickNightNudges,
-  pickWeeklyInsights,
-} from '../insights.js';
+import type { Insight } from '../insights/types.js';
+import { detectStreak, detectRecovery, detectLapseAlert } from '../insights/routine-streak.js';
+import { detectSleepTrend, detectDrift } from '../insights/sleep.js';
+import { detectSlotGap, detectWeekComparison } from '../insights/routine-comparison.js';
+import { detectOverdue, detectCategorySkew } from '../insights/schedule.js';
+import { detectWeeklyRegression, detectSpottyPattern } from '../insights/routine-decline.js';
+import { pickMorningNudges, pickNightNudges, pickWeeklyInsights } from '../insights/pick.js';
 
 /** null이 아님을 보장하고 타입 좁히기 */
 const defined = (v: Insight | null): Insight => {

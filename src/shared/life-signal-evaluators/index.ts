@@ -5,10 +5,11 @@
  * kind: weekday / weekday_group / month_position / season / calendar_event / threshold / behavior_baseline
  *
  * 평가 결과는 boolean — true면 오늘 trigger 발현, false면 미발현.
- * 잘못된 aux는 pattern-match.ts:isLifeSignalAux에서 걸러진 후 들어오므로 여기서는 예외 X.
+ * 잘못된 aux는 pattern/match-aux-types.ts:isLifeSignalAux에서 걸러진 후 들어오므로 여기서는 예외 X.
  */
 
-import type { DailyContext, LifeSignalAux } from '../pattern-match.js';
+import type { DailyContext } from '../pattern/match-types.js';
+import type { LifeSignalAux } from '../pattern/match-aux-types.js';
 import { evaluateWeekday, evaluateWeekdayGroup } from './weekday.js';
 import { evaluateMonthPosition } from './month-position.js';
 import { evaluateSeason } from './season.js';

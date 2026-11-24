@@ -1,7 +1,7 @@
 import { CHARACTER_PROMPT } from '../../shared/personality.js';
 import { query } from '../../shared/db.js';
 import { getTodayString, getWeekReference } from '../../shared/kst.js';
-import { buildLifeContext } from '../../shared/life-context.js';
+import { buildLifeContext } from '../../shared/life/context-build.js';
 
 /** 커스텀 지시사항 상한. 초과 시 오래된 auto부터 비활성화 */
 const MAX_CUSTOM_INSTRUCTIONS = 20;

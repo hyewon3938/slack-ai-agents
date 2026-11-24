@@ -6,7 +6,7 @@ import {
   validateModifyQuery,
   validateUserIdFilter,
   validateCustomInstruction,
-} from '../sql-tools.js';
+} from '../sql-tools/validation.js';
 
 // ---- 검증 함수 테스트 (DB mock 불필요) ----
 
@@ -371,7 +371,7 @@ describe('executeSQLTool', () => {
     mockConnect.mockResolvedValue({ query: mockClientQuery, release: mockRelease });
 
     // sql-tools import
-    const sqlTools = await import('../sql-tools.js');
+    const sqlTools = await import('../sql-tools/execute.js');
     executeSQLTool = sqlTools.executeSQLTool;
   });
 
@@ -431,7 +431,7 @@ describe('executeSQLTool', () => {
     ];
     mockQuery.mockResolvedValue({ rows: schemaRows, rowCount: 1 });
 
-    const { clearSchemaCache } = await import('../sql-tools.js');
+    const { clearSchemaCache } = await import('../sql-tools/schema.js');
     clearSchemaCache();
 
     const result = await executeSQLTool('get_schema', {});
@@ -447,9 +447,9 @@ describe('executeSQLTool', () => {
 });
 
 describe('executeSQLTool — modify_db 확인 플로우', () => {
-  let executeSQLTool: typeof import('../sql-tools.js').executeSQLTool;
-  let setConfirmCardSender: typeof import('../sql-tools.js').setConfirmCardSender;
-  let clearConfirmCardSender: typeof import('../sql-tools.js').clearConfirmCardSender;
+  let executeSQLTool: typeof import('../sql-tools/execute.js').executeSQLTool;
+  let setConfirmCardSender: typeof import('../sql-tools/execute.js').setConfirmCardSender;
+  let clearConfirmCardSender: typeof import('../sql-tools/execute.js').clearConfirmCardSender;
   let connectDB: (url: string) => Promise<void>;
   let disconnectDB: () => Promise<void>;
 
@@ -471,7 +471,7 @@ describe('executeSQLTool — modify_db 확인 플로우', () => {
     vi.clearAllMocks();
     mockConnect.mockResolvedValue({ query: mockClientQuery, release: mockRelease });
 
-    const sqlTools = await import('../sql-tools.js');
+    const sqlTools = await import('../sql-tools/execute.js');
     executeSQLTool = sqlTools.executeSQLTool;
     setConfirmCardSender = sqlTools.setConfirmCardSender;
     clearConfirmCardSender = sqlTools.clearConfirmCardSender;

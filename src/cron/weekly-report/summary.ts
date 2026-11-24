@@ -1,6 +1,6 @@
 import type { LifeCronConfig } from '../life/types.js';
 import type { LLMMessage } from '../../shared/llm.js';
-import type { Insight } from '../../shared/insights.js';
+import type { Insight } from '../../shared/insights/types.js';
 import { CHARACTER_PROMPT } from '../../shared/personality.js';
 import type { WeeklyReportData } from './types.js';
 

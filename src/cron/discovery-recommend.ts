@@ -18,7 +18,7 @@ import {
   insertPendingDiscoveryLink,
 } from '../agents/insight/hypothesis-discovery.js';
 import { buildDiscoveryCandidateCard } from '../agents/insight/hypothesis-cards.js';
-import type { LifeCronConfig } from './life-cron.js';
+import type { LifeCronConfig } from './life/types.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
 

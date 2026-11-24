@@ -16,7 +16,7 @@
  * 통계·verdict·tier·임계치 일절 불변 — 표현 문자열만(#502 카피 PR 연장).
  */
 
-import type { SignalDirection } from './pattern-verification.js';
+import type { SignalDirection } from './pattern/types.js';
 
 // ─── 시드 라벨 (description tail-strip) ───────────────────
 
@@ -28,12 +28,12 @@ export interface SeedLabelInput {
 /**
  * description tail-strip으로는 무슨 뜻인지 안 읽히는(jargon·오기) 시드의 수동 라벨(ADR-0045 §2).
  * 행동 신호(behavior_baseline) description은 코드와 어긋나는 오기가 많아(예: drift는 "카테고리 분포
- * 변화"로 써있으나 실제는 수면 리듬 밀림) 전부 src/shared/insights.ts 감지 로직 기준으로 재작성.
+ * 변화"로 써있으나 실제는 수면 리듬 밀림) 전부 src/shared/insights/ 감지 로직 기준으로 재작성.
  * 강도 밴드·합화십성은 내부 용어라 평어로. 끝을 "날"로 맞춰 활성 절(activationClause)이 "켜진 날"을
  * 중복으로 안 붙이게 한다. 누적(N개) 시드는 정확해서 strip 유지(적응형 임계 재설계 후속에서 재검토).
  */
 export const SEED_LABEL_OVERRIDES: Record<string, string> = {
-  // ── 행동 신호 (insights.ts 감지 로직 기준 — description 오기 무시) ──
+  // ── 행동 신호 (insights/ 감지 로직 기준 — description 오기 무시) ──
   life_behavior_spotty: '루틴 듬성듬성 빠진 날', // 최근 7일 중 3~4번 산발 누락
   life_behavior_lapse: '쭉 지키던 루틴 거른 날', // 7일 연속 달성 후 오늘 빠짐
   life_behavior_streak: '루틴 며칠째 연속 달성한 날',

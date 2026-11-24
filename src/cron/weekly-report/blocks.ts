@@ -1,4 +1,4 @@
-import type { Insight } from '../../shared/insights.js';
+import type { Insight } from '../../shared/insights/types.js';
 import { formatDateShort } from '../../shared/kst.js';
 import type { KnownBlock } from '@slack/types';
 import type { SajuOutcomeData, WeeklyReportData } from './types.js';

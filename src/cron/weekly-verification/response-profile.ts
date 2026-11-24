@@ -1,11 +1,10 @@
 import { query, withTransaction } from '../../shared/db.js';
-import type { ConfoundData } from '../../shared/confound.js';
-import { loadActiveSeeds, loadNatalContext, buildNameIdMap } from '../../shared/pattern-match.js';
-import {
-  buildResponseProfile,
-  type ProfileLink,
-  type ResponseCell,
-} from '../../shared/response-profile.js';
+import type { ConfoundData } from '../../shared/pattern/confound-types.js';
+import { loadActiveSeeds } from '../../shared/pattern/match-seeds.js';
+import { loadNatalContext } from '../../shared/pattern/match-context.js';
+import { buildNameIdMap } from '../../shared/pattern/match-day.js';
+import { buildResponseProfile, type ProfileLink } from '../../shared/response-profile/aggregate.js';
+import { type ResponseCell } from '../../shared/response-profile/axis.js';
 
 /** saju_response_profile INSERT 컬럼(user_id 제외 — 행마다 $1 공유). */
 const RESPONSE_PROFILE_COLS = [

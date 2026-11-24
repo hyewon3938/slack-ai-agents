@@ -27,27 +27,25 @@ vi.mock('../kst.js', () => ({
 }));
 
 import { connectDB } from '../db.js';
+import { evaluateTrigger } from '../pattern/match-trigger.js';
 import {
-  evaluateTrigger,
   evaluateMetric,
-  recordDailyMatches,
   runMetricSql,
   runLlmSignalSql,
   runnerForSource,
-  __resetCacheForTest,
+} from '../pattern/match-metric.js';
+import { recordDailyMatches } from '../pattern/match-day.js';
+import { __resetCacheForTest } from '../pattern/match-trigger-lookups.js';
+import {
   type SajuSeedWithMetrics,
   type DailyContext,
   type NatalContext,
   type SeedMatchResult,
   type SajuMetric,
-} from '../pattern-match.js';
-import {
-  getMonthPillar,
-  getYearPillar,
-  makePillar,
-  type Cheongan,
-  type Jiji,
-} from '../saju-calendar.js';
+} from '../pattern/match-types.js';
+import { getMonthPillar, getYearPillar } from '../saju/pillars.js';
+import { makePillar } from '../saju/pillar-utils.js';
+import { type Cheongan, type Jiji } from '../saju/types.js';
 
 beforeEach(async () => {
   vi.clearAllMocks();

@@ -2,14 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── 순수 유틸 테스트 ──
 
-import {
-  timeToCron,
-  calcRoutineStats,
-  getBillingMonthForDate,
-  getTargetExpiryDate,
-  buildTargetExpiryWarning,
-  RELOAD_DEBOUNCE_MS,
-} from '../life-cron.js';
+import { timeToCron } from '../life/slot-tasks.js';
+import { calcRoutineStats } from '../life/routine-records.js';
+import { getBillingMonthForDate } from '../life/budget-backfill.js';
+import { getTargetExpiryDate, buildTargetExpiryWarning } from '../life/target-expiry.js';
+import { RELOAD_DEBOUNCE_MS } from '../life/scheduler.js';
 
 describe('timeToCron', () => {
   it('HH:MM → 크론 표현식', () => {
@@ -141,13 +138,11 @@ vi.mock('../../shared/kst.js', () => ({
 }));
 
 import { connectDB } from '../../shared/db.js';
-import {
-  CronScheduler,
-  createTodayRecords,
-  calcYesterdayFlexSpent,
-  warnTargetExpiryIfNear,
-  type LifeCronConfig,
-} from '../life-cron.js';
+import { CronScheduler } from '../life/scheduler.js';
+import { createTodayRecords } from '../life/routine-records.js';
+import { calcYesterdayFlexSpent } from '../life/budget-backfill.js';
+import { warnTargetExpiryIfNear } from '../life/target-expiry.js';
+import { type LifeCronConfig } from '../life/types.js';
 import type { UserMapping } from '../../shared/user-resolver.js';
 
 /** notification_settings 쿼리 mock 설정 */

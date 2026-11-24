@@ -8,7 +8,7 @@
  * 대운 전환: 만 나이는 단조 증가 → 전환은 항상 null→pillar 또는 pillar→pillar(전부 non-null 결과).
  *   "대운 정보 없어" 안내는 조회(fast path) 책임 — cron은 실제 전환에만 카드를 보낸다(평일 no-op 보존).
  *
- * 검증가능성 사다리·전이 가설 hedge·measured=0 일급 경로는 period-interpretation.ts(렌더/서사)가 담당.
+ * 검증가능성 사다리·전이 가설 hedge·measured=0 일급 경로는 period/interpretation-render.ts·interpretation-narrative.ts(렌더/서사)가 담당.
  */
 
 import type { App } from '@slack/bolt';
@@ -18,32 +18,33 @@ import {
   getIpchunDate,
   getJeolgiMonthRange,
   isJeolgiTransitionDay,
-  getDaeunPillar,
-  type Pillar,
-} from '../shared/saju-calendar.js';
+} from '../shared/saju/pillars.js';
+import { getDaeunPillar } from '../shared/saju/pillar-utils.js';
+import { type Pillar } from '../shared/saju/types.js';
 import { getTodayISO, addDays } from '../shared/kst.js';
-import { loadNatalContext, type NatalContext } from '../shared/pattern-match.js';
+import { loadNatalContext } from '../shared/pattern/match-context.js';
+import { type NatalContext } from '../shared/pattern/match-types.js';
+import { derivePeriodContext } from '../shared/period/interpretation-derive.js';
+import { buildInterpretationPayload } from '../shared/period/interpretation-payload.js';
+import { composeNarrative } from '../shared/period/interpretation-narrative.js';
+import { renderInterpretationBlocks } from '../shared/period/interpretation-render.js';
 import {
-  derivePeriodContext,
-  buildInterpretationPayload,
-  composeNarrative,
-  renderInterpretationBlocks,
   loadResponseProfileIndex,
   upsertInterpretation,
-  PERIOD_LABEL,
+} from '../shared/period/interpretation-store.js';
+import { PERIOD_LABEL } from '../shared/period/interpretation-labels.js';
+import {
   type PeriodType,
   type ResponseProfileIndex,
   type PeriodInterpretationRecord,
-} from '../shared/period-interpretation.js';
-import {
-  scoreForecasts,
-  generateForecasts,
-  type LedgerCardData,
-} from '../shared/period-forecast.js';
+} from '../shared/period/types.js';
+import { scoreForecasts } from '../shared/period/forecast-score.js';
+import { generateForecasts } from '../shared/period/forecast-generate.js';
+import { type LedgerCardData } from '../shared/period/types.js';
 import { postBlockMessage } from '../shared/slack.js';
 import { createPeriodLLMClient, type LLMClient } from '../shared/llm.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
-import type { LifeCronConfig } from './life-cron.js';
+import type { LifeCronConfig } from './life/types.js';
 
 /** 오늘 발사할 주기 트리거 1건 — 결정론(DB·LLM 무관). */
 export interface PeriodTrigger {

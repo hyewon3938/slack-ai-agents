@@ -9,7 +9,8 @@
  */
 
 import { query } from '../db.js';
-import type { DailyContext, ThresholdAux } from '../pattern-match.js';
+import type { DailyContext } from '../pattern/match-types.js';
+import type { ThresholdAux } from '../pattern/match-aux-types.js';
 
 interface SleepMinutesRow {
   minutes: string;

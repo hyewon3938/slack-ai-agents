@@ -16,13 +16,11 @@ import { tryPatternSeedFastPath } from './pattern-seed-fast-path.js';
 import { showDiary } from './diary-edit-actions.js';
 import { parseDiaryLookup } from './diary-edit.js';
 import { formatFortuneText } from '../../shared/fortune-format.js';
-import {
-  loadLatestInterpretation,
-  renderInterpretationBlocks,
-  PERIOD_LABEL,
-  type PeriodType,
-} from '../../shared/period-interpretation.js';
-import { loadLedger } from '../../shared/period-forecast.js';
+import { loadLatestInterpretation } from '../../shared/period/interpretation-store.js';
+import { renderInterpretationBlocks } from '../../shared/period/interpretation-render.js';
+import { PERIOD_LABEL } from '../../shared/period/interpretation-labels.js';
+import { type PeriodType } from '../../shared/period/types.js';
+import { loadLedger } from '../../shared/period/forecast-ledger.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 

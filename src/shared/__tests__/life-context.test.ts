@@ -24,7 +24,7 @@ vi.mock('../kst.js', () => ({
 }));
 
 import { connectDB } from '../db.js';
-import { buildLifeContext } from '../life-context.js';
+import { buildLifeContext } from '../life/context-build.js';
 
 beforeEach(async () => {
   vi.clearAllMocks();

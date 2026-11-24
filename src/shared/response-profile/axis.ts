@@ -1,13 +1,7 @@
 /** 응답 프로필 — 사주 축·셀 정의와 시드 → source 셀 매핑. */
 
-import {
-  getElementByCheongan,
-  getElementByJiji,
-  type Cheongan,
-  type Jiji,
-  type Element,
-  type Sipsung,
-} from '../saju-calendar.js';
+import { getElementByCheongan, getElementByJiji } from '../saju/pillar-utils.js';
+import { type Cheongan, type Jiji, type Element, type Sipsung } from '../saju/types.js';
 import { elementToSipsinGroup, isSipsinGroup, type SipsinGroup } from '../saju-hwa.js';
 
 /** 글자 레벨은 천간/지지 분리(동음이의 차단). 십성·그룹은 통합, element_band는 별도 축. */

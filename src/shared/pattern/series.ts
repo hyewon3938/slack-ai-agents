@@ -5,7 +5,7 @@
 import { query } from '../db.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
 import { type BandCuts, classifyBand, isBand, tertileCuts } from '../quantile.js';
-import type { PillarSet } from '../saju-calendar.js';
+import type { PillarSet } from '../saju/types.js';
 import {
   type StrengthTarget,
   computeStrengthForTarget,

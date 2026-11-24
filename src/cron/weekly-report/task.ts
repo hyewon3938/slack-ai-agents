@@ -1,6 +1,6 @@
 import type { App } from '@slack/bolt';
 import type { LifeCronConfig } from '../life/types.js';
-import { pickWeeklyInsights } from '../../shared/insights.js';
+import { pickWeeklyInsights } from '../../shared/insights/pick.js';
 import { getTodayISO, getKSTDayOfWeek, addDays, formatDateShort } from '../../shared/kst.js';
 import { postBlockMessage } from '../../shared/slack.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../../shared/user-resolver.js';

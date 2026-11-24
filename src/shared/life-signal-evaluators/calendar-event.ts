@@ -7,7 +7,8 @@
  *                (사용자 설정 UI는 follow-up — 현 단계는 시드 자체가 catalog에 없음)
  */
 
-import type { CalendarEventAux, DailyContext } from '../pattern-match.js';
+import type { CalendarEventAux } from '../pattern/match-aux-types.js';
+import type { DailyContext } from '../pattern/match-types.js';
 import { isKoreanHoliday } from './korean-holidays.js';
 
 export const evaluateCalendarEvent = async (
