@@ -13,10 +13,8 @@ import { postBlockMessage } from '../shared/slack.js';
 import { getTodayISO, thisWeekMondayISO } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
 import { INSIGHT_THRESHOLDS } from '../shared/insight-thresholds.js';
-import {
-  discoverCandidates,
-  insertPendingDiscoveryLink,
-} from '../agents/insight/hypothesis-discovery.js';
+import { discoverCandidates } from '../agents/insight/hypothesis-discovery.js';
+import { insertPendingDiscoveryLink } from '../agents/insight/hypothesis-discovery-persist.js';
 import { buildDiscoveryCandidateCard } from '../agents/insight/hypothesis-cards.js';
 import type { LifeCronConfig } from './life/types.js';
 
