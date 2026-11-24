@@ -5,6 +5,7 @@ import type { ScheduleRow } from '@/features/schedule/lib/types';
 import { getScheduleTopCategoryName } from '@/features/schedule/lib/types';
 import type { DeleteReason } from '@/features/schedule/lib/delete-reasons';
 import type { CategoryRow } from '@/lib/types';
+import { sendJson } from '@/lib/send-json';
 
 export function useBacklog() {
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
@@ -71,11 +72,7 @@ export function useBacklog() {
 
   const handleAssignDate = async (id: number, date: string) => {
     try {
-      const res = await fetch(`/api/schedules/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, status: 'todo' }),
-      });
+      const res = await sendJson(`/api/schedules/${id}`, 'PATCH', { date, status: 'todo' });
       if (res.ok) {
         await fetchData();
       }
@@ -87,11 +84,7 @@ export function useBacklog() {
   const handleUpdate = async (data: Partial<ScheduleRow>) => {
     if (!editingSchedule) return;
     try {
-      const res = await fetch(`/api/schedules/${editingSchedule.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await sendJson(`/api/schedules/${editingSchedule.id}`, 'PATCH', data);
       if (res.ok) {
         setEditingSchedule(null);
         await fetchData();
@@ -108,10 +101,9 @@ export function useBacklog() {
   const confirmDelete = async (reason: DeleteReason) => {
     if (deleteTarget === null) return;
     try {
-      const res = await fetch(`/api/schedules/${deleteTarget}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason_category: reason.category, reason_text: reason.text }),
+      const res = await sendJson(`/api/schedules/${deleteTarget}`, 'DELETE', {
+        reason_category: reason.category,
+        reason_text: reason.text,
       });
       if (res.ok) {
         if (editingSchedule?.id === deleteTarget) setEditingSchedule(null);
@@ -127,11 +119,7 @@ export function useBacklog() {
 
   const handleCreate = async (data: Partial<ScheduleRow>) => {
     try {
-      const res = await fetch('/api/schedules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, date: null }),
-      });
+      const res = await sendJson('/api/schedules', 'POST', { ...data, date: null });
       if (res.ok) {
         await fetchData();
       }

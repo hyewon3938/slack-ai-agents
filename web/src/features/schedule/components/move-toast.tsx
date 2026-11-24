@@ -1,6 +1,6 @@
 'use client';
 
-import type { MoveToastState } from '@/features/schedule/hooks/use-schedules';
+import type { MoveToastState } from '@/features/schedule/hooks/use-schedule-moves';
 
 interface MoveToastProps {
   toast: MoveToastState | null;

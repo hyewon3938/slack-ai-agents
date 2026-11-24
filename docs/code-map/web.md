@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`web/src/` 아래 소스 파일 207개, 21943줄이고 테스트 파일은 34개다. 줄 수는 테스트를 뺀 값이다.
+`web/src/` 아래 소스 파일 211개, 21945줄이고 테스트 파일은 34개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
@@ -394,7 +394,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `page.tsx` | 287 |  | function: `default CalendarPage` |
+| `page.tsx` | 288 |  | function: `default CalendarPage` |
 
 ## `web/src/app/schedules/categories`
 
@@ -425,7 +425,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `asset-item.tsx` | 150 |  | function: `AssetItem` |
-| `budget-settings-page.tsx` | 286 |  | function: `BudgetSettingsPage` |
+| `budget-settings-page.tsx` | 267 |  | function: `BudgetSettingsPage` |
 | `category-chart.tsx` | 108 |  | function: `CategoryChart` |
 | `category-limit-add-form.tsx` | 89 |  | function: `CategoryLimitAddForm` |
 | `category-limit-item.tsx` | 96 |  | function: `CategoryLimitItem` |
@@ -440,15 +440,15 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `month-navigator.tsx` | 59 |  | function: `MonthNavigator` |
 | `month-summary.tsx` | 294 |  | function: `MonthSummaryCard` |
 | `planned-expense-edit-modal.tsx` | 198 |  | function: `PlannedExpenseEditModal` |
-| `planned-expense-list.tsx` | 225 |  | function: `PlannedExpenseList` |
+| `planned-expense-list.tsx` | 222 |  | function: `PlannedExpenseList` |
 | `runway-card.tsx` | 243 |  | function: `RunwayCard` |
-| `target-date-card.tsx` | 199 |  | function: `TargetDateCard` |
+| `target-date-card.tsx` | 196 |  | function: `TargetDateCard` |
 
 ## `web/src/features/budget/hooks`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `use-budget.ts` | 311 |  | function: `useBudget` |
+| `use-budget.ts` | 304 |  | function: `useBudget` |
 
 ## `web/src/features/budget/lib`
 
@@ -535,7 +535,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `date-nav.tsx` | 43 |  | function: `DateNav` |
 | `free-record-modal.tsx` | 239 |  | function: `FreeRecordModal` |
 | `free-routine-section.tsx` | 65 |  | function: `isActiveFreeRoutine`, `FreeRoutineSection` |
-| `inactive-period-list.tsx` | 164 |  | function: `InactivePeriodList` |
+| `inactive-period-list.tsx` | 163 |  | function: `InactivePeriodList` |
 | `monthly-heatmap.tsx` | 112 |  | function: `MonthlyHeatmap` |
 | `routine-card.tsx` | 87 |  | function: `RoutineCard` |
 | `routine-checklist.tsx` | 122 |  | function: `RoutineChecklist` |
@@ -551,7 +551,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `use-routines.ts` | 269 |  | function: `useRoutines`<br>type: `RoutineView` |
+| `use-routines.ts` | 254 |  | function: `useRoutines`<br>type: `RoutineView` |
 
 ## `web/src/features/routine/lib`
 
@@ -569,7 +569,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `action-menu.tsx` | 131 |  | function: `ActionMenu` |
 | `backlog-panel.tsx` | 186 |  | function: `BacklogPanel` |
 | `calendar-header.tsx` | 96 |  | function: `CalendarHeader`<br>type: `CalendarView` |
-| `categories-panel.tsx` | 458 |  | function: `CategoriesPanel` |
+| `categories-panel.tsx` | 455 |  | function: `CategoriesPanel` |
 | `category-badge.tsx` | 15 |  | function: `CategoryBadge` |
 | `category-panel-parts.tsx` | 58 |  | function: `CategoryBadge`, `TypeBadge`, `TypeSelector` |
 | `day-detail-panel.tsx` | 69 |  | function: `DayDetailPanel` |
@@ -594,8 +594,11 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `use-backlog.ts` | 161 |  | function: `useBacklog` |
-| `use-schedules.ts` | 484 |  | function: `getInitialView`, `useSchedules`<br>type: `MoveToastState` |
+| `use-backlog.ts` | 149 |  | function: `useBacklog` |
+| `use-calendar-navigation.ts` | 126 | 캘린더 보기 방식과 기준 날짜, 선택한 날짜를 관리하고 조회할 날짜 범위를 계산한다. | function: `getInitialView`, `getCalendarRange`, `useCalendarNavigation` |
+| `use-schedule-filters.ts` | 97 | 캘린더의 카테고리·상태 필터 선택을 관리하고 필터를 적용한 일정 목록을 돌려준다. | function: `useScheduleFilters` |
+| `use-schedule-moves.ts` | 129 | 일정 날짜 이동과 되돌리기, 그 결과를 알리는 토스트를 관리한다. | function: `useScheduleMoves`<br>type: `MoveToastState` |
+| `use-schedules.ts` | 195 | 캘린더 화면의 일정 조회·폴링과 생성·수정·삭제를 맡고, 날짜 이동·필터·내비게이션 훅을 묶어 돌려준다. | function: `useSchedules` |
 | `use-undo-shortcut.ts` | 39 |  | function: `isUndoShortcut`, `useUndoShortcut` |
 
 테스트 파일 1개
@@ -630,7 +633,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `use-chart-tooltip.ts` | 27 |  | function: `useChartTooltip` |
-| `use-sleep-dashboard.ts` | 151 |  | function: `useSleepDashboard` |
+| `use-sleep-dashboard.ts` | 140 |  | function: `useSleepDashboard` |
 
 ## `web/src/features/sleep/lib`
 
@@ -656,6 +659,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `kst.ts` | 49 | KST (UTC+9) 날짜 유틸리티. | function: `getTodayISO`, `formatDateShort`, `getDayName`, `addDays`<br>const: `DAY_NAMES` |
 | `parse-error.ts` | 9 |  | function: `parseError` |
 | `saju.ts` | 110 | 사주 일주 계산 (web용 복제본). | function: `getDayPillar`<br>type: `Cheongan`, `Jiji`, `Pillar` |
+| `send-json.ts` | 12 |  | function: `sendJson` |
 | `slack.ts` | 83 | Slack Web API 클라이언트 — 웹에서 알림용 메시지 전송 | function: `postSlackMessage`, `notifyNewSignup` |
 | `types.ts` | 79 | ─── 카테고리 (공통) ───────────────────────────────── | function: `hexToStyles`, `getCategoryStyle`, `colorToHex`, `formatAmount`<br>const: `CATEGORY_TYPES`, `VALID_CATEGORY_TYPES`, `PRESET_COLORS`, `COLOR_OPTIONS`<br>type: `CategoryType`, `CategoryRow` |
 | `users.ts` | 84 |  | function: `findUserByKakaoId`, `listAllUserIds`, `getUserCount`, `findOrCreateUser`<br>type: `UserRow` |

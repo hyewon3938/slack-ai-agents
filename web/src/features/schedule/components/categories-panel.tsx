@@ -17,6 +17,7 @@ import { ColorPicker } from '@/components/ui/color-picker';
 import { SortableCategoryItem } from './sortable-category-item';
 import { SubcategoryPanel } from './subcategory-panel';
 import { CategoryBadge, TypeBadge, TypeSelector } from './category-panel-parts';
+import { sendJson } from '@/lib/send-json';
 
 export function CategoriesPanel() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -62,11 +63,7 @@ export function CategoriesPanel() {
   const saveOrder = useCallback(async (items: CategoryRow[]) => {
     const orders = items.map((c, i) => ({ id: c.id, sort_order: i + 1 }));
     try {
-      await fetch('/api/categories/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders }),
-      });
+      await sendJson('/api/categories/reorder', 'POST', { orders });
     } catch {
       // ignore
     }
@@ -138,10 +135,10 @@ export function CategoriesPanel() {
     if (!newName.trim()) return;
 
     try {
-      const res = await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), color: newColor, type: newType }),
+      const res = await sendJson('/api/categories', 'POST', {
+        name: newName.trim(),
+        color: newColor,
+        type: newType,
       });
       if (res.ok) {
         setNewName('');
@@ -161,10 +158,10 @@ export function CategoriesPanel() {
     if (!editName.trim()) return;
 
     try {
-      const res = await fetch(`/api/categories/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), color: editColor, type: editType }),
+      const res = await sendJson(`/api/categories/${id}`, 'PATCH', {
+        name: editName.trim(),
+        color: editColor,
+        type: editType,
       });
       if (res.ok) {
         setEditingId(null);
@@ -194,10 +191,10 @@ export function CategoriesPanel() {
   const handleCreateSub = async (parentId: number) => {
     if (!newSubName.trim()) return;
     try {
-      const res = await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newSubName.trim(), color: newSubColor, parent_id: parentId }),
+      const res = await sendJson('/api/categories', 'POST', {
+        name: newSubName.trim(),
+        color: newSubColor,
+        parent_id: parentId,
       });
       if (res.ok) {
         setNewSubName('');

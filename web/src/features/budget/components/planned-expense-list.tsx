@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { PlannedExpenseRow } from '@/features/budget/lib/types';
 import { formatAmount } from '@/lib/types';
 import { PlannedExpenseEditModal } from './planned-expense-edit-modal';
+import { sendJson } from '@/lib/send-json';
 
 interface PlannedExpenseListProps {
   yearMonth: string;
@@ -43,10 +44,10 @@ export function PlannedExpenseList({ yearMonth, refreshTrigger }: PlannedExpense
     if (isNaN(amount) || amount <= 0) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/budget/planned-expenses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year_month: yearMonth, amount, memo: memoInput.trim() || null }),
+      const res = await sendJson('/api/budget/planned-expenses', 'POST', {
+        year_month: yearMonth,
+        amount,
+        memo: memoInput.trim() || null,
       });
       if (res.ok) {
         const d = (await res.json()) as { data: PlannedExpenseRow };
@@ -61,11 +62,7 @@ export function PlannedExpenseList({ yearMonth, refreshTrigger }: PlannedExpense
   };
 
   const handleSave = async (id: number, updates: { amount: number; memo: string | null }) => {
-    const res = await fetch('/api/budget/planned-expenses', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...updates }),
-    });
+    const res = await sendJson('/api/budget/planned-expenses', 'PATCH', { id, ...updates });
     if (!res.ok) {
       const err = (await res.json()) as { error?: string };
       throw new Error(err.error ?? '수정 실패');

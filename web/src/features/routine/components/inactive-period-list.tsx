@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { RoutineInactivePeriod } from '@/features/routine/lib/types';
+import { sendJson } from '@/lib/send-json';
 
 interface InactivePeriodListProps {
   templateId: number;
@@ -26,10 +27,9 @@ export function InactivePeriodList({ templateId }: InactivePeriodListProps) {
   }, [fetchPeriods]);
 
   const handleCreate = async (startDate: string, endDate: string | null) => {
-    const res = await fetch(`/api/routines/${templateId}/inactive-periods`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start_date: startDate, end_date: endDate }),
+    const res = await sendJson(`/api/routines/${templateId}/inactive-periods`, 'POST', {
+      start_date: startDate,
+      end_date: endDate,
     });
     if (res.ok) {
       setAdding(false);
@@ -38,10 +38,9 @@ export function InactivePeriodList({ templateId }: InactivePeriodListProps) {
   };
 
   const handleUpdate = async (periodId: number, startDate: string, endDate: string | null) => {
-    const res = await fetch(`/api/routines/${templateId}/inactive-periods/${periodId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start_date: startDate, end_date: endDate }),
+    const res = await sendJson(`/api/routines/${templateId}/inactive-periods/${periodId}`, 'PATCH', {
+      start_date: startDate,
+      end_date: endDate,
     });
     if (res.ok) {
       setEditingId(null);
