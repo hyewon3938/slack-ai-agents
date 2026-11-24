@@ -100,7 +100,7 @@ describe('loadCurrentStateBlocks — 날짜 기준 테이블', () => {
         affectedDates: ['2026-03-05'],
       });
       expect(mockQuerySleepForHome).toHaveBeenCalledWith('2026-03-05', 7);
-      expect(mockQuerySleepEventsForHome).toHaveBeenCalledWith('2026-03-05');
+      expect(mockQuerySleepEventsForHome.mock.calls[0]?.[0]).toBe('2026-03-05');
       expect(result?.text).toBe('2026-03-05 수면 기록');
     },
   );

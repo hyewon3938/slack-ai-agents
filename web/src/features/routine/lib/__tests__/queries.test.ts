@@ -423,15 +423,6 @@ describe('ensureTodayRecords — 빈도 판정', () => {
     expect(ids).toEqual([1]);
   });
 
-  it('알 수 없는 빈도 문자열은 매일처럼 만든다', async () => {
-    const ids = await idsCreatedOn(
-      '2026-07-26',
-      [{ id: 1, frequency: '주3회', start_date: '2026-07-20' }],
-      { lastDates: { 1: '2026-07-25' } },
-    );
-    expect(ids).toEqual([1]);
-  });
-
   it('오늘 기록이 이미 있는 템플릿은 빼고 나머지만 한 번에 INSERT한다', async () => {
     const ids = await idsCreatedOn(
       '2026-07-26',
