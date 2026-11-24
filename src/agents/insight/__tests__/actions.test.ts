@@ -19,13 +19,9 @@ vi.mock('../../../shared/db.js', () => ({
   }),
 }));
 
-const {
-  approveDiscoveryLink,
-  dismissDiscoveryLink,
-  approveLlmSignal,
-  rejectLlmSignal,
-  extractMessageBlocks,
-} = await import('../actions.js');
+const { approveDiscoveryLink, dismissDiscoveryLink, approveLlmSignal, rejectLlmSignal } =
+  await import('../action-transitions.js');
+const { extractMessageBlocks } = await import('../actions.js');
 
 beforeEach(() => {
   captured = [];
