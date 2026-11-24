@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getTodayISO, addDays } from '@/lib/kst';
 import { parseError } from '@/lib/parse-error';
+import { sendJson } from '@/lib/send-json';
 import type {
   RoutineTemplateRow,
   RoutineRecordRow,
@@ -104,11 +105,7 @@ export function useRoutines() {
 
   const handleCreateTemplate = useCallback(
     async (data: { name: string; time_slot: string | null; frequency: string | null }) => {
-      const res = await fetch('/api/routines', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await sendJson('/api/routines', 'POST', data);
       if (res.ok) {
         setShowForm(false);
         await fetchData();
@@ -119,11 +116,7 @@ export function useRoutines() {
 
   const handleUpdateTemplate = useCallback(
     async (id: number, data: Record<string, unknown>) => {
-      const res = await fetch(`/api/routines/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await sendJson(`/api/routines/${id}`, 'PATCH', data);
       if (!res.ok) return;
       const { data: template, staleCompletedCount } = (await res.json()) as {
         data: RoutineTemplateRow;
@@ -164,11 +157,7 @@ export function useRoutines() {
       setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, completed } : r)));
 
       try {
-        await fetch(`/api/routines/records/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ completed }),
-        });
+        await sendJson(`/api/routines/records/${id}`, 'PATCH', { completed });
       } finally {
         mutatingRef.current--;
         await fetchRecords();
@@ -179,11 +168,7 @@ export function useRoutines() {
 
   const handleUpdateMemo = useCallback(
     async (id: number, memo: string | null) => {
-      await fetch(`/api/routines/records/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memo }),
-      });
+      await sendJson(`/api/routines/records/${id}`, 'PATCH', { memo });
       await fetchRecords();
     },
     [fetchRecords],
@@ -196,10 +181,10 @@ export function useRoutines() {
     async (templateId: number, date: string, memo: string | null) => {
       mutatingRef.current++;
       try {
-        const res = await fetch('/api/routines/records', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ template_id: templateId, date, memo }),
+        const res = await sendJson('/api/routines/records', 'POST', {
+          template_id: templateId,
+          date,
+          memo,
         });
         if (res.status === 401) {
           window.location.href = '/login';

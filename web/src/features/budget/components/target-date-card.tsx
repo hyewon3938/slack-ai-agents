@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { MIN_DAILY_BUDGET } from '@/features/budget/lib/types';
 import { getCurrentBillingMonth } from '@/features/budget/lib/billing/cycle';
 import { formatAmount } from '@/lib/types';
+import { sendJson } from '@/lib/send-json';
 
 interface MonthBreakdownItem {
   month: string;
@@ -69,11 +70,7 @@ export function TargetDateCard({
     if (!inputValue || !/^\d{4}-\d{2}$/.test(inputValue)) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/budget/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_date: inputValue }),
-      });
+      const res = await sendJson('/api/budget/settings', 'PUT', { target_date: inputValue });
       if (res.ok) onSaved(inputValue);
     } finally {
       setSaving(false);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getTodayISO, addDays } from '@/lib/kst';
 import { parseError } from '@/lib/parse-error';
+import { sendJson } from '@/lib/send-json';
 import type {
   SleepDashboardData,
   SleepPeriod,
@@ -60,11 +61,7 @@ export function useSleepDashboard(initialPeriod: SleepPeriod = '1w') {
 
   const createRecord = useCallback(
     async (input: SleepRecordInput) => {
-      const res = await fetch('/api/sleep/records', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
+      const res = await sendJson('/api/sleep/records', 'POST', input);
       if (res.status === 401) {
         window.location.href = '/login';
         return;
@@ -77,11 +74,7 @@ export function useSleepDashboard(initialPeriod: SleepPeriod = '1w') {
 
   const updateRecord = useCallback(
     async (id: number, input: SleepRecordInput) => {
-      const res = await fetch(`/api/sleep/records/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
+      const res = await sendJson(`/api/sleep/records/${id}`, 'PATCH', input);
       if (res.status === 401) {
         window.location.href = '/login';
         return;
@@ -108,11 +101,7 @@ export function useSleepDashboard(initialPeriod: SleepPeriod = '1w') {
 
   const createEvent = useCallback(
     async (input: SleepEventInput) => {
-      const res = await fetch('/api/sleep/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
+      const res = await sendJson('/api/sleep/events', 'POST', input);
       if (res.status === 401) {
         window.location.href = '/login';
         return;

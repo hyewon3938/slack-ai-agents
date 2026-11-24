@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ExpenseRow, MonthSummary, AssetRow, FixedCostRow } from '@/features/budget/lib/types';
 import { getCurrentBillingMonth, getBillingRange } from '@/features/budget/lib/billing/cycle';
 import { getBillingMonthForExpense } from '@/features/budget/lib/billing/card-billing';
+import { sendJson } from '@/lib/send-json';
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -204,11 +205,7 @@ export function useBudget() {
       installment_months?: number;
       exclude_from_budget?: boolean;
     }): Promise<ExpenseRow> => {
-      const res = await fetch('/api/expenses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await sendJson('/api/expenses', 'POST', data);
       if (!res.ok) {
         const err = (await res.json()) as { error?: string };
         throw new Error(err.error ?? '지출 추가 실패');
@@ -256,11 +253,7 @@ export function useBudget() {
         planned_expense_id?: number | null;
       },
     ): Promise<void> => {
-      const res = await fetch(`/api/expenses/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
+      const res = await sendJson(`/api/expenses/${id}`, 'PATCH', updates);
       if (!res.ok) {
         const err = (await res.json()) as { error?: string };
         throw new Error(err.error ?? '지출 수정 실패');
@@ -280,10 +273,10 @@ export function useBudget() {
       available_amount: number,
       balanceAsOf?: string,
     ): Promise<void> => {
-      const res = await fetch(`/api/budget/assets/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ balance, available_amount, balance_as_of: balanceAsOf }),
+      const res = await sendJson(`/api/budget/assets/${id}`, 'PATCH', {
+        balance,
+        available_amount,
+        balance_as_of: balanceAsOf,
       });
       if (!res.ok) throw new Error('자산 수정 실패');
       const { data } = (await res.json()) as { data: AssetRow };

@@ -9,6 +9,7 @@ import { CategoryLimitItem } from './category-limit-item';
 import { CategoryLimitAddForm } from './category-limit-add-form';
 import { AssetItem } from './asset-item';
 import { TargetDateCard } from './target-date-card';
+import { sendJson } from '@/lib/send-json';
 
 // ─── 메인 설정 페이지 ─────────────────────────────────
 
@@ -60,11 +61,7 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
     day_of_month?: number | null;
     payment_method?: string | null;
   }) => {
-    const res = await fetch('/api/budget/fixed-costs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    const res = await sendJson('/api/budget/fixed-costs', 'POST', data);
     if (!res.ok) throw new Error('고정비 추가 실패');
     const { data: newCost } = (await res.json()) as { data: FixedCostRow };
     setFixedCosts((prev) => [...prev, newCost]);
@@ -72,11 +69,7 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
   };
 
   const handleUpdateFixedCost = async (id: number, updates: Record<string, unknown>) => {
-    const res = await fetch(`/api/budget/fixed-costs/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
+    const res = await sendJson(`/api/budget/fixed-costs/${id}`, 'PATCH', updates);
     if (!res.ok) throw new Error('고정비 수정 실패');
     const { data } = (await res.json()) as { data: FixedCostRow };
     setFixedCosts((prev) => prev.map((c) => (c.id === id ? data : c)));
@@ -96,10 +89,10 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
     available_amount: number,
     balanceAsOf?: string,
   ) => {
-    const res = await fetch(`/api/budget/assets/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ balance, available_amount, balance_as_of: balanceAsOf }),
+    const res = await sendJson(`/api/budget/assets/${id}`, 'PATCH', {
+      balance,
+      available_amount,
+      balance_as_of: balanceAsOf,
     });
     if (!res.ok) throw new Error('자산 수정 실패');
     const { data } = (await res.json()) as { data: AssetRow };
@@ -108,11 +101,7 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
   };
 
   const handleToggleDefault = async (id: number, next: boolean) => {
-    const res = await fetch(`/api/budget/assets/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_default: next }),
-    });
+    const res = await sendJson(`/api/budget/assets/${id}`, 'PATCH', { is_default: next });
     if (!res.ok) throw new Error('기본 자산 설정 실패');
     // 다른 자산의 is_default가 변경되었을 수 있어 전체 재조회
     await fetchAll();
@@ -120,11 +109,7 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
   };
 
   const handleAddCategoryLimit = async (data: { category: string; target_count: number }) => {
-    const res = await fetch('/api/budget/category-limits', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    const res = await sendJson('/api/budget/category-limits', 'POST', data);
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(body.error ?? '한도 추가 실패');
@@ -134,11 +119,7 @@ export function BudgetSettingsPage({ onSettingsChange }: { onSettingsChange?: ()
   };
 
   const handleUpdateCategoryLimit = async (id: number, target_count: number) => {
-    const res = await fetch(`/api/budget/category-limits/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_count }),
-    });
+    const res = await sendJson(`/api/budget/category-limits/${id}`, 'PATCH', { target_count });
     if (!res.ok) throw new Error('한도 수정 실패');
     setCategoryLimits((prev) => prev.map((l) => (l.id === id ? { ...l, target_count } : l)));
     onSettingsChange?.();

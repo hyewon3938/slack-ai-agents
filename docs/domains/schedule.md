@@ -97,7 +97,10 @@ features/schedule/
 │   ├── saju-pillar-label.tsx   # 사주 일주 라벨 (월/주 뷰 공용)
 │   └── action-menu.tsx         # 일정 컨텍스트 메뉴 (수정/삭제/미루기 등)
 ├── hooks/
-│   ├── use-schedules.ts        # 메인 일정 상태 관리 + CRUD + 필터링 + 폴링
+│   ├── use-schedules.ts        # 일정 조회·폴링 + CRUD, 아래 훅 3개를 묶어 반환
+│   ├── use-calendar-navigation.ts # 보기 방식·기준 날짜·선택 날짜, 조회 범위 계산
+│   ├── use-schedule-filters.ts # 카테고리·상태 필터와 필터 적용 목록
+│   ├── use-schedule-moves.ts   # 날짜 이동, 되돌리기 기록, 결과 토스트
 │   ├── use-backlog.ts          # 백로그(날짜 미지정) 일정 관리
 │   └── use-undo-shortcut.ts    # Ctrl+Z / Cmd+Z 되돌리기 단축키
 └── lib/
@@ -133,7 +136,7 @@ features/schedule/
 ### 드래그앤드롭
 - `@dnd-kit` 기반, `draggable-card.tsx` + `droppable-day.tsx` 조합
 - 카드를 끌어 옮기면 기간을 유지한 채 시작일과 종료일을 함께 옮기고, 카드 양쪽 핸들을 끌면 시작일이나 종료일만 바꾼다
-- 새 날짜 범위는 `date-move.ts`의 `computeDragResult`가 계산하고, `use-schedules.ts`의 `handleMove`가 `date`와 `end_date`를 PATCH 1회로 저장한다. 화면을 먼저 바꾸고 저장에 실패하면 그 일정만 원래 범위로 돌린다
+- 새 날짜 범위는 `date-move.ts`의 `computeDragResult`가 계산하고, `use-schedule-moves.ts`의 `handleMove`가 `date`와 `end_date`를 PATCH 1회로 저장한다. 화면을 먼저 바꾸고 저장에 실패하면 그 일정만 원래 범위로 돌린다
 - 하루 미루기와 백로그로 보내기도 `handleMove`로 저장해서 되돌리기 기록에 함께 남는다
 
 ### 이동 되돌리기
