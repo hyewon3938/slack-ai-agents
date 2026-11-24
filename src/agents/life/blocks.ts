@@ -29,12 +29,6 @@ const CONFIRM_ROW_LIMIT = 20;
 
 const TIME_SLOT_ORDER = ['낮', '밤'] as const;
 
-const pick = <T>(arr: readonly T[]): T => {
-  const item = arr[Math.floor(Math.random() * arr.length)];
-  if (item === undefined) throw new Error('pick: empty array');
-  return item;
-};
-
 // ─── 루틴 필터 인코딩/파싱 ──────────────────────────────
 
 export interface SlotFilter {
@@ -238,53 +232,6 @@ export const buildConfirmModifyCard = (params: {
     blocks,
   };
 };
-
-// ─── 인사이트 넛지 ──────────────────────────────────────
-
-/** 인사이트 넛지를 divider + context block으로 렌더링 */
-export const buildNudgeBlock = (message: string): KnownBlock[] => [
-  { type: 'divider' },
-  {
-    type: 'context',
-    elements: [{ type: 'mrkdwn', text: `💡 ${message}` }],
-  },
-];
-
-// ─── 수면 리마인더 ──────────────────────────────────────
-
-const SLEEP_REMINDER_MORNING: readonly string[] = [
-  '좋은 아침! 어제 수면 기록 아직 안 남겼지? 일어난 김에 적어둬.',
-  '잘 잤어? 수면 기록 남겨두자. 까먹기 전에!',
-  '아침이야! 어제 몇 시에 잤는지 기록해두면 좋겠다.',
-];
-
-const SLEEP_REMINDER_NIGHT: readonly string[] = [
-  '오늘 수면 기록 아직이야. 내일 아침에 까먹기 전에 지금 남겨두는 게 좋아!',
-  '수면 기록 아직 안 했지? 자기 전에 적어두자!',
-  '오늘 수면 기록 깜빡한 것 같아. 지금 남겨둘래?',
-];
-
-const SLEEP_RECORDED_MORNING: readonly string[] = [
-  '수면 기록 미리 해뒀네! 잘했어.',
-  '수면 기록 확인했어. 벌써 적어놨구나!',
-  '오 수면 기록 이미 남겨놨네. 칭찬해!',
-];
-
-const SLEEP_RECORDED_NIGHT: readonly string[] = [
-  '오늘 수면 기록 잘 남겨져 있어. 푹 자!',
-  '수면 기록 확인했어. 잘 적어뒀네! 오늘도 수고했어.',
-  '오늘 수면 기록 잘 들어가 있어. 편하게 쉬어!',
-];
-
-/** 수면 리마인더 텍스트 */
-export const buildSleepReminderText = (timeOfDay: 'morning' | 'night'): string => {
-  const pool = timeOfDay === 'morning' ? SLEEP_REMINDER_MORNING : SLEEP_REMINDER_NIGHT;
-  return pick(pool);
-};
-
-/** 수면 기록 확인 완료 텍스트 */
-export const buildSleepRecordedText = (timeOfDay: 'morning' | 'night' = 'night'): string =>
-  pick(timeOfDay === 'morning' ? SLEEP_RECORDED_MORNING : SLEEP_RECORDED_NIGHT);
 
 // ─── 일정 블록 ──────────────────────────────────────────
 

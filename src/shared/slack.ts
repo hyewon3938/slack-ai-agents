@@ -59,11 +59,3 @@ export const sendBlockMessage = async (
 ): Promise<void> => {
   await say({ text, blocks });
 };
-
-export const sendThreadReply = async (
-  say: SayFn,
-  text: string,
-  threadTs: string,
-): Promise<void> => {
-  await say({ text, thread_ts: threadTs });
-};

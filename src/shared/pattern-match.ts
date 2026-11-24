@@ -129,15 +129,6 @@ export interface DailyContext {
 // 7 kinds: weekday / weekday_group / month_position / season / calendar_event / threshold / behavior_baseline
 // (lunar는 폐기 — 사주는 절기 기준이지 음력 기준이 아니다. 명절은 calendar_event(holiday/holiday_next)로 커버.)
 
-export type LifeSignalKind =
-  | 'weekday'
-  | 'weekday_group'
-  | 'month_position'
-  | 'season'
-  | 'calendar_event'
-  | 'threshold'
-  | 'behavior_baseline';
-
 export type WeekdayDow = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface WeekdayAux {
