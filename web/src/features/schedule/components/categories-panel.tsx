@@ -157,11 +157,13 @@ export function CategoriesPanel() {
   const handleUpdate = async (id: number) => {
     if (!editName.trim()) return;
 
+    // 하위 카테고리는 유형을 고르는 칸이 없고 상위 유형을 따르므로 type을 보내지 않는다
+    const isTopLevel = categories.find((c) => c.id === id)?.parent_id == null;
     try {
       const res = await sendJson(`/api/categories/${id}`, 'PATCH', {
         name: editName.trim(),
         color: editColor,
-        type: editType,
+        ...(isTopLevel ? { type: editType } : {}),
       });
       if (res.ok) {
         setEditingId(null);
@@ -213,7 +215,7 @@ export function CategoriesPanel() {
     setEditingId(cat.id);
     setEditName(cat.name);
     setEditColor(cat.color);
-    setEditType(cat.type);
+    setEditType(cat.type ?? 'task');
   };
 
   const activeCat = activeId ? categories.find((c) => c.id === activeId) : null;

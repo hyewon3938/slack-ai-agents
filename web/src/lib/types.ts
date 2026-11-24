@@ -14,7 +14,8 @@ export interface CategoryRow {
   id: number;
   name: string;
   color: string;
-  type: CategoryType;
+  /** 최상위는 항상 값이 있다. 하위는 null이면 상위 type을 따른다 (lookupCategory) */
+  type: CategoryType | null;
   sort_order: number;
   parent_id: number | null;
 }

@@ -165,15 +165,15 @@ describe('lookupCategory', () => {
   });
 
   it('자식 type이 비어 있으면 부모 type을 상속한다', () => {
-    // DB 행은 type이 NULL일 수 있다 (CategoryRow 타입보다 넓다)
-    const child = {
+    // 하위 카테고리는 type이 NULL이면 상위를 따른다
+    const child: CategoryRow = {
       id: 11,
       name: '저녁 약속',
       color: 'gray',
       type: null,
       sort_order: 0,
       parent_id: 1,
-    } as unknown as CategoryRow;
+    };
     expect(lookupCategory([...CATEGORIES, child], 11).type).toBe('event');
   });
 

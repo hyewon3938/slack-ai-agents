@@ -15,7 +15,8 @@ export function CategoryBadge({ name, colorKey }: { name: string; colorKey: stri
   );
 }
 
-export function TypeBadge({ type }: { type: CategoryType }) {
+export function TypeBadge({ type: rawType }: { type: CategoryType | null }) {
+  const type = rawType ?? 'task';
   const label = CATEGORY_TYPES.find((t) => t.value === type)?.label ?? type;
   return (
     <span
