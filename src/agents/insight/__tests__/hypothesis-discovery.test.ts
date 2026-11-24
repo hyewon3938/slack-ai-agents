@@ -109,8 +109,8 @@ vi.mock('../../../shared/pattern/stats.js', async (importOriginal) => {
   };
 });
 
-const { discoverCandidates, insertPendingDiscoveryLink } =
-  await import('../hypothesis-discovery.js');
+const { discoverCandidates } = await import('../hypothesis-discovery.js');
+const { insertPendingDiscoveryLink } = await import('../hypothesis-discovery-persist.js');
 
 // ─── helpers ─────────────────────────────────────────────
 const makeSeed = (

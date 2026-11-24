@@ -12,7 +12,6 @@
  * 본 모듈은 읽기(시리즈 계산) + pending 링크 쓰기까지. 검증 UPDATE·status 전이는 주간 엔진.
  */
 
-import { query } from '../../shared/db.js';
 import { blockPermutationP, mannWhitneyU, type MannWhitneyResult } from '../../shared/pattern/stats.js';
 import { buildWindowDates } from '../../shared/pattern/binarize.js';
 import {
@@ -34,7 +33,6 @@ import {
   maxDate,
 } from '../../shared/pattern/data-window.js';
 import {
-  type SignalDef,
   type SignalDirection,
   type Contingency,
   type ContingencyVerification,
@@ -46,6 +44,11 @@ import type { BandCuts } from '../../shared/pattern/quantile.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
 import { seedLabel, signalLabel } from '../../shared/insight-labels.js';
 import { BEHAVIOR_SIGNAL_DOMAIN, type InsightDomain } from '../../shared/insights/types.js';
+import {
+  loadActiveSignals,
+  loadLinkedPairs,
+  type LoadedSignal,
+} from './hypothesis-discovery-load.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
 
@@ -103,62 +106,6 @@ export interface DiscoveryCandidate {
   family: FdrFamily;
 }
 
-interface SignalDefRow {
-  id: number;
-  name: string;
-  kind: 'sql' | 'tag';
-  source: 'seed' | 'llm';
-  sql_body: string | null;
-  value_type: 'binary' | 'continuous' | null;
-  direction: SignalDirection | null;
-  threshold: string | null;
-  tag_name: string | null;
-  window_days: number | null;
-  domain: string | null;
-  description: string | null;
-}
-
-interface LoadedSignal {
-  def: SignalDef;
-  description: string | null;
-}
-
-/** active 신호 전부 (description 동반 — 카드 평어용). */
-const loadActiveSignals = async (userId: number): Promise<LoadedSignal[]> => {
-  const res = await query<SignalDefRow>(
-    `SELECT id, name, kind, source, sql_body, value_type, direction, threshold, tag_name, window_days, domain, description
-       FROM signal_defs
-      WHERE user_id = $1 AND status = 'active'
-      ORDER BY id`,
-    [userId],
-  );
-  return res.rows.map((r) => ({
-    def: {
-      id: r.id,
-      name: r.name,
-      kind: r.kind,
-      source: r.source,
-      sqlBody: r.sql_body,
-      valueType: r.value_type,
-      direction: r.direction,
-      threshold: r.threshold === null ? null : Number(r.threshold),
-      tagName: r.tag_name,
-      windowDays: r.window_days,
-      domain: r.domain,
-    },
-    description: r.description,
-  }));
-};
-
-/** 이미 링크된 (시드, 신호) 쌍 — 모든 status. 여집합 제외 + rejected 재부상/중복 차단. */
-const loadLinkedPairs = async (userId: number): Promise<Set<string>> => {
-  const res = await query<{ seed_id: number; signal_id: number }>(
-    `SELECT seed_id, signal_id FROM pattern_links WHERE user_id = $1`,
-    [userId],
-  );
-  return new Set(res.rows.map((r) => `${r.seed_id}:${r.signal_id}`));
-};
-
 interface Survivor {
   seed: SajuSeedWithMetrics;
   signal: LoadedSignal;
@@ -193,6 +140,209 @@ const twoProportionZ = (a: number, b: number, c: number, d: number): number => {
   return se > 0 ? (a / nA - c / nO) / se : NaN;
 };
 
+type DataStarts = Awaited<ReturnType<typeof computeUserDataStarts>>;
+
+/** 신호 시리즈(신호당 1회) — continuous는 raw 보존(Mann-Whitney 효과크기 §4). */
+const computeSignalSeriesMap = async (
+  userId: number,
+  signals: LoadedSignal[],
+  windowDates: string[],
+  signalStartById: Map<number, string | null>,
+): Promise<Map<number, SignalSeriesResult>> => {
+  const signalSeriesById = new Map<number, SignalSeriesResult>();
+  for (const s of signals) {
+    signalSeriesById.set(
+      s.def.id,
+      await computeSignalSeries(userId, s.def, windowDates, signalStartById.get(s.def.id) ?? null),
+    );
+  }
+  return signalSeriesById;
+};
+
+/** 시드 활성 시리즈(시드당 1회, strength_band 2-pass 포함) — ctx·강도·컷 캐시 공유. */
+const computeSeedActivationMap = async (
+  seeds: SajuSeedWithMetrics[],
+  userId: number,
+  windowDates: string[],
+  stemMap: Map<string, number>,
+  branchMap: Map<string, number>,
+): Promise<Map<number, Map<string, boolean>>> => {
+  const ctxCache = new Map<string, DailyContext | null>();
+  const strengthCache = new Map<string, Map<string, number>>();
+  const cutCache = new Map<string, BandCuts>();
+  const seedActivationById = new Map<number, Map<string, boolean>>();
+  for (const seed of seeds) {
+    seedActivationById.set(
+      seed.id,
+      await computeSeedActivationSeries(
+        seed,
+        userId,
+        windowDates,
+        ctxCache,
+        stemMap,
+        branchMap,
+        strengthCache,
+        cutCache,
+      ),
+    );
+  }
+  return seedActivationById;
+};
+
+interface EffectScreen {
+  mannWhitney: MannWhitneyResult | null;
+  effectSize: number | null;
+  sortZ: number;
+}
+
+/**
+ * 타입별 효과크기 사전선별(§4): 연속=Mann-Whitney 효과크기, 이진=rate ratio + Fisher.
+ * 탈락이면 null.
+ */
+const screenEffect = (
+  signal: LoadedSignal,
+  sr: SignalSeriesResult,
+  activation: Map<string, boolean>,
+  cont: Contingency,
+  v: ContingencyVerification,
+  windowDates: string[],
+  windowStart: string | null,
+): EffectScreen | null => {
+  let mannWhitney: MannWhitneyResult | null = null;
+  let effectSize: number | null = null;
+  let sortZ: number;
+  if (signal.def.valueType === 'continuous' && sr.raw) {
+    const split = splitRawByActivation(activation, sr.raw, windowDates, windowStart);
+    if (split.active.length === 0 || split.off.length === 0) return null;
+    mannWhitney = mannWhitneyU(split.active, split.off);
+    const sign = directionSign(signal.def.direction);
+    const rb = sign * rankBiserial(mannWhitney.u, split.active.length, split.off.length);
+    if (!Number.isFinite(rb) || rb < V.discoveryMinEffectR) return null; // 효과크기 하한(방향 positive)
+    if (!Number.isFinite(mannWhitney.p) || mannWhitney.p > V.discoveryMaxFisherP) return null;
+    effectSize = mannWhitney.hodgesLehmann;
+    sortZ = sign * mannWhitney.z;
+  } else {
+    if (!Number.isFinite(v.effect) || v.effect < V.discoveryMinEffect) return null;
+    if (!Number.isFinite(v.p) || v.p > V.discoveryMaxFisherP) return null;
+    sortZ = twoProportionZ(cont.a, cont.b, cont.c, cont.d);
+  }
+  if (!Number.isFinite(sortZ)) return null;
+  return { mannWhitney, effectSize, sortZ };
+};
+
+interface ScanInput {
+  seeds: SajuSeedWithMetrics[];
+  signals: LoadedSignal[];
+  linked: Set<string>;
+  windowDates: string[];
+  dataStarts: DataStarts;
+  signalStartById: Map<number, string | null>;
+  signalSeriesById: Map<number, SignalSeriesResult>;
+  seedActivationById: Map<number, Map<string, boolean>>;
+}
+
+/** 여집합 후보 → 데이터-존재 윈도우 클립 → 2×2 → 타입별 효과크기 사전선별 → 통과만 block-perm. */
+const scanSurvivors = ({
+  seeds,
+  signals,
+  linked,
+  windowDates,
+  dataStarts,
+  signalStartById,
+  signalSeriesById,
+  seedActivationById,
+}: ScanInput): { survivors: Survivor[]; droppedSameDomain: number } => {
+  const survivors: Survivor[] = [];
+  let droppedSameDomain = 0; // #508 ④ — 동어반복(자기상관) 드롭 카운트(무음 캡 금지, 로그로 가시화)
+  for (const seed of seeds) {
+    const activation = seedActivationById.get(seed.id);
+    if (!activation) continue;
+    const seedStart = seedDataStart(seed, dataStarts);
+    const seedDom = behaviorSeedDomain(seed); // 행동 시드만 non-null(사주·캘린더는 면제)
+    for (const signal of signals) {
+      if (linked.has(`${seed.id}:${signal.def.id}`)) continue;
+      // 동어반복 필터(#508 ④): 같은 행동을 두 번 잰 자기상관 쌍은 사전선별·FDR 전에 제외(풀 오염 방지).
+      if (seedDom !== null && seedDom === signal.def.domain) {
+        droppedSameDomain += 1;
+        continue;
+      }
+      const sr = signalSeriesById.get(signal.def.id);
+      if (!sr) continue;
+      const series = sr.series;
+      // 그 시드·그 신호가 둘 다 데이터를 가진 구간으로 클립(빈 과거 = COALESCE 0=fail 아티팩트 차단).
+      const windowStart = maxDate(seedStart, signalStartById.get(signal.def.id) ?? null);
+      const cont = buildContingency(activation, series, windowStart);
+      const v = verifyContingency(cont);
+      if (v.nActive < V.discoveryMinActive) continue; // 공통: 발현일 충분
+
+      const screen = screenEffect(signal, sr, activation, cont, v, windowDates, windowStart);
+      if (!screen) continue;
+      const { mannWhitney, effectSize, sortZ } = screen;
+
+      const daySeq = buildDaySequence(activation, series, windowDates, windowStart);
+      const blockP = blockPermutationP(daySeq, V.blockLen, V.blockPermIters);
+      survivors.push({ seed, signal, cont, v, blockP, mannWhitney, effectSize, sortZ });
+    }
+  }
+  return { survivors, droppedSameDomain };
+};
+
+/** 생존 쌍 + 발견 q → 카드·pending 링크용 후보. */
+const toDiscoveryCandidate = (s: Survivor, q: number): DiscoveryCandidate => ({
+  seedId: s.seed.id,
+  signalId: s.signal.def.id,
+  seedName: s.seed.name,
+  seedDescription: s.seed.description,
+  seedLabel: seedLabel({ name: s.seed.name, description: s.seed.description }),
+  patternKind: s.seed.trigger_target_type === 'life_signal' ? 'life_signal' : 'saju',
+  signalName: s.signal.def.name,
+  signalDescription: s.signal.description,
+  signalLabel: signalLabel({
+    name: s.signal.def.name,
+    kind: s.signal.def.kind,
+    source: s.signal.def.source,
+    direction: s.signal.def.direction,
+    threshold: s.signal.def.threshold,
+    tagName: s.signal.def.tagName,
+    domain: s.signal.def.domain,
+    description: s.signal.description,
+  }),
+  signalKind: s.signal.def.kind,
+  valueType: s.signal.def.valueType,
+  rateActive: s.v.rateActive,
+  rateOff: s.v.rateOff,
+  effect: s.v.effect,
+  effectSize: s.effectSize,
+  mwP: s.mannWhitney ? s.mannWhitney.p : null,
+  sortZ: s.sortZ,
+  nActive: s.v.nActive,
+  hit: s.cont.a,
+  miss: s.cont.b,
+  inconclusive: s.cont.inconclusive,
+  fisherP: s.v.p,
+  blockP: s.blockP,
+  qValue: q,
+  posteriorAlpha: s.v.posteriorAlpha,
+  posteriorBeta: s.v.posteriorBeta,
+  posteriorP: s.v.posteriorP,
+  family: familyOf(s.seed),
+});
+
+/**
+ * top-N (표준화 z 내림차순 — §4: 연속/이진 공통 SNR 척도, 0 분모 폭증에 robust).
+ * 드롭 시 로그 — 무음 캡 금지(ADR-0039 단점).
+ */
+const rankTopN = (passed: DiscoveryCandidate[], userId: number): DiscoveryCandidate[] => {
+  passed.sort((a, b) => b.sortZ - a.sortZ);
+  if (passed.length > V.discoveryTopN) {
+    console.warn(
+      `[Discovery] user=${userId} 발견 ${passed.length} → top ${V.discoveryTopN} ` +
+        `(드롭 ${passed.length - V.discoveryTopN})`,
+    );
+  }
+  return passed.slice(0, V.discoveryTopN);
+};
+
 /**
  * 미등록 (시드 × 신호) 여집합을 off-day 대조로 스캔 → 발견 q·top-N 통과 후보.
  * 검증 프리미티브 재사용(시드 활성 시리즈·신호 시리즈는 1회씩 계산, P1 전역화 payoff).
@@ -221,85 +371,30 @@ export const discoverCandidates = async (
     signals.map((s) => [s.def.id, signalDataStart(s.def.domain, dataStarts)]),
   );
 
-  // 신호 시리즈(신호당 1회) — continuous는 raw 보존(Mann-Whitney 효과크기 §4).
-  const signalSeriesById = new Map<number, SignalSeriesResult>();
-  for (const s of signals) {
-    signalSeriesById.set(
-      s.def.id,
-      await computeSignalSeries(userId, s.def, windowDates, signalStartById.get(s.def.id) ?? null),
-    );
-  }
-  // 시드 활성 시리즈(시드당 1회, strength_band 2-pass 포함) — ctx·강도·컷 캐시 공유.
-  const ctxCache = new Map<string, DailyContext | null>();
-  const strengthCache = new Map<string, Map<string, number>>();
-  const cutCache = new Map<string, BandCuts>();
-  const seedActivationById = new Map<number, Map<string, boolean>>();
-  for (const seed of seeds) {
-    seedActivationById.set(
-      seed.id,
-      await computeSeedActivationSeries(
-        seed,
-        userId,
-        windowDates,
-        ctxCache,
-        stemMap,
-        branchMap,
-        strengthCache,
-        cutCache,
-      ),
-    );
-  }
+  const signalSeriesById = await computeSignalSeriesMap(
+    userId,
+    signals,
+    windowDates,
+    signalStartById,
+  );
+  const seedActivationById = await computeSeedActivationMap(
+    seeds,
+    userId,
+    windowDates,
+    stemMap,
+    branchMap,
+  );
 
-  // 여집합 후보 → 데이터-존재 윈도우 클립 → 2×2 → 타입별 효과크기 사전선별 → 통과만 block-perm.
-  const survivors: Survivor[] = [];
-  let droppedSameDomain = 0; // #508 ④ — 동어반복(자기상관) 드롭 카운트(무음 캡 금지, 로그로 가시화)
-  for (const seed of seeds) {
-    const activation = seedActivationById.get(seed.id);
-    if (!activation) continue;
-    const seedStart = seedDataStart(seed, dataStarts);
-    const seedDom = behaviorSeedDomain(seed); // 행동 시드만 non-null(사주·캘린더는 면제)
-    for (const signal of signals) {
-      if (linked.has(`${seed.id}:${signal.def.id}`)) continue;
-      // 동어반복 필터(#508 ④): 같은 행동을 두 번 잰 자기상관 쌍은 사전선별·FDR 전에 제외(풀 오염 방지).
-      if (seedDom !== null && seedDom === signal.def.domain) {
-        droppedSameDomain += 1;
-        continue;
-      }
-      const sr = signalSeriesById.get(signal.def.id);
-      if (!sr) continue;
-      const series = sr.series;
-      // 그 시드·그 신호가 둘 다 데이터를 가진 구간으로 클립(빈 과거 = COALESCE 0=fail 아티팩트 차단).
-      const windowStart = maxDate(seedStart, signalStartById.get(signal.def.id) ?? null);
-      const cont = buildContingency(activation, series, windowStart);
-      const v = verifyContingency(cont);
-      if (v.nActive < V.discoveryMinActive) continue; // 공통: 발현일 충분
-
-      // 타입별 효과크기 사전선별(§4): 연속=Mann-Whitney 효과크기, 이진=rate ratio + Fisher.
-      let mannWhitney: MannWhitneyResult | null = null;
-      let effectSize: number | null = null;
-      let sortZ: number;
-      if (signal.def.valueType === 'continuous' && sr.raw) {
-        const split = splitRawByActivation(activation, sr.raw, windowDates, windowStart);
-        if (split.active.length === 0 || split.off.length === 0) continue;
-        mannWhitney = mannWhitneyU(split.active, split.off);
-        const sign = directionSign(signal.def.direction);
-        const rb = sign * rankBiserial(mannWhitney.u, split.active.length, split.off.length);
-        if (!Number.isFinite(rb) || rb < V.discoveryMinEffectR) continue; // 효과크기 하한(방향 positive)
-        if (!Number.isFinite(mannWhitney.p) || mannWhitney.p > V.discoveryMaxFisherP) continue;
-        effectSize = mannWhitney.hodgesLehmann;
-        sortZ = sign * mannWhitney.z;
-      } else {
-        if (!Number.isFinite(v.effect) || v.effect < V.discoveryMinEffect) continue;
-        if (!Number.isFinite(v.p) || v.p > V.discoveryMaxFisherP) continue;
-        sortZ = twoProportionZ(cont.a, cont.b, cont.c, cont.d);
-      }
-      if (!Number.isFinite(sortZ)) continue;
-
-      const daySeq = buildDaySequence(activation, series, windowDates, windowStart);
-      const blockP = blockPermutationP(daySeq, V.blockLen, V.blockPermIters);
-      survivors.push({ seed, signal, cont, v, blockP, mannWhitney, effectSize, sortZ });
-    }
-  }
+  const { survivors, droppedSameDomain } = scanSurvivors({
+    seeds,
+    signals,
+    linked,
+    windowDates,
+    dataStarts,
+    signalStartById,
+    signalSeriesById,
+    seedActivationById,
+  });
   if (droppedSameDomain > 0) {
     console.warn(
       `[Discovery] user=${userId} same-domain 자기상관 ${droppedSameDomain}쌍 제외(#508 ④)`,
@@ -314,115 +409,8 @@ export const discoverCandidates = async (
   survivors.forEach((s, i) => {
     const q = qValues[i] ?? NaN;
     if (!Number.isFinite(q) || q > V.discoverQ) return;
-    passed.push({
-      seedId: s.seed.id,
-      signalId: s.signal.def.id,
-      seedName: s.seed.name,
-      seedDescription: s.seed.description,
-      seedLabel: seedLabel({ name: s.seed.name, description: s.seed.description }),
-      patternKind: s.seed.trigger_target_type === 'life_signal' ? 'life_signal' : 'saju',
-      signalName: s.signal.def.name,
-      signalDescription: s.signal.description,
-      signalLabel: signalLabel({
-        name: s.signal.def.name,
-        kind: s.signal.def.kind,
-        source: s.signal.def.source,
-        direction: s.signal.def.direction,
-        threshold: s.signal.def.threshold,
-        tagName: s.signal.def.tagName,
-        domain: s.signal.def.domain,
-        description: s.signal.description,
-      }),
-      signalKind: s.signal.def.kind,
-      valueType: s.signal.def.valueType,
-      rateActive: s.v.rateActive,
-      rateOff: s.v.rateOff,
-      effect: s.v.effect,
-      effectSize: s.effectSize,
-      mwP: s.mannWhitney ? s.mannWhitney.p : null,
-      sortZ: s.sortZ,
-      nActive: s.v.nActive,
-      hit: s.cont.a,
-      miss: s.cont.b,
-      inconclusive: s.cont.inconclusive,
-      fisherP: s.v.p,
-      blockP: s.blockP,
-      qValue: q,
-      posteriorAlpha: s.v.posteriorAlpha,
-      posteriorBeta: s.v.posteriorBeta,
-      posteriorP: s.v.posteriorP,
-      family: familyOf(s.seed),
-    });
+    passed.push(toDiscoveryCandidate(s, q));
   });
 
-  // top-N (표준화 z 내림차순 — §4: 연속/이진 공통 SNR 척도, 0 분모 폭증에 robust).
-  // 드롭 시 로그 — 무음 캡 금지(ADR-0039 단점).
-  passed.sort((a, b) => b.sortZ - a.sortZ);
-  if (passed.length > V.discoveryTopN) {
-    console.warn(
-      `[Discovery] user=${userId} 발견 ${passed.length} → top ${V.discoveryTopN} ` +
-        `(드롭 ${passed.length - V.discoveryTopN})`,
-    );
-  }
-  return passed.slice(0, V.discoveryTopN);
-};
-
-const numOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
-
-/**
- * 발굴 후보를 pending pattern_link로 선INSERT (승인 payload = linkId, ADR-0039 §3).
- * 발굴 통계를 test_detail에 동봉(카드·감사). posterior는 provisional(EB 없이 hit/miss prior) —
- * 승인 후 첫 주간 검증이 EB prior로 재계산·SET 덮어씀. ON CONFLICT은 여집합이 보장하나 방어.
- * @returns 새 링크 id, 충돌(이미 존재)이면 null.
- */
-export const insertPendingDiscoveryLink = async (
-  userId: number,
-  c: DiscoveryCandidate,
-): Promise<number | null> => {
-  // 연속 신호는 Mann-Whitney 효과크기가 1차(§4) → test_type 분기 + 효과크기 동봉.
-  const isContinuous = c.valueType === 'continuous';
-  const testDetail = JSON.stringify({
-    source: 'discovery',
-    rate_active: numOrNull(c.rateActive),
-    rate_off: numOrNull(c.rateOff),
-    n_active: c.nActive,
-    hit: c.hit,
-    miss: c.miss,
-    inconclusive: c.inconclusive,
-    effect: numOrNull(c.effect),
-    effect_size: c.effectSize === null ? null : numOrNull(c.effectSize),
-    mw_p: c.mwP === null ? null : numOrNull(c.mwP),
-    sort_z: numOrNull(c.sortZ),
-    fisher_p: numOrNull(c.fisherP),
-    block_p: numOrNull(c.blockP),
-    discover_q: numOrNull(c.qValue),
-    family: c.family,
-  });
-  const res = await query<{ id: number }>(
-    `INSERT INTO pattern_links
-       (user_id, seed_id, signal_id, source, status, test_type,
-        hit_count, miss_count, inconclusive_count, effect, p_value, q_value,
-        posterior_alpha, posterior_beta, posterior_p, test_detail)
-     VALUES ($1, $2, $3, 'discovery', 'pending', $14,
-        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
-     ON CONFLICT (seed_id, signal_id) DO NOTHING
-     RETURNING id`,
-    [
-      userId,
-      c.seedId,
-      c.signalId,
-      c.hit,
-      c.miss,
-      c.inconclusive,
-      numOrNull(c.effect),
-      numOrNull(c.blockP),
-      numOrNull(c.qValue),
-      c.posteriorAlpha,
-      c.posteriorBeta,
-      numOrNull(c.posteriorP),
-      testDetail,
-      isContinuous ? 'mann_whitney' : 'fisher_2x2',
-    ],
-  );
-  return res.rows[0]?.id ?? null;
+  return rankTopN(passed, userId);
 };
