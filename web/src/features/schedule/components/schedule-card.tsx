@@ -6,6 +6,8 @@ import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
 import { StatusBadge } from './status-badge';
+import { CategoryBadge } from './category-badge';
+import { STATUS_BG } from './status-bg';
 
 interface ScheduleCardProps {
   schedule: ScheduleRow;
@@ -20,13 +22,6 @@ const NEXT_STATUS: Record<string, string> = {
   todo: 'in-progress',
   'in-progress': 'done',
   done: 'todo',
-};
-
-const STATUS_BG: Record<string, string> = {
-  todo: 'bg-white',
-  'in-progress': 'bg-blue-50',
-  done: 'bg-green-50',
-  cancelled: 'bg-gray-50',
 };
 
 export function ScheduleCard({
@@ -163,16 +158,4 @@ function formatDateRange(date: string | null, endDate: string): string {
     return `${Number(m)}/${Number(day)}`;
   };
   return date ? `${fmt(date)} - ${fmt(endDate)}` : fmt(endDate);
-}
-
-function CategoryBadge({ colorKey, label }: { colorKey: string; label: string }) {
-  const style = getCategoryStyle(colorKey);
-  return (
-    <span
-      className="rounded-full px-2 py-0.5 text-xs"
-      style={{ backgroundColor: style.bg, color: style.text }}
-    >
-      {label}
-    </span>
-  );
 }
