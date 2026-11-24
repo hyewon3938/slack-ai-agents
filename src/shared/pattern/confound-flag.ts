@@ -4,7 +4,6 @@
 
 import { query } from '../db.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import type { BandCuts } from './quantile.js';
 import { buildWindowDates } from './binarize.js';
 import { adjustConfounders, flagConfoundersForLink } from './confound-calc.js';
 import type { ConfoundCandidate, ConfoundResult } from './confound-types.js';
@@ -17,8 +16,9 @@ import {
 } from './data-window.js';
 import { buildNameIdMap } from './match-day.js';
 import { loadActiveSeeds } from './match-seeds.js';
-import type { DailyContext, SajuSeedWithMetrics } from './match-types.js';
-import { computeSeedActivationSeries, computeSignalSeries } from './series.js';
+import type { SajuSeedWithMetrics } from './match-types.js';
+import { computeSeedActivationMap } from './series-map.js';
+import { computeSignalSeries } from './series.js';
 import type { DaySeries } from './types.js';
 import { toSignalDef, type SignalDefRow } from './load-signal-defs.js';
 
@@ -43,36 +43,6 @@ const queryClaimableLinks = (userId: number): Promise<{ rows: ClaimableLinkRow[]
       ORDER BY l.id`,
     [userId],
   );
-
-/** 시드 활성 시리즈 — 시드당 1회(strength_band 2-pass 캐시 공유). */
-const computeSeedActById = async (
-  userId: number,
-  seeds: SajuSeedWithMetrics[],
-  windowDates: string[],
-  stemMap: Map<string, number>,
-  branchMap: Map<string, number>,
-): Promise<Map<number, Map<string, boolean>>> => {
-  const ctxCache = new Map<string, DailyContext | null>();
-  const strengthCache = new Map<string, Map<string, number>>();
-  const cutCache = new Map<string, BandCuts>();
-  const seedActById = new Map<number, Map<string, boolean>>();
-  for (const seed of seeds) {
-    seedActById.set(
-      seed.id,
-      await computeSeedActivationSeries(
-        seed,
-        userId,
-        windowDates,
-        ctxCache,
-        stemMap,
-        branchMap,
-        strengthCache,
-        cutCache,
-      ),
-    );
-  }
-  return seedActById;
-};
 
 const buildConfoundCandidates = (
   seeds: SajuSeedWithMetrics[],
@@ -196,7 +166,13 @@ export const flagConfounds = async (userId: number, today: string): Promise<Conf
   // 후보 = 모든 active 시드. 활성 시리즈는 시드당 1회(strength_band 2-pass 캐시 공유).
   const seeds = await loadActiveSeeds(userId);
   const seedStartById = new Map(seeds.map((s) => [s.id, seedDataStart(s, dataStarts)]));
-  const seedActById = await computeSeedActById(userId, seeds, windowDates, stemMap, branchMap);
+  const seedActById = await computeSeedActivationMap(
+    userId,
+    seeds,
+    windowDates,
+    stemMap,
+    branchMap,
+  );
   const { candidates, candById } = buildConfoundCandidates(seeds, seedActById);
 
   const { signalStartById, signalSeriesById } = await loadLinkSignalSeries(
