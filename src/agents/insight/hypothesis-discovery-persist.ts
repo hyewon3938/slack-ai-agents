@@ -3,7 +3,7 @@
  */
 
 import { query } from '../../shared/db.js';
-import type { DiscoveryCandidate } from './hypothesis-discovery.js';
+import type { DiscoveryCandidate } from './hypothesis-discovery-types.js';
 
 const numOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
 

@@ -2197,11 +2197,14 @@ derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십�
 ```
 src/agents/insight/
 ├── index.ts                       # 에이전트 생성, fast path 매칭, LLM 에이전트 루프
+├── fortune-fast-path.ts           # 운세 조회 fast path (일운·기간 해석 정규식과 응답)
 ├── actions.ts                     # 인터랙티브 버튼 핸들러 (#477 P5a 발굴 승인/패스 + P5b LLM 신호 승인/반려, ADR-0040)
+├── action-transitions.ts          # 버튼 핸들러가 쓰는 pattern_links·signal_defs 상태 전이 쿼리
 ├── blocks.ts                      # Slack Block Kit 메시지 빌더
 ├── diary-fast-path.ts             # 일기 저장 + 자연스러운 응답
 ├── saju-seed-fast-path.ts         # 사주 시드 보기/끄기/켜기 (Phase 3)
-├── hypothesis-discovery.ts        # #477 P5a 발굴 엔진 (여집합 off-day 스캔 → discoverCandidates + insertPendingDiscoveryLink)
+├── hypothesis-discovery.ts        # #477 P5a 발굴 엔진 진입점 (discoverCandidates)
+├── hypothesis-discovery-*.ts      # 발굴 단계별 파일: load(데이터 조회) · scan(여집합 off-day 스캔) · rank(후보 순위) · persist(insertPendingDiscoveryLink) · types
 ├── hypothesis-cards.ts            # #477 P2/P3 주간 검증 카드 (3-tier ✅검증됨/🌱검증중/✗기각) + P5a 발굴 승인 카드(buildDiscoveryCandidateCard)
 └── llm-signal-cards.ts            # #477 P5b LLM 신호 제안 승인 카드 (buildLlmSignalCard + 승인/반려 payload, 옛 metric-approval-cards 대체)
 
@@ -2491,7 +2494,9 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 | 파일 | 역할 |
 |------|------|
-| `src/agents/insight/diary-edit.ts` | 조회 명령 파싱, 입력칸 나누기와 다시 붙이기, 조회 메시지와 모달 Block Kit, 제출 값 읽기. DB와 Slack 호출 없음 |
+| `src/agents/insight/diary-edit.ts` | 조회 명령 파싱, 조회 메시지와 모달 Block Kit, 제출 값 읽기. DB와 Slack 호출 없음 |
+| `src/agents/insight/diary-edit-parts.ts` | 일기 본문을 입력칸 단위로 나누기와 다시 붙이기 |
+| `src/agents/insight/diary-edit-meta.ts` | 모달에 실어 보내는 메타 정보와 본문 해시 |
 | `src/agents/insight/diary-edit-store.ts` | 일기 조회와 `applyDiaryEdit` 트랜잭션 |
 | `src/agents/insight/diary-edit-actions.ts` | `showDiary` 조회 응답, 수정 버튼(`diary_edit_open`)과 모달 제출(`diary_edit_submit`) 핸들러. `src/app.ts`에서 `registerDiaryEditActions`로 등록 |
 

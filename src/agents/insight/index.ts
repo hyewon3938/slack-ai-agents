@@ -1,8 +1,8 @@
 import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
-import { sendMessage, sendBlockMessage } from '../../shared/slack.js';
-import { query, queryOne } from '../../shared/db.js';
-import { getTodayISO, getEffectiveTodayISO, addDays } from '../../shared/kst.js';
+import { sendMessage } from '../../shared/slack.js';
+import { query } from '../../shared/db.js';
+import { getTodayISO, getEffectiveTodayISO } from '../../shared/kst.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 import {
   saveDiaryEntry,
@@ -15,127 +15,14 @@ import {
 import { tryPatternSeedFastPath } from './pattern-seed-fast-path.js';
 import { showDiary } from './diary-edit-actions.js';
 import { parseDiaryLookup } from './diary-edit.js';
-import { formatFortuneText } from '../../shared/fortune-format.js';
-import { loadLatestInterpretation } from '../../shared/period/interpretation-store.js';
-import { renderInterpretationBlocks } from '../../shared/period/interpretation-render.js';
-import { PERIOD_LABEL } from '../../shared/period/interpretation-labels.js';
-import { type PeriodType } from '../../shared/period/types.js';
-import { loadLedger } from '../../shared/period/forecast-ledger.js';
+import { tryPeriodInterpretationFastPath, tryFortuneFastPath } from './fortune-fast-path.js';
 
 // ─── fast path 패턴 ──────────────────────────────────
 
-/** 일운 조회: "일운", "오늘 일운", "일운 보여줘" 등 */
-const DAILY_FORTUNE_RE = /^(오늘\s*)?일운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
-/** 월운 조회 */
-const MONTHLY_FORTUNE_RE = /^(이번\s*달?\s*)?월운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
-/** 세운 조회 */
-const YEARLY_FORTUNE_RE = /^(올해\s*)?세운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
-/** 내일 일운 조회: "내일 일운", "내일 일운 보여줘" 등 */
-const TOMORROW_FORTUNE_RE = /^내일\s*일운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
-/** 대운 조회 */
-const MAJOR_FORTUNE_RE = /^(내\s*)?대운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/;
 /** 오늘 일기 조회 */
 const TODAY_DIARY_RE = /^오늘\s*일기/;
 /** LLM 매트릭 pending 목록 조회 (ADR-0030 디버깅·놓친 카드 재확인용) */
 const METRIC_LIST_RE = /^\/?insight\s+metric-list[.?!]?$/;
-
-interface FortuneRow {
-  date: string;
-  period: string;
-  day_pillar: string | null;
-  analysis: string;
-  summary: string | null;
-  warnings: unknown;
-  recommendations: unknown;
-  advice: string | null;
-}
-
-/**
- * 기간 해석 fast path (#529 Phase 2 / #533 단일화) — 저장된 해석을 LLM 없이 즉시 렌더.
- * 월/세/대운의 정확일치·접미·접두형을 전부 이 경로(period_interpretations + 장부)로 단일화.
- * ⚠️ 순서 의존: tryFortuneFastPath(일운 전용)보다 먼저 평가해야 월/세/대운이 신 경로로 간다.
- * 매칭되면 응답 전송 후 true. 행 없으면 안내(다음 전환 때 생성됨) 후 true.
- */
-const tryPeriodInterpretationFastPath = async (
-  trimmed: string,
-  say: Parameters<AgentHandler>[1],
-  userId: number,
-): Promise<boolean> => {
-  let periodType: PeriodType;
-  if (MONTHLY_FORTUNE_RE.test(trimmed)) periodType = 'wolun';
-  else if (YEARLY_FORTUNE_RE.test(trimmed)) periodType = 'seun';
-  else if (MAJOR_FORTUNE_RE.test(trimmed)) periodType = 'daeun';
-  else return false;
-
-  const label = PERIOD_LABEL[periodType];
-  try {
-    const record = await loadLatestInterpretation(userId, periodType);
-    if (!record) {
-      const when =
-        periodType === 'wolun'
-          ? '다음 절기 전환'
-          : periodType === 'seun'
-            ? '다음 입춘'
-            : '다음 대운 전환';
-      await sendMessage(say, `아직 ${label} 해석이 없어. ${when} 때 만들어서 보내줄게.`);
-      return true;
-    }
-    // 장부 동봉(Phase 3) — wolun/seun만. daeun은 비편입(ledger undefined → 기존 동작).
-    const ledger =
-      periodType === 'wolun' || periodType === 'seun'
-        ? await loadLedger(userId, periodType)
-        : undefined;
-    await sendBlockMessage(
-      say,
-      `${label} (${record.pillar})`,
-      renderInterpretationBlocks(record, ledger),
-    );
-  } catch (error: unknown) {
-    console.error(`[Insight Agent] ${label} 해석 fast path 오류:`, error);
-    await sendMessage(say, `${label} 조회 중 오류가 발생했어.`);
-  }
-  return true;
-};
-
-/** fast path 일운 조회 시도 (#533: 월/세/대운은 신 경로로 이관 — 여기는 일운만). 매칭되면 응답 전송 후 true. */
-const tryFortuneFastPath = async (
-  trimmed: string,
-  say: Parameters<AgentHandler>[1],
-  userId: number,
-): Promise<boolean> => {
-  let sql: string;
-  let params: unknown[];
-  let label: string;
-
-  if (DAILY_FORTUNE_RE.test(trimmed)) {
-    const today = getTodayISO();
-    sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = $1 AND period = 'daily' AND date = $2`;
-    params = [userId, today];
-    label = '오늘 일운';
-  } else if (TOMORROW_FORTUNE_RE.test(trimmed)) {
-    const tomorrow = addDays(getTodayISO(), 1);
-    sql = `SELECT date, period, day_pillar, analysis, summary, warnings, recommendations, advice
-           FROM fortune_analyses WHERE user_id = $1 AND period = 'daily' AND date = $2`;
-    params = [userId, tomorrow];
-    label = '내일 일운';
-  } else {
-    return false;
-  }
-
-  try {
-    const row = await queryOne<FortuneRow>(sql, params);
-    if (!row) {
-      await sendMessage(say, `아직 ${label} 분석이 준비되지 않았어.`);
-    } else {
-      await sendMessage(say, formatFortuneText(row));
-    }
-  } catch (error: unknown) {
-    console.error(`[Insight Agent] ${label} fast path 오류:`, error);
-    await sendMessage(say, `${label} 조회 중 오류가 발생했어.`);
-  }
-  return true;
-};
 
 /** pending 후보 목록 조회 fast path (ADR-0030 → #477 P1: pending pattern_links 기반) */
 const showPendingMetrics = async (
@@ -177,6 +64,43 @@ const showPendingMetrics = async (
   }
 };
 
+/** Slack user → DB userId 해석 (미등록이면 DEFAULT_USER_ID 폴백) */
+const resolveMessageUserId = async (message: Parameters<AgentHandler>[0]): Promise<number> => {
+  const slackUserId = ('user' in message ? message.user : undefined) ?? '';
+  const resolvedUserId = slackUserId ? await resolveUserId(slackUserId) : null;
+  if (resolvedUserId === null && slackUserId) {
+    console.warn(
+      `[Insight Agent] slack_user_mappings 미등록: ${slackUserId} → DEFAULT_USER_ID 폴백`,
+    );
+  }
+  return resolvedUserId ?? DEFAULT_USER_ID;
+};
+
+/** 기본 경로: 일기 저장 후 확인 메시지. 날짜 접두가 있으면 그 날짜 일기로 저장한다. */
+const saveDiaryMessage = async (
+  say: Parameters<AgentHandler>[1],
+  userId: number,
+  trimmed: string,
+  dated: ReturnType<typeof parseDatedDiary>,
+  calendarToday: string,
+): Promise<void> => {
+  try {
+    if (dated.kind === 'dated') {
+      await saveDiaryEntry(userId, dated.content, dated.date);
+      if (dated.date < getEffectiveTodayISO()) void backfillDiaryMetaTags(userId, dated.date);
+      await naturalDelay();
+      await sendMessage(say, formatDatedConfirmation(dated.date, calendarToday));
+      return;
+    }
+    await saveDiaryEntry(userId, trimmed);
+    await naturalDelay();
+    await sendMessage(say, pickDiaryConfirmation());
+  } catch (error: unknown) {
+    console.error('[Insight Agent] 일기 저장 실패:', error);
+    await sendMessage(say, '일기 저장 중 오류가 발생했어. 다시 한번 말해줘.');
+  }
+};
+
 // ─── 에이전트 ─────────────────────────────────────────
 
 /**
@@ -193,14 +117,7 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
     const trimmed = text.trim();
 
     // Slack user → DB userId 해석
-    const slackUserId = ('user' in message ? message.user : undefined) ?? '';
-    const resolvedUserId = slackUserId ? await resolveUserId(slackUserId) : null;
-    if (resolvedUserId === null && slackUserId) {
-      console.warn(
-        `[Insight Agent] slack_user_mappings 미등록: ${slackUserId} → DEFAULT_USER_ID 폴백`,
-      );
-    }
-    const userId = resolvedUserId ?? DEFAULT_USER_ID;
+    const userId = await resolveMessageUserId(message);
 
     // ── fast path: 기간 해석 정확일치 (월운/세운/대운) — 접미형보다 먼저 (#529) ──
     if (await tryPeriodInterpretationFastPath(trimmed, say, userId)) return;
@@ -247,20 +164,6 @@ export const createInsightAgent = (_llmClient: LLMClient): AgentHandler => {
     }
 
     // ── 기본: 일기 저장 (어떤 단어든 무조건 일기로 저장) ──
-    try {
-      if (dated.kind === 'dated') {
-        await saveDiaryEntry(userId, dated.content, dated.date);
-        if (dated.date < getEffectiveTodayISO()) void backfillDiaryMetaTags(userId, dated.date);
-        await naturalDelay();
-        await sendMessage(say, formatDatedConfirmation(dated.date, calendarToday));
-        return;
-      }
-      await saveDiaryEntry(userId, trimmed);
-      await naturalDelay();
-      await sendMessage(say, pickDiaryConfirmation());
-    } catch (error: unknown) {
-      console.error('[Insight Agent] 일기 저장 실패:', error);
-      await sendMessage(say, '일기 저장 중 오류가 발생했어. 다시 한번 말해줘.');
-    }
+    await saveDiaryMessage(say, userId, trimmed, dated, calendarToday);
   };
 };

@@ -11,7 +11,7 @@
  */
 
 import type { KnownBlock } from '@slack/types';
-import type { DiscoveryCandidate } from './hypothesis-discovery.js';
+import type { DiscoveryCandidate } from './hypothesis-discovery-types.js';
 
 const KIND_LABEL: Record<'saju' | 'life_signal', string> = {
   saju: '[사주]',

@@ -5,7 +5,7 @@
 
 import type pg from 'pg';
 import { queryOne, withTransaction } from '../../shared/db.js';
-import { hashDiaryContent } from './diary-edit.js';
+import { hashDiaryContent } from './diary-edit-meta.js';
 
 export interface DiaryEntryRow {
   id: number;

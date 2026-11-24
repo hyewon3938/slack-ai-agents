@@ -4,13 +4,11 @@ vi.mock('../../../shared/db.js', () => ({ query: vi.fn() }));
 vi.mock('../../../shared/llm.js', () => ({ createDiaryMetaLLMClient: vi.fn() }));
 vi.mock('../../../cron/diary-meta-extract.js', () => ({ extractAndPersistForUser: vi.fn() }));
 
+const { splitDiaryContent, joinDiaryParts } = await import('../diary-edit-parts.js');
+const { encodeDiaryEditMeta, decodeDiaryEditMeta, hashDiaryContent } =
+  await import('../diary-edit-meta.js');
 const {
   parseDiaryLookup,
-  splitDiaryContent,
-  joinDiaryParts,
-  encodeDiaryEditMeta,
-  decodeDiaryEditMeta,
-  hashDiaryContent,
   buildDiaryEditModal,
   buildDiaryLookupBlocks,
   readDiaryEditSubmission,
