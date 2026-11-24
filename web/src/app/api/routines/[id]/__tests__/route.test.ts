@@ -23,6 +23,7 @@ vi.mock('@/features/routine/lib/queries', () => ({
 import { requireAuth } from '@/lib/auth';
 import {
   updateRoutineTemplate,
+  deleteRoutineTemplate,
   createInactivePeriod,
   closeOpenInactivePeriod,
   queryRoutineTemplate,
@@ -31,7 +32,7 @@ import {
   deleteIncompleteScheduledRecordOn,
 } from '@/features/routine/lib/queries';
 import type { RoutineTemplateRow } from '@/features/routine/lib/types';
-import { PATCH } from '../route';
+import { PATCH, DELETE } from '../route';
 import { idParams, jsonRequest } from '@/app/api/__tests__/route-helpers';
 
 const USER_ID = 7;
@@ -82,6 +83,69 @@ describe('PATCH /api/routines/[id] — 검증', () => {
 
     expect(res.status).toBe(404);
     expect(updateRoutineTemplate).not.toHaveBeenCalled();
+  });
+
+  it.each(['abc', '0', '-1', '1.5', '9x'])('경로 id %s는 400이고 조회하지 않는다', async (id) => {
+    const res = await PATCH(jsonRequest('PATCH', PATH, { name: '새 이름' }), idParams(id));
+
+    expect(res.status).toBe(400);
+    expect(queryRoutineTemplate).not.toHaveBeenCalled();
+  });
+
+  it.each(['2026-3-5', '20260305', '', 20260305])('start_date %s는 400이고 수정하지 않는다', async (start_date) => {
+    const res = await patch({ start_date });
+
+    expect(res.status).toBe(400);
+    expect(updateRoutineTemplate).not.toHaveBeenCalled();
+  });
+
+  it.each(['false', 0, null])('active는 boolean만 받는다 (%s는 400)', async (active) => {
+    const res = await patch({ active });
+
+    expect(res.status).toBe(400);
+    expect(updateRoutineTemplate).not.toHaveBeenCalled();
+    expect(createInactivePeriod).not.toHaveBeenCalled();
+  });
+
+  it.each(['매주', '0일마다', '일마다'])('지원하지 않는 빈도 %s로 바꾸면 400', async (frequency) => {
+    const res = await patch({ frequency });
+
+    expect(res.status).toBe(400);
+    expect(updateRoutineTemplate).not.toHaveBeenCalled();
+  });
+
+  it.each(['격일', '주1회', '3일마다', '5일마다', '매일', null])('빈도 %s는 저장한다', async (frequency) => {
+    const res = await patch({ frequency });
+
+    expect(res.status).toBe(200);
+    expect(updateRoutineTemplate).toHaveBeenCalled();
+  });
+
+  it('이미 저장된 빈도는 목록 밖 값이어도 그대로 보내면 수정할 수 있다', async () => {
+    vi.mocked(queryRoutineTemplate).mockResolvedValue({ ...TEMPLATE, frequency: '평일' });
+
+    const res = await patch({ name: '새 이름', frequency: '평일' });
+
+    expect(res.status).toBe(200);
+    expect(updateRoutineTemplate).toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /api/routines/[id]', () => {
+  it('경로 id가 양의 정수가 아니면 400이고 삭제하지 않는다', async () => {
+    const res = await DELETE(jsonRequest('DELETE', PATH), idParams('abc'));
+
+    expect(res.status).toBe(400);
+    expect(deleteRoutineTemplate).not.toHaveBeenCalled();
+  });
+
+  it('삭제하면 숫자 id를 돌려준다', async () => {
+    vi.mocked(deleteRoutineTemplate).mockResolvedValue(true);
+
+    const res = await DELETE(jsonRequest('DELETE', PATH), idParams('9'));
+
+    expect(deleteRoutineTemplate).toHaveBeenCalledWith(USER_ID, 9);
+    expect(await res.json()).toEqual({ data: { id: 9 } });
   });
 });
 

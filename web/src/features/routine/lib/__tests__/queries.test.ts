@@ -21,6 +21,7 @@ import {
   countCompletedRecordsBefore,
   backfillRecords,
 } from '../queries';
+import { isValidFrequency, parseIntervalDays } from '../types';
 
 // ─── 합성 픽스처 (실제 개인 데이터 아님) ───────────────────────────────
 // DB proxy는 fetch 기반이라 목킹 불가 → @/lib/db의 query/queryOne을 스텁하고
@@ -438,8 +439,16 @@ describe('ensureTodayRecords — 빈도 판정', () => {
 });
 
 // ─── 백필 ──────────────────────────────────────────────────────────────
-// 간격 빈도 갈래의 INSERT 날짜는 TZ에 따라 달라져(addDaysISO) 여기서 고정하지 않는다.
-// 건수와 TZ와 무관한 갈래만 검증한다.
+// 날짜 계산은 TZ와 무관하므로(@/lib/kst addDays) INSERT 날짜까지 고정한다.
+// `TZ=UTC yarn test`로도 같은 결과가 나와야 한다.
+
+/** INSERT 호출에 넘어간 날짜만 순서대로 모은다 */
+function insertedDates(): string[] {
+  return vi
+    .mocked(query)
+    .mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO routine_records'))
+    .map(([, params]) => (params as unknown[])[2] as string);
+}
 
 describe('backfillRecords', () => {
   it('startDate가 오늘 이후(같은 날 포함)면 쿼리 없이 0', async () => {
@@ -504,5 +513,71 @@ describe('backfillRecords', () => {
     // d = 0, 2, 4 (d = 6은 오늘이라 ensureTodayRecords 몫)
     expect(created).toBe(3);
     expect(query).toHaveBeenCalledTimes(4);
+    expect(insertedDates()).toEqual(['2026-07-20', '2026-07-22', '2026-07-24']);
+  });
+
+  it('간격 빈도 백필 날짜는 월 경계를 넘어도 달력 일수로 센다', async () => {
+    vi.mocked(query).mockResolvedValue(empty);
+
+    await backfillRecords(7, 1, '2026-07-28', '3일마다', '2026-08-06');
+
+    expect(insertedDates()).toEqual(['2026-07-28', '2026-07-31', '2026-08-03']);
+  });
+
+  it('주1회는 7일 간격으로 백필한다', async () => {
+    vi.mocked(query).mockResolvedValue(empty);
+
+    await backfillRecords(7, 1, '2026-07-05', '주1회', '2026-07-26');
+
+    // 07-26은 오늘이라 제외
+    expect(insertedDates()).toEqual(['2026-07-05', '2026-07-12', '2026-07-19']);
+  });
+
+  it('이미 있는 날짜는 건너뛴다', async () => {
+    vi.mocked(query)
+      .mockResolvedValueOnce({ rows: [{ date: '2026-07-22' }], rowCount: 1 })
+      .mockResolvedValue(empty);
+
+    const created = await backfillRecords(7, 1, '2026-07-20', '격일', '2026-07-26');
+
+    expect(created).toBe(2);
+    expect(insertedDates()).toEqual(['2026-07-20', '2026-07-24']);
+  });
+
+  it.each(['매주', '평일', '0일마다'])('해석할 수 없는 빈도 %s는 쿼리 없이 0', async (frequency) => {
+    expect(await backfillRecords(7, 1, '2026-07-20', frequency, '2026-07-26')).toBe(0);
+    expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensureTodayRecords — 해석할 수 없는 빈도', () => {
+  it('목록 밖 빈도는 매일로 보지 않고 만들지 않는다', async () => {
+    const ids = await idsCreatedOn('2026-07-26', [
+      { id: 1, frequency: '평일', start_date: '2026-07-01' },
+      { id: 2, frequency: '0일마다', start_date: null },
+      { id: 3, frequency: '매일', start_date: '2026-07-01' },
+    ]);
+    expect(ids).toEqual([3]);
+  });
+});
+
+describe('빈도 해석', () => {
+  it('parseIntervalDays: 격일 2, 주1회 7, N일마다 N, 그 밖은 null', () => {
+    expect(parseIntervalDays('격일')).toBe(2);
+    expect(parseIntervalDays('주1회')).toBe(7);
+    expect(parseIntervalDays('3일마다')).toBe(3);
+    expect(parseIntervalDays('1일마다')).toBe(1);
+    expect(parseIntervalDays('0일마다')).toBeNull();
+    expect(parseIntervalDays('매일')).toBeNull();
+    expect(parseIntervalDays('평일')).toBeNull();
+  });
+
+  it('isValidFrequency: 빈도 없음·매일·간격 빈도만 허용', () => {
+    for (const ok of [null, '매일', '격일', '주1회', '3일마다', '14일마다']) {
+      expect(isValidFrequency(ok)).toBe(true);
+    }
+    for (const bad of [undefined, '', '평일', '매주', '0일마다', 3, '3 일마다']) {
+      expect(isValidFrequency(bad)).toBe(false);
+    }
   });
 });

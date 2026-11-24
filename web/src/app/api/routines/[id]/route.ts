@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getTodayISO, addDays } from '@/lib/kst';
-import { validateFields } from '@/lib/validation';
+import { isISODate, parseRouteId, validateFields } from '@/lib/validation';
 import {
   updateRoutineTemplate,
   deleteRoutineTemplate,
@@ -12,7 +12,7 @@ import {
   countCompletedRecordsBefore,
   deleteIncompleteScheduledRecordOn,
 } from '@/features/routine/lib/queries';
-import { TRACKING_MODES } from '@/features/routine/lib/types';
+import { TRACKING_MODES, isValidFrequency } from '@/features/routine/lib/types';
 import type { RoutineTrackingMode } from '@/features/routine/lib/types';
 
 /** 추적 모드 허용값 — 자유 TEXT가 아니므로 화이트리스트로 검증 (ADR-0061) */
@@ -21,8 +21,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id } = await params;
-    const numId = Number(id);
+    const numId = parseRouteId((await params).id);
+    if (numId === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
     const body = (await request.json()) as Partial<{
       name: string;
       time_slot: string | null;
@@ -43,10 +43,28 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (body.tracking_mode !== undefined && !TRACKING_MODES.includes(body.tracking_mode)) {
       return NextResponse.json({ error: 'tracking_mode 값 오류' }, { status: 400 });
     }
+    if (body.start_date !== undefined && !isISODate(body.start_date)) {
+      return NextResponse.json(
+        { error: 'start_date 형식이 올바르지 않습니다 (YYYY-MM-DD)' },
+        { status: 400 },
+      );
+    }
+    if (body.active !== undefined && typeof body.active !== 'boolean') {
+      return NextResponse.json({ error: 'active 값 오류' }, { status: 400 });
+    }
 
     // 시작일 변경 감지를 위해 이전 값 미리 조회
     const oldTemplate = await queryRoutineTemplate(userId, numId);
     if (!oldTemplate) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
+
+    // 이미 저장된 빈도는 목록 밖 값이어도 그대로 보내면 받는다 (폼은 빈도를 항상 함께 보낸다)
+    if (
+      body.frequency !== undefined &&
+      body.frequency !== oldTemplate.frequency &&
+      !isValidFrequency(body.frequency)
+    ) {
+      return NextResponse.json({ error: '지원하지 않는 빈도야' }, { status: 400 });
+    }
 
     const data = await updateRoutineTemplate(userId, numId, body);
     if (!data) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
@@ -85,11 +103,13 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id } = await params;
-    const deleted = await deleteRoutineTemplate(userId, Number(id));
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+
+    const deleted = await deleteRoutineTemplate(userId, id);
     if (!deleted) return NextResponse.json({ error: '루틴을 찾을 수 없어' }, { status: 404 });
 
-    return NextResponse.json({ data: { id: Number(id) } });
+    return NextResponse.json({ data: { id } });
   } catch {
     return NextResponse.json({ error: '루틴 삭제 실패' }, { status: 500 });
   }

@@ -5,10 +5,10 @@ import {
   backfillRecords,
   queryRoutineTemplates,
 } from '@/features/routine/lib/queries';
-import { TRACKING_MODES } from '@/features/routine/lib/types';
+import { TRACKING_MODES, isValidFrequency } from '@/features/routine/lib/types';
 import type { RoutineTrackingMode } from '@/features/routine/lib/types';
 import { getTodayISO } from '@/lib/kst';
-import { validateFields } from '@/lib/validation';
+import { isISODate, validateFields } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     if (lengthError) {
       return NextResponse.json({ error: lengthError }, { status: 400 });
     }
-    if (body.start_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.start_date)) {
+    if (body.start_date !== undefined && !isISODate(body.start_date)) {
       return NextResponse.json(
         { error: 'start_date 형식이 올바르지 않습니다 (YYYY-MM-DD)' },
         { status: 400 },
@@ -57,6 +57,9 @@ export async function POST(request: Request) {
     }
     if (body.tracking_mode !== undefined && !TRACKING_MODES.includes(body.tracking_mode)) {
       return NextResponse.json({ error: 'tracking_mode 값 오류' }, { status: 400 });
+    }
+    if (body.frequency !== undefined && !isValidFrequency(body.frequency)) {
+      return NextResponse.json({ error: '지원하지 않는 빈도야' }, { status: 400 });
     }
 
     const data = await createRoutineTemplate(userId, {

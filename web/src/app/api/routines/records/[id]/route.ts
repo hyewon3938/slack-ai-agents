@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { parseRouteId } from '@/lib/validation';
 import {
   deleteFreeRecord,
   toggleRoutineRecord,
@@ -11,20 +12,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id } = await params;
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+
     const body = (await request.json()) as Partial<{
       completed: boolean;
       memo: string | null;
     }>;
 
     if (body.completed !== undefined) {
-      await toggleRoutineRecord(userId, Number(id), body.completed);
+      await toggleRoutineRecord(userId, id, body.completed);
     }
     if (body.memo !== undefined) {
-      await updateRoutineRecordMemo(userId, Number(id), body.memo);
+      await updateRoutineRecordMemo(userId, id, body.memo);
     }
 
-    return NextResponse.json({ data: { id: Number(id) } });
+    return NextResponse.json({ data: { id: id } });
   } catch {
     return NextResponse.json({ error: '루틴 기록 수정 실패' }, { status: 500 });
   }
@@ -36,11 +39,13 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id } = await params;
-    const deleted = await deleteFreeRecord(userId, Number(id));
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+
+    const deleted = await deleteFreeRecord(userId, id);
     if (!deleted) return NextResponse.json({ error: '자율 기록을 찾을 수 없어' }, { status: 404 });
 
-    return NextResponse.json({ data: { id: Number(id) } });
+    return NextResponse.json({ data: { id: id } });
   } catch {
     return NextResponse.json({ error: '자율 기록 삭제 실패' }, { status: 500 });
   }
