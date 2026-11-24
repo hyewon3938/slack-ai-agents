@@ -64,7 +64,9 @@ export const extractCron = (
   files: ReadonlySet<string>,
 ): CronExtract => {
   const sf = parseSource(filePath, text);
-  if (!importsModule(sf, 'node-cron')) return { slots: [], calls: [] };
+  // 슬롯 표는 스케줄러와 다른 파일에 있을 수 있어서 크론 폴더의 파일도 함께 본다.
+  const usesCron = importsModule(sf, 'node-cron');
+  if (!usesCron && !filePath.startsWith('src/cron/')) return { slots: [], calls: [] };
   const imports = collectImports(sf, filePath, files);
   const consts = collectStringConsts(sf);
 
