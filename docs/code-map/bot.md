@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 180개, 19759줄이고 테스트 파일은 56개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 181개, 19765줄이고 테스트 파일은 57개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -77,11 +77,12 @@
 | --- | ---: | --- | --- |
 | `daily-pattern-matching.ts` | 52 | 매일 07시 패턴 일일 매칭 cron (08:03 일일 종합 인사이트 선행, #475 ADR-0031). | function: `dailyPatternMatchingTask` |
 | `diary-meta-extract.ts` | 207 | 일기 → 메타 태그 LLM 추출 cron. | function: `parseTagResponse`, `extractDiaryTags`, `extractAndPersistForUser`, `diaryMetaExtractTask`<br>const: `DIARY_META_TAGS`<br>type: `DiaryMetaTag`, `DiaryMetaExtractResult` |
-| `discovery-recommend.ts` | 109 | 발굴 후보 재추천 — 묶음 전부 패스 시 다음 best 묶음을 데일리 틱으로 surface (#504 P3, ADR-0047). | function: `recommendDiscoveries`, `decideReRecommend`, `discoveryRecommendTask` |
-| `period-fortune.ts` | 233 | 주기 운세 리포트 데일리 게이트 — periodFortune (#529 / #523 Phase 2, ADR-0050). | function: `decidePeriodTriggers`, `periodFortuneTask`<br>type: `PeriodTrigger` |
-| `signal-suggest-fallback.ts` | 71 | 월간 신호 제안 누락 fallback 알림 cron — 매월 2일 11:00 KST (#466, ADR-0058) — 출력 연속성 보장. | function: `signalSuggestFallbackTask` |
+| `discovery-recommend.ts` | 96 | 발굴 후보 재추천 — 묶음 전부 패스 시 다음 best 묶음을 데일리 틱으로 surface (#504 P3, ADR-0047). | function: `recommendDiscoveries`, `decideReRecommend`, `discoveryRecommendTask` |
+| `insight-user-loop.ts` | 82 | #insight 채널 크론 공통 유저 루프. | function: `forEachInsightMapping`, `forEachInsightUser`<br>type: `InsightUserLoopOptions`, `InsightUserHandler` |
+| `period-fortune.ts` | 219 | 주기 운세 리포트 데일리 게이트 — periodFortune (#529 / #523 Phase 2, ADR-0050). | function: `decidePeriodTriggers`, `periodFortuneTask`<br>type: `PeriodTrigger` |
+| `signal-suggest-fallback.ts` | 53 | 월간 신호 제안 누락 fallback 알림 cron — 매월 2일 11:00 KST (#466, ADR-0058) — 출력 연속성 보장. | function: `signalSuggestFallbackTask` |
 
-테스트 파일 7개
+테스트 파일 8개
 
 ## `src/cron/life`
 
@@ -120,7 +121,7 @@
 | `persist-links.ts` | 142 |  | function: `persistLinkVerification`, `persistWeeklySnapshot`, `persistStrengthCutpoints`, `persistConfound` |
 | `process-user.ts` | 131 |  | function: `processUser` |
 | `response-profile.ts` | 143 |  | function: `persistResponseProfile` |
-| `tasks.ts` | 90 |  | function: `weeklyVerificationTask`, `weeklyReviewFallbackTask` |
+| `tasks.ts` | 59 |  | function: `weeklyVerificationTask`, `weeklyReviewFallbackTask` |
 | `week-start.ts` | 9 |  | function: `previousMondayISO` |
 
 ## `src/ops`
