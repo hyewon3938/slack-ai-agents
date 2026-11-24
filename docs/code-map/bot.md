@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 180개, 19851줄이고 테스트 파일은 56개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 180개, 19759줄이고 테스트 파일은 56개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -31,7 +31,7 @@
 | `diary-fast-path.ts` | 161 | Insight 에이전트 — 일기 fast path. | function: `naturalDelay`, `pickDiaryConfirmation`, `resolveDiaryDate`, `parseDatedDiary`, `formatDiaryDateLabel`, `formatDatedConfirmation`, `backfillDiaryMetaTags`, `saveDiaryEntry`<br>type: `DatedDiaryParse` |
 | `fortune-fast-path.ts` | 124 | Insight 에이전트 — 운세 조회 fast path. | function: `tryPeriodInterpretationFastPath`, `tryFortuneFastPath` |
 | `hypothesis-cards.ts` | 150 | 인사이트 Block Kit 카드 빌더 — P5a 발굴 승인 카드(ADR-0039) + 재기준선 공지(#523 P0, ADR-0048). | function: `encodeDiscoveryPayload`, `decodeDiscoveryPayload`, `buildDiscoveryCandidateCard`, `buildRebaselineNotice`<br>const: `DISCOVERY_APPROVE_ACTION_ID`, `DISCOVERY_DISMISS_ACTION_ID`<br>type: `DiscoveryCardPayload`, `DiscoveryCardInput`, `RebaselineSummary` |
-| `hypothesis-discovery-load.ts` | 62 | 패턴 발굴 엔진의 입력 로딩 — active 신호 정의·이미 링크된 (시드, 신호) 쌍. | function: `loadActiveSignals`, `loadLinkedPairs`<br>type: `LoadedSignal` |
+| `hypothesis-discovery-load.ts` | 36 | 패턴 발굴 엔진의 입력 로딩 — active 신호 정의·이미 링크된 (시드, 신호) 쌍. | function: `loadActiveSignals`, `loadLinkedPairs`<br>type: `LoadedSignal` |
 | `hypothesis-discovery-persist.ts` | 66 | 패턴 발굴 후보의 pending 링크 쓰기 (#477 P5a, ADR-0039 §3). | function: `insertPendingDiscoveryLink` |
 | `hypothesis-discovery-rank.ts` | 65 | 패턴 발굴 엔진 후보 단계 — 생존 쌍을 카드·pending 링크용 후보로 바꾸고 top-N으로 자른다 (#477 P5a, ADR-0039). | function: `toDiscoveryCandidate`, `rankTopN` |
 | `hypothesis-discovery-scan.ts` | 167 | 패턴 발굴 엔진 스캔 단계 — 여집합 (시드 × 신호) 쌍의 off-day 2×2 + 효과크기 사전선별 (#477 P5a, ADR-0039). | function: `scanSurvivors` |
@@ -69,7 +69,7 @@
 | `schedule-overflow.ts` | 94 | 일정 overflow 메뉴 value 인코딩/파싱과 옵션 조립. | function: `encodeOverflowValue`, `parseOverflowValue`, `buildOverflowOptions`, `buildEventOverflowOptions`, `buildBacklogOverflowOptions` |
 | `schedule-text.ts` | 78 | 일정 텍스트 메시지 (크론 알림용). | function: `buildScheduleText`, `buildNightScheduleText`, `buildYesterdayIncompleteText` |
 | `schedule.ts` | 157 | 일정 목록 블록과 텍스트 폴백. | function: `formatSchedulesAsText`, `buildScheduleBlocks` |
-| `sleep.ts` | 71 | 수면 요약 블록. | function: `buildSleepBlocks` |
+| `sleep.ts` | 65 | 수면 요약 블록. | function: `buildSleepBlocks` |
 
 ## `src/cron`
 
@@ -94,7 +94,7 @@
 | `routine-records.ts` | 92 |  | function: `calcRoutineStats`, `createTodayRecords` |
 | `scheduler.ts` | 205 |  | const: `RELOAD_DEBOUNCE_MS`<br>class: `CronScheduler` |
 | `slot-tasks.ts` | 65 |  | function: `wrapTask`, `timeToCron`<br>const: `SLOT_TASKS` |
-| `target-expiry.ts` | 80 |  | function: `getTargetExpiryDate`, `buildTargetExpiryWarning`, `warnTargetExpiryIfNear`<br>const: `TARGET_EXPIRY_WARN_DAYS` |
+| `target-expiry.ts` | 72 |  | function: `getTargetExpiryDate`, `buildTargetExpiryWarning`, `warnTargetExpiryIfNear`<br>const: `TARGET_EXPIRY_WARN_DAYS` |
 | `types.ts` | 6 |  | type: `LifeCronConfig` |
 | `user-loop.ts` | 56 |  | function: `forEachUser` |
 
@@ -108,7 +108,7 @@
 | `aggregate-schedule.ts` | 88 |  | function: `aggregateWeeklySchedule` |
 | `aggregate-sleep.ts` | 58 |  | function: `aggregateWeeklySleep` |
 | `aggregate.ts` | 25 |  | function: `aggregateWeeklyReport` |
-| `blocks.ts` | 94 |  | function: `buildWeeklyReportBlocks` |
+| `blocks.ts` | 87 |  | function: `buildWeeklyReportBlocks` |
 | `summary.ts` | 47 |  | function: `generateWeeklySummary` |
 | `task.ts` | 44 |  | function: `weeklyReportTask` |
 | `types.ts` | 56 | ─── 타입 ─────────────────────────────────────────────── | type: `WeeklySleepData`, `WeeklyRoutineData`, `WeeklyScheduleData`, `SleepRoutineCorrelation`, `SajuSeedOutcome`, `SajuOutcomeData`, `WeeklyReportData` |
@@ -144,7 +144,7 @@
 | `fortune-format.ts` | 18 | fortune_analyses 표시 포맷터. | function: `formatFortuneText`<br>type: `FortuneFormatInput` |
 | `insight-labels.ts` | 266 | 카드 라벨 레이어 — 시드·신호 내부 식별자를 사용자가 읽을 수 있는 자연어로 (#504 Phase 2, ADR-0045). | function: `seedLabel`, `signalLabel`<br>const: `SEED_LABEL_OVERRIDES`<br>type: `SeedLabelInput`, `SignalLabelInput` |
 | `insight-thresholds.ts` | 129 |  | const: `INSIGHT_THRESHOLDS` |
-| `kst.ts` | 156 | KST (UTC+9) 날짜/시간 유틸리티. | function: `getTodayISO`, `getYesterdayISO`, `getTodayString`, `getKSTTimeString`, `getKSTDayOfWeek`, `getKSTDayOfMonth`, `getEffectiveTodayISO`, `formatDateShort`, `getWeekReference`, `addDays`, `thisWeekMondayISO`<br>const: `DAY_BOUNDARY_HOUR` |
+| `kst.ts` | 171 | KST (UTC+9) 날짜/시간 유틸리티. | function: `getTodayISO`, `getYesterdayISO`, `getTodayString`, `getKSTTimeString`, `getKSTDayOfWeek`, `getKSTDayOfMonth`, `getEffectiveTodayISO`, `formatDateShort`, `getWeekReference`, `diffDays`, `formatDuration`, `addDays`, `thisWeekMondayISO`<br>const: `DAY_BOUNDARY_HOUR` |
 | `llm.ts` | 264 |  | function: `createLLMClient`, `createCronLLMClient`, `createDiaryMetaLLMClient`, `createPeriodLLMClient`, `toClaudeMessages`, `toClaudeTools`, `fromClaudeResponse`<br>class: `ClaudeLLMClient`<br>type: `LLMMessage`, `LLMToolDefinition`, `LLMToolCall`, `LLMResponse`, `LLMClient` |
 | `migrate.ts` | 49 |  | function: `runMigrations` |
 | `pending-current-state.ts` | 197 | modify_db 확인 플로우: 실행 완료 후 "현재 상태"를 테이블별 Block Kit으로 반환한다. | function: `loadCurrentStateBlocks`<br>type: `CurrentStateContext` |
@@ -186,11 +186,11 @@
 | --- | ---: | --- | --- |
 | `context-build.ts` | 50 | 생활 맥락 — 통합 빌더. | function: `buildLifeContext` |
 | `context-sections.ts` | 203 | 생활 맥락 — 루틴·일정·일기·테마·운세 조회. | function: `queryRoutineContext`, `queryScheduleContext`, `queryDiaryContext`, `queryLifeThemesContext`, `queryFortuneContext` |
-| `context-sleep.ts` | 176 | 생활 맥락 — 수면 조회. | function: `querySleepContext` |
+| `context-sleep.ts` | 173 | 생활 맥락 — 수면 조회. | function: `querySleepContext` |
 | `context-types.ts` | 13 | 생활 맥락 — 공용 타입. | type: `ContextTiming`, `DateParams` |
 | `queries-notification.ts` | 23 | 알림 설정 쿼리. | function: `queryNotificationSettings`<br>type: `NotificationSettingRow` |
 | `queries-reminder.ts` | 86 | 리마인더 쿼리. | function: `queryDueReminders`, `queryActiveReminderTimes`, `deactivateReminder`, `decrementReminderCount`<br>type: `ReminderRow` |
-| `queries-routine.ts` | 169 | 루틴 쿼리: 타입 · 빈도 헬퍼 · 템플릿/기록 조회와 변경. | function: `shouldCreateToday`, `frequencyBadge`, `queryActiveTemplates`, `queryTodayRecords`, `queryExistingTemplateIds`, `queryLastRecordDate`, `createRecord`, `completeRecord`<br>type: `RoutineTrackingMode`, `RoutineTemplateRow`, `RoutineRecordRow` |
+| `queries-routine.ts` | 162 | 루틴 쿼리: 타입 · 빈도 헬퍼 · 템플릿/기록 조회와 변경. | function: `shouldCreateToday`, `frequencyBadge`, `queryActiveTemplates`, `queryTodayRecords`, `queryExistingTemplateIds`, `queryLastRecordDate`, `createRecord`, `completeRecord`<br>type: `RoutineTrackingMode`, `RoutineTemplateRow`, `RoutineRecordRow` |
 | `queries-schedule.ts` | 141 | 일정 쿼리: 타입 · 조회 · 상태 변경. | function: `queryTodaySchedules`, `queryBacklogSchedules`, `countOverdueTasks`, `moveScheduleToDate`, `updateScheduleStatus`, `deleteSchedule`, `toggleScheduleImportant`, `postponeSchedule`<br>type: `ScheduleRow` |
 | `queries-sleep.ts` | 58 | 수면 쿼리 (Home 탭): 타입 · 조회. | function: `querySleepForHome`, `querySleepEventsForHome`<br>type: `SleepRecordRow`, `SleepEventRow` |
 
@@ -216,7 +216,7 @@
 | `bayesian-posterior.ts` | 92 | Beta-Binomial Bayesian posterior 헬퍼 — ADR-0024 실행 (마스터 #434 Phase 7). | function: `updatePosterior`, `posteriorMean`, `credibleInterval`, `cumulativePosteriorFromHitMiss`, `empiricalBetaPrior`<br>type: `BetaPosterior` |
 | `binarize.ts` | 83 | 윈도우 일자 배열 + sql 신호 시리즈 이진화 (pattern-verification에서 분리). | function: `buildWindowDates`, `binarizeSqlSeries` |
 | `confound-calc.ts` | 228 | 교란 플래그·MH 층화 조정 순수 계산 (confound에서 분리). | function: `computeOverlap`, `flagConfoundersForLink`, `buildStrata`, `classifyVerdict`, `adjustConfounders`<br>type: `AdjustInput` |
-| `confound-flag.ts` | 251 | 교란 플래그 로더 (confound에서 분리). | function: `flagConfounds` |
+| `confound-flag.ts` | 224 | 교란 플래그 로더 (confound에서 분리). | function: `flagConfounds` |
 | `confound-types.ts` | 63 | 교란 플래그·조정 타입 (confound에서 분리). | type: `SuspectedConfounder`, `ConfoundVerdict`, `AdjustedConfounder`, `ConfoundData`, `ConfoundResult`, `ConfoundThresholds`, `ConfoundAdjustThresholds`, `ConfoundCandidate` |
 | `contingency.ts` | 166 | 2×2 분할표·일자 시퀀스·판정 순수 계산 (pattern-verification에서 분리). | function: `buildContingency`, `buildDaySequence`, `splitHalvesConsistent`, `verifyContingency`, `classifyVerdict`, `statusForVerdict` |
 | `data-window.ts` | 145 | 데이터-존재 윈도우 계산 (pattern-verification에서 분리). | function: `computeUserDataStarts`, `signalDataStart`, `seedDataStart`, `maxDate`, `enrollmentStart`<br>type: `UserDataStarts` |
@@ -233,7 +233,7 @@
 | `mirror-signal.ts` | 112 | 거울 신호 정의 보장 (pattern-verification에서 분리). | function: `ensureMirrorSignalDef`<br>type: `MirrorSignalOutcome`, `MirrorSignalResult` |
 | `quantile.ts` | 69 | 분위수 컷 + 밴드 분류 순수 함수 — #477 P4a (ADR-0036). | function: `isBand`, `quantileSorted`, `tertileCuts`, `classifyBand`<br>type: `BandCuts`, `Band` |
 | `seed-saturation.ts` | 211 | 포화 시드 양방향 가드 (#508 P③, ADR-0046). | function: `isSaturated`, `isDesaturated`, `runSaturationSweep`<br>const: `SATURATION_REASON`<br>type: `SweepSeed`, `SaturationSweepResult` |
-| `series.ts` | 221 | 신호·시드 활성 시리즈 계산 (pattern-verification에서 분리). | function: `computeSignalSeries`, `splitRawByActivation`, `computeTargetStrengthSeries`, `computeSeedActivationSeries`, `lastActivationDate`<br>type: `SignalSeriesResult` |
+| `series.ts` | 212 | 신호·시드 활성 시리즈 계산 (pattern-verification에서 분리). | function: `computeSignalSeries`, `splitRawByActivation`, `computeTargetStrengthSeries`, `computeSeedActivationSeries`, `lastActivationDate`<br>type: `SignalSeriesResult` |
 | `signal-defs.ts` | 106 | signal_defs 재생성 가드 — #557 (2026-07 감사 S7). | function: `findEquivalentSignal`<br>type: `SignalIdentity`, `EquivalentDecision` |
 | `signal-sql-guard.ts` | 187 | LLM 신호 SQL 게이트 #1 — 정적 검증 (#477 P5b, ADR-0040). | function: `validateSignalSql`<br>const: `SIGNAL_ROW_CAP`, `SIGNAL_TABLE_WHITELIST` |
 | `stats-evalue.ts` | 74 | e-value test martingale (stats에서 분리, 순수·의존 없음) — P3, ADR-0034. | function: `evalueTestMartingale`<br>const: `DEFAULT_EVALUE_OPTIONS`<br>type: `DayObservation`, `EvalueOptions` |
@@ -266,7 +266,7 @@
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `aggregate.ts` | 193 | 응답 프로필 — 링크 기여를 셀로 집계(롤업·tier·shrunk). | function: `buildResponseProfile`<br>type: `ProfileLink` |
-| `axis.ts` | 144 | 응답 프로필 — 사주 축·셀 정의와 시드 → source 셀 매핑. | function: `groupElement`, `mapSeedToCell`, `cellKey`<br>const: `SIPSUNG_GROUP`<br>type: `AxisLevel`, `CellTier`, `SeedForCell`, `PrimaryCell`, `ResponseCell` |
+| `axis.ts` | 130 | 응답 프로필 — 사주 축·셀 정의와 시드 → source 셀 매핑. | function: `groupElement`, `mapSeedToCell`, `cellKey`<br>const: `SIPSUNG_GROUP`<br>type: `AxisLevel`, `CellTier`, `SeedForCell`, `PrimaryCell`, `ResponseCell` |
 | `resolve.ts` | 60 | 응답 프로필 — 셀 인덱스와 단일 레벨 resolution. | function: `indexCells`, `resolveHierarchyCell`, `resolveElementBandCell`<br>type: `ResolvedCell` |
 
 ## `src/shared/saju`
