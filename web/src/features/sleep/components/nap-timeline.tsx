@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import type { DailySleep, SleepRecord, SleepPeriod } from '../lib/types';
-import { formatDateLabel, getDayOfWeek } from '../lib/chart-utils';
+import { formatDateLabel, formatDuration, getDayOfWeek } from '../lib/chart-utils';
 
 interface NapTimelineProps {
   dailies: DailySleep[];
@@ -183,15 +183,13 @@ export function NapTimeline({ dailies, period }: NapTimelineProps) {
             >
               <p className="mb-1 font-semibold text-gray-700">{tooltip.date}</p>
               {tooltip.naps.map((nap, i) => {
-                const h = nap.duration_minutes ? Math.floor(nap.duration_minutes / 60) : 0;
-                const m = nap.duration_minutes ? nap.duration_minutes % 60 : 0;
                 return (
                   <div key={i}>
                     <p className="text-violet-500">
                       {nap.bedtime} → {nap.wake_time ?? '?'}
                     </p>
                     {nap.duration_minutes != null && (
-                      <p className="text-gray-500">{h}시간{m > 0 ? ` ${m}분` : ''}</p>
+                      <p className="text-gray-500">{formatDuration(nap.duration_minutes)}</p>
                     )}
                   </div>
                 );

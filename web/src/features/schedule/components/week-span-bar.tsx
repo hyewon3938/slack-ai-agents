@@ -1,7 +1,7 @@
 'use client';
 
 import { useDraggable } from '@dnd-kit/core';
-import { lookupCategory } from '@/features/schedule/lib/types';
+import { lookupCategory, NEXT_STATUS } from '@/features/schedule/lib/types';
 import type { CategoryRow } from '@/lib/types';
 import { getCategoryStyle } from '@/lib/types';
 import { getTodayISO } from '@/lib/kst';
@@ -10,12 +10,6 @@ import { StatusBadge } from './status-badge';
 import { ActionMenu } from './action-menu';
 import { CategoryBadge } from './category-badge';
 import { STATUS_BG } from './status-bg';
-
-const NEXT_STATUS: Record<string, string> = {
-  todo: 'in-progress',
-  'in-progress': 'done',
-  done: 'todo',
-};
 
 export function WeekSpanBar({
   span,

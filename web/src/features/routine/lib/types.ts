@@ -1,6 +1,9 @@
 /** 루틴 추적 방식 — scheduled=빈도대로 기대된 발생, free=수행 시점에만 기록 (ADR-0061) */
 export type RoutineTrackingMode = 'scheduled' | 'free';
 
+/** API 입력 검증용 추적 방식 목록 */
+export const TRACKING_MODES: readonly string[] = ['scheduled', 'free'];
+
 /** 기록의 성격 — 생성 시점에 확정되고 소급 변경하지 않는다 (ADR-0061) */
 export type RoutineEntryType = 'scheduled' | 'free';
 

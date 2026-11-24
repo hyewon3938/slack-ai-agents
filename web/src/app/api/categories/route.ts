@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { VALID_CATEGORY_TYPES } from '@/lib/types';
 import { createCategory, queryCategories } from '@/features/schedule/lib/queries';
 import { validateFields } from '@/lib/validation';
-
-const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
 
 export const dynamic = 'force-dynamic';
 

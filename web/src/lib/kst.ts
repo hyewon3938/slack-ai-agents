@@ -3,7 +3,7 @@
  * src/shared/kst.ts에서 필요한 함수만 복제.
  */
 
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
+export const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
 const getKSTDate = (): Date => {
   const now = new Date();

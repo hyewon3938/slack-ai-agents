@@ -1,6 +1,7 @@
 'use client';
 
 import type { DayOfWeekPattern } from '../lib/types';
+import { formatDuration } from '../lib/chart-utils';
 import { useChartTooltip } from '../hooks/use-chart-tooltip';
 
 interface SleepDayPatternProps {
@@ -80,12 +81,10 @@ export function SleepDayPattern({ pattern }: SleepDayPatternProps) {
         {tooltip && (() => {
           const p = ordered.find((o) => o.day === tooltip.day);
           if (!p || p.count === 0) return null;
-          const h = Math.floor(p.avgDuration / 60);
-          const m = p.avgDuration % 60;
           return (
             <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg">
               <p className="mb-1 font-semibold text-gray-700">{DAY_FULL[p.dayName] ?? p.dayName}</p>
-              <p className="text-gray-600">평균 {h}시간{m > 0 ? ` ${m}분` : ''}</p>
+              <p className="text-gray-600">평균 {formatDuration(p.avgDuration)}</p>
               {p.avgBedtime !== 0 && (
                 <p className="text-gray-500">
                   취침 {minsToTimeStr(p.avgBedtime)} · 기상 {minsToTimeStr(p.avgWakeTime)}

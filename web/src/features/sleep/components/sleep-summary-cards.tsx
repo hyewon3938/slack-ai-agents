@@ -2,15 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { SleepSummary } from '../lib/types';
+import { formatDuration } from '../lib/chart-utils';
 
 interface SleepSummaryCardsProps {
   summary: SleepSummary;
-}
-
-function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
 }
 
 /** 점수(0~100) → 텍스트 색상 클래스 (70↑ 초록 / 40~69 노랑 / 40 미만 빨강) — SleepScoreCard와 공유 */

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { DailyBudgetLog } from '@/features/budget/lib/types';
+import { DAY_NAMES } from '@/lib/kst';
 
 function InfoTooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
@@ -113,8 +114,7 @@ export function DailyBudgetLogView({ yearMonth, todayBudget }: DailyBudgetLogPro
 function DailyLogRow({ log }: { log: DailyBudgetLog }) {
   const isPositive = log.saved >= 0;
   const dateObj = new Date(`${log.date}T00:00:00`);
-  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  const dayLabel = `${dateObj.getMonth() + 1}/${dateObj.getDate()} (${dayNames[dateObj.getDay()]})`;
+  const dayLabel = `${dateObj.getMonth() + 1}/${dateObj.getDate()} (${DAY_NAMES[dateObj.getDay()]})`;
 
   return (
     <div className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm">

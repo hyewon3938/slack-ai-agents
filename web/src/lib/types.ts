@@ -7,6 +7,9 @@ export const CATEGORY_TYPES: { value: CategoryType; label: string }[] = [
   { value: 'event', label: '일정' },
 ];
 
+/** API 입력 검증용 카테고리 타입 집합 */
+export const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
+
 export interface CategoryRow {
   id: number;
   name: string;
