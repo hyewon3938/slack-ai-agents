@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { hexToStyles, getCategoryStyle, colorToHex } from '../types';
 import { isValidStatus, compareByStatus } from '@/features/schedule/lib/types';
+import {
+  compareSchedulePriority,
+  lookupCategory,
+  isMultiDaySchedule,
+} from '@/features/schedule/lib/types';
 import type { ScheduleRow } from '@/features/schedule/lib/types';
+import type { CategoryRow } from '../types';
 
 // ─── isValidStatus ──────────────────────────────────────
 
@@ -105,5 +111,124 @@ describe('colorToHex', () => {
 
   it('알 수 없는 값은 gray hex로 폴백한다', () => {
     expect(colorToHex('unknown')).toBe('#6b7280');
+  });
+});
+
+// ─── 일정 우선순위 (schedule/lib/types) ─────────────────
+
+// 합성 픽스처 (실제 개인 데이터 아님)
+const CATEGORIES: CategoryRow[] = [
+  { id: 1, name: '약속', color: 'violet', type: 'event', sort_order: 2, parent_id: null },
+  { id: 2, name: '업무', color: 'amber', type: 'task', sort_order: 1, parent_id: null },
+  { id: 3, name: '개인', color: 'gray', type: 'task', sort_order: 3, parent_id: null },
+  // 자식: 순서는 부모를 따르고 자기 sort_order(0)는 쓰지 않는다
+  { id: 31, name: '운동', color: 'gray', type: 'task', sort_order: 0, parent_id: 3 },
+];
+
+const schedule = (overrides: Partial<ScheduleRow> = {}): ScheduleRow => ({
+  id: 1,
+  title: 'test',
+  date: '2026-03-01',
+  end_date: null,
+  status: 'todo',
+  category_id: null,
+  memo: null,
+  important: false,
+  ...overrides,
+});
+
+describe('isMultiDaySchedule', () => {
+  it('end_date가 date와 다르면 기간 일정이다', () => {
+    expect(isMultiDaySchedule(schedule({ end_date: '2026-03-03' }))).toBe(true);
+  });
+
+  it('end_date가 없거나 date와 같으면 단일 일정이다', () => {
+    expect(isMultiDaySchedule(schedule({ end_date: null }))).toBe(false);
+    expect(isMultiDaySchedule(schedule({ end_date: '2026-03-01' }))).toBe(false);
+  });
+});
+
+describe('lookupCategory', () => {
+  it('category_id가 null이거나 목록에 없으면 전부 null', () => {
+    const none = { type: null, sortOrder: null, topId: null, topName: null };
+    expect(lookupCategory(CATEGORIES, null)).toEqual(none);
+    expect(lookupCategory(CATEGORIES, 999)).toEqual(none);
+  });
+
+  it('자식 카테고리는 최상위의 sort_order·id·이름을 돌려준다', () => {
+    expect(lookupCategory(CATEGORIES, 31)).toEqual({
+      type: 'task',
+      sortOrder: 3,
+      topId: 3,
+      topName: '개인',
+    });
+  });
+
+  it('자식 type이 비어 있으면 부모 type을 상속한다', () => {
+    // DB 행은 type이 NULL일 수 있다 (CategoryRow 타입보다 넓다)
+    const child = {
+      id: 11,
+      name: '저녁 약속',
+      color: 'gray',
+      type: null,
+      sort_order: 0,
+      parent_id: 1,
+    } as unknown as CategoryRow;
+    expect(lookupCategory([...CATEGORIES, child], 11).type).toBe('event');
+  });
+
+  it('parent_id가 가리키는 부모가 없으면 자기 자신을 최상위로 쓴다', () => {
+    const orphan: CategoryRow = {
+      id: 50,
+      name: '고아',
+      color: 'gray',
+      type: 'task',
+      sort_order: 7,
+      parent_id: 404,
+    };
+    expect(lookupCategory([...CATEGORIES, orphan], 50)).toEqual({
+      type: 'task',
+      sortOrder: 7,
+      topId: 50,
+      topName: '고아',
+    });
+  });
+});
+
+describe('compareSchedulePriority', () => {
+  const sortIds = (items: ScheduleRow[]): number[] =>
+    [...items].sort((a, b) => compareSchedulePriority(a, b, CATEGORIES)).map((s) => s.id);
+
+  it('event 타입 일정은 중요한 기간 일정보다도 위에 온다', () => {
+    const event = schedule({ id: 1, category_id: 1 });
+    const multiImportant = schedule({ id: 2, end_date: '2026-03-05', important: true });
+    expect(sortIds([multiImportant, event])).toEqual([1, 2]);
+  });
+
+  it('기간 일정은 중요한 단일 일정보다 앞이고, end_date === date는 단일로 본다', () => {
+    const single = schedule({ id: 1, important: true });
+    const sameDay = schedule({ id: 2, end_date: '2026-03-01', important: true });
+    const multi = schedule({ id: 3, end_date: '2026-03-02' });
+    expect(sortIds([single, sameDay, multi])).toEqual([3, 1, 2]);
+  });
+
+  it('활성(할일·진행중)은 중요한 완료·취소 일정보다 앞이다', () => {
+    const doneImportant = schedule({ id: 1, status: 'done', important: true });
+    const cancelled = schedule({ id: 2, status: 'cancelled', important: true });
+    const todo = schedule({ id: 3, status: 'todo' });
+    expect(sortIds([doneImportant, cancelled, todo])).toEqual([3, 1, 2]);
+  });
+
+  it('같은 활성 그룹에서는 중요한 할일이 진행중보다 앞이다', () => {
+    const inProgress = schedule({ id: 1, status: 'in-progress' });
+    const importantTodo = schedule({ id: 2, status: 'todo', important: true });
+    expect(sortIds([inProgress, importantTodo])).toEqual([2, 1]);
+  });
+
+  it('나머지가 같으면 최상위 카테고리 sort_order 순이고 카테고리 없는 일정은 맨 뒤', () => {
+    const noCategory = schedule({ id: 1 });
+    const personalChild = schedule({ id: 2, category_id: 31 }); // 부모 sort_order 3
+    const work = schedule({ id: 3, category_id: 2 }); // sort_order 1
+    expect(sortIds([noCategory, personalChild, work])).toEqual([3, 2, 1]);
   });
 });
