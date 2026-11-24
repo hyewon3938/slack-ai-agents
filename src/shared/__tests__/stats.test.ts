@@ -10,7 +10,7 @@ import {
   mantelHaenszelRR,
   type DayObservation,
   type Stratum2x2,
-} from '../stats.js';
+} from '../pattern/stats.js';
 
 // 결정론 PRNG (mulberry32) — 시뮬 테스트 재현성 보장(고정 seed → flaky 없음).
 const mulberry32 = (seed: number): (() => number) => {

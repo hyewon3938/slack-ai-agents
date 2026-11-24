@@ -22,7 +22,7 @@
  * + DB 부분 unique 인덱스가 최종 방어선이다.
  */
 
-import { query } from './db.js';
+import { query } from '../db.js';
 
 /** 재생성 판정 대상 신호의 측정 정의. NULL 필드는 IS NOT DISTINCT FROM으로 매칭된다. */
 export interface SignalIdentity {

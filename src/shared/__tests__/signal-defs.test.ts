@@ -21,7 +21,7 @@ vi.mock('../db.js', () => ({
   }),
 }));
 
-import { findEquivalentSignal, type SignalIdentity } from '../signal-defs.js';
+import { findEquivalentSignal, type SignalIdentity } from '../pattern/signal-defs.js';
 
 const sqlIdentity = (over: Partial<SignalIdentity> = {}): SignalIdentity => ({
   name: 'schedule_completion_rate',

@@ -2,7 +2,7 @@
  * 교란 플래그·MH 층화 조정 순수 계산 (confound에서 분리).
  */
 
-import { mantelHaenszelRR } from '../stats.js';
+import { mantelHaenszelRR } from './stats.js';
 import type {
   AdjustedConfounder,
   ConfoundAdjustThresholds,

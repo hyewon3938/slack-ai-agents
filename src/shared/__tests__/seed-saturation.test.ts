@@ -68,7 +68,7 @@ vi.mock('../pattern/match-day.js', async (importOriginal) => {
 });
 
 const { isSaturated, isDesaturated, SATURATION_REASON, runSaturationSweep } =
-  await import('../seed-saturation.js');
+  await import('../pattern/seed-saturation.js');
 
 const TODAY = '2026-06-08';
 

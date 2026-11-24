@@ -4,8 +4,8 @@
 
 import { query } from '../db.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import { tertileCuts } from '../quantile.js';
-import { type StrengthTarget, isStrengthTarget } from '../saju-strength.js';
+import { tertileCuts } from './quantile.js';
+import { type StrengthTarget, isStrengthTarget } from '../saju/strength.js';
 import { buildWindowDates } from './binarize.js';
 import type { DailyContext } from './match-types.js';
 import { computeTargetStrengthSeries } from './series.js';

@@ -1303,7 +1303,7 @@ Phase 7 (Bayesian update)에서 active 매트릭의 `posterior_alpha/beta/p`가 
 
 매트릭 단위 posterior(`pattern_metrics.posterior_alpha/beta/p`, Phase 4 도입)는 매칭 cron의 SQL inline UPDATE 그대로 유지(atomicity 보호). 가설 단위는 weekly UPSERT 흐름이 메모리 합산 → UPSERT 한 번이라 헬퍼로 산출.
 
-**헬퍼 (`src/shared/bayesian-posterior.ts`)**:
+**헬퍼 (`src/shared/pattern/bayesian-posterior.ts`)**:
 
 | 함수 | 시그니처 | 용도 |
 |------|---------|------|
@@ -1566,7 +1566,7 @@ P2(주간 off-day 검증 엔진)에 ADR-0032 통계 풀스택을 얹는다. 핵�
 
 매주 들여다보는 구조(optional stopping)에서 q를 반복 보는 건 거짓양성을 부풀린다. 누적 **e-value**(test martingale)는 anytime-valid라 언제 멈춰 봐도 `P(sup_t e_t ≥ 1/α) ≤ α`(Ville). 판정 `e ≥ 20`(α=0.05).
 
-- **구성**(`stats.ts` `evalueTestMartingale`): 매 발현일에 "귀무 기준율 r 대비 pass율 상승"에 예측가능 베팅. r = 직전까지 **전체 일** running pass율(풀링 → Jensen 편향 억제), φ = active-day running pass율. 희석 대안 φ'=r+λ(φ−r), λ=0.5, one-sided(φ>r일 때만). off-day는 r만 갱신.
+- **구성**(`pattern/stats.ts` `evalueTestMartingale`): 매 발현일에 "귀무 기준율 r 대비 pass율 상승"에 예측가능 베팅. r = 직전까지 **전체 일** running pass율(풀링 → Jensen 편향 억제), φ = active-day running pass율. 희석 대안 φ'=r+λ(φ−r), λ=0.5, one-sided(φ>r일 때만). off-day는 r만 갱신.
 - **결정론 리플레이**: prequential 추정이라 매주 전체 윈도우를 처음부터 재계산해도 prefix factor 동일 → sup 단조 증가. SET(전체 재계산) 아키텍처와 정합(ADR-0033 §2 긴장 해소). confirmed는 sticky(`verifyUserLinks`가 active만 재검증).
 - **빌드 게이트**(`stats.test.ts`): 무관 데이터 null 시뮬(p×activeProb 그리드 + AR(1) ρ=0.8 자기상관 케이스, 각 1500 trial)에서 거짓 확정율 ≤ α 실측. **통과 못 하면 머지 금지.** 자기상관에도 강건(ρ=0.8에서 \~0.026).
 
@@ -1619,7 +1619,7 @@ persist: pattern_links SET + link_weekly_stats UPSERT
 
 결정론 사주 계산(`saju/`) 위에 **오행/일간의 실효 강도**를 graded feature로 올려, 상대 분위수 밴드로 잘라 기존 off-day 검증 엔진(P2·P3)에 태운다. **새 통계 코어 없음** — graded·비단조(inverted-U)는 밴드별 독립 binary 시드로 실현([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) §4 "레벨별 main effect, 상호작용 항 불요").
 
-**실효강도 모델** (`saju-strength.ts`, 전부 파라미터 — `saju-strength-params.ts`):
+**실효강도 모델** (`saju/strength.ts`, 전부 파라미터 — `saju/strength-params.ts`):
 
 ```
 strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보너스(X)
@@ -1633,7 +1633,7 @@ strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보�
 - **병행 산출**: `computeAbsoluteStrengthState`(절대 신강/중화/신약 — 생조 비율, **검정 비사용**, 맥락·미래용), `computeElementRatios`(노출·covariate용, 별도 시드 없음 — 강도에 흡수).
 - 명리학 정밀도는 간결판 선택(월령=월지 본기, 분일 사령 무시 / 통근=지장간 뿌리 이진). 정밀 분일 사령은 calibration 노브로 유보([ADR-0036](../adr/0036-relative-quantile-strength-bands.md) 회고).
 
-**상대 분위수 밴드** ([ADR-0036](../adr/0036-relative-quantile-strength-bands.md), `quantile.ts`): 윈도우 강도값을 tertile 3등분 → 약/적정/강. 일별 cron은 윈도우가 없어 분위수를 못 내므로 **컷을 주간 산출 → 저장 → 일별 적용**(value-vs-cut 규칙 공통, rank 금지). 결정론 정합 — 같은 윈도우 → 같은 분위수 → 같은 밴드(SET 리플레이·e-value 불변, [ADR-0034](../adr/0034-evalue-confirmation-gate.md)).
+**상대 분위수 밴드** ([ADR-0036](../adr/0036-relative-quantile-strength-bands.md), `pattern/quantile.ts`): 윈도우 강도값을 tertile 3등분 → 약/적정/강. 일별 cron은 윈도우가 없어 분위수를 못 내므로 **컷을 주간 산출 → 저장 → 일별 적용**(value-vs-cut 규칙 공통, rank 금지). 결정론 정합 — 같은 윈도우 → 같은 분위수 → 같은 밴드(SET 리플레이·e-value 불변, [ADR-0034](../adr/0034-evalue-confirmation-gate.md)).
 
 **데이터 모델** (마이그레이션 081):
 
@@ -1660,14 +1660,14 @@ strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보�
 
 P4(결정론 사주 feature 엔진)의 후반. P4a(강도)에 이은 **관계·변환 패밀리**. P4a와 동일하게 **새 통계 코어 0** — 전부 결정론 boolean/밴드 시드로 기존 off-day 엔진(P2·P3)에 태운다([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) §4). 정본 [ADR-0038](../adr/0038-saju-relation-hwa-feature-depth.md).
 
-**합화(合化) 변환 pass** ([saju-hwa.ts](../../src/shared/saju-hwa.ts), 순수 함수):
+**합화(合化) 변환 pass** ([saju/hwa.ts](../../src/shared/saju/hwa.ts), 순수 함수):
 
 - 합(천간합/육합/삼합)이 化신 통근 조건을 만족하면 구성 글자의 오행을 化 오행으로 치환한다. 합화오행은 TS 상수(`CHEONGAN_HAP`/`JIJI_YUKHAP`/`JIJI_SAMHAP`, [saju/tables.ts](../../src/shared/saju/tables.ts))에 이미 있어 **DB 데이터 추가 0**.
 - `detectHwaTransforms(pillarSet, params)` → `{transforms, stemOverride, branchOverride}`(Pillar 참조 → 化 오행 맵). `saju-strength`가 글자 tally 전에 1회 적용 → **강도·밴드·절대상태·효과적 십성이 전부 변환 글자 기준 일관 계산**.
 - 변환 granularity(v1): 천간합 → 두 천간 element, 지지합 → 지지 본기 element. 지장간 중기/여기는 불변. `computeElementRatios`(composition covariate)는 의도적으로 raw 유지.
 - 결정론(순수 함수) → SET 리플레이·e-value 불변([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md)).
 
-**합충 해소 깊이 = v1a** ([saju-strength-params.ts](../../src/shared/saju-strength-params.ts) `SAJU_HWA_PARAMS`):
+**합충 해소 깊이 = v1a** ([saju/strength-params.ts](../../src/shared/saju/strength-params.ts) `SAJU_HWA_PARAMS`):
 
 | 노브 | 기본 | 의미 |
 |------|------|------|
@@ -1754,7 +1754,7 @@ LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 
 - 게이트 #1이 1차 방어, 게이트 #2는 정적 검증을 우회한 쓰기 시도를 PG 레벨에서 막는 백스톱. **앱 레벨 read-only TX** 채택(전용 DB 역할 대비 인프라 변경 0 — follow-up).
 - **`source='llm'`만 격리** — seed 신호 71개는 기존 신뢰 경로(`runMetricSql`) 무변경. `runnerForSource(source)`가 `evaluateMetric`(일별 매칭)·`computeSignalSeries`(주간 검증+발굴) 두 실행 경로에서 분기.
 
-**검증 게이트** ([signal-sql-guard.ts](../../src/shared/signal-sql-guard.ts) `validateSignalSql`, 통과 시 null·실패 시 한글 사유): self-contained(보안 경계를 한 파일에서 감사, 외부 리팩토링이 조용히 약화 못 하게). 빠른 실패 순서 — 길이 → 단일문 → SELECT/WITH → 블록패턴(`db-proxy.ts BLOCKED_PATTERNS` 정렬 + DML 전수 + `information_schema`/`pg_catalog`) → 플레이스홀더(`$1`/`$2`만) → 테이블 화이트리스트 → `user_id=$1` 스코프.
+**검증 게이트** ([pattern/signal-sql-guard.ts](../../src/shared/pattern/signal-sql-guard.ts) `validateSignalSql`, 통과 시 null·실패 시 한글 사유): self-contained(보안 경계를 한 파일에서 감사, 외부 리팩토링이 조용히 약화 못 하게). 빠른 실패 순서 — 길이 → 단일문 → SELECT/WITH → 블록패턴(`db-proxy.ts BLOCKED_PATTERNS` 정렬 + DML 전수 + `information_schema`/`pg_catalog`) → 플레이스홀더(`$1`/`$2`만) → 테이블 화이트리스트 → `user_id=$1` 스코프.
 
 - **테이블 화이트리스트(deny-by-default, `SIGNAL_TABLE_WHITELIST`)**: prod introspection으로 확정한 5개 신호 도메인의 행동 데이터 테이블 10개(`schedules`·`schedule_changes`·`routine_templates`·`routine_records`·`routine_inactive_periods`·`sleep_records`·`sleep_events`·`expenses`·`categories`·`diary_meta_tags`). 의도적 제외 — 재정(`assets`·`incomes`·`budget_*`·`fixed_cost*`, 도메인 밖+민감) / 시스템·메타(`signal_defs`·`pattern_links`·`users`·`custom_instructions`, 자기승인·변조·교차유저 차단) / 사주 내부·마스터 / `diary_entries`(원문, 헌장 ① — 일기는 메타 태그로만). 컬럼 단위 예외: `schedule_changes.delete_reason_text`(삭제 사유 원문, #590 ADR-0060)는 테이블은 허용하되 컬럼명을 블록패턴에 추가해 정적 차단(§46).
 - **오탐 방지(빌드 정련)**: 순진한 `FROM/JOIN` 추출은 `EXTRACT(EPOCH FROM …)` 내부 `FROM`과 CTE 이름을 테이블로 오인(prod 시드 신호에서 `min`·`rc` 오탐 실측). → `EXTRACT(…)` 제거 후 추출 + CTE 이름(`WITH x AS (…)`)은 화이트리스트 면제.
@@ -1777,7 +1777,7 @@ LLM이 새 측정 신호(`signal_defs`, `kind='sql'`, `source='llm'`)를 월간 
 
 **월간 routine** (`monthly-signal-suggest`, 로컬 SKILL·repo 외): 매월 09:30 KST Opus([ADR-0027](../adr/0027-llm-async-work-as-claude-app-routines.md)). 입력 풀 = 라이프 메트릭 표(카운트·평균만, **금액 제외**) + 시드 description + 기존 active/rejected 신호(중복·재제안 관리). 텍스트 원문 0(헌장 v2 ①). 생성 계약 = 단일 SELECT·`user_id=$1`·화이트리스트 테이블·`value_type`/`direction` 지정. idempotency = 최초 액션에서 `signal_suggest_runs` 원자적 클레임(`INSERT ... ON CONFLICT (user_id, month_start) DO NOTHING RETURNING` → 빈 결과면 후보 생성·발송 전에 즉시 종료). 재실행·스케줄러 중복 fire 어떤 원인이든 하나만 승리 — 마이그 [094](../../db/migrations/094_signal_suggest_runs.sql), 선택 근거·weekly(062) 대비 최초-클레임 이유는 [ADR-0053](../adr/0053-signal-suggest-idempotency.md). cap 월 5. 등록 INSERT는 DB proxy `validateProxySQL` 통과, 임베드 `sql_body`는 게이트 #1/#2가 심판.
 
-**기각 이력 신호 재생성 가드** (#557): 동일 측정 정의가 기각→재등장→기각 루프를 돌며 승인 카드 피로 + 통계 가족 m-인플레이션을 만드는 것을 차단. 신호 자동 생성 직전 동일 정의를 판정하는 공통 헬퍼 `findEquivalentSignal`([signal-defs.ts](../../src/shared/signal-defs.ts)) 신설.
+**기각 이력 신호 재생성 가드** (#557): 동일 측정 정의가 기각→재등장→기각 루프를 돌며 승인 카드 피로 + 통계 가족 m-인플레이션을 만드는 것을 차단. 신호 자동 생성 직전 동일 정의를 판정하는 공통 헬퍼 `findEquivalentSignal`([pattern/signal-defs.ts](../../src/shared/pattern/signal-defs.ts)) 신설.
 
 - **매치 키**: `(name, direction, kind, threshold, tag_name)` + sql 신호는 `sql_body` 포함. NULL은 `IS NOT DISTINCT FROM`. `user_id` 격리 + `excludeId`(자기 제외).
 - **재사용 규칙**: active/pending 동일 정의 → 재사용(재생성 안 함) / **rejected만 있는 동일 정의 → 스킵**(기각 유지) / 없으면 생성 허용.
@@ -1839,7 +1839,7 @@ P6는 marginal 교란을 **플래그**하고 각 (링크 × 교란 Z)의 공동�
 
 **방법 = Mantel-Haenszel 층화** (vs [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 지명 elastic-net): 시드 S·신호 X·교란 Z가 전부 결정론 binary + 교란 2\~3개 캡 + n=1 희소 → 층화가 교과서적·가볍다(층별 2×2 = P6 프리미티브 재사용). elastic-net은 새 통계 코어(페널티 GLM 솔버)·log-odds 이질 척도·λ 불안정 → **교란이 층화 한계(joint strata 폭발) 넘는 다수일 때**를 위한 후속 노브(기본 off, [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §1).
 
-**MH 조정 알고리즘** ([pattern/confound-calc.ts](../../src/shared/pattern/confound-calc.ts) `adjustConfounders` + [stats.ts](../../src/shared/stats.ts) `mantelHaenszelRR`), 링크(S × X)마다:
+**MH 조정 알고리즘** ([pattern/confound-calc.ts](../../src/shared/pattern/confound-calc.ts) `adjustConfounders` + [pattern/stats.ts](../../src/shared/pattern/stats.ts) `mantelHaenszelRR`), 링크(S × X)마다:
 
 1. **게이트 통과 교란** = P6 `suspected` 중 `nCofire ≥ adjustMinCofire`(30). 0개면 조정 스킵(dormant — `confound.adjusted` 미기록, 뷰 무변화).
 2. **층 구성** (joint, cap 3): 게이트 통과 Z들의 값 조합으로 윈도우 일자 분할(1개 → 2층, k개 → 최대 2^k층). 층 k에서 `buildContingency(actS\|층k, sigX)` → 2×2.
@@ -2030,7 +2030,7 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 | `delegated_to_strength_band` | ② 누적 위임 | 제외 (영구 대체) |
 | `NULL` | 활성 또는 수동 archive | 제외 |
 
-#### ③ 포화 시드 양방향 가드 (`seed-saturation.ts`)
+#### ③ 포화 시드 양방향 가드 (`pattern/seed-saturation.ts`)
 
 주간 검증 엔진(`weekly-verification/process-user.ts` `processUser`)이 링크 검증·스냅샷 이후·발굴 surface 전에 양방향 sweep:
 
@@ -2206,7 +2206,7 @@ src/agents/insight/
 └── llm-signal-cards.ts            # #477 P5b LLM 신호 제안 승인 카드 (buildLlmSignalCard + 승인/반려 payload, 옛 metric-approval-cards 대체)
 
 src/shared/
-├── signal-sql-guard.ts            # #477 P5b LLM SQL 게이트 #1 정적 검증 (validateSignalSql + 테이블 화이트리스트, ADR-0040)
+├── pattern/signal-sql-guard.ts    # #477 P5b LLM SQL 게이트 #1 정적 검증 (validateSignalSql + 테이블 화이트리스트, ADR-0040)
 ├── pattern/match-*.ts             # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger + P5b runLlmSignalSql(게이트 #2)
 ├── pattern/                       # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
 ├── pattern/confound-*.ts          # #477 P6 교란 플래그(marginal 탐지, ADR-0041) + P7 다변량 분리(MH 층화 조정 → confound.adjusted/explainedAway → 노출 soft-demote, ADR-0042)
@@ -2214,12 +2214,12 @@ src/shared/
 ├── period/interpretation-*.ts     # #523 P2 기간 해석 엔진(derive→payload→narrative→render, 측정/교과서 분리, measured=0 일급 경로) + period_interpretations DB 헬퍼 + P3 장부 섹션 렌더(renderInterpretationBlocks ledger 인자), ADR-0050
 ├── period/forecast-*.ts           # #523 P3 예측 장부(generateForecasts/scoreForecasts/loadLedger) — 사전등록→사후채점, baseline 동결·방향적중+delta(Brier 금지)·대표신호 해소, 절기 시간게이트 무인 자기검증, ADR-0050
 ├── saju/                          # 만세력 — 절기 테이블 2024~2033(#523 P2 연장) + getDayPillar/getMonthPillar/getYearPillar + getJeolgiMonthRange·isJeolgiTransitionDay·getIpchunDate + 십성·합충 유틸
-├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
-├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
-├── saju-hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
-├── quantile.ts                    # #477 P4a tertile 컷 + 밴드 분류 (주간 산출 → 일별 적용 공통 규칙)
-├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann + P7: Mantel-Haenszel 층화 RR)
-├── bayesian-posterior.ts          # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
+├── saju/strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
+├── saju/strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
+├── saju/hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
+├── pattern/quantile.ts            # #477 P4a tertile 컷 + 밴드 분류 (주간 산출 → 일별 적용 공통 규칙)
+├── pattern/stats.ts               # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann + P7: Mantel-Haenszel 층화 RR)
+├── pattern/bayesian-posterior.ts  # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
 ├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification: P2 q + P3 e-value α·emerging 바·discoverQ·blockLen) 임계 단일 관리
 └── insights/                      # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 verified tier=P3까지 미노출)
 
@@ -2441,7 +2441,7 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 - **P5b 재료** — `schedule_changes`는 화이트리스트에 이미 포함(§30). 사유 카테고리가 생기면서 이 테이블 기반 LLM 신호 제안이 처음으로 의미 있는 재료를 얻는다(`external`·`rescheduled` 등의 신호화는 표본 축적 후 P5b·수동 판단에 위임).
 - **`schedule_fate` 확장** — view 말미에 `delete_reason_category` 노출(살아있는 일정은 NULL). #574 생성일 코호트 레이어가 "미루다 변심으로 지운 일정" 같은 사유별 슬라이스를 얻는다.
 
-원문 비노출(헌장 ①): `delete_reason_text`는 검증·발굴·제안 어떤 LLM 입력에도 넣지 않는다. 화이트리스트가 테이블 단위 검사라 컬럼을 못 막으므로 [signal-sql-guard.ts](../../src/shared/signal-sql-guard.ts) `BLOCKED_PATTERNS`에 컬럼명 자체를 추가해 LLM 신호 SQL의 참조를 정적으로 차단했다. 존재-윈도우: audit 도메인 dataStart는 `schedule_changes` 최초 행(2026-07-04) 기준이라 사유 도입(마이그 106, 2026-07-10) 전 약 1주는 0으로 관측되는 좌단 아티팩트가 있다 — 삭제가 희소 이벤트라 실질 영향 없음(ADR-0060 명시).
+원문 비노출(헌장 ①): `delete_reason_text`는 검증·발굴·제안 어떤 LLM 입력에도 넣지 않는다. 화이트리스트가 테이블 단위 검사라 컬럼을 못 막으므로 [pattern/signal-sql-guard.ts](../../src/shared/pattern/signal-sql-guard.ts) `BLOCKED_PATTERNS`에 컬럼명 자체를 추가해 LLM 신호 SQL의 참조를 정적으로 차단했다. 존재-윈도우: audit 도메인 dataStart는 `schedule_changes` 최초 행(2026-07-04) 기준이라 사유 도입(마이그 106, 2026-07-10) 전 약 1주는 0으로 관측되는 좌단 아티팩트가 있다 — 삭제가 희소 이벤트라 실질 영향 없음(ADR-0060 명시).
 
 ### 47. Slack 일기 수정 (#639)
 

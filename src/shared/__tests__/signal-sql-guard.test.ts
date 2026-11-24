@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateSignalSql, SIGNAL_TABLE_WHITELIST, SIGNAL_ROW_CAP } from '../signal-sql-guard.js';
+import { validateSignalSql, SIGNAL_TABLE_WHITELIST, SIGNAL_ROW_CAP } from '../pattern/signal-sql-guard.js';
 
 describe('validateSignalSql — 게이트 #1 정적 검증 (ADR-0040)', () => {
   describe('통과 케이스 (null 반환)', () => {

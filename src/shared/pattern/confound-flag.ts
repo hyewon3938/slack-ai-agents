@@ -4,7 +4,7 @@
 
 import { query } from '../db.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import type { BandCuts } from '../quantile.js';
+import type { BandCuts } from './quantile.js';
 import { buildWindowDates } from './binarize.js';
 import { adjustConfounders, flagConfoundersForLink } from './confound-calc.js';
 import type { ConfoundCandidate, ConfoundResult } from './confound-types.js';

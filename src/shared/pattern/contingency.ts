@@ -2,9 +2,9 @@
  * 2×2 분할표·일자 시퀀스·판정 순수 계산 (pattern-verification에서 분리).
  */
 
-import { cumulativePosteriorFromHitMiss, posteriorMean } from '../bayesian-posterior.js';
+import { cumulativePosteriorFromHitMiss, posteriorMean } from './bayesian-posterior.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import { type DayObservation, fisherExact } from '../stats.js';
+import { type DayObservation, fisherExact } from './stats.js';
 import type {
   Contingency,
   ContingencyVerification,

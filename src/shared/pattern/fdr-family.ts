@@ -2,7 +2,7 @@
  * FDR 가족 분리 (pattern-verification에서 분리).
  */
 
-import { bhFdr } from '../stats.js';
+import { bhFdr } from './stats.js';
 
 // ─── FDR 가족 분리 (#477 P4a, ADR-0037) ──────────────────
 

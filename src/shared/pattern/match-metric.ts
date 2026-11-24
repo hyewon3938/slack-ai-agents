@@ -4,7 +4,7 @@
 
 import { query, queryReadOnly, queryWithClient } from '../db.js';
 import { addDays } from '../kst.js';
-import { SIGNAL_ROW_CAP, validateSignalSql } from '../signal-sql-guard.js';
+import { SIGNAL_ROW_CAP, validateSignalSql } from './signal-sql-guard.js';
 import type { MetricEvaluation, SajuMetric } from './match-types.js';
 
 const METRIC_TIMEOUT_MS = 5_000;

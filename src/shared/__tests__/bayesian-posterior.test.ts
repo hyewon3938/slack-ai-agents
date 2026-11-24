@@ -5,7 +5,7 @@ import {
   credibleInterval,
   cumulativePosteriorFromHitMiss,
   empiricalBetaPrior,
-} from '../bayesian-posterior.js';
+} from '../pattern/bayesian-posterior.js';
 
 describe('updatePosterior', () => {
   it('hit → α+1, β 그대로', () => {
