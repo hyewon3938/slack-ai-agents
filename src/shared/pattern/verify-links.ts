@@ -284,6 +284,25 @@ const toLinkVerification = (
   };
 };
 
+/** 전 링크 중간 결과에 공통 prior·가족별 q를 일괄 적용해 최종 결과로 변환. */
+const finalizeVerifications = (
+  interim: LinkInterim[],
+  signalLabelById: Map<number, string>,
+): LinkVerification[] => {
+  // empirical-Bayes 공통 prior — 전 링크 발현일 hit/miss로 추정(헌장 ④: 링크 적으면 약함).
+  const ebPrior: BetaPosterior = empiricalBetaPrior(
+    interim.map((x) => ({ hits: x.cont.a, misses: x.cont.b })),
+  );
+  // q는 자기상관 보정된 block-perm p로(Fisher는 test_detail 참고용).
+  // FDR 가족 분리 (ADR-0037): 강도 밴드(saju_strength)와 baseline을 독립 보정 → 가족 간 비용 격리.
+  const qValues = bhFdrByFamily(interim.map((x) => ({ p: x.blockP, family: x.family })));
+
+  return interim.map((x, i) => {
+    const qValue = qValues[i] ?? NaN;
+    return toLinkVerification(x, qValue, ebPrior, signalLabelById);
+  });
+};
+
 /**
  * 한 유저의 active 링크 전부를 off-day 대조 검증. UPDATE/Slack 없음 — 계산 결과만 반환.
  * BH-FDR은 전 링크 p를 모아 일괄 적용.
@@ -344,16 +363,5 @@ export const verifyUserLinks = async (
     .map((row) => buildLinkInterim(row, deps))
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  // empirical-Bayes 공통 prior — 전 링크 발현일 hit/miss로 추정(헌장 ④: 링크 적으면 약함).
-  const ebPrior: BetaPosterior = empiricalBetaPrior(
-    interim.map((x) => ({ hits: x.cont.a, misses: x.cont.b })),
-  );
-  // q는 자기상관 보정된 block-perm p로(Fisher는 test_detail 참고용).
-  // FDR 가족 분리 (ADR-0037): 강도 밴드(saju_strength)와 baseline을 독립 보정 → 가족 간 비용 격리.
-  const qValues = bhFdrByFamily(interim.map((x) => ({ p: x.blockP, family: x.family })));
-
-  return interim.map((x, i) => {
-    const qValue = qValues[i] ?? NaN;
-    return toLinkVerification(x, qValue, ebPrior, signalLabelById);
-  });
+  return finalizeVerifications(interim, signalLabelById);
 };
