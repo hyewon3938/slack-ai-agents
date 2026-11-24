@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 180개, 19759줄이고 테스트 파일은 56개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 181개, 19702줄이고 테스트 파일은 56개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -36,7 +36,7 @@
 | `hypothesis-discovery-rank.ts` | 65 | 패턴 발굴 엔진 후보 단계 — 생존 쌍을 카드·pending 링크용 후보로 바꾸고 top-N으로 자른다 (#477 P5a, ADR-0039). | function: `toDiscoveryCandidate`, `rankTopN` |
 | `hypothesis-discovery-scan.ts` | 167 | 패턴 발굴 엔진 스캔 단계 — 여집합 (시드 × 신호) 쌍의 off-day 2×2 + 효과크기 사전선별 (#477 P5a, ADR-0039). | function: `scanSurvivors` |
 | `hypothesis-discovery-types.ts` | 55 | 패턴 발굴 엔진 타입 — 발굴 후보(카드·pending 링크용)와 사전선별 생존 쌍 (#477 P5a, ADR-0039). | type: `DiscoveryCandidate`, `Survivor` |
-| `hypothesis-discovery.ts` | 154 | 패턴 발굴 엔진 — 링크 없는 (시드 × 신호) 여집합을 off-day 대조로 스캔 (#477 P5a, ADR-0039). | function: `discoverCandidates` |
+| `hypothesis-discovery.ts` | 103 | 패턴 발굴 엔진 — 링크 없는 (시드 × 신호) 여집합을 off-day 대조로 스캔 (#477 P5a, ADR-0039). | function: `discoverCandidates` |
 | `index.ts` | 169 |  | function: `createInsightAgent` |
 | `llm-signal-cards.ts` | 97 | LLM 자율 신호 제안 승인 카드 — #477 P5b (ADR-0040, P5a 승인 게이트 재사용). | function: `encodeLlmSignalPayload`, `decodeLlmSignalPayload`, `buildLlmSignalCard`, `buildNoSignalSuggestionMessage`<br>const: `LLM_SIGNAL_APPROVE_ACTION_ID`, `LLM_SIGNAL_REJECT_ACTION_ID`<br>type: `LlmSignalPayload`, `LlmSignalCardInput` |
 | `pattern-seed-fast-path.ts` | 108 | 사주 시드 토글 fast path. | function: `tryPatternSeedFastPath`<br>const: `SAJU_SEED_LIST_RE`, `SAJU_SEED_LIST_ALL_RE`, `SAJU_SEED_OFF_RE`, `SAJU_SEED_ON_RE` |
@@ -216,7 +216,7 @@
 | `bayesian-posterior.ts` | 92 | Beta-Binomial Bayesian posterior 헬퍼 — ADR-0024 실행 (마스터 #434 Phase 7). | function: `updatePosterior`, `posteriorMean`, `credibleInterval`, `cumulativePosteriorFromHitMiss`, `empiricalBetaPrior`<br>type: `BetaPosterior` |
 | `binarize.ts` | 83 | 윈도우 일자 배열 + sql 신호 시리즈 이진화 (pattern-verification에서 분리). | function: `buildWindowDates`, `binarizeSqlSeries` |
 | `confound-calc.ts` | 228 | 교란 플래그·MH 층화 조정 순수 계산 (confound에서 분리). | function: `computeOverlap`, `flagConfoundersForLink`, `buildStrata`, `classifyVerdict`, `adjustConfounders`<br>type: `AdjustInput` |
-| `confound-flag.ts` | 224 | 교란 플래그 로더 (confound에서 분리). | function: `flagConfounds` |
+| `confound-flag.ts` | 200 | 교란 플래그 로더 (confound에서 분리). | function: `flagConfounds` |
 | `confound-types.ts` | 63 | 교란 플래그·조정 타입 (confound에서 분리). | type: `SuspectedConfounder`, `ConfoundVerdict`, `AdjustedConfounder`, `ConfoundData`, `ConfoundResult`, `ConfoundThresholds`, `ConfoundAdjustThresholds`, `ConfoundCandidate` |
 | `contingency.ts` | 166 | 2×2 분할표·일자 시퀀스·판정 순수 계산 (pattern-verification에서 분리). | function: `buildContingency`, `buildDaySequence`, `splitHalvesConsistent`, `verifyContingency`, `classifyVerdict`, `statusForVerdict` |
 | `data-window.ts` | 145 | 데이터-존재 윈도우 계산 (pattern-verification에서 분리). | function: `computeUserDataStarts`, `signalDataStart`, `seedDataStart`, `maxDate`, `enrollmentStart`<br>type: `UserDataStarts` |
@@ -233,6 +233,7 @@
 | `mirror-signal.ts` | 112 | 거울 신호 정의 보장 (pattern-verification에서 분리). | function: `ensureMirrorSignalDef`<br>type: `MirrorSignalOutcome`, `MirrorSignalResult` |
 | `quantile.ts` | 69 | 분위수 컷 + 밴드 분류 순수 함수 — #477 P4a (ADR-0036). | function: `isBand`, `quantileSorted`, `tertileCuts`, `classifyBand`<br>type: `BandCuts`, `Band` |
 | `seed-saturation.ts` | 211 | 포화 시드 양방향 가드 (#508 P③, ADR-0046). | function: `isSaturated`, `isDesaturated`, `runSaturationSweep`<br>const: `SATURATION_REASON`<br>type: `SweepSeed`, `SaturationSweepResult` |
+| `series-map.ts` | 71 | 신호·시드 시리즈 일괄 계산 — 검증·발굴·교란 진입점이 공유하는 헬퍼. | function: `computeSignalSeriesMap`, `computeSeedActivationMap` |
 | `series.ts` | 212 | 신호·시드 활성 시리즈 계산 (pattern-verification에서 분리). | function: `computeSignalSeries`, `splitRawByActivation`, `computeTargetStrengthSeries`, `computeSeedActivationSeries`, `lastActivationDate`<br>type: `SignalSeriesResult` |
 | `signal-defs.ts` | 106 | signal_defs 재생성 가드 — #557 (2026-07 감사 S7). | function: `findEquivalentSignal`<br>type: `SignalIdentity`, `EquivalentDecision` |
 | `signal-sql-guard.ts` | 187 | LLM 신호 SQL 게이트 #1 — 정적 검증 (#477 P5b, ADR-0040). | function: `validateSignalSql`<br>const: `SIGNAL_ROW_CAP`, `SIGNAL_TABLE_WHITELIST` |
@@ -242,7 +243,7 @@
 | `strength-cutpoints.ts` | 56 | 강도 분위수 컷 산출 (pattern-verification에서 분리). | function: `computeStrengthCutpoints`<br>type: `StrengthCutpoint` |
 | `types.ts` | 107 | off-day 대조 검증 엔진의 공용 타입 (pattern-verification에서 분리). | type: `SignalDirection`, `LinkLifecycleStatus`, `Verdict`, `DaySeries`, `SignalDef`, `Contingency`, `ContingencyVerification`, `LinkVerification` |
 | `verify-link-calc.ts` | 197 | 링크 1건 검증 계산과 일괄 보정 (verify-links에서 분리, DB 접근 없음). | function: `buildLinkInterim`, `finalizeVerifications`<br>type: `ActiveLinkRow`, `LinkInterimDeps` |
-| `verify-links.ts` | 175 | 사용자 링크 주간 검증 (pattern-verification에서 분리). | function: `verifyUserLinks` |
+| `verify-links.ts` | 122 | 사용자 링크 주간 검증 (pattern-verification에서 분리). | function: `verifyUserLinks` |
 
 ## `src/shared/period`
 

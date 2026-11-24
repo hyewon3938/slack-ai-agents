@@ -14,73 +14,21 @@
 
 import { buildWindowDates } from '../../shared/pattern/binarize.js';
 import {
-  computeSignalSeries,
-  computeSeedActivationSeries,
-  type SignalSeriesResult,
-} from '../../shared/pattern/series.js';
+  computeSeedActivationMap,
+  computeSignalSeriesMap,
+} from '../../shared/pattern/series-map.js';
 import { bhFdrByFamily, familyOf } from '../../shared/pattern/fdr-family.js';
 import { computeUserDataStarts, signalDataStart } from '../../shared/pattern/data-window.js';
 import { loadActiveSeeds } from '../../shared/pattern/match-seeds.js';
 import { buildNameIdMap } from '../../shared/pattern/match-day.js';
-import { type SajuSeedWithMetrics, type DailyContext } from '../../shared/pattern/match-types.js';
-import type { BandCuts } from '../../shared/pattern/quantile.js';
 import { INSIGHT_THRESHOLDS } from '../../shared/insight-thresholds.js';
-import {
-  loadActiveSignals,
-  loadLinkedPairs,
-  type LoadedSignal,
-} from './hypothesis-discovery-load.js';
+import { loadActiveSignals, loadLinkedPairs } from './hypothesis-discovery-load.js';
 import { scanSurvivors } from './hypothesis-discovery-scan.js';
 import { toDiscoveryCandidate, rankTopN } from './hypothesis-discovery-rank.js';
 import type { DiscoveryCandidate } from './hypothesis-discovery-types.js';
 
 const V = INSIGHT_THRESHOLDS.patternVerification;
-/** 신호 시리즈(신호당 1회) — continuous는 raw 보존(Mann-Whitney 효과크기 §4). */
-const computeSignalSeriesMap = async (
-  userId: number,
-  signals: LoadedSignal[],
-  windowDates: string[],
-  signalStartById: Map<number, string | null>,
-): Promise<Map<number, SignalSeriesResult>> => {
-  const signalSeriesById = new Map<number, SignalSeriesResult>();
-  for (const s of signals) {
-    signalSeriesById.set(
-      s.def.id,
-      await computeSignalSeries(userId, s.def, windowDates, signalStartById.get(s.def.id) ?? null),
-    );
-  }
-  return signalSeriesById;
-};
 
-/** 시드 활성 시리즈(시드당 1회, strength_band 2-pass 포함) — ctx·강도·컷 캐시 공유. */
-const computeSeedActivationMap = async (
-  seeds: SajuSeedWithMetrics[],
-  userId: number,
-  windowDates: string[],
-  stemMap: Map<string, number>,
-  branchMap: Map<string, number>,
-): Promise<Map<number, Map<string, boolean>>> => {
-  const ctxCache = new Map<string, DailyContext | null>();
-  const strengthCache = new Map<string, Map<string, number>>();
-  const cutCache = new Map<string, BandCuts>();
-  const seedActivationById = new Map<number, Map<string, boolean>>();
-  for (const seed of seeds) {
-    seedActivationById.set(
-      seed.id,
-      await computeSeedActivationSeries(
-        seed,
-        userId,
-        windowDates,
-        ctxCache,
-        stemMap,
-        branchMap,
-        strengthCache,
-        cutCache,
-      ),
-    );
-  }
-  return seedActivationById;
-};
 /**
  * 미등록 (시드 × 신호) 여집합을 off-day 대조로 스캔 → 발견 q·top-N 통과 후보.
  * 검증 프리미티브 재사용(시드 활성 시리즈·신호 시리즈는 1회씩 계산, P1 전역화 payoff).
@@ -109,15 +57,16 @@ export const discoverCandidates = async (
     signals.map((s) => [s.def.id, signalDataStart(s.def.domain, dataStarts)]),
   );
 
+  // 신호 시리즈는 continuous면 raw 보존(Mann-Whitney 효과크기 §4).
   const signalSeriesById = await computeSignalSeriesMap(
     userId,
-    signals,
+    signals.map((s) => s.def),
     windowDates,
     signalStartById,
   );
   const seedActivationById = await computeSeedActivationMap(
-    seeds,
     userId,
+    seeds,
     windowDates,
     stemMap,
     branchMap,

@@ -5,19 +5,13 @@
 import { query } from '../db.js';
 import { signalLabel } from '../insight-labels.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import type { BandCuts } from './quantile.js';
 import { buildWindowDates } from './binarize.js';
 import { computeUserDataStarts, signalDataStart } from './data-window.js';
 import { type SignalDefRow, querySignalDefRows, toSignalDef } from './load-signal-defs.js';
 import { buildNameIdMap } from './match-day.js';
 import { loadActiveSeeds } from './match-seeds.js';
-import type { DailyContext, SajuSeedWithMetrics } from './match-types.js';
-import {
-  type SignalSeriesResult,
-  computeSeedActivationSeries,
-  computeSignalSeries,
-} from './series.js';
-import type { LinkVerification, SignalDef } from './types.js';
+import { computeSeedActivationMap, computeSignalSeriesMap } from './series-map.js';
+import type { LinkVerification } from './types.js';
 import {
   type ActiveLinkRow,
   type LinkInterimDeps,
@@ -59,58 +53,6 @@ const buildSignalLabelById = (signalRows: SignalDefRow[]): Map<number, string> =
     ]),
   );
 
-// 신호 시리즈(신호당 1회) — P1 전역화 payoff.
-// 신호 시리즈는 자기 도메인 시작일 기준으로 빈 과거를 결측 처리(baseline 오염·아티팩트 차단).
-const computeSignalSeriesById = async (
-  userId: number,
-  signalById: Map<number, SignalDef>,
-  windowDates: string[],
-  signalStartById: Map<number, string | null>,
-): Promise<Map<number, SignalSeriesResult>> => {
-  const signalSeriesById = new Map<number, SignalSeriesResult>();
-  for (const [sid, signal] of signalById) {
-    signalSeriesById.set(
-      sid,
-      await computeSignalSeries(userId, signal, windowDates, signalStartById.get(sid) ?? null),
-    );
-  }
-  return signalSeriesById;
-};
-
-/** 시드 활성 시리즈(시드당 1회) — 링크에 등장한 시드만, 등장 순서대로. */
-const computeSeedSeriesById = async (
-  userId: number,
-  linkRows: ActiveLinkRow[],
-  seedById: Map<number, SajuSeedWithMetrics>,
-  windowDates: string[],
-  stemMap: Map<string, number>,
-  branchMap: Map<string, number>,
-): Promise<Map<number, Map<string, boolean>>> => {
-  const ctxCache = new Map<string, DailyContext | null>();
-  // 강도 시리즈·컷 캐시 — 18 밴드 시드가 6 target(일간+5오행) 계산을 공유(재계산 방지).
-  const strengthCache = new Map<string, Map<string, number>>();
-  const cutCache = new Map<string, BandCuts>();
-  const seedSeriesById = new Map<number, Map<string, boolean>>();
-  for (const seedId of new Set(linkRows.map((r) => r.seed_id))) {
-    const seed = seedById.get(seedId);
-    if (!seed) continue;
-    seedSeriesById.set(
-      seedId,
-      await computeSeedActivationSeries(
-        seed,
-        userId,
-        windowDates,
-        ctxCache,
-        stemMap,
-        branchMap,
-        strengthCache,
-        cutCache,
-      ),
-    );
-  }
-  return seedSeriesById;
-};
-
 /**
  * 한 유저의 active 링크 전부를 off-day 대조 검증. UPDATE/Slack 없음 — 계산 결과만 반환.
  * BH-FDR은 전 링크 p를 모아 일괄 적용.
@@ -142,16 +84,21 @@ export const verifyUserLinks = async (
     [...signalById].map(([sid, sig]) => [sid, signalDataStart(sig.domain, dataStarts)]),
   );
 
-  const signalSeriesById = await computeSignalSeriesById(
+  // 신호 시리즈(신호당 1회) — P1 전역화 payoff.
+  const signalSeriesById = await computeSignalSeriesMap(
     userId,
-    signalById,
+    signalById.values(),
     windowDates,
     signalStartById,
   );
-  const seedSeriesById = await computeSeedSeriesById(
+  // 시드 활성 시리즈(시드당 1회) — 링크에 등장한 시드만, 등장 순서대로.
+  const linkSeeds = [...new Set(linkRes.rows.map((r) => r.seed_id))].flatMap((seedId) => {
+    const seed = seedById.get(seedId);
+    return seed ? [seed] : [];
+  });
+  const seedSeriesById = await computeSeedActivationMap(
     userId,
-    linkRes.rows,
-    seedById,
+    linkSeeds,
     windowDates,
     stemMap,
     branchMap,
