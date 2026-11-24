@@ -1,11 +1,10 @@
-import { validateFields } from '@/lib/validation';
+import { parseRouteId, validateFields } from '@/lib/validation';
 import { isKnownPaymentMethod } from './billing/payment-methods';
 import { ALL_EXPENSE_CATEGORIES, INCOME_CATEGORIES, VALID_CATEGORIES } from './types';
 
 /** 지출·고정비·예정지출 API 입력 검증 (route 공용 순수 함수) */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const ID_RE = /^\d+$/;
 const VALID_EXPENSE_CATEGORIES = new Set<string>(ALL_EXPENSE_CATEGORIES);
 const VALID_INCOME_CATEGORIES = new Set<string>(INCOME_CATEGORIES);
 
@@ -28,9 +27,7 @@ export function isNonNegativeInteger(v: unknown): v is number {
 
 /** 경로·쿼리 문자열 ID를 양의 정수로 변환. '1.5'·'12abc'·'0'은 null */
 export function parseIdParam(raw: string | null | undefined): number | null {
-  if (!raw || !ID_RE.test(raw)) return null;
-  const id = Number(raw);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
+  return raw ? parseRouteId(raw) : null;
 }
 
 /** 할부 개월 수 — 없음·1은 일시불(1), 2~12는 할부, 그 밖은 에러 */
