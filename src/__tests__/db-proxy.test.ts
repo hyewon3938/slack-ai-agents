@@ -105,6 +105,15 @@ describe('DB Proxy Server', () => {
       });
       expect(status).toBe(200);
     });
+
+    it('스킴이 소문자(bearer)면 키가 맞아도 401', async () => {
+      const { status } = await makeRequest(port, {
+        headers: { Authorization: 'bearer test-api-key-at-least-32-chars-long-xxxx' },
+        body: { text: 'SELECT 1' },
+      });
+      expect(status).toBe(401);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
   });
 
   // ── 허용 쿼리 ──
@@ -211,6 +220,47 @@ describe('DB Proxy Server', () => {
       });
       expect(status).toBe(400);
       expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['pg_ls_dir', "SELECT pg_ls_dir('.')"],
+      ['pg_stat_file', "SELECT pg_stat_file('x')"],
+      ['pg_read_binary_file', "SELECT pg_read_binary_file('x')"],
+      ['lo_import', "SELECT lo_import('x')"],
+      ['lo_export', "SELECT lo_export(1, 'x')"],
+      ['set_config', "SELECT set_config('x', 'y', false)"],
+      ['pg_hba_file_rules', 'SELECT * FROM pg_hba_file_rules'],
+    ])('차단 대상 함수·뷰 거절: %s', async (_name, sql) => {
+      const { status, body } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: sql },
+      });
+      expect(status).toBe(400);
+      expect((body as { error: string }).error).toBe('Query rejected');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['SET', 'SET search_path = public'],
+      ['SHOW', 'SHOW ALL'],
+      ['EXPLAIN', 'EXPLAIN SELECT 1'],
+      ['VACUUM', 'VACUUM schedules'],
+    ])('허용 목록에 없는 첫 키워드 거절: %s', async (_name, sql) => {
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: sql },
+      });
+      expect(status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('허용: 끝에 세미콜론 하나는 단일 statement로 봄', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const { status } = await makeRequest(port, {
+        headers: AUTH,
+        body: { text: 'SELECT 1;' },
+      });
+      expect(status).toBe(200);
     });
 
     it('허용: DROP 문자열이 값에만 있는 경우 (주석/리터럴 제거)', async () => {
