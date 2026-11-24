@@ -95,44 +95,34 @@ const tagPresent = async (userId: number, date: string, tagName: string): Promis
   return result.rows.length > 0;
 };
 
-export const evaluateMetric = async (
+// kind=tag — off-day 대조용 객관 보조 신호. 그날 태그가 찍혔으면 hit(binary).
+const evaluateTagMetric = async (
   metric: SajuMetric,
   userId: number,
   date: string,
 ): Promise<MetricEvaluation> => {
-  // kind=tag — off-day 대조용 객관 보조 신호. 그날 태그가 찍혔으면 hit(binary).
-  if (metric.kind === 'tag') {
-    const present = metric.tag_name ? await tagPresent(userId, date, metric.tag_name) : false;
-    return {
-      metric_name: metric.metric_name,
-      domain: metric.domain,
-      todayValue: present ? 1 : 0,
-      baselineAvg: null,
-      threshold: 1,
-      direction: 'flag_present',
-      passed: present,
-    };
-  }
+  const present = metric.tag_name ? await tagPresent(userId, date, metric.tag_name) : false;
+  return {
+    metric_name: metric.metric_name,
+    domain: metric.domain,
+    todayValue: present ? 1 : 0,
+    baselineAvg: null,
+    threshold: 1,
+    direction: 'flag_present',
+    passed: present,
+  };
+};
 
-  // kind=sql — signal_defs CHECK가 sql_body/direction NOT NULL 보장. 방어적으로 좁힘.
-  const sql = metric.expected_metric_sql;
-  const direction = metric.expected_direction;
-  if (!sql || !direction) {
-    return {
-      metric_name: metric.metric_name,
-      domain: metric.domain,
-      todayValue: 0,
-      baselineAvg: null,
-      threshold: metric.expected_threshold,
-      direction: direction ?? 'flag_present',
-      passed: false,
-    };
-  }
-
-  // source='llm'이면 untrusted 격리 실행기(runLlmSignalSql), seed면 기존 신뢰 경로(runMetricSql).
-  const runner = runnerForSource(metric.source);
-  const todayValue = await runner(sql, userId, date);
-
+/** direction별 통과 판정 — avg 계열만 baseline(직전 28일 평균)을 조회한다. */
+const judgeDirection = async (
+  metric: SajuMetric,
+  direction: NonNullable<SajuMetric['expected_direction']>,
+  sql: string,
+  userId: number,
+  date: string,
+  runner: MetricRunner,
+  todayValue: number,
+): Promise<{ baseline: number | null; passed: boolean }> => {
   let baseline: number | null = null;
   let passed = false;
 
@@ -155,6 +145,45 @@ export const evaluateMetric = async (
       passed = todayValue >= (metric.expected_threshold ?? 1);
       break;
   }
+
+  return { baseline, passed };
+};
+
+export const evaluateMetric = async (
+  metric: SajuMetric,
+  userId: number,
+  date: string,
+): Promise<MetricEvaluation> => {
+  if (metric.kind === 'tag') return evaluateTagMetric(metric, userId, date);
+
+  // kind=sql — signal_defs CHECK가 sql_body/direction NOT NULL 보장. 방어적으로 좁힘.
+  const sql = metric.expected_metric_sql;
+  const direction = metric.expected_direction;
+  if (!sql || !direction) {
+    return {
+      metric_name: metric.metric_name,
+      domain: metric.domain,
+      todayValue: 0,
+      baselineAvg: null,
+      threshold: metric.expected_threshold,
+      direction: direction ?? 'flag_present',
+      passed: false,
+    };
+  }
+
+  // source='llm'이면 untrusted 격리 실행기(runLlmSignalSql), seed면 기존 신뢰 경로(runMetricSql).
+  const runner = runnerForSource(metric.source);
+  const todayValue = await runner(sql, userId, date);
+
+  const { baseline, passed } = await judgeDirection(
+    metric,
+    direction,
+    sql,
+    userId,
+    date,
+    runner,
+    todayValue,
+  );
 
   return {
     metric_name: metric.metric_name,
