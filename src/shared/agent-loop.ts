@@ -8,15 +8,6 @@ export const MAX_RATE_LIMIT_RETRIES = 3;
 export const LLM_TIMEOUT_MS = 60_000;
 export const TOOL_TIMEOUT_MS = 30_000;
 
-const ACK_MESSAGES = [
-  '잠깐만, 확인해볼게.',
-  '잠시만, 보고 올게.',
-  '알겠어, 잠깐만.',
-  '오케이, 확인 중.',
-  '잠깐, 찾아볼게.',
-  '알겠어, 금방 할게.',
-] as const;
-
 // ---- 유틸리티 ----
 
 /** Promise에 타임아웃을 적용하는 유틸리티 */
@@ -36,42 +27,6 @@ export const parseRetryDelay = (errorMsg: string, defaultMs: number): number => 
     return Math.ceil(Number(match[1]) * 1000);
   }
   return defaultMs;
-};
-
-/** 랜덤 ACK 메시지 반환 */
-export const getAckMessage = (): string =>
-  ACK_MESSAGES[Math.floor(Math.random() * ACK_MESSAGES.length)];
-
-// ---- 지연 ack ----
-
-/** ack 전송 지연 시간 (ms). 이 시간 내에 LLM 응답이 오면 ack 생략 */
-export const ACK_DELAY_MS = 1_500;
-
-/**
- * 에이전트 루프를 실행하되, delayMs 이내에 완료되면 ack를 생략한다.
- * 잡담 등 빠른 응답에서 불필요한 "잠깐만" 메시지를 없앤다.
- */
-export const runAgentLoopWithAck = async (
-  llmClient: LLMClient,
-  userText: string,
-  config: AgentLoopConfig,
-  sendAck: () => Promise<unknown>,
-  delayMs = ACK_DELAY_MS,
-): Promise<AgentLoopResult> => {
-  const loopPromise = runAgentLoop(llmClient, userText, config);
-
-  let ackPromise: Promise<unknown> | undefined;
-  const timer = setTimeout(() => {
-    ackPromise = sendAck();
-  }, delayMs);
-
-  const result = await loopPromise;
-  clearTimeout(timer);
-
-  // ack가 전송 중이면 완료 대기 (메시지 순서 보장)
-  if (ackPromise) await ackPromise;
-
-  return result;
 };
 
 // ---- 에이전트 루프 ----

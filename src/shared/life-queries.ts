@@ -316,18 +316,6 @@ export const postponeSchedule = async (
   ]);
 };
 
-// ─── 수면 쿼리 ──────────────────────────────────────
-
-/** 어젯밤 수면 기록 존재 확인 (date = 기상일 기준 단일 날짜) */
-export const queryNightSleepExists = async (wakeDate: string, userId: number): Promise<boolean> => {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*)::text as count FROM sleep_records
-     WHERE sleep_type = 'night' AND date = $1 AND user_id = $2`,
-    [wakeDate, userId],
-  );
-  return Number(result.rows[0]?.count ?? 0) > 0;
-};
-
 // ─── 알림 설정 쿼리 ──────────────────────────────────
 
 export interface NotificationSettingRow {
