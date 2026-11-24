@@ -2,11 +2,19 @@
  * yarn docs:check
  * 1. docs 아래 모든 md가 doc-manifest.json에서 정확히 한 종류로 분류되는지 본다.
  * 2. 현황 문서에 적힌 repo 경로가 실제로 있는지 본다.
+ * 3. sources에 적은 패턴마다 맞는 파일이 하나 이상 있는지 본다.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { classify, findUnusedGlobs, MANIFEST_PATH, parseManifest, type ManifestEntry } from './manifest.js';
+import {
+  classify,
+  findUnusedGlobs,
+  MANIFEST_PATH,
+  parseManifest,
+  type ManifestEntry,
+} from './manifest.js';
+import { matchesGlob } from './glob.js';
 import { createPathChecker, extractPathRefs } from './refs.js';
 import { isDocFile, listRepoFiles } from './repo-files.js';
 
@@ -75,9 +83,18 @@ export const checkDocs = (
   for (const glob of findUnusedGlobs(entries, docs)) {
     errors.push(`${MANIFEST_PATH}: ${glob}에 맞는 문서가 없습니다`);
   }
+  for (const entry of entries) {
+    for (const source of entry.sources) {
+      if (!files.some((file) => matchesGlob(file, source))) {
+        errors.push(`${MANIFEST_PATH}: ${entry.glob}의 sources ${source}에 맞는 파일이 없습니다`);
+      }
+    }
+  }
   for (const entry of allowed) {
     if (!usedKeys.has(allowKey(entry.doc, entry.path))) {
-      errors.push(`${ALLOWLIST_PATH}: ${entry.doc}의 ${entry.path}는 이제 깨져 있지 않으니 목록에서 지우세요`);
+      errors.push(
+        `${ALLOWLIST_PATH}: ${entry.doc}의 ${entry.path}는 이제 깨져 있지 않으니 목록에서 지우세요`,
+      );
     }
   }
   return { errors, checkedDocs, checkedRefs };
@@ -87,12 +104,22 @@ const main = (): void => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
   const read = (path: string): string => readFileSync(join(root, path), 'utf8');
   const files = listRepoFiles(root);
-  const result = checkDocs(files, parseManifest(read(MANIFEST_PATH)), parseAllowlist(read(ALLOWLIST_PATH)), read);
+  const result = checkDocs(
+    files,
+    parseManifest(read(MANIFEST_PATH)),
+    parseAllowlist(read(ALLOWLIST_PATH)),
+    read,
+  );
   if (result.errors.length > 0) {
-    process.stdout.write(`${result.errors.join('\n')}\n\n문서 검사 실패: ${result.errors.length}건\n`);
+    process.stdout.write(
+      `${result.errors.join('\n')}\n\n문서 검사 실패: ${result.errors.length}건\n`,
+    );
     process.exit(1);
   }
-  process.stdout.write(`문서 검사 통과: 현황 문서 ${result.checkedDocs}개, 경로 참조 ${result.checkedRefs}개\n`);
+  process.stdout.write(
+    `문서 검사 통과: 현황 문서 ${result.checkedDocs}개, 경로 참조 ${result.checkedRefs}개\n`,
+  );
 };
 
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  main();

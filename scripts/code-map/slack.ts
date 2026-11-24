@@ -49,7 +49,15 @@ export interface SlackExtract {
   tools: AgentTool[];
 }
 
-const LISTENER_METHODS = new Set(['action', 'view', 'event', 'command', 'shortcut', 'options', 'message']);
+const LISTENER_METHODS = new Set([
+  'action',
+  'view',
+  'event',
+  'command',
+  'shortcut',
+  'options',
+  'message',
+]);
 
 export type ConstLookup = (file: string) => Map<string, string>;
 
@@ -78,14 +86,17 @@ const firstSentenceOf = (text: string): string => {
   return end === -1 ? flat : flat.slice(0, end);
 };
 
-const toolFromObject = (node: ts.ObjectLiteralExpression): { name: string; description: string } | null => {
+const toolFromObject = (
+  node: ts.ObjectLiteralExpression,
+): { name: string; description: string } | null => {
   let name: string | null = null;
   let description: string | null = null;
   let hasSchema = false;
   for (const p of node.properties) {
     if (!ts.isPropertyAssignment(p) || !ts.isIdentifier(p.name)) continue;
     const key = p.name.text;
-    const isText = ts.isStringLiteral(p.initializer) || ts.isNoSubstitutionTemplateLiteral(p.initializer);
+    const isText =
+      ts.isStringLiteral(p.initializer) || ts.isNoSubstitutionTemplateLiteral(p.initializer);
     if (key === 'name' && isText) name = (p.initializer as ts.StringLiteral).text;
     if (key === 'description' && isText) description = (p.initializer as ts.StringLiteral).text;
     if (key === 'inputSchema' || key === 'input_schema') hasSchema = true;
@@ -135,7 +146,11 @@ export const extractSlack = (
     if (ts.isCallExpression(node)) {
       const callee = node.expression;
       const first = node.arguments[0];
-      if (ts.isIdentifier(callee) && callee.text === 'registerAgent' && node.arguments.length >= 2) {
+      if (
+        ts.isIdentifier(callee) &&
+        callee.text === 'registerAgent' &&
+        node.arguments.length >= 2
+      ) {
         const handler = node.arguments[1];
         const factory = handler && ts.isIdentifier(handler) ? findFactory(sf, handler.text) : '';
         const imported = imports.get(factory);
@@ -171,10 +186,18 @@ export const extractSlack = (
     if (ts.isObjectLiteralExpression(node)) {
       const tool = toolFromObject(node);
       if (tool) {
-        out.tools.push({ name: tool.name, description: firstSentenceOf(tool.description), file: filePath });
+        out.tools.push({
+          name: tool.name,
+          description: firstSentenceOf(tool.description),
+          file: filePath,
+        });
       }
     }
-    if (ts.isIdentifier(node) && regexNames.has(node.text) && !ts.isVariableDeclaration(node.parent)) {
+    if (
+      ts.isIdentifier(node) &&
+      regexNames.has(node.text) &&
+      !ts.isVariableDeclaration(node.parent)
+    ) {
       const entry = regexNames.get(node.text);
       const where = enclosingName(node);
       if (entry && where && !entry.usedIn.includes(where)) entry.usedIn.push(where);

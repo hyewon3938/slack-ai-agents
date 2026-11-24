@@ -37,7 +37,10 @@ export const parseManifest = (json: string): ManifestEntry[] => {
     if (kind !== 'record' && kind !== 'current') {
       throw new Error(`${MANIFEST_PATH}: ${glob}의 kind는 record 또는 current여야 합니다`);
     }
-    if (sources !== undefined && !(Array.isArray(sources) && sources.every((s) => typeof s === 'string'))) {
+    if (
+      sources !== undefined &&
+      !(Array.isArray(sources) && sources.every((s) => typeof s === 'string'))
+    ) {
       throw new Error(`${MANIFEST_PATH}: ${glob}의 sources는 문자열 배열이어야 합니다`);
     }
     return { glob, kind, sources: Array.isArray(sources) ? (sources as string[]) : [] };
@@ -54,5 +57,10 @@ export const classify = (docPath: string, entries: readonly ManifestEntry[]): Cl
 };
 
 /** 어느 문서와도 맞지 않는 글롭. 문서를 지우거나 옮긴 뒤 남은 항목을 찾는다. */
-export const findUnusedGlobs = (entries: readonly ManifestEntry[], docs: readonly string[]): string[] =>
-  entries.filter((entry) => !docs.some((doc) => matchesGlob(doc, entry.glob))).map((entry) => entry.glob);
+export const findUnusedGlobs = (
+  entries: readonly ManifestEntry[],
+  docs: readonly string[],
+): string[] =>
+  entries
+    .filter((entry) => !docs.some((doc) => matchesGlob(doc, entry.glob)))
+    .map((entry) => entry.glob);

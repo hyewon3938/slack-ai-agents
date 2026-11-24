@@ -34,7 +34,11 @@ describe('stripSuffix와 normalizePath', () => {
 
 describe('extractPathRefs', () => {
   it('백틱 코드는 루트 기준, 링크는 문서 기준으로 읽는다', () => {
-    const text = ['`src/a.ts:12` 와 [결정](../adr/0001-x.md#배경)', '', '[그림](images/a.png) `yarn test`'].join('\n');
+    const text = [
+      '`src/a.ts:12` 와 [결정](../adr/0001-x.md#배경)',
+      '',
+      '[그림](images/a.png) `yarn test`',
+    ].join('\n');
     expect(extractPathRefs('docs/domains/a.md', text)).toEqual([
       { line: 1, raw: 'src/a.ts:12', path: 'src/a.ts' },
       { line: 1, raw: '../adr/0001-x.md#배경', path: 'docs/adr/0001-x.md' },
@@ -84,7 +88,10 @@ describe('manifest', () => {
   });
 
   it('맞는 항목의 종류와 sources를 모은다', () => {
-    expect(classify('docs/features.md', entries)).toEqual({ kinds: ['current'], sources: ['src/**', 'web/src/**'] });
+    expect(classify('docs/features.md', entries)).toEqual({
+      kinds: ['current'],
+      sources: ['src/**', 'web/src/**'],
+    });
     expect(classify('docs/new/a.md', entries).kinds).toEqual([]);
     expect(findUnusedGlobs(entries, ['docs/features.md'])).toEqual(['docs/adr/**']);
   });
@@ -97,7 +104,7 @@ describe('checkDocs', () => {
     'docs/new/a.md': '',
     'README.md': '`src/gone.ts`',
   };
-  const files = [...Object.keys(docs), 'src/a.ts'];
+  const files = [...Object.keys(docs), 'src/a.ts', 'web/src/a.ts'];
   const read = (path: string): string => docs[path] ?? '';
 
   it('등록 안 된 문서와 없는 경로를 문서:줄로 알린다', () => {
@@ -113,6 +120,15 @@ describe('checkDocs', () => {
     const both: ManifestEntry[] = [...entries, { glob: 'docs/**', kind: 'record', sources: [] }];
     expect(checkDocs(files, both, [], read).errors).toContain(
       'docs/features.md: docs/doc-manifest.json에서 record와 current에 모두 걸립니다',
+    );
+  });
+
+  it('sources 패턴에 맞는 파일이 없으면 알린다', () => {
+    const stale: ManifestEntry[] = entries.map((entry) =>
+      entry.glob === 'docs/features.md' ? { ...entry, sources: ['src/**', 'src/moved/**'] } : entry,
+    );
+    expect(checkDocs(files, stale, [], read).errors).toContain(
+      'docs/doc-manifest.json: docs/features.md의 sources src/moved/**에 맞는 파일이 없습니다',
     );
   });
 
@@ -145,7 +161,10 @@ describe('freshness', () => {
   });
 
   it('GitHub Actions 경고 형식으로 적는다', () => {
-    const line = formatWarning({ doc: 'docs/features.md', changedSources: ['1', '2', '3', '4', '5', '6', '7'] });
+    const line = formatWarning({
+      doc: 'docs/features.md',
+      changedSources: ['1', '2', '3', '4', '5', '6', '7'],
+    });
     expect(line.startsWith('::warning file=docs/features.md::')).toBe(true);
     expect(line.endsWith('1, 2, 3, 4, 5 외 2개')).toBe(true);
   });

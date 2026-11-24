@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyMigration, createSchema, parseColumnDef, type SchemaState } from '../sql-migrations.js';
+import {
+  applyMigration,
+  createSchema,
+  parseColumnDef,
+  type SchemaState,
+} from '../sql-migrations.js';
 import { maskLiterals, splitStatements } from '../sql-split.js';
 import { findSqlTableRefs, findTableUsage } from '../table-usage.js';
 
@@ -15,7 +20,11 @@ const columns = (state: SchemaState, table: string): string[] =>
 describe('splitStatements', () => {
   it('주석과 인용 안의 세미콜론에서는 나누지 않는다', () => {
     const sql = "-- a; b\nSELECT ';' AS x; /* c; */ DO $$ BEGIN x; END $$; SELECT $t$;$t$";
-    expect(splitStatements(sql)).toEqual(["SELECT ';' AS x", 'DO $$ BEGIN x; END $$', 'SELECT $t$;$t$']);
+    expect(splitStatements(sql)).toEqual([
+      "SELECT ';' AS x",
+      'DO $$ BEGIN x; END $$',
+      'SELECT $t$;$t$',
+    ]);
   });
 
   it('문자열을 자리표로 바꾼다', () => {
@@ -34,8 +43,14 @@ describe('parseColumnDef', () => {
       defaultValue: '0',
       primaryKey: false,
     });
-    expect(parseColumnDef('id SERIAL PRIMARY KEY')).toMatchObject({ type: 'SERIAL', notNull: true, primaryKey: true });
-    expect(parseColumnDef('at TIMESTAMP WITH TIME ZONE DEFAULT now() REFERENCES t(id)')).toMatchObject({
+    expect(parseColumnDef('id SERIAL PRIMARY KEY')).toMatchObject({
+      type: 'SERIAL',
+      notNull: true,
+      primaryKey: true,
+    });
+    expect(
+      parseColumnDef('at TIMESTAMP WITH TIME ZONE DEFAULT now() REFERENCES t(id)'),
+    ).toMatchObject({
       type: 'TIMESTAMP WITH TIME ZONE',
       defaultValue: 'now()',
       notNull: false,
@@ -80,7 +95,10 @@ describe('applyMigration', () => {
   });
 
   it('테이블 이름 변경과 삭제를 따라간다', () => {
-    const state = run('CREATE TABLE a (x INT); CREATE TABLE b (y INT);', 'ALTER TABLE a RENAME TO c; DROP TABLE IF EXISTS b, nope CASCADE;');
+    const state = run(
+      'CREATE TABLE a (x INT); CREATE TABLE b (y INT);',
+      'ALTER TABLE a RENAME TO c; DROP TABLE IF EXISTS b, nope CASCADE;',
+    );
     expect([...state.tables.keys()]).toEqual(['c']);
     expect(state.tables.get('c')?.name).toBe('c');
   });
@@ -131,13 +149,17 @@ describe('findTableUsage', () => {
   const known = new Set(['schedules', 'routines']);
 
   it('SQL 키워드 바로 뒤의 테이블 이름만 찾는다', () => {
-    expect(findSqlTableRefs('SELECT * FROM schedules s JOIN routines r ON true', known)).toEqual(['routines', 'schedules']);
+    expect(findSqlTableRefs('SELECT * FROM schedules s JOIN routines r ON true', known)).toEqual([
+      'routines',
+      'schedules',
+    ]);
     expect(findSqlTableRefs('schedules 화면으로 이동', known)).toEqual([]);
     expect(findSqlTableRefs('SELECT * FROM schedules_archive', known)).toEqual([]);
   });
 
   it('템플릿 문자열은 읽고 import 경로는 건너뛴다', () => {
-    const src = "import { x } from './routines';\nconst q = `UPDATE schedules SET a = ${v} WHERE id = 1`;";
+    const src =
+      "import { x } from './routines';\nconst q = `UPDATE schedules SET a = ${v} WHERE id = 1`;";
     expect(findTableUsage('x.ts', src, known)).toEqual(['schedules']);
   });
 });

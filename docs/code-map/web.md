@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`web/src/` 아래 소스 파일 186개, 21910줄이고 테스트 파일은 34개다. 줄 수는 테스트를 뺀 값이다.
+`web/src/` 아래 소스 파일 207개, 21943줄이고 테스트 파일은 34개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
@@ -144,13 +144,13 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 67 |  | function: `GET`, `POST`<br>const: `dynamic` |
+| `route.ts` | 66 |  | function: `GET`, `POST`<br>const: `dynamic` |
 
 ## `web/src/app/api/categories/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 66 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 65 |  | function: `PATCH`, `DELETE` |
 
 ## `web/src/app/api/categories/reorder`
 
@@ -174,13 +174,13 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 157 |  | function: `GET`, `POST` |
+| `route.ts` | 160 |  | function: `GET`, `POST` |
 
 ## `web/src/app/api/expenses/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 85 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 83 |  | function: `PATCH`, `DELETE` |
 
 ## `web/src/app/api/expenses/summary`
 
@@ -198,13 +198,13 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 82 |  | function: `GET`, `POST`<br>const: `dynamic` |
+| `route.ts` | 81 |  | function: `GET`, `POST`<br>const: `dynamic` |
 
 ## `web/src/app/api/routines/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 97 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 96 |  | function: `PATCH`, `DELETE` |
 
 ## `web/src/app/api/routines/[id]/heatmap`
 
@@ -394,7 +394,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `page.tsx` | 292 |  | function: `default CalendarPage` |
+| `page.tsx` | 287 |  | function: `default CalendarPage` |
 
 ## `web/src/app/schedules/categories`
 
@@ -424,19 +424,25 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `budget-settings-page.tsx` | 1089 |  | function: `BudgetSettingsPage` |
+| `asset-item.tsx` | 150 |  | function: `AssetItem` |
+| `budget-settings-page.tsx` | 286 |  | function: `BudgetSettingsPage` |
 | `category-chart.tsx` | 108 |  | function: `CategoryChart` |
+| `category-limit-add-form.tsx` | 89 |  | function: `CategoryLimitAddForm` |
+| `category-limit-item.tsx` | 96 |  | function: `CategoryLimitItem` |
 | `category-limit-tracker.tsx` | 94 |  | function: `CategoryLimitTracker` |
 | `daily-budget-log.tsx` | 156 |  | function: `DailyBudgetLogView` |
 | `expense-edit-modal.tsx` | 280 |  | function: `ExpenseEditModal` |
 | `expense-form.tsx` | 408 |  | function: `ExpenseForm` |
 | `expense-list.tsx` | 275 |  | function: `ExpenseList`<br>type: `TypeFilter` |
+| `fixed-cost-add-form.tsx` | 138 |  | function: `FixedCostAddForm` |
+| `fixed-cost-item.tsx` | 153 |  | function: `FixedCostItem` |
 | `income-edit-modal.tsx` | 181 |  | function: `IncomeEditModal` |
 | `month-navigator.tsx` | 59 |  | function: `MonthNavigator` |
 | `month-summary.tsx` | 294 |  | function: `MonthSummaryCard` |
 | `planned-expense-edit-modal.tsx` | 198 |  | function: `PlannedExpenseEditModal` |
 | `planned-expense-list.tsx` | 225 |  | function: `PlannedExpenseList` |
 | `runway-card.tsx` | 243 |  | function: `RunwayCard` |
+| `target-date-card.tsx` | 199 |  | function: `TargetDateCard` |
 
 ## `web/src/features/budget/hooks`
 
@@ -448,11 +454,13 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `facade.ts` | 441 |  | function: `getMonthlyAllocation`, `getTodayAllocation`, `getRunwayProjection`, `getBudgetPreview`, `listUnsettledMonths`, `runSettlementIfDue`<br>type: `MonthProjection`, `TodayAllocationResult`, `RunwayProjectionResponse`, `BudgetPreviewResponse` |
+| `facade-allocation.ts` | 81 |  | function: `formatKSTDate`, `computeFundsBaseline`, `getMonthlyAllocation`<br>type: `FundsBaseline` |
+| `facade-settlement.ts` | 156 |  | function: `listUnsettledMonths`, `runSettlementIfDue` |
+| `facade.ts` | 222 |  | function: `getTodayAllocation`, `getRunwayProjection`, `getBudgetPreview`<br>const: `getMonthlyAllocation`<br>type: `MonthProjection`, `TodayAllocationResult`, `RunwayProjectionResponse`, `BudgetPreviewResponse`<br>re-export: `listUnsettledMonths`, `runSettlementIfDue` |
 | `fixed-cost-ensure.ts` | 73 |  | function: `queryFixedCosts`, `ensureFixedCostExpenses` |
-| `queries.ts` | 689 |  | function: `queryExpenses`, `queryExpensesByBillingMonth`, `queryExpense`, `createExpense`, `createInstallmentExpenses`, `updateExpense`, `deleteExpense`, `queryMonthSummary`, `updateFixedCost`, `createFixedCost`, `deleteFixedCost`, `queryAssets`, `updateAsset`, `setDefaultAsset`, `clearDefaultAsset`, `queryPlannedExpenses`, `createPlannedExpense`, `updatePlannedExpense`, `deletePlannedExpense`, `saveDailyBudgetLog`, `queryDailyBudgetLogs`<br>const: `queryFixedCosts`, `ensureFixedCostExpenses`, `FIXED_SOURCE_EXCLUDE_LOCKED`<br>type: `DailyBudgetLog`, `DailyBudgetLogSummary` |
+| `queries.ts` | 14 |  | const: `queryFixedCosts`, `ensureFixedCostExpenses`<br>re-export: `* from ./queries/expenses`, `* from ./queries/month-summary`, `* from ./queries/fixed-costs`, `* from ./queries/assets`, `* from ./queries/planned`, `* from ./queries/daily-log` |
 | `types-v2.ts` | 101 | ─── 빌링 ────────────────────────────────────────────────────── | type: `BillingCycle`, `PlannedInput`, `MonthAllocatorInput`, `MonthlyBudget`, `MonthAllocatorResult`, `DayAllocatorInput`, `DayAllocatorResult`, `SettlementInput`, `SettlementSnapshot` |
-| `types.ts` | 196 |  | const: `BUDGET_EXCLUDED_CATEGORIES`, `MIN_DAILY_BUDGET`, `EXPENSE_CATEGORIES`, `INCOME_CATEGORIES`, `FIXED_COST_CATEGORIES`, `ALL_EXPENSE_CATEGORIES`<br>type: `ExpenseRow`, `PlannedExpenseRow`, `FixedCostRow`, `BudgetRow`, `AssetRow`, `CategoryStat`, `CategoryLimitRow`, `CategoryLimitWithUsage`, `MonthSummary`, `DailyBudgetLog`, `MonthProjection`, `ExpenseCategory`, `IncomeCategory` |
+| `types.ts` | 199 |  | const: `BUDGET_EXCLUDED_CATEGORIES`, `MIN_DAILY_BUDGET`, `EXPENSE_CATEGORIES`, `INCOME_CATEGORIES`, `FIXED_COST_CATEGORIES`, `ALL_EXPENSE_CATEGORIES`, `VALID_CATEGORIES`<br>type: `ExpenseRow`, `PlannedExpenseRow`, `FixedCostRow`, `BudgetRow`, `AssetRow`, `CategoryStat`, `CategoryLimitRow`, `CategoryLimitWithUsage`, `MonthSummary`, `DailyBudgetLog`, `MonthProjection`, `ExpenseCategory`, `IncomeCategory` |
 
 테스트 파일 5개
 
@@ -479,6 +487,17 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `snapshot-date.ts` | 16 |  | function: `resolvePreviousDayDate` |
 
 테스트 파일 5개
+
+## `web/src/features/budget/lib/queries`
+
+| 파일 | 줄 수 | 역할 | export |
+| --- | ---: | --- | --- |
+| `assets.ts` | 86 |  | function: `queryAssets`, `updateAsset`, `setDefaultAsset`, `clearDefaultAsset` |
+| `daily-log.ts` | 79 |  | function: `saveDailyBudgetLog`, `queryDailyBudgetLogs`<br>type: `DailyBudgetLog`, `DailyBudgetLogSummary` |
+| `expenses.ts` | 276 |  | function: `queryExpenses`, `queryExpensesByBillingMonth`, `queryExpense`, `createExpense`, `createInstallmentExpenses`, `updateExpense`, `deleteExpense`<br>const: `FIXED_SOURCE_EXCLUDE_LOCKED` |
+| `fixed-costs.ts` | 71 |  | function: `updateFixedCost`, `createFixedCost`, `deleteFixedCost` |
+| `month-summary.ts` | 105 |  | function: `queryMonthSummary` |
+| `planned.ts` | 73 |  | function: `queryPlannedExpenses`, `createPlannedExpense`, `updatePlannedExpense`, `deletePlannedExpense` |
 
 ## `web/src/features/budget/lib/repository`
 
@@ -521,7 +540,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `routine-card.tsx` | 87 |  | function: `RoutineCard` |
 | `routine-checklist.tsx` | 122 |  | function: `RoutineChecklist` |
 | `routine-form.tsx` | 211 |  | function: `RoutineForm` |
-| `routine-heatmap.tsx` | 201 |  | function: `RoutineHeatmap` |
+| `routine-heatmap.tsx` | 199 |  | function: `RoutineHeatmap` |
 | `routine-list.tsx` | 83 |  | function: `RoutineList` |
 | `routine-page.tsx` | 188 |  | function: `RoutinePage` |
 | `routine-record-detail.tsx` | 71 |  | function: `RoutineRecordDetail` |
@@ -532,14 +551,14 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `use-routines.ts` | 278 |  | function: `useRoutines`<br>type: `RoutineView` |
+| `use-routines.ts` | 269 |  | function: `useRoutines`<br>type: `RoutineView` |
 
 ## `web/src/features/routine/lib`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `queries.ts` | 603 |  | function: `queryRoutineTemplates`, `createRoutineTemplate`, `updateRoutineTemplate`, `queryRoutineTemplate`, `deleteRecordsBefore`, `countCompletedRecordsBefore`, `deleteRoutineTemplate`, `queryRoutineRecords`, `createFreeRecord`, `deleteFreeRecord`, `deleteIncompleteScheduledRecordOn`, `toggleRoutineRecord`, `updateRoutineRecordMemo`, `ensureTodayRecords`, `queryRoutineStats`, `queryRoutinePerStats`, `queryInactivePeriods`, `createInactivePeriod`, `updateInactivePeriod`, `deleteInactivePeriod`, `closeOpenInactivePeriod`, `queryRoutineHeatmap`, `backfillRecords` |
-| `types.ts` | 85 |  | const: `ROUTINE_FREQUENCIES`, `ROUTINE_TIME_SLOTS`<br>type: `RoutineTrackingMode`, `RoutineEntryType`, `RoutineTemplateRow`, `RoutineRecordRow`, `RoutineDayStat`, `RoutinePerStat`, `RoutineInactivePeriod`, `RoutineHeatmapDay`, `RoutineHeatmapData` |
+| `types.ts` | 88 |  | const: `TRACKING_MODES`, `ROUTINE_FREQUENCIES`, `ROUTINE_TIME_SLOTS`<br>type: `RoutineTrackingMode`, `RoutineEntryType`, `RoutineTemplateRow`, `RoutineRecordRow`, `RoutineDayStat`, `RoutinePerStat`, `RoutineInactivePeriod`, `RoutineHeatmapDay`, `RoutineHeatmapData` |
 
 테스트 파일 1개
 
@@ -550,7 +569,9 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `action-menu.tsx` | 131 |  | function: `ActionMenu` |
 | `backlog-panel.tsx` | 186 |  | function: `BacklogPanel` |
 | `calendar-header.tsx` | 96 |  | function: `CalendarHeader`<br>type: `CalendarView` |
-| `categories-panel.tsx` | 791 |  | function: `CategoriesPanel` |
+| `categories-panel.tsx` | 458 |  | function: `CategoriesPanel` |
+| `category-badge.tsx` | 15 |  | function: `CategoryBadge` |
+| `category-panel-parts.tsx` | 58 |  | function: `CategoryBadge`, `TypeBadge`, `TypeSelector` |
 | `day-detail-panel.tsx` | 69 |  | function: `DayDetailPanel` |
 | `day-view.tsx` | 174 |  | function: `DayView` |
 | `delete-reason-modal.tsx` | 103 |  | function: `DeleteReasonModal` |
@@ -560,17 +581,21 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `month-view.tsx` | 273 |  | function: `MonthView` |
 | `move-toast.tsx` | 56 |  | function: `MoveToast` |
 | `saju-pillar-label.tsx` | 44 |  | function: `SajuPillarLabel` |
-| `schedule-card.tsx` | 178 |  | function: `ScheduleCard` |
+| `schedule-card.tsx` | 156 |  | function: `ScheduleCard` |
 | `schedule-form.tsx` | 366 |  | function: `ScheduleForm` |
+| `sortable-category-item.tsx` | 136 |  | function: `SortableCategoryItem` |
 | `status-badge.tsx` | 23 |  | function: `StatusBadge` |
-| `week-view.tsx` | 489 |  | function: `WeekView` |
+| `status-bg.ts` | 6 |  | const: `STATUS_BG` |
+| `subcategory-panel.tsx` | 145 |  | function: `SubcategoryPanel` |
+| `week-span-bar.tsx` | 198 |  | function: `WeekSpanBar` |
+| `week-view.tsx` | 271 |  | function: `WeekView` |
 
 ## `web/src/features/schedule/hooks`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `use-backlog.ts` | 161 |  | function: `useBacklog` |
-| `use-schedules.ts` | 484 |  | function: `useSchedules`<br>type: `MoveToastState` |
+| `use-schedules.ts` | 484 |  | function: `getInitialView`, `useSchedules`<br>type: `MoveToastState` |
 | `use-undo-shortcut.ts` | 39 |  | function: `isUndoShortcut`, `useUndoShortcut` |
 
 테스트 파일 1개
@@ -583,7 +608,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `date-move.ts` | 75 |  | function: `isSameRange`, `computeDragResult`, `formatRangeLabel`<br>const: `UNDO_LIMIT`<br>type: `DragType`, `DateRange`, `MoveEntry` |
 | `delete-reasons.ts` | 21 |  | function: `isDeleteReasonCategory`<br>const: `DELETE_REASONS`<br>type: `DeleteReasonCategory`, `DeleteReason` |
 | `queries.ts` | 277 |  | function: `querySchedulesByRange`, `queryBacklogSchedules`, `queryScheduleById`, `createSchedule`, `updateSchedule`, `deleteSchedule`, `recordDeleteReason`, `queryCategories`, `createCategory`, `updateCategory`, `deleteCategory`, `reorderCategories`, `validateCategoryOwnership` |
-| `types.ts` | 119 |  | function: `isValidStatus`, `compareByStatus`, `isMultiDaySchedule`, `lookupCategory`, `getScheduleType`, `getScheduleTopCategoryName`, `compareSchedulePriority`<br>const: `SCHEDULE_STATUSES`, `STATUS_LABELS`<br>type: `ScheduleRow`, `ScheduleStatus` |
+| `types.ts` | 126 |  | function: `isValidStatus`, `compareByStatus`, `isMultiDaySchedule`, `lookupCategory`, `getScheduleType`, `getScheduleTopCategoryName`, `compareSchedulePriority`<br>const: `SCHEDULE_STATUSES`, `STATUS_LABELS`, `NEXT_STATUS`<br>type: `ScheduleRow`, `ScheduleStatus` |
 
 테스트 파일 3개
 
@@ -591,13 +616,13 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `nap-timeline.tsx` | 210 |  | function: `NapTimeline` |
+| `nap-timeline.tsx` | 208 |  | function: `NapTimeline` |
 | `period-selector.tsx` | 34 |  | function: `PeriodSelector` |
-| `sleep-day-pattern.tsx` | 101 |  | function: `SleepDayPattern` |
+| `sleep-day-pattern.tsx` | 100 |  | function: `SleepDayPattern` |
 | `sleep-record-form.tsx` | 383 |  | function: `SleepRecordForm`<br>type: `SleepFormMutations` |
 | `sleep-score-card.tsx` | 128 |  | function: `SleepScoreCard` |
-| `sleep-summary-cards.tsx` | 129 |  | function: `scoreColor`, `InfoButton`, `SleepSummaryCards` |
-| `sleep-timeline.tsx` | 363 |  | function: `SleepTimeline` |
+| `sleep-summary-cards.tsx` | 124 |  | function: `scoreColor`, `InfoButton`, `SleepSummaryCards` |
+| `sleep-timeline.tsx` | 361 |  | function: `SleepTimeline` |
 | `sleep-trend-chart.tsx` | 395 |  | function: `SleepTrendChart` |
 
 ## `web/src/features/sleep/hooks`
@@ -605,14 +630,14 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `use-chart-tooltip.ts` | 27 |  | function: `useChartTooltip` |
-| `use-sleep-dashboard.ts` | 160 |  | function: `useSleepDashboard` |
+| `use-sleep-dashboard.ts` | 151 |  | function: `useSleepDashboard` |
 
 ## `web/src/features/sleep/lib`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `chart-utils.ts` | 21 |  | function: `formatDateLabel`, `getDayOfWeek` |
-| `queries.ts` | 421 |  | function: `querySleepRecordsWithEvents`, `timeToMinutesFromMidnight`, `buildDailySleeps`, `calculateSleepSummary`, `calculateDayOfWeekPattern`, `computeDurationMinutes`, `createSleepRecord`, `updateSleepRecord`, `deleteSleepRecord`, `createSleepEvent`, `deleteSleepEvent` |
+| `chart-utils.ts` | 28 | 요일 한글 약자 (일\~토) | function: `formatDateLabel`, `getDayOfWeek`, `formatDuration` |
+| `queries.ts` | 420 |  | function: `querySleepRecordsWithEvents`, `timeToMinutesFromMidnight`, `buildDailySleeps`, `calculateSleepSummary`, `calculateDayOfWeekPattern`, `computeDurationMinutes`, `createSleepRecord`, `updateSleepRecord`, `deleteSleepRecord`, `createSleepEvent`, `deleteSleepEvent` |
 | `save-day.ts` | 84 |  | function: `saveSleepDay`<br>type: `SleepDayMutations`, `SleepDayDraft` |
 | `scores.ts` | 100 |  | function: `calculateSleepScores`<br>re-export: `SleepScores` |
 | `sleep-score-config.ts` | 8 |  | const: `SLEEP_SCORE_CONFIG` |
@@ -628,10 +653,11 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `auth.ts` | 40 |  | function: `getSession`, `requireAuth`<br>type: `SessionData` |
 | `db.ts` | 48 |  | function: `query`, `queryOne`<br>type: `QueryResult` |
 | `kakao.ts` | 98 | 카카오 OAuth 설정 + 유틸리티 | function: `getKakaoAuthUrl`, `exchangeCodeForToken`, `fetchKakaoUserInfo`<br>const: `MAX_USERS`<br>type: `KakaoUserInfo` |
-| `kst.ts` | 49 | KST (UTC+9) 날짜 유틸리티. | function: `getTodayISO`, `formatDateShort`, `getDayName`, `addDays` |
+| `kst.ts` | 49 | KST (UTC+9) 날짜 유틸리티. | function: `getTodayISO`, `formatDateShort`, `getDayName`, `addDays`<br>const: `DAY_NAMES` |
+| `parse-error.ts` | 9 |  | function: `parseError` |
 | `saju.ts` | 110 | 사주 일주 계산 (web용 복제본). | function: `getDayPillar`<br>type: `Cheongan`, `Jiji`, `Pillar` |
 | `slack.ts` | 83 | Slack Web API 클라이언트 — 웹에서 알림용 메시지 전송 | function: `postSlackMessage`, `notifyNewSignup` |
-| `types.ts` | 76 | ─── 카테고리 (공통) ───────────────────────────────── | function: `hexToStyles`, `getCategoryStyle`, `colorToHex`, `formatAmount`<br>const: `CATEGORY_TYPES`, `PRESET_COLORS`, `COLOR_OPTIONS`<br>type: `CategoryType`, `CategoryRow` |
+| `types.ts` | 79 | ─── 카테고리 (공통) ───────────────────────────────── | function: `hexToStyles`, `getCategoryStyle`, `colorToHex`, `formatAmount`<br>const: `CATEGORY_TYPES`, `VALID_CATEGORY_TYPES`, `PRESET_COLORS`, `COLOR_OPTIONS`<br>type: `CategoryType`, `CategoryRow` |
 | `users.ts` | 84 |  | function: `findUserByKakaoId`, `listAllUserIds`, `getUserCount`, `findOrCreateUser`<br>type: `UserRow` |
 | `validation.ts` | 40 |  | function: `validateStringLength`, `validateFields`<br>const: `MAX_LENGTHS` |
 

@@ -61,7 +61,9 @@ const renderSlots = (cron: CronData): string[] => {
       `| \`${s.slot}\` | \`${s.handler}\` | \`${s.handlerFile}\` | ${cellText(s.comment)} | ${migrations} |`,
     );
   }
-  const maps = [...new Set(cron.slots.map((s) => `\`${s.mapFile}\`의 \`${s.mapName}\``))].sort(compareText);
+  const maps = [...new Set(cron.slots.map((s) => `\`${s.mapFile}\`의 \`${s.mapName}\``))].sort(
+    compareText,
+  );
   out.push('', `슬롯 표를 선언한 곳은 ${maps.join(', ')}이다.`, '');
   return out;
 };

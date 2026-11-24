@@ -14,7 +14,15 @@ export interface PathRef {
 }
 
 /** 백틱 코드가 이 접두로 시작하면 repo 경로로 본다. */
-export const ROOT_PREFIXES = ['src/', 'web/', 'scripts/', 'docs/', 'db/', 'migrations/', '.github/'];
+export const ROOT_PREFIXES = [
+  'src/',
+  'web/',
+  'scripts/',
+  'docs/',
+  'db/',
+  'migrations/',
+  '.github/',
+];
 
 /** 커밋하지 않는 폴더와 빌드 산출물은 확인 대상에서 뺀다. */
 const UNCHECKED_PREFIXES = ['docs/_personal', 'web/.next', 'web/node_modules'];
@@ -61,12 +69,21 @@ const fromCodeSpan = (content: string): string | null => {
 
 const fromLink = (target: string, docDir: string): string | null => {
   const first = target.trim().split(/\s+/)[0] ?? '';
-  if (first.length === 0 || first.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(first) || first.startsWith('//')) {
+  if (
+    first.length === 0 ||
+    first.startsWith('#') ||
+    /^[a-z][a-z0-9+.-]*:/i.test(first) ||
+    first.startsWith('//')
+  ) {
     return null;
   }
   const token = stripSuffix(first.replace(/^<|>$/g, ''));
   if (token.length === 0) return null;
-  const joined = token.startsWith('/') ? token.slice(1) : docDir.length > 0 ? `${docDir}/${token}` : token;
+  const joined = token.startsWith('/')
+    ? token.slice(1)
+    : docDir.length > 0
+      ? `${docDir}/${token}`
+      : token;
   const path = normalizePath(decodeURIComponentSafe(joined));
   return path !== null && isCheckable(path) ? path : null;
 };

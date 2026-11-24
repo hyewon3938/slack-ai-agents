@@ -55,7 +55,8 @@ const fromExportDeclaration = (
   st: ts.ExportDeclaration,
   localKinds: Map<string, ExportKind>,
 ): ExportEntry[] => {
-  const from = st.moduleSpecifier && ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : null;
+  const from =
+    st.moduleSpecifier && ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : null;
   if (!st.exportClause) return [{ name: `* from ${from ?? '?'}`, kind: 're-export' }];
   if (!ts.isNamedExports(st.exportClause)) {
     return [{ name: st.exportClause.name.text, kind: 're-export' }];
@@ -70,7 +71,8 @@ const fromExportDeclaration = (
 
 const fromStatement = (st: ts.Statement, localKinds: Map<string, ExportKind>): ExportEntry[] => {
   if (ts.isExportDeclaration(st)) return fromExportDeclaration(st, localKinds);
-  if (ts.isExportAssignment(st)) return st.isExportEquals ? [] : [{ name: 'default', kind: 'const' }];
+  if (ts.isExportAssignment(st))
+    return st.isExportEquals ? [] : [{ name: 'default', kind: 'const' }];
   if (!hasModifier(st, ts.SyntaxKind.ExportKeyword)) return [];
   const isDefault = hasModifier(st, ts.SyntaxKind.DefaultKeyword);
   const named = (name: ts.Identifier | undefined, kind: ExportKind): ExportEntry[] => [

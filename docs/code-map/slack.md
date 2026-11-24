@@ -53,7 +53,7 @@
   - 쓰는 곳: `parseDatedDiary`
   - 주석: 맨 앞 "M/D" + 공백·줄바꿈 + 본문. 예: "10/21 산책했다"
 
-### `src/agents/insight/index.ts`
+### `src/agents/insight/fortune-fast-path.ts`
 
 - `DAILY_FORTUNE_RE`: `/^(오늘\s*)?일운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/`
   - 쓰는 곳: `tryFortuneFastPath`
@@ -70,6 +70,9 @@
 - `MAJOR_FORTUNE_RE`: `/^(내\s*)?대운(\s*(보여줘|보여|알려줘|뭐야))?[.?!]?$/`
   - 쓰는 곳: `tryPeriodInterpretationFastPath`
   - 주석: 대운 조회
+
+### `src/agents/insight/index.ts`
+
 - `TODAY_DIARY_RE`: `/^오늘\s*일기/`
   - 쓰는 곳: `createInsightAgent`
   - 주석: 오늘 일기 조회
@@ -104,6 +107,6 @@
 
 | 도구 | 설명 | 파일 |
 | --- | --- | --- |
-| `query_db` | Execute a read-only SQL query. | `src/shared/sql-tools.ts` |
-| `modify_db` | Execute INSERT, UPDATE, or DELETE. | `src/shared/sql-tools.ts` |
-| `get_schema` | Get database schema: tables, columns, types, constraints. | `src/shared/sql-tools.ts` |
+| `query_db` | Execute a read-only SQL query. | `src/shared/sql-tools/definitions.ts` |
+| `modify_db` | Execute INSERT, UPDATE, or DELETE. | `src/shared/sql-tools/definitions.ts` |
+| `get_schema` | Get database schema: tables, columns, types, constraints. | `src/shared/sql-tools/definitions.ts` |

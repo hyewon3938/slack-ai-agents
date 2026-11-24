@@ -2,7 +2,14 @@
  * 코드 맵 생성기 진입점.
  * 인자 없이 실행하면 docs/code-map/을 다시 쓰고, --check를 주면 커밋본과 비교만 한다.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OUTPUT_DIR } from './config.js';
@@ -33,7 +40,11 @@ const buildFiles = (): Map<string, string> => {
 };
 
 const existingFiles = (outDir: string): string[] =>
-  existsSync(outDir) ? readdirSync(outDir).filter((f) => f.endsWith('.md')).sort(compareText) : [];
+  existsSync(outDir)
+    ? readdirSync(outDir)
+        .filter((f) => f.endsWith('.md'))
+        .sort(compareText)
+    : [];
 
 /** 다시 만든 결과와 다른 파일 이름. 맵에 없어야 할 파일이 남아 있어도 다르다고 본다. */
 const findStale = (outDir: string, files: Map<string, string>): string[] => {
@@ -56,7 +67,9 @@ const main = (): void => {
       process.stdout.write('[code-map] 커밋본과 같다.\n');
       return;
     }
-    process.stderr.write('[code-map] 다시 만든 결과가 커밋본과 다르다. yarn code-map을 돌려 함께 커밋한다.\n');
+    process.stderr.write(
+      '[code-map] 다시 만든 결과가 커밋본과 다르다. yarn code-map을 돌려 함께 커밋한다.\n',
+    );
     for (const name of stale) process.stderr.write(`  ${OUTPUT_DIR}/${name}\n`);
     process.exitCode = 1;
     return;
@@ -64,7 +77,9 @@ const main = (): void => {
   mkdirSync(outDir, { recursive: true });
   for (const name of existingFiles(outDir)) if (!files.has(name)) unlinkSync(join(outDir, name));
   for (const [name, text] of files) writeFileSync(join(outDir, name), text);
-  process.stdout.write(`[code-map] ${OUTPUT_DIR}/ 파일 ${files.size}개 생성, 바뀐 파일 ${stale.length}개\n`);
+  process.stdout.write(
+    `[code-map] ${OUTPUT_DIR}/ 파일 ${files.size}개 생성, 바뀐 파일 ${stale.length}개\n`,
+  );
 };
 
 main();

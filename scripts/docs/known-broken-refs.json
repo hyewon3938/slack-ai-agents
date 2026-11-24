@@ -28,5 +28,10 @@
     "doc": "docs/domains/insight.md",
     "path": "src/cron/weekly-hypothesis-review.ts",
     "reason": "삭제된 크론의 당시 변경 내역"
+  },
+  {
+    "doc": "docs/domains/insight.md",
+    "path": "src/shared/pattern-match.ts",
+    "reason": "이름 변경 표의 당시 변경 후 이름"
   }
 ]

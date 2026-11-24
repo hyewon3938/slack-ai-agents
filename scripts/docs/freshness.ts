@@ -39,8 +39,11 @@ export const findStaleDocs = (
   const stale: StaleDoc[] = [];
   for (const doc of docs) {
     const { kinds, sources } = classify(doc, entries);
-    if (kinds.length !== 1 || kinds[0] !== 'current' || sources.length === 0 || changedSet.has(doc)) continue;
-    const changedSources = changed.filter((file) => !TEST_FILE_RE.test(file) && matchesAny(file, sources));
+    if (kinds.length !== 1 || kinds[0] !== 'current' || sources.length === 0 || changedSet.has(doc))
+      continue;
+    const changedSources = changed.filter(
+      (file) => !TEST_FILE_RE.test(file) && matchesAny(file, sources),
+    );
     if (changedSources.length > 0) stale.push({ doc, changedSources });
   }
   return stale;
@@ -50,7 +53,8 @@ const MAX_LISTED = 5;
 
 export const formatWarning = ({ doc, changedSources }: StaleDoc): string => {
   const listed = changedSources.slice(0, MAX_LISTED).join(', ');
-  const rest = changedSources.length > MAX_LISTED ? ` 외 ${changedSources.length - MAX_LISTED}개` : '';
+  const rest =
+    changedSources.length > MAX_LISTED ? ` 외 ${changedSources.length - MAX_LISTED}개` : '';
   return `::warning file=${doc}::이 문서가 설명하는 코드가 바뀌었습니다. 내용이 여전히 맞는지 확인하세요. 바뀐 파일: ${listed}${rest}`;
 };
 
@@ -71,7 +75,10 @@ const main = (): void => {
   const entries = parseManifest(readFileSync(join(root, MANIFEST_PATH), 'utf8'));
   const stale = findStaleDocs(listRepoFiles(root).filter(isDocFile), entries, changed);
   for (const item of stale) process.stdout.write(`${formatWarning(item)}\n`);
-  process.stdout.write(`문서 최신 여부 확인: 바뀐 파일 ${changed.length}개, 다시 볼 문서 ${stale.length}개\n`);
+  process.stdout.write(
+    `문서 최신 여부 확인: 바뀐 파일 ${changed.length}개, 다시 볼 문서 ${stale.length}개\n`,
+  );
 };
 
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  main();

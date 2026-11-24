@@ -27,7 +27,7 @@
         "package.json",
         ".github/workflows/**",
         "src/cron/**",
-        "src/**/sql-tools.ts",
+        "src/shared/sql-tools/**",
         "src/**/personality.ts",
         "docs/doc-manifest.json"
       ]
@@ -64,17 +64,13 @@
     {
       "glob": "docs/features.md",
       "kind": "current",
-      "sources": [
-        "src/**",
-        "web/src/**",
-        "db/migrations/**"
-      ]
+      "sources": ["src/**", "web/src/**", "db/migrations/**"]
     },
     {
       "glob": "docs/conventions.md",
       "kind": "current",
       "sources": [
-        "eslint.config.js",
+        "eslint.config.mjs",
         "web/eslint.config.mjs",
         "tsconfig.json",
         "web/tsconfig.json",
@@ -88,8 +84,7 @@
       "kind": "current",
       "sources": [
         "src/agents/life/**",
-        "src/**/life-queries.ts",
-        "src/**/life-context.ts",
+        "src/shared/life/**",
         "web/src/features/schedule/**",
         "web/src/app/schedules/**",
         "web/src/app/backlog/**",
@@ -101,8 +96,7 @@
       "kind": "current",
       "sources": [
         "src/agents/life/**",
-        "src/**/life-queries.ts",
-        "src/**/life-context.ts",
+        "src/shared/life/**",
         "web/src/features/routine/**",
         "web/src/app/routines/**",
         "web/src/app/api/routines/**"
@@ -113,8 +107,7 @@
       "kind": "current",
       "sources": [
         "src/agents/life/**",
-        "src/**/life-queries.ts",
-        "src/**/life-context.ts",
+        "src/shared/life/**",
         "web/src/features/sleep/**",
         "web/src/app/life/**",
         "web/src/app/api/sleep/**"
@@ -123,13 +116,7 @@
     {
       "glob": "docs/domains/insight.md",
       "kind": "current",
-      "sources": [
-        "src/agents/insight/**",
-        "src/cron/**",
-        "src/shared/**",
-        "src/saju/**",
-        "src/pattern/**"
-      ]
+      "sources": ["src/agents/insight/**", "src/cron/**", "src/shared/**"]
     },
     {
       "glob": "docs/domains/budget.md",
@@ -147,11 +134,7 @@
     {
       "glob": "docs/ops/db-backup.md",
       "kind": "current",
-      "sources": [
-        "scripts/backup-db.sh",
-        "scripts/restore-db.sh",
-        "docker-compose.yml"
-      ]
+      "sources": ["scripts/backup-db.sh", "scripts/restore-db.sh", "docker-compose.yml"]
     },
     {
       "glob": "docs/ops/health-monitoring.md",
@@ -168,20 +151,14 @@
       "kind": "current",
       "sources": [
         "src/ops/rebaseline-pattern-links.ts",
-        "src/cron/weekly-verification.ts",
-        "src/**/pattern-verification.ts"
+        "src/cron/weekly-verification/**",
+        "src/shared/pattern/verify-*.ts"
       ]
     },
     {
       "glob": "docs/explainers/**",
       "kind": "current",
-      "sources": [
-        "src/agents/insight/**",
-        "src/cron/**",
-        "src/shared/**",
-        "src/saju/**",
-        "src/pattern/**"
-      ]
+      "sources": ["src/agents/insight/**", "src/cron/**", "src/shared/**"]
     }
   ]
 }

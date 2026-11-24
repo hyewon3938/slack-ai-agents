@@ -7,7 +7,9 @@ describe('toUrlPath', () => {
   it('page와 route 파일을 URL로 바꾼다', () => {
     expect(toUrlPath('web/src/app/page.tsx', root)).toBe('/');
     expect(toUrlPath('web/src/app/budget/page.tsx', root)).toBe('/budget');
-    expect(toUrlPath('web/src/app/api/routines/[id]/records/route.ts', root)).toBe('/api/routines/[id]/records');
+    expect(toUrlPath('web/src/app/api/routines/[id]/records/route.ts', root)).toBe(
+      '/api/routines/[id]/records',
+    );
   });
 
   it('라우트 그룹과 병렬 슬롯은 URL에서 뺀다', () => {
@@ -31,8 +33,11 @@ describe('extractRouteMethods', () => {
   });
 
   it('SECRET 환경변수 읽기를 인증 확인으로 적는다', () => {
-    const src = "export async function GET(req: Request) { return req.headers.get('a') === process.env['CRON_SECRET']; }";
-    expect(extractRouteMethods('route.ts', src)).toEqual([{ method: 'GET', auth: ['CRON_SECRET'] }]);
+    const src =
+      "export async function GET(req: Request) { return req.headers.get('a') === process.env['CRON_SECRET']; }";
+    expect(extractRouteMethods('route.ts', src)).toEqual([
+      { method: 'GET', auth: ['CRON_SECRET'] },
+    ]);
   });
 
   it('인증 모듈이 아닌 곳의 require 함수와 API 키 읽기는 세지 않는다', () => {

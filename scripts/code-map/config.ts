@@ -22,9 +22,16 @@ export const OUTPUT_DIR = 'docs/code-map';
 export const SKIP_DIR_NAMES = new Set(['node_modules', 'dist', '.next', '.git', '_personal']);
 
 /** 읽지 않는 파일 이름 패턴 */
-const SKIP_FILE_PATTERNS = [/^\.env/, /^\.mcp\.json$/, /^\.claude\.json$/, /^credentials/i, /^secrets/i];
+const SKIP_FILE_PATTERNS = [
+  /^\.env/,
+  /^\.mcp\.json$/,
+  /^\.claude\.json$/,
+  /^credentials/i,
+  /^secrets/i,
+];
 
-export const isSkippedFile = (name: string): boolean => SKIP_FILE_PATTERNS.some((p) => p.test(name));
+export const isSkippedFile = (name: string): boolean =>
+  SKIP_FILE_PATTERNS.some((p) => p.test(name));
 
 /** 모든 생성 파일 맨 위에 넣는 안내 */
 export const GENERATED_NOTICE = [

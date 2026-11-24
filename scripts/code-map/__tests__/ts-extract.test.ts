@@ -25,7 +25,8 @@ describe('extractExports', () => {
   });
 
   it('export 목록은 로컬 선언의 종류를 따른다', () => {
-    const src = 'const run = async () => {};\nconst MAX = 3;\ninterface Opt {}\nexport { run, MAX };\nexport type { Opt };';
+    const src =
+      'const run = async () => {};\nconst MAX = 3;\ninterface Opt {}\nexport { run, MAX };\nexport type { Opt };';
     expect(extractExports('x.ts', src)).toEqual([
       { name: 'run', kind: 'function' },
       { name: 'MAX', kind: 'const' },
@@ -70,6 +71,8 @@ describe('extractFileRole', () => {
 
   it('주석이 없거나 린트 지시문이면 비운다', () => {
     expect(extractFileRole('x.ts', 'export const a = 1;\n')).toBe('');
-    expect(extractFileRole('x.ts', "/* eslint-disable no-console */\nimport x from 'x';\n")).toBe('');
+    expect(extractFileRole('x.ts', "/* eslint-disable no-console */\nimport x from 'x';\n")).toBe(
+      '',
+    );
   });
 });

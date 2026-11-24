@@ -15,9 +15,18 @@ const renderUsage = (label: string, files: string[]): string =>
 
 const renderTable = (table: TableInfo, db: DbData): string[] => {
   const usage = db.usage.get(table.name) ?? { bot: [], web: [] };
-  const out = [`### \`${table.name}\``, '', `- 만든 마이그레이션: \`${fileName(table.createdIn)}\``];
-  if (table.changedIn.length > 0) out.push(`- 바꾼 마이그레이션: ${codeList(table.changedIn.map(fileName))}`);
-  out.push(renderUsage('봇에서 쓰는 파일', usage.bot), renderUsage('웹에서 쓰는 파일', usage.web), '');
+  const out = [
+    `### \`${table.name}\``,
+    '',
+    `- 만든 마이그레이션: \`${fileName(table.createdIn)}\``,
+  ];
+  if (table.changedIn.length > 0)
+    out.push(`- 바꾼 마이그레이션: ${codeList(table.changedIn.map(fileName))}`);
+  out.push(
+    renderUsage('봇에서 쓰는 파일', usage.bot),
+    renderUsage('웹에서 쓰는 파일', usage.web),
+    '',
+  );
   out.push('| 컬럼 | 타입 | NOT NULL | 기본값 | PK |', '| --- | --- | --- | --- | --- |');
   for (const c of table.columns) {
     const def = c.defaultValue === null ? '' : escapeCell(inlineCode(c.defaultValue));
@@ -51,7 +60,10 @@ const renderUnparsed = (db: DbData): string[] => {
   const { unparsed } = db.schema;
   const out = ['## 해석하지 못한 문장', '', `해석하지 못한 문장은 ${unparsed.length}개다.`];
   if (unparsed.length === 0) return [...out, ''];
-  out.push('이 문장들이 테이블이나 컬럼을 바꿨다면 위 표에 반영되지 않았으니 해당 마이그레이션을 직접 확인한다.', '');
+  out.push(
+    '이 문장들이 테이블이나 컬럼을 바꿨다면 위 표에 반영되지 않았으니 해당 마이그레이션을 직접 확인한다.',
+    '',
+  );
   for (const u of unparsed) out.push(`- \`${fileName(u.file)}\`: ${inlineCode(u.head)}`);
   return [...out, ''];
 };

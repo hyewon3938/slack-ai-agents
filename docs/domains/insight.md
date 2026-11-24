@@ -430,7 +430,7 @@ LLM 추출은 Sonnet → Opus 이관 ([#409](https://github.com/hyewon3938/slack
 - `DISCOVERY_MAX_FDR_Q` (0.2) → multiple testing 보정 후
 - `DISCOVERY_MIN_RATE_RATIO` (1.3)
 
-`rate_ratio` 내림차순 정렬. CLI 백테스트는 `scripts/pattern-hypothesis-backtest.ts` (`yarn tsx scripts/pattern-hypothesis-backtest.ts --user 1 --lookback 60`).
+`rate_ratio` 내림차순 정렬.
 
 #### Block Kit 카드 (`src/agents/insight/hypothesis-cards.ts`)
 
@@ -794,7 +794,7 @@ GROUP BY c.id;
 
 마이그레이션 070은 직접 SQL을 손으로 쓰지 않고 `scripts/generate-saju-seed-pool.ts`가 stdout으로 생성한 SQL을 파일로 저장한 형태. 십신 매핑·description·기존 시드 제외 규칙을 모두 TypeScript 코드로 표현해 휴먼 에러 차단.
 
-#### Evidence-only 흐름 (`src/shared/pattern-match.ts`)
+#### Evidence-only 흐름 (`src/shared/pattern/match-types.ts`)
 
 매칭 결과 인터페이스 확장:
 

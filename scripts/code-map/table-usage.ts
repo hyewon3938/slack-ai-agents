@@ -33,7 +33,11 @@ export const findSqlTableRefs = (text: string, known: ReadonlySet<string>): stri
 };
 
 /** 파일 하나가 SQL 문자열에서 쓰는 테이블 이름 목록 */
-export const findTableUsage = (fileName: string, text: string, known: ReadonlySet<string>): string[] => {
+export const findTableUsage = (
+  fileName: string,
+  text: string,
+  known: ReadonlySet<string>,
+): string[] => {
   const found = new Set<string>();
   for (const str of collectStringTexts(parseSource(fileName, text))) {
     for (const name of findSqlTableRefs(str, known)) found.add(name);

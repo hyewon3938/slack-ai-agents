@@ -50,7 +50,8 @@ export const createSchema = (): SchemaState => ({
   unparsed: [],
 });
 
-const COLUMN_STOP = /^(NOT|NULL|DEFAULT|PRIMARY|REFERENCES|UNIQUE|CHECK|CONSTRAINT|GENERATED|COLLATE)$/i;
+const COLUMN_STOP =
+  /^(NOT|NULL|DEFAULT|PRIMARY|REFERENCES|UNIQUE|CHECK|CONSTRAINT|GENERATED|COLLATE)$/i;
 const TABLE_CONSTRAINT = /^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|FOREIGN\s+KEY|EXCLUDE)\b/i;
 const IGNORED_STATEMENT =
   /^(INSERT|UPDATE|DELETE|SELECT|WITH|SET|RESET|BEGIN|COMMIT|ROLLBACK|START|COMMENT|GRANT|REVOKE|TRUNCATE|ANALYZE|VACUUM|LOCK|CREATE\s+(UNIQUE\s+)?INDEX|DROP\s+INDEX|ALTER\s+INDEX|CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE|TRIGGER)|CREATE\s+CONSTRAINT\s+TRIGGER|DROP\s+(FUNCTION|PROCEDURE|TRIGGER)|CREATE\s+EXTENSION|CREATE\s+TYPE|DROP\s+TYPE|ALTER\s+TYPE|CREATE\s+SEQUENCE|ALTER\s+SEQUENCE|DROP\s+SEQUENCE)\b/i;
@@ -80,7 +81,8 @@ export const parseColumnDef = (def: string, literals: SqlLiteral[] = []): Column
   const name = ident(tokens[0] ?? '');
   let i = 1;
   const typeTokens: string[] = [];
-  while (i < tokens.length && !COLUMN_STOP.test(tokens[i] ?? '')) typeTokens.push(tokens[i++] ?? '');
+  while (i < tokens.length && !COLUMN_STOP.test(tokens[i] ?? ''))
+    typeTokens.push(tokens[i++] ?? '');
   if (typeTokens.length === 0) fail(`타입 없음: ${def}`);
   const type = squeeze(restore(typeTokens.join(' '), literals));
   const col: ColumnInfo = {
@@ -100,7 +102,8 @@ export const parseColumnDef = (def: string, literals: SqlLiteral[] = []): Column
     }
     if (tok === 'DEFAULT') {
       const expr: string[] = [];
-      while (i + 1 < tokens.length && !COLUMN_STOP.test(tokens[i + 1] ?? '')) expr.push(tokens[++i] ?? '');
+      while (i + 1 < tokens.length && !COLUMN_STOP.test(tokens[i + 1] ?? ''))
+        expr.push(tokens[++i] ?? '');
       col.defaultValue = squeeze(restore(expr.join(' '), literals));
     }
   }
@@ -131,7 +134,12 @@ const requireTable = (state: SchemaState, name: string): TableInfo =>
 const requireColumn = (table: TableInfo, name: string): ColumnInfo =>
   table.columns.find((c) => c.name === name) ?? fail(`없는 컬럼: ${table.name}.${name}`);
 
-const applyCreateTable = (state: SchemaState, file: string, masked: string, literals: SqlLiteral[]): void => {
+const applyCreateTable = (
+  state: SchemaState,
+  file: string,
+  masked: string,
+  literals: SqlLiteral[],
+): void => {
   const m = /^CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?("[^"]+"|[\w.]+)\s*/i.exec(masked);
   if (!m) return fail('CREATE TABLE 머리 해석 불가');
   const name = ident(m[2] ?? '');
@@ -166,7 +174,9 @@ const alterColumn = (table: TableInfo, body: string, literals: SqlLiteral[]): vo
   else if (/^DROP\s+DEFAULT$/i.test(rest)) col.defaultValue = null;
   else if (/^SET\s+DEFAULT\s+/i.test(rest)) {
     col.defaultValue = squeeze(restore(rest.replace(/^SET\s+DEFAULT\s+/i, ''), literals));
-  } else if (!/^(SET|RESET)\s+(STATISTICS|STORAGE|\()|^(ADD|DROP)\s+(GENERATED|IDENTITY)/i.test(rest)) {
+  } else if (
+    !/^(SET|RESET)\s+(STATISTICS|STORAGE|\()|^(ADD|DROP)\s+(GENERATED|IDENTITY)/i.test(rest)
+  ) {
     fail(`ALTER COLUMN 동작 해석 불가: ${rest}`);
   }
 };
@@ -193,7 +203,10 @@ const applyAlterAction = (
     if (!exists) table.columns.push(col);
     return;
   }
-  const drop = /^DROP\s+(?:COLUMN\s+)?(IF\s+EXISTS\s+)?("[^"]+"|\w+)(?:\s+(?:CASCADE|RESTRICT))?$/i.exec(action);
+  const drop =
+    /^DROP\s+(?:COLUMN\s+)?(IF\s+EXISTS\s+)?("[^"]+"|\w+)(?:\s+(?:CASCADE|RESTRICT))?$/i.exec(
+      action,
+    );
   if (drop) {
     const name = ident(drop[2] ?? '');
     if (!drop[1]) requireColumn(table, name);
@@ -217,13 +230,21 @@ const applyAlterAction = (
   fail(`ALTER TABLE 동작 해석 불가: ${action}`);
 };
 
-const applyAlterTable = (state: SchemaState, file: string, masked: string, literals: SqlLiteral[]): void => {
-  const m = /^ALTER\s+TABLE\s+(IF\s+EXISTS\s+)?(?:ONLY\s+)?("[^"]+"|[\w.]+)\s+([\s\S]+)$/i.exec(masked);
+const applyAlterTable = (
+  state: SchemaState,
+  file: string,
+  masked: string,
+  literals: SqlLiteral[],
+): void => {
+  const m = /^ALTER\s+TABLE\s+(IF\s+EXISTS\s+)?(?:ONLY\s+)?("[^"]+"|[\w.]+)\s+([\s\S]+)$/i.exec(
+    masked,
+  );
   if (!m) return fail('ALTER TABLE 머리 해석 불가');
   const name = ident(m[2] ?? '');
   if (!state.tables.has(name) && m[1]) return;
   const table = requireTable(state, name);
-  for (const action of splitTopLevel(m[3] ?? '', ',')) applyAlterAction(state, table, action, literals);
+  for (const action of splitTopLevel(m[3] ?? '', ','))
+    applyAlterAction(state, table, action, literals);
   touch(table, file);
 };
 
@@ -243,7 +264,10 @@ const applyDrop = (target: Map<string, unknown>, masked: string, keyword: RegExp
 };
 
 const applyCreateView = (state: SchemaState, file: string, masked: string): void => {
-  const m = /^CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?("[^"]+"|[\w.]+)/i.exec(masked);
+  const m =
+    /^CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?("[^"]+"|[\w.]+)/i.exec(
+      masked,
+    );
   if (!m) return fail('CREATE VIEW 머리 해석 불가');
   state.views.set(ident(m[1] ?? ''), file);
 };
@@ -257,7 +281,12 @@ const executeTarget = (afterExecute: string, literals: SqlLiteral[]): string => 
   return lit?.content ?? fail('동적 EXECUTE');
 };
 
-const applyStatement = (state: SchemaState, file: string, stmt: string, embedded: boolean): void => {
+const applyStatement = (
+  state: SchemaState,
+  file: string,
+  stmt: string,
+  embedded: boolean,
+): void => {
   const { masked: rawMasked, literals } = maskLiterals(stmt);
   let masked = squeeze(rawMasked);
   if (embedded) {
@@ -276,7 +305,12 @@ const applyStatement = (state: SchemaState, file: string, stmt: string, embedded
   }
   if (/^CREATE\s+(TEMP|TEMPORARY)\s+TABLE\b/i.test(masked)) return;
   if (/^CREATE\s+(UNLOGGED\s+)?TABLE\b/i.test(masked)) {
-    return applyCreateTable(state, file, masked.replace(/^CREATE\s+UNLOGGED\s+/i, 'CREATE '), literals);
+    return applyCreateTable(
+      state,
+      file,
+      masked.replace(/^CREATE\s+UNLOGGED\s+/i, 'CREATE '),
+      literals,
+    );
   }
   if (/^ALTER\s+TABLE\b/i.test(masked)) return applyAlterTable(state, file, masked, literals);
   if (/^DROP\s+TABLE\b/i.test(masked)) return applyDrop(state.tables, masked, /^DROP\s+TABLE\s+/i);

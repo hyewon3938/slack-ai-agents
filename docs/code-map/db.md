@@ -14,7 +14,7 @@
 - 만든 마이그레이션: `030_budget_expenses.sql`
 - 바꾼 마이그레이션: `046_assets_is_default.sql`, `109_payment_method_withdrawal_timing.sql`
 - 봇에서 쓰는 파일: 찾지 못함
-- 웹에서 쓰는 파일: `web/src/features/budget/lib/queries.ts`, `web/src/features/budget/lib/repository/assets-repo.ts`
+- 웹에서 쓰는 파일: `web/src/features/budget/lib/queries/assets.ts`, `web/src/features/budget/lib/repository/assets-repo.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
 | --- | --- | --- | --- | --- |
@@ -35,7 +35,7 @@
 
 - 만든 마이그레이션: `049_saju_master_schema.sql`
 - 바꾼 마이그레이션: `082_relation_hwa_seeds.sql`
-- 봇에서 쓰는 파일: `src/shared/pattern-match.ts`
+- 봇에서 쓰는 파일: `src/shared/pattern/match-trigger-lookups.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -48,7 +48,7 @@
 ### `branches_master`
 
 - 만든 마이그레이션: `049_saju_master_schema.sql`
-- 봇에서 쓰는 파일: `src/shared/pattern-match.ts`
+- 봇에서 쓰는 파일: `src/shared/pattern/match-trigger-lookups.ts`, `src/shared/pattern/match-trigger.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -61,7 +61,7 @@
 ### `budget_settings`
 
 - 만든 마이그레이션: `031_budget_settings.sql`
-- 봇에서 쓰는 파일: `src/cron/life-cron.ts`
+- 봇에서 쓰는 파일: `src/cron/life/target-expiry.ts`
 - 웹에서 쓰는 파일: `web/src/features/budget/lib/repository/settings-repo.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -74,7 +74,7 @@
 
 - 만든 마이그레이션: `011_categories.sql`
 - 바꾼 마이그레이션: `012_category_type.sql`, `016_multi_user.sql`, `026_subcategories.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/cron/weekly-report.ts`, `src/shared/insights.ts`, `src/shared/life-context.ts`, `src/shared/life-queries.ts`, `src/shared/pending-display.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/cron/weekly-report/aggregate-schedule.ts`, `src/shared/insights/schedule.ts`, `src/shared/life/context-sections.ts`, `src/shared/life/queries-schedule.ts`, `src/shared/pending-current-state.ts`
 - 웹에서 쓰는 파일: `web/src/features/schedule/lib/queries.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -107,7 +107,7 @@
 
 - 만든 마이그레이션: `004_custom_instructions.sql`
 - 바꾼 마이그레이션: `006_smart_memory.sql`, `016_multi_user.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/shared/pending-display.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/shared/pending-current-state.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -123,8 +123,8 @@
 ### `daily_budget_logs`
 
 - 만든 마이그레이션: `037_daily_budget_logs.sql`
-- 봇에서 쓰는 파일: `src/cron/life-cron.ts`
-- 웹에서 쓰는 파일: `web/src/features/budget/lib/queries.ts`
+- 봇에서 쓰는 파일: `src/cron/life/budget-backfill.ts`
+- 웹에서 쓰는 파일: `web/src/features/budget/lib/queries/daily-log.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
 | --- | --- | --- | --- | --- |
@@ -153,7 +153,7 @@
 ### `diary_entries`
 
 - 만든 마이그레이션: `018_diary_tables.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/diary-edit-store.ts`, `src/agents/insight/diary-fast-path.ts`, `src/agents/insight/prompt.ts`, `src/cron/diary-meta-extract.ts`, `src/cron/life-cron.ts`, `src/shared/life-context.ts`, `src/shared/period-interpretation.ts`
+- 봇에서 쓰는 파일: `src/agents/insight/diary-edit-store.ts`, `src/agents/insight/diary-fast-path.ts`, `src/cron/diary-meta-extract.ts`, `src/cron/life/insight-night-task.ts`, `src/shared/life/context-sections.ts`, `src/shared/period/interpretation-stats.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -169,7 +169,7 @@
 
 - 만든 마이그레이션: `053_saju_match_infra.sql`
 - 바꾼 마이그레이션: `059_diary_meta_tags_enum_expand.sql`, `102_diary_meta_tags_enum_expand_v2.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/diary-edit-store.ts`, `src/cron/diary-meta-extract.ts`, `src/shared/pattern-match.ts`, `src/shared/pattern-verification.ts`
+- 봇에서 쓰는 파일: `src/agents/insight/diary-edit-store.ts`, `src/cron/diary-meta-extract.ts`, `src/shared/pattern/match-metric.ts`, `src/shared/pattern/series.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -185,8 +185,8 @@
 
 - 만든 마이그레이션: `030_budget_expenses.sql`
 - 바꾼 마이그레이션: `032_budget_overhaul.sql`, `033_planned_expense_link.sql`, `034_budget_check_constraints.sql`, `036_exclude_from_budget.sql`, `038_distribute_to_budget.sql`, `043_billing_month.sql`, `057_expenses_distribute_to_runway.sql`, `095_installment_exclude_normalize.sql`
-- 봇에서 쓰는 파일: `src/cron/life-cron.ts`
-- 웹에서 쓰는 파일: `web/src/features/budget/lib/fixed-cost-ensure.ts`, `web/src/features/budget/lib/queries.ts`, `web/src/features/budget/lib/repository/category-limits-repo.ts`, `web/src/features/budget/lib/repository/expenses-repo.ts`, `web/src/features/budget/lib/repository/incomes-repo.ts`, `web/src/features/budget/lib/repository/installments-repo.ts`
+- 봇에서 쓰는 파일: `src/cron/life/budget-backfill.ts`
+- 웹에서 쓰는 파일: `web/src/features/budget/lib/fixed-cost-ensure.ts`, `web/src/features/budget/lib/queries/expenses.ts`, `web/src/features/budget/lib/queries/month-summary.ts`, `web/src/features/budget/lib/queries/planned.ts`, `web/src/features/budget/lib/repository/category-limits-repo.ts`, `web/src/features/budget/lib/repository/expenses-repo.ts`, `web/src/features/budget/lib/repository/incomes-repo.ts`, `web/src/features/budget/lib/repository/installments-repo.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
 | --- | --- | --- | --- | --- |
@@ -232,7 +232,7 @@
 - 만든 마이그레이션: `030_budget_expenses.sql`
 - 바꾼 마이그레이션: `034_budget_check_constraints.sql`, `109_payment_method_withdrawal_timing.sql`
 - 봇에서 쓰는 파일: 찾지 못함
-- 웹에서 쓰는 파일: `web/src/features/budget/lib/fixed-cost-ensure.ts`, `web/src/features/budget/lib/queries.ts`, `web/src/features/budget/lib/repository/fixed-costs-repo.ts`
+- 웹에서 쓰는 파일: `web/src/features/budget/lib/fixed-cost-ensure.ts`, `web/src/features/budget/lib/queries/fixed-costs.ts`, `web/src/features/budget/lib/repository/fixed-costs-repo.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
 | --- | --- | --- | --- | --- |
@@ -252,7 +252,7 @@
 
 - 만든 마이그레이션: `017_insight_tables.sql`
 - 바꾼 마이그레이션: `020_fortune_period.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/index.ts`, `src/agents/insight/prompt.ts`, `src/cron/life-cron.ts`, `src/shared/life-context.ts`
+- 봇에서 쓰는 파일: `src/agents/insight/fortune-fast-path.ts`, `src/cron/life/insight-night-task.ts`, `src/shared/life/context-sections.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -295,7 +295,7 @@
 ### `ganji_master`
 
 - 만든 마이그레이션: `049_saju_master_schema.sql`
-- 봇에서 쓰는 파일: `src/shared/pattern-match.ts`
+- 봇에서 쓰는 파일: `src/shared/pattern/match-trigger.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -307,7 +307,7 @@
 ### `life_themes`
 
 - 만든 마이그레이션: `018_diary_tables.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/prompt.ts`, `src/shared/life-context.ts`
+- 봇에서 쓰는 파일: `src/shared/life/context-sections.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -326,7 +326,7 @@
 ### `link_weekly_stats`
 
 - 만든 마이그레이션: `080_graded_exposure_and_weekly_stats.sql`
-- 봇에서 쓰는 파일: `src/cron/weekly-verification.ts`
+- 봇에서 쓰는 파일: `src/cron/weekly-verification/persist-links.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -373,7 +373,7 @@
 ### `notification_settings`
 
 - 만든 마이그레이션: `007_notifications.sql`
-- 봇에서 쓰는 파일: `src/shared/life-queries.ts`, `src/shared/pending-display.ts`
+- 봇에서 쓰는 파일: `src/shared/life/queries-notification.ts`, `src/shared/pending-current-state.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -389,7 +389,7 @@
 
 - 만든 마이그레이션: `051_saju_signal_catalog.sql`
 - 바꾼 마이그레이션: `063_pattern_rename.sql`, `064_pattern_trigger_target_type_and_kind.sql`, `071_pattern_signals_pillar_level.sql`, `075_pattern_cleanup.sql`, `081_strength_band_seeds.sql`, `082_relation_hwa_seeds.sql`, `086_signal_seed_precision.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/index.ts`, `src/agents/insight/pattern-seed-fast-path.ts`, `src/cron/weekly-report.ts`, `src/cron/weekly-verification.ts`, `src/shared/confound.ts`, `src/shared/pattern-match.ts`, `src/shared/pattern-verification.ts`, `src/shared/seed-saturation.ts`
+- 봇에서 쓰는 파일: `src/agents/insight/index.ts`, `src/agents/insight/pattern-seed-fast-path.ts`, `src/cron/weekly-report/aggregate-saju.ts`, `src/cron/weekly-verification/response-profile.ts`, `src/shared/pattern/confound-flag.ts`, `src/shared/pattern/match-seeds.ts`, `src/shared/pattern/seed-saturation.ts`, `src/shared/pattern/strength-cutpoints.ts`, `src/shared/pattern/verify-links.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -412,7 +412,7 @@
 ### `pattern_links`
 
 - 만든 마이그레이션: `077_signal_defs_and_links.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/actions.ts`, `src/agents/insight/hypothesis-discovery.ts`, `src/agents/insight/index.ts`, `src/cron/discovery-recommend.ts`, `src/cron/weekly-verification.ts`, `src/ops/rebaseline-pattern-links.ts`, `src/shared/confound.ts`, `src/shared/pattern-match.ts`, `src/shared/pattern-verification.ts`, `src/shared/period-forecast.ts`, `src/shared/seed-saturation.ts`
+- 봇에서 쓰는 파일: `src/agents/insight/action-transitions.ts`, `src/agents/insight/hypothesis-discovery-load.ts`, `src/agents/insight/hypothesis-discovery-persist.ts`, `src/agents/insight/index.ts`, `src/cron/discovery-recommend.ts`, `src/cron/weekly-verification/persist-links.ts`, `src/cron/weekly-verification/response-profile.ts`, `src/ops/rebaseline-pattern-links.ts`, `src/shared/pattern/confound-flag.ts`, `src/shared/pattern/match-seeds.ts`, `src/shared/pattern/seed-saturation.ts`, `src/shared/pattern/verify-links.ts`, `src/shared/period/forecast-generate.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -465,7 +465,7 @@
 ### `period_forecasts`
 
 - 만든 마이그레이션: `091_period_forecasts.sql`
-- 봇에서 쓰는 파일: `src/shared/period-forecast.ts`
+- 봇에서 쓰는 파일: `src/shared/period/forecast-generate.ts`, `src/shared/period/forecast-ledger.ts`, `src/shared/period/forecast-rows.ts`, `src/shared/period/forecast-score.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -489,7 +489,7 @@
 ### `period_interpretations`
 
 - 만든 마이그레이션: `089_period_interpretations.sql`
-- 봇에서 쓰는 파일: `src/shared/period-interpretation.ts`
+- 봇에서 쓰는 파일: `src/shared/period/interpretation-store.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -508,8 +508,8 @@
 
 - 만든 마이그레이션: `032_budget_overhaul.sql`
 - 바꾼 마이그레이션: `034_budget_check_constraints.sql`
-- 봇에서 쓰는 파일: `src/cron/life-cron.ts`
-- 웹에서 쓰는 파일: `web/src/features/budget/lib/queries.ts`, `web/src/features/budget/lib/repository/expenses-repo.ts`, `web/src/features/budget/lib/repository/planned-repo.ts`
+- 봇에서 쓰는 파일: `src/cron/life/budget-backfill.ts`
+- 웹에서 쓰는 파일: `web/src/features/budget/lib/queries/planned.ts`, `web/src/features/budget/lib/repository/expenses-repo.ts`, `web/src/features/budget/lib/repository/planned-repo.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
 | --- | --- | --- | --- | --- |
@@ -524,7 +524,7 @@
 
 - 만든 마이그레이션: `007_notifications.sql`
 - 바꾼 마이그레이션: `017_reminder_patterns.sql`, `028_reminder_finite.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/shared/life-queries.ts`, `src/shared/pending-display.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/shared/life/queries-reminder.ts`, `src/shared/pending-current-state.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -562,7 +562,7 @@
 
 - 만든 마이그레이션: `001_initial_schema.sql`
 - 바꾼 마이그레이션: `010_routine_memo_completed_at.sql`, `016_multi_user.sql`, `108_routine_tracking_modes.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/cron/weekly-report.ts`, `src/shared/insights.ts`, `src/shared/life-context.ts`, `src/shared/life-queries.ts`, `src/shared/life-signal-evaluators/threshold.ts`, `src/shared/period-interpretation.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/cron/weekly-report/aggregate-correlation.ts`, `src/cron/weekly-report/aggregate-routine.ts`, `src/shared/insights/routine-comparison.ts`, `src/shared/insights/routine-decline.ts`, `src/shared/insights/routine-streak.ts`, `src/shared/life-signal-evaluators/threshold.ts`, `src/shared/life/context-sections.ts`, `src/shared/life/queries-routine.ts`, `src/shared/period/interpretation-stats.ts`
 - 웹에서 쓰는 파일: `web/src/features/routine/lib/queries.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -581,7 +581,7 @@
 
 - 만든 마이그레이션: `001_initial_schema.sql`
 - 바꾼 마이그레이션: `016_multi_user.sql`, `029_routine_soft_delete.sql`, `035_routine_inactive_periods.sql`, `053_saju_match_infra.sql`, `108_routine_tracking_modes.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/cron/weekly-report.ts`, `src/shared/insights.ts`, `src/shared/life-context.ts`, `src/shared/life-queries.ts`, `src/shared/life-signal-evaluators/threshold.ts`, `src/shared/period-interpretation.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/cron/weekly-report/aggregate-correlation.ts`, `src/cron/weekly-report/aggregate-routine.ts`, `src/shared/insights/routine-comparison.ts`, `src/shared/insights/routine-decline.ts`, `src/shared/insights/routine-streak.ts`, `src/shared/life-signal-evaluators/threshold.ts`, `src/shared/life/context-sections.ts`, `src/shared/life/queries-routine.ts`, `src/shared/period/interpretation-stats.ts`
 - 웹에서 쓰는 파일: `web/src/features/routine/lib/queries.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -627,7 +627,7 @@
 
 - 만든 마이그레이션: `017_insight_tables.sql`
 - 바꾼 마이그레이션: `019_saju_profile_details.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/prompt.ts`, `src/shared/pattern-match.ts`, `src/shared/saju-calendar.ts`
+- 봇에서 쓰는 파일: `src/shared/pattern/match-context.ts`, `src/shared/saju/cli.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -656,7 +656,7 @@
 ### `saju_response_profile`
 
 - 만든 마이그레이션: `088_saju_response_profile.sql`
-- 봇에서 쓰는 파일: `src/cron/weekly-verification.ts`, `src/shared/period-interpretation.ts`
+- 봇에서 쓰는 파일: `src/cron/weekly-verification/response-profile.ts`, `src/shared/period/interpretation-store.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -680,7 +680,7 @@
 ### `saju_weekly_reviews`
 
 - 만든 마이그레이션: `062_saju_weekly_reviews.sql`
-- 봇에서 쓰는 파일: `src/cron/weekly-verification.ts`
+- 봇에서 쓰는 파일: `src/cron/weekly-verification/tasks.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -694,7 +694,7 @@
 
 - 만든 마이그레이션: `053_saju_match_infra.sql`
 - 바꾼 마이그레이션: `100_audit_net_displacement.sql`, `106_schedule_delete_reason.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/shared/pattern-verification.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/shared/pattern/data-window.ts`
 - 웹에서 쓰는 파일: `web/src/features/schedule/lib/queries.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -714,7 +714,7 @@
 
 - 만든 마이그레이션: `001_initial_schema.sql`
 - 바꾼 마이그레이션: `003_schedule_important.sql`, `016_multi_user.sql`, `026_subcategories.sql`, `027_schedule_updated_at.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/cron/weekly-report.ts`, `src/shared/insights.ts`, `src/shared/life-context.ts`, `src/shared/life-queries.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/cron/weekly-report/aggregate-schedule.ts`, `src/shared/insights/schedule.ts`, `src/shared/life/context-sections.ts`, `src/shared/life/queries-schedule.ts`
 - 웹에서 쓰는 파일: `web/src/features/schedule/lib/queries.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -736,7 +736,7 @@
 
 - 만든 마이그레이션: `051_saju_signal_catalog.sql`
 - 바꾼 마이그레이션: `063_pattern_rename.sql`, `069_pattern_matches_no_metric.sql`, `075_pattern_cleanup.sql`, `078_seed_daily_activations.sql`
-- 봇에서 쓰는 파일: `src/shared/pattern-match.ts`, `src/shared/seed-saturation.ts`
+- 봇에서 쓰는 파일: `src/shared/pattern/match-day.ts`, `src/shared/pattern/seed-saturation.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -752,7 +752,7 @@
 ### `sibiunsung_lookup`
 
 - 만든 마이그레이션: `049_saju_master_schema.sql`
-- 봇에서 쓰는 파일: `src/shared/pattern-match.ts`
+- 봇에서 쓰는 파일: `src/shared/pattern/match-trigger-lookups.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -765,7 +765,7 @@
 ### `signal_defs`
 
 - 만든 마이그레이션: `077_signal_defs_and_links.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/actions.ts`, `src/agents/insight/hypothesis-discovery.ts`, `src/agents/insight/index.ts`, `src/cron/weekly-verification.ts`, `src/shared/confound.ts`, `src/shared/pattern-match.ts`, `src/shared/pattern-verification.ts`, `src/shared/signal-defs.ts`
+- 봇에서 쓰는 파일: `src/agents/insight/action-transitions.ts`, `src/agents/insight/hypothesis-discovery-load.ts`, `src/agents/insight/index.ts`, `src/cron/weekly-verification/response-profile.ts`, `src/shared/pattern/confound-flag.ts`, `src/shared/pattern/load-signal-defs.ts`, `src/shared/pattern/match-seeds.ts`, `src/shared/pattern/mirror-signal.ts`, `src/shared/pattern/signal-defs.ts`, `src/shared/pattern/verify-links.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -835,7 +835,7 @@
 
 - 만든 마이그레이션: `008_sleep_events.sql`
 - 바꾼 마이그레이션: `105_sleep_schema_hardening.sql`, `107_sleep_signals_and_events_user.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/shared/insights.ts`, `src/shared/life-queries.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/shared/insights/sleep.ts`, `src/shared/life/queries-sleep.ts`
 - 웹에서 쓰는 파일: `web/src/features/sleep/lib/queries.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -851,7 +851,7 @@
 
 - 만든 마이그레이션: `002_sleep_records.sql`
 - 바꾼 마이그레이션: `005_sleep_type.sql`, `009_sleep_nullable.sql`, `016_multi_user.sql`, `105_sleep_schema_hardening.sql`
-- 봇에서 쓰는 파일: `src/agents/life/prompt.ts`, `src/cron/weekly-report.ts`, `src/shared/insights.ts`, `src/shared/life-context.ts`, `src/shared/life-queries.ts`, `src/shared/life-signal-evaluators/threshold.ts`, `src/shared/period-interpretation.ts`
+- 봇에서 쓰는 파일: `src/agents/life/prompt-sections.ts`, `src/cron/weekly-report/aggregate-correlation.ts`, `src/cron/weekly-report/aggregate-sleep.ts`, `src/shared/insights/sleep.ts`, `src/shared/life-signal-evaluators/threshold.ts`, `src/shared/life/context-sleep.ts`, `src/shared/life/queries-sleep.ts`, `src/shared/period/interpretation-stats.ts`
 - 웹에서 쓰는 파일: `web/src/features/sleep/lib/queries.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -883,7 +883,7 @@
 ### `stems_master`
 
 - 만든 마이그레이션: `049_saju_master_schema.sql`
-- 봇에서 쓰는 파일: `src/shared/pattern-match.ts`
+- 봇에서 쓰는 파일: `src/shared/pattern/match-trigger-lookups.ts`, `src/shared/pattern/match-trigger.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -896,7 +896,7 @@
 ### `strength_band_cutpoints`
 
 - 만든 마이그레이션: `081_strength_band_seeds.sql`
-- 봇에서 쓰는 파일: `src/cron/weekly-verification.ts`, `src/shared/pattern-match.ts`
+- 봇에서 쓰는 파일: `src/cron/weekly-verification/persist-links.ts`, `src/shared/pattern/match-day.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -912,7 +912,7 @@
 ### `users`
 
 - 만든 마이그레이션: `016_multi_user.sql`
-- 봇에서 쓰는 파일: `src/cron/life-cron.ts`
+- 봇에서 쓰는 파일: `src/cron/life/budget-backfill.ts`
 - 웹에서 쓰는 파일: `web/src/lib/users.ts`
 
 | 컬럼 | 타입 | NOT NULL | 기본값 | PK |
@@ -934,7 +934,7 @@
 ### `pattern_summary`
 
 - 정의한 마이그레이션: `080_graded_exposure_and_weekly_stats.sql`
-- 봇에서 쓰는 파일: `src/agents/insight/pattern-seed-fast-path.ts`, `src/cron/weekly-report.ts`
+- 봇에서 쓰는 파일: `src/agents/insight/pattern-seed-fast-path.ts`, `src/cron/weekly-report/aggregate-saju.ts`
 - 웹에서 쓰는 파일: 찾지 못함
 
 ### `saju_influence_summary`

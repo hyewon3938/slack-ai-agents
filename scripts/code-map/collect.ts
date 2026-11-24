@@ -19,7 +19,14 @@ import {
   type CronSlot,
   type VercelCron,
 } from './cron.js';
-import { compareText, countLines, isSourceFile, isTestFile, readText, walkFiles } from './fs-utils.js';
+import {
+  compareText,
+  countLines,
+  isSourceFile,
+  isTestFile,
+  readText,
+  walkFiles,
+} from './fs-utils.js';
 import { extractPublicPaths, extractRouteMethods, toUrlPath, type RouteMethod } from './routes.js';
 import { extractSlack, type SlackExtract } from './slack.js';
 import { applyMigration, createSchema, type SchemaState } from './sql-migrations.js';
@@ -121,7 +128,8 @@ const collectWebEntries = (
   for (const { path } of web.files) {
     const base = path.slice(path.lastIndexOf('/') + 1);
     const inApp = path.startsWith(`${WEB_APP_ROOT}/`);
-    if (inApp && /^page\.tsx?$/.test(base)) pages.push({ url: toUrlPath(path, WEB_APP_ROOT), file: path });
+    if (inApp && /^page\.tsx?$/.test(base))
+      pages.push({ url: toUrlPath(path, WEB_APP_ROOT), file: path });
     if (inApp && /^route\.tsx?$/.test(base)) {
       routes.push({
         url: toUrlPath(path, WEB_APP_ROOT),
@@ -136,8 +144,19 @@ const collectWebEntries = (
   return { pages: pages.sort(byUrl), routes: routes.sort(byUrl), publicPaths };
 };
 
-const collectCron = (root: string, bot: SourceTree, fileSet: ReadonlySet<string>, read: Reader): CronData => {
-  const data: CronData = { slots: [], calls: [], vercel: [], workflows: [], slotMigrations: new Map() };
+const collectCron = (
+  root: string,
+  bot: SourceTree,
+  fileSet: ReadonlySet<string>,
+  read: Reader,
+): CronData => {
+  const data: CronData = {
+    slots: [],
+    calls: [],
+    vercel: [],
+    workflows: [],
+    slotMigrations: new Map(),
+  };
   for (const { path } of bot.files) {
     const found = extractCron(path, read(path), fileSet);
     data.slots.push(...found.slots);
@@ -151,12 +170,18 @@ const collectCron = (root: string, bot: SourceTree, fileSet: ReadonlySet<string>
   return data;
 };
 
-const collectSlack = (bot: SourceTree, fileSet: ReadonlySet<string>, read: Reader): SlackExtract => {
+const collectSlack = (
+  bot: SourceTree,
+  fileSet: ReadonlySet<string>,
+  read: Reader,
+): SlackExtract => {
   const cache = new Map<string, Map<string, string>>();
   const lookup = (file: string): Map<string, string> => {
     const hit = cache.get(file);
     if (hit) return hit;
-    const consts = fileSet.has(file) ? collectStringConsts(parseSource(file, read(file))) : new Map<string, string>();
+    const consts = fileSet.has(file)
+      ? collectStringConsts(parseSource(file, read(file)))
+      : new Map<string, string>();
     cache.set(file, consts);
     return consts;
   };
@@ -171,7 +196,13 @@ const collectSlack = (bot: SourceTree, fileSet: ReadonlySet<string>, read: Reade
   return out;
 };
 
-const collectDb = (root: string, bot: SourceTree, web: SourceTree, cron: CronData, read: Reader): DbData => {
+const collectDb = (
+  root: string,
+  bot: SourceTree,
+  web: SourceTree,
+  cron: CronData,
+  read: Reader,
+): DbData => {
   const schema = createSchema();
   const migrations = walkFiles(root, MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
   for (const file of migrations) {

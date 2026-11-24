@@ -25,21 +25,30 @@ export const groupDir = (path: string): string => dirOf(path).replace(/\/__tests
 
 const baseName = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
 
-const renderDir = (dir: string, files: FileEntry[], tests: string[], others: string[]): string[] => {
+const renderDir = (
+  dir: string,
+  files: FileEntry[],
+  tests: string[],
+  others: string[],
+): string[] => {
   const out = [`## \`${dir}\``, ''];
   if (files.length > 0) {
     out.push('| 파일 | 줄 수 | 역할 | export |', '| --- | ---: | --- | --- |');
     for (const f of files) {
-      out.push(`| \`${baseName(f.path)}\` | ${f.lines} | ${cellText(f.role)} | ${renderExports(f.exports)} |`);
+      out.push(
+        `| \`${baseName(f.path)}\` | ${f.lines} | ${cellText(f.role)} | ${renderExports(f.exports)} |`,
+      );
     }
     out.push('');
   }
   if (tests.length > 0) out.push(`테스트 파일 ${tests.length}개`, '');
-  if (others.length > 0) out.push(`그 밖의 파일: ${others.map((o) => `\`${baseName(o)}\``).join(', ')}`, '');
+  if (others.length > 0)
+    out.push(`그 밖의 파일: ${others.map((o) => `\`${baseName(o)}\``).join(', ')}`, '');
   return out;
 };
 
-export const totalLines = (tree: SourceTree): number => tree.files.reduce((sum, f) => sum + f.lines, 0);
+export const totalLines = (tree: SourceTree): number =>
+  tree.files.reduce((sum, f) => sum + f.lines, 0);
 
 const renderTree = (tree: SourceTree): string[] => {
   const dirs = new Set<string>();
@@ -67,7 +76,16 @@ const COLUMN_GUIDE =
   '역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.';
 
 export const renderBot = (tree: SourceTree): string =>
-  ['# 봇 코드', '', GENERATED_NOTICE, '', summaryLine(tree), COLUMN_GUIDE, '', ...renderTree(tree)].join('\n');
+  [
+    '# 봇 코드',
+    '',
+    GENERATED_NOTICE,
+    '',
+    summaryLine(tree),
+    COLUMN_GUIDE,
+    '',
+    ...renderTree(tree),
+  ].join('\n');
 
 const renderPages = (pages: PageEntry[]): string[] => [
   '## 페이지',
