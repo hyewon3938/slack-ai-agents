@@ -81,12 +81,23 @@ export const claimPendingExecution = async (id: number): Promise<boolean> => {
   return (result.rowCount ?? 0) > 0;
 };
 
-/** 선점 해제 — SQL 실행이 실패해 아무것도 바뀌지 않았을 때 다시 시도할 수 있게 되돌린다. */
+/** 선점 해제 — SQL 실행이 실패해 아무것도 바뀌지 않았을 때 실행 표시를 되돌린다. */
 export const releasePendingExecution = async (id: number): Promise<void> => {
   await query(`UPDATE pending_modify SET executed_at = NULL WHERE id = $1`, [id]);
 };
 
-/** 취소 마킹 */
-export const markCanceled = async (id: number): Promise<void> => {
-  await query(`UPDATE pending_modify SET canceled_at = NOW() WHERE id = $1`, [id]);
+/**
+ * 취소 마킹 — 아직 실행도 취소도 되지 않은 요청일 때만 canceled_at을 채우고 성공 여부를 반환한다.
+ * 실행이 먼저 선점한 요청은 취소로 표시하지 않는다.
+ */
+export const markCanceled = async (id: number): Promise<boolean> => {
+  const result = await query(
+    `UPDATE pending_modify SET canceled_at = NOW()
+     WHERE id = $1
+       AND executed_at IS NULL
+       AND canceled_at IS NULL
+     RETURNING id`,
+    [id],
+  );
+  return (result.rowCount ?? 0) > 0;
 };

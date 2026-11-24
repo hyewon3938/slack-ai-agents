@@ -117,12 +117,19 @@ describe('pending-modify', () => {
     expect(params).toEqual([42]);
   });
 
-  it('markCanceled: canceled_at = NOW() UPDATE', async () => {
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
-    await markCanceled(99);
+  it('markCanceled: 실행·취소 전인 요청만 취소로 표시하고 true', async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: 99 }], rowCount: 1 });
+    await expect(markCanceled(99)).resolves.toBe(true);
     const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('UPDATE pending_modify');
     expect(sql).toContain('canceled_at = NOW()');
+    expect(sql).toContain('executed_at IS NULL');
+    expect(sql).toContain('canceled_at IS NULL');
     expect(params).toEqual([99]);
+  });
+
+  it('markCanceled: 이미 실행이 선점한 요청이면 false', async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    await expect(markCanceled(99)).resolves.toBe(false);
   });
 });

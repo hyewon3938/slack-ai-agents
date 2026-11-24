@@ -19,6 +19,7 @@ import { resolveBodyUserId, type ActionArgs } from './action-shared.js';
 const CONFIRM_EXECUTE_TIMEOUT_MS = 10_000;
 const CONFIRM_EXECUTE_MAX_ROWS = 50;
 const EXPIRED_TEXT = '이 요청은 만료됐거나 이미 처리됐어. 다시 요청해줘.';
+const ALREADY_HANDLED_TEXT = '이 요청은 만료됐거나 이미 처리돼서 취소할 게 없어.';
 
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -144,12 +145,13 @@ export const handleConfirmModifyCancel = async ({
 
   const userId = await resolveBodyUserId(body);
   const pending = await findActivePending(token, userId);
-  if (pending) await markCanceled(pending.id);
+  const canceled = pending ? await markCanceled(pending.id) : false;
 
   const channelId = 'channel' in body && body.channel ? body.channel.id : undefined;
   const messageTs = 'message' in body && body.message ? body.message.ts : undefined;
 
   if (channelId && messageTs) {
-    await updateMessage(client, channelId, messageTs, '취소했어. 아무것도 바뀌지 않았어.', []);
+    const text = canceled ? '취소했어. 아무것도 바뀌지 않았어.' : ALREADY_HANDLED_TEXT;
+    await updateMessage(client, channelId, messageTs, text, []);
   }
 };

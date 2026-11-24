@@ -88,7 +88,7 @@ beforeEach(() => {
   mockQueryWithRowLimit.mockResolvedValue({ rowCount: 1, rows: [] });
   mockClaim.mockResolvedValue(true);
   mockRelease.mockResolvedValue(undefined);
-  mockMarkCanceled.mockResolvedValue(undefined);
+  mockMarkCanceled.mockResolvedValue(true);
   mockLoadCurrentState.mockResolvedValue({ text: '현재 상태', blocks: [STATE_BLOCK] });
 });
 
@@ -256,12 +256,21 @@ describe('handleConfirmModifyCancel', () => {
     expect(lastUpdate().text).toBe('취소했어. 아무것도 바뀌지 않았어.');
   });
 
-  it('pending이 없어도 취소 안내로 갱신하고 상태 전이는 하지 않음', async () => {
+  it('pending이 없으면 상태 전이 없이 이미 처리됐다고 안내', async () => {
     mockFindActivePending.mockResolvedValue(null);
 
     await handleConfirmModifyCancel(makeArgs());
 
     expect(mockMarkCanceled).not.toHaveBeenCalled();
-    expect(lastUpdate().text).toBe('취소했어. 아무것도 바뀌지 않았어.');
+    expect(lastUpdate().text).toBe('이 요청은 만료됐거나 이미 처리돼서 취소할 게 없어.');
+  });
+
+  it('실행이 먼저 선점해 취소 표시에 실패하면 바뀌지 않았다고 말하지 않음', async () => {
+    mockFindActivePending.mockResolvedValue(makePending());
+    mockMarkCanceled.mockResolvedValue(false);
+
+    await handleConfirmModifyCancel(makeArgs());
+
+    expect(lastUpdate().text).toBe('이 요청은 만료됐거나 이미 처리돼서 취소할 게 없어.');
   });
 });
