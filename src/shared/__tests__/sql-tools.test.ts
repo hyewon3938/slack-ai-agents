@@ -143,17 +143,21 @@ describe('validateUserIdFilter', () => {
     expect(validateUserIdFilter('SELECT 470 AS duration_minutes', 1)).toBeNull();
   });
 
-  it('면제 테이블(categories)만 참조하면 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM categories', 1)).toBeNull();
+  it('categories는 user_id 조건이 있어야 통과한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM categories', 1)).not.toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM categories WHERE user_id = 1', 1)).toBeNull();
   });
 
   it('면제 테이블(notification_settings)만 참조하면 통과한다', () => {
     expect(validateUserIdFilter('SELECT * FROM notification_settings', 1)).toBeNull();
   });
 
-  it('면제 테이블(sleep_events)만 참조하면 통과한다', () => {
+  it('sleep_events는 user_id 컬럼이 있어야 통과한다', () => {
     expect(
       validateUserIdFilter('INSERT INTO sleep_events (date, event_time) VALUES ($1, $2)', 1),
+    ).not.toBeNull();
+    expect(
+      validateUserIdFilter('INSERT INTO sleep_events (user_id, date, event_time) VALUES (1, $1, $2)', 1),
     ).toBeNull();
   });
 

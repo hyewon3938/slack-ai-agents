@@ -25,7 +25,7 @@ import {
 const EMPTY_SCOPE: ReadonlySet<string> = new Set();
 
 /** user_id 컬럼이 없어 ON CONFLICT 대상에 user_id를 둘 수 없는 테이블 */
-const CONFLICT_EXEMPT_TABLES = new Set(['notification_settings', 'reminders']);
+const CONFLICT_EXEMPT_TABLES = USER_ID_EXEMPT_TABLES;
 
 const DML_MSG = {
   setUserId: '보안 규칙: user_id 값은 바꿀 수 없어.',

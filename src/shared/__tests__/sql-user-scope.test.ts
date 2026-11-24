@@ -71,8 +71,10 @@ describe('user_id 범위 — 봇이 쓰는 정상 조회는 통과', () => {
     ],
     [
       'LEFT JOIN 카테고리',
-      "SELECT s.*, c.name FROM schedules s LEFT JOIN categories c ON c.id = s.category_id LEFT JOIN categories p ON p.id = c.parent_id WHERE s.user_id = 1 ORDER BY CASE WHEN c.type = 'event' THEN 0 ELSE 1 END",
+      "SELECT s.*, c.name FROM schedules s LEFT JOIN categories c ON c.id = s.category_id AND c.user_id = 1 LEFT JOIN categories p ON p.id = c.parent_id AND p.user_id = 1 WHERE s.user_id = 1 ORDER BY CASE WHEN c.type = 'event' THEN 0 ELSE 1 END",
     ],
+    ['카테고리 단독 조회', "SELECT id, name FROM categories WHERE user_id = 1 AND name = '업무'"],
+    ['중간 기상 조회', "SELECT event_time, memo FROM sleep_events WHERE user_id = 1 AND date = '2026-11-25'"],
     ['테이블 없는 계산', "SELECT ('2026-11-25'::date + n)::text FROM generate_series(1,7) n LIMIT 1;"],
     [
       '교차 분석 JOIN (등식 연결)',
@@ -96,6 +98,7 @@ describe('user_id 범위 — 봇이 쓰는 정상 조회는 통과', () => {
     ['FROM 서브쿼리', 'SELECT x.* FROM (SELECT * FROM schedules WHERE user_id = 1) x'],
     ['information_schema', "SELECT column_name FROM information_schema.columns WHERE table_name = 'schedules'"],
     ['user_id 없는 테이블', 'SELECT * FROM notification_settings'],
+    ['user_id 없는 테이블 (리마인더)', 'SELECT * FROM reminders WHERE active = true'],
     ['OR 가지마다 user_id', 'SELECT * FROM schedules WHERE (user_id = 1 AND a = 1) OR (user_id = 1 AND b = 2)'],
     ['쉼표 조인 + 등식 연결', 'SELECT count(*) FROM schedules s, routine_records r WHERE s.user_id = 1 AND r.user_id = s.user_id'],
     ['대소문자·공백 변형', 'select * from SCHEDULES where USER_ID=1'],
@@ -130,6 +133,16 @@ describe('user_id 범위 — 읽는 테이블마다 user_id = N 보장', () => {
     ['주석 안의 조건은 조건이 아니다', "SELECT * FROM schedules /* user_id = 1 */ WHERE title = '-- user_id = 1'"],
     ['달러 인용 안의 조건은 조건이 아니다', 'SELECT * FROM schedules WHERE title = $$ user_id = 1 $$'],
     ['E 문자열 안의 조건은 조건이 아니다', "SELECT * FROM schedules WHERE title = E'\\' user_id = 1 --'"],
+    ['categories에도 필요하다', 'SELECT * FROM categories'],
+    ['sleep_events에도 필요하다', "SELECT * FROM sleep_events WHERE date = '2026-11-25'"],
+    [
+      'LEFT JOIN categories에도 필요하다',
+      'SELECT s.title, c.name FROM schedules s LEFT JOIN categories c ON c.id = s.category_id WHERE s.user_id = 1',
+    ],
+    [
+      'LEFT JOIN 부모 카테고리에도 필요하다',
+      'SELECT s.title FROM schedules s LEFT JOIN categories c ON c.id = s.category_id AND c.user_id = 1 LEFT JOIN categories p ON p.id = c.parent_id WHERE s.user_id = 1',
+    ],
   ])('%s', (_name, sql) => {
     expect(checkQuery(sql)).toMatch(COVERAGE);
   });
@@ -214,7 +227,18 @@ describe('modify_db — 봇이 쓰는 정상 변경은 통과', () => {
       'ON CONFLICT DO UPDATE (user_id 포함 대상)',
       "INSERT INTO budgets (user_id, month, amount) VALUES (1, '2026-11', 0) ON CONFLICT (user_id, month) DO UPDATE SET amount = EXCLUDED.amount",
     ],
-    ['UPDATE ... FROM 공용 테이블', "UPDATE schedules s SET status = 'done' FROM categories c WHERE s.user_id = 1 AND c.id = s.category_id"],
+    [
+      'UPDATE ... FROM 카테고리',
+      "UPDATE schedules s SET status = 'done' FROM categories c WHERE s.user_id = 1 AND c.user_id = 1 AND c.id = s.category_id",
+    ],
+    [
+      '중간 기상 INSERT',
+      "INSERT INTO sleep_events (user_id, date, event_time, memo) VALUES (1, '2026-11-25', '03:20', NULL)",
+    ],
+    [
+      '카테고리 ON CONFLICT DO UPDATE',
+      "INSERT INTO categories (user_id, name, type) VALUES (1, '운동', 'task') ON CONFLICT (user_id, name) WHERE parent_id IS NULL DO UPDATE SET type = EXCLUDED.type",
+    ],
   ])('%s', (_name, sql) => {
     expect(checkModify(sql)).toBeNull();
   });
@@ -226,6 +250,8 @@ describe('modify_db — 변경 범위는 user_id = N 행으로 한정', () => {
     ['OR로 넓힌 조건', "UPDATE schedules SET title = 'x' WHERE user_id = 1 OR id = 3"],
     ['DELETE OR', 'DELETE FROM schedules WHERE user_id = 1 OR true'],
     ['USING 테이블에도 필요하다', 'DELETE FROM schedules USING expenses e WHERE schedules.user_id = 1 AND e.id = 1'],
+    ['UPDATE ... FROM categories에도 필요하다', "UPDATE schedules s SET status = 'done' FROM categories c WHERE s.user_id = 1 AND c.id = s.category_id"],
+    ['sleep_events DELETE에도 필요하다', 'DELETE FROM sleep_events WHERE id = 3'],
     ['INSERT ... SELECT 원본에도 필요하다', 'INSERT INTO schedules (user_id, title) SELECT 1, title FROM expenses'],
     ['SET 서브쿼리에도 필요하다', 'UPDATE schedules SET title = (SELECT title FROM expenses LIMIT 1) WHERE user_id = 1'],
     [
@@ -254,8 +280,20 @@ describe('modify_db — 변경 범위는 user_id = N 행으로 한정', () => {
     );
   });
 
-  it('INSERT는 user_id 컬럼을 명시해야 한다', () => {
-    expect(checkModify("INSERT INTO schedules (title) VALUES ('user_id')")).toMatch(/user_id 컬럼을 포함/);
+  it.each([
+    ['schedules', "INSERT INTO schedules (title) VALUES ('user_id')"],
+    ['sleep_events', "INSERT INTO sleep_events (date, event_time) VALUES ('2026-11-25', '03:20')"],
+    ['categories', "INSERT INTO categories (name, type) VALUES ('운동', 'task')"],
+  ])('INSERT는 user_id 컬럼을 명시해야 한다: %s', (_name, sql) => {
+    expect(checkModify(sql)).toMatch(/user_id 컬럼을 포함/);
+  });
+
+  it('categories ON CONFLICT DO UPDATE도 충돌 대상에 user_id가 있어야 한다', () => {
+    expect(
+      checkModify(
+        "INSERT INTO categories (user_id, name, type) VALUES (1, '운동', 'task') ON CONFLICT (name) DO UPDATE SET type = 'task'",
+      ),
+    ).toMatch(/충돌 대상에 user_id/);
   });
 
   it('ON CONFLICT DO UPDATE는 충돌 대상에 user_id가 있어야 한다', () => {

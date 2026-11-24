@@ -27,13 +27,8 @@ export interface ScopeCtx extends Ctx {
 
 type Scope = ReadonlySet<string>;
 
-/** user_id 컬럼이 없거나 공용으로 쓰는 테이블 (user_id 조건 면제) */
-export const USER_ID_EXEMPT_TABLES = new Set([
-  'sleep_events',
-  'notification_settings',
-  'categories',
-  'reminders',
-]);
+/** user_id 컬럼이 없는 테이블 (user_id 조건 면제) */
+export const USER_ID_EXEMPT_TABLES = new Set(['notification_settings', 'reminders']);
 
 /** 계정 정보 테이블: user_id 컬럼이 없어 범위를 보장할 수 없으므로 읽지 않는다 */
 export const BLOCKED_TABLES = new Set(['users']);
