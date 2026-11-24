@@ -2,13 +2,13 @@
 
 import { useState, useMemo } from 'react';
 import type { RoutineDayStat } from '@/features/routine/lib/types';
+import { DAY_NAMES } from '@/lib/kst';
 
 interface MonthlyHeatmapProps {
   stats: RoutineDayStat[];
   selectedDate: string;
 }
 
-const DAY_HEADERS = ['일', '월', '화', '수', '목', '금', '토'];
 const LEGEND_COLORS = ['#f3f4f6', '#dcfce7', '#86efac', '#4ade80', '#22c55e', '#16a34a'];
 
 function heatColor(rate: number | undefined): string {
@@ -67,7 +67,7 @@ export function MonthlyHeatmap({ stats, selectedDate }: MonthlyHeatmapProps) {
       </div>
 
       <div className="mb-1 grid grid-cols-7 gap-[2px]">
-        {DAY_HEADERS.map((d, i) => (
+        {DAY_NAMES.map((d, i) => (
           <div
             key={d}
             className={`text-center text-xs font-medium ${

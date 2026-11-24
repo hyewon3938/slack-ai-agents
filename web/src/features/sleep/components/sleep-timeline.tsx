@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 import type { DailySleep, SleepPeriod, SleepRecord } from '../lib/types';
-import { formatDateLabel, getDayOfWeek } from '../lib/chart-utils';
+import { formatDateLabel, formatDuration, getDayOfWeek } from '../lib/chart-utils';
 
 interface SleepTimelineProps {
   dailies: DailySleep[];
@@ -267,8 +267,6 @@ export function SleepTimeline({ dailies, period, onEditDay }: SleepTimelineProps
         {tooltip &&
           (() => {
             const d = tooltip.daily;
-            const totalH = Math.floor(d.totalNightDurationMinutes / 60);
-            const totalM = d.totalNightDurationMinutes % 60;
             const hasMorning = d.morningSleeps.length > 0;
             const segmentLabels = d.nightSegments.map(
               (s) => `${s.bedtime}-${segmentEndTime(s) ?? '?'}`,
@@ -305,7 +303,7 @@ export function SleepTimeline({ dailies, period, onEditDay }: SleepTimelineProps
                 ))}
                 {d.totalNightDurationMinutes > 0 && (
                   <p className="text-gray-600">
-                    총 {totalH}시간{totalM > 0 ? ` ${totalM}분` : ''}
+                    총 {formatDuration(d.totalNightDurationMinutes)}
                     {hasMorning ? ' (합산)' : ''}
                   </p>
                 )}

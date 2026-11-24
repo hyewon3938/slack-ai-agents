@@ -6,7 +6,7 @@ import { ko } from 'date-fns/locale';
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { WEEK_START } from '@/features/schedule/lib/calendar-utils';
-import { useSchedules } from '@/features/schedule/hooks/use-schedules';
+import { useSchedules, getInitialView } from '@/features/schedule/hooks/use-schedules';
 import { TabsSkeleton, ListSkeleton } from '@/components/ui/skeleton';
 import { CalendarHeader } from '@/features/schedule/components/calendar-header';
 import { MonthView } from '@/features/schedule/components/month-view';
@@ -22,11 +22,6 @@ import { Modal } from '@/components/ui/modal';
 import { ScheduleForm } from '@/features/schedule/components/schedule-form';
 import { DeleteReasonModal } from '@/features/schedule/components/delete-reason-modal';
 import type { CalendarView } from '@/features/schedule/components/calendar-header';
-
-function getInitialView(): CalendarView {
-  if (typeof window === 'undefined') return 'day';
-  return window.innerWidth >= 768 ? 'week' : 'day';
-}
 
 function getTitle(view: string, currentDate: Date): string {
   switch (view) {

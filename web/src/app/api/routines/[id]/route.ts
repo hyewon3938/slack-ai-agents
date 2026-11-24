@@ -12,11 +12,10 @@ import {
   countCompletedRecordsBefore,
   deleteIncompleteScheduledRecordOn,
 } from '@/features/routine/lib/queries';
+import { TRACKING_MODES } from '@/features/routine/lib/types';
 import type { RoutineTrackingMode } from '@/features/routine/lib/types';
 
 /** 추적 모드 허용값 — 자유 TEXT가 아니므로 화이트리스트로 검증 (ADR-0061) */
-const TRACKING_MODES: readonly string[] = ['scheduled', 'free'];
-
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

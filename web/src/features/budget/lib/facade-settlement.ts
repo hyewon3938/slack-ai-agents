@@ -1,7 +1,7 @@
 import { getBillingRange, getCurrentBillingMonth, addBillingMonths } from './billing/cycle';
 import { buildSettlementSnapshot } from './settlement/settle';
 import { ensureFixedCostExpenses } from './fixed-cost-ensure';
-import { getMonthlyAllocation } from './facade';
+import { getMonthlyAllocation } from './facade-allocation';
 
 import {
   readDistributableAssetBalance,

@@ -6,13 +6,16 @@ import {
   createExpense,
   createInstallmentExpenses,
 } from '@/features/budget/lib/queries';
-import { ALL_EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
+import {
+  ALL_EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
+  VALID_CATEGORIES,
+} from '@/features/budget/lib/types';
 import { getTodayISO } from '@/lib/kst';
 import { validateFields } from '@/lib/validation';
 
 const VALID_EXPENSE_CATEGORIES = new Set<string>(ALL_EXPENSE_CATEGORIES);
 const VALID_INCOME_CATEGORIES = new Set<string>(INCOME_CATEGORIES);
-const VALID_CATEGORIES = new Set<string>([...ALL_EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
