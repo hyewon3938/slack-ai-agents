@@ -97,6 +97,41 @@ describe('sql-lexer', () => {
     expect(tokenize(sql).ok).toBe(false);
   });
 
+  it.each([
+    ['줄바꿈', "SELECT 'a'\n'b'"],
+    ['E 접두', "SELECT E'a'\n'b'"],
+    ['줄 주석 사이', "SELECT 'a' -- c\n'b'"],
+    ['블록 주석 사이', "SELECT 'a' /* c */ 'b'"],
+    ['같은 줄', "SELECT 'a' 'b'"],
+    ['비트 문자열', "SELECT b'01'\n'1'"],
+    ['16진 문자열', "SELECT x'0f'\n'1'"],
+    ['N 접두', "SELECT N'a'\n'b'"],
+    ['달러 인용 뒤', "SELECT $$a$$\n'b'"],
+    ['달러 인용 앞', "SELECT 'a'\n$$b$$"],
+  ])('이어 쓴 문자열 리터럴은 해석 오류로 처리: %s', (_name, sql) => {
+    expect(tokenize(sql).ok).toBe(false);
+  });
+
+  it.each([
+    ['연결 연산자', "SELECT 'a' || 'b'"],
+    ['타입 접두 리터럴', "SELECT DATE '2026-11-25', INTERVAL '1 day'"],
+    ['쉼표로 나눈 문자열', "SELECT 'a', 'b'"],
+  ])('문자열 사이에 다른 토큰이 있으면 통과: %s', (_name, sql) => {
+    expect(tokenize(sql).ok).toBe(true);
+  });
+
+  it.each([
+    ['컬럼 이름 between 뒤', 'SELECT between case FROM t'],
+    ['NOT 뒤 between', 'SELECT NOT between case FROM t'],
+    ['DISTINCT ON 뒤 between', 'SELECT DISTINCT ON (1) between case FROM t'],
+    ['OPERATOR() 뒤 between', 'SELECT 1 OPERATOR(+) between case FROM t'],
+    ['LIKE 뒤 between', "SELECT 'a' LIKE between case FROM t"],
+    ['컬럼 이름 zone 뒤', 'SELECT zone case FROM t'],
+    ['타입 이름의 time zone 뒤', 'SELECT x::timestamp with time zone case FROM t'],
+  ])('between·zone 뒤 CASE도 별칭으로 읽힐 수 있는 자리면 거절: %s', (_name, sql) => {
+    expect(tokenize(sql).ok).toBe(false);
+  });
+
   it('점 뒤와 AS 뒤의 단어는 이름으로 표시한다', () => {
     const tokens = tokensOf('SELECT x.case AS where FROM t');
     expect(tokens.filter((t) => t.ident).map((t) => t.value)).toEqual(['case', 'where']);
@@ -168,8 +203,62 @@ describe('user_id 범위 — 토큰 해석을 DB 문법에 맞춤', () => {
     ['AS 뒤 키워드 별칭', 'SELECT true AS where FROM schedules WHERE user_id = 1'],
     ['점 뒤 키워드 컬럼', 'SELECT s.id, x.from FROM schedules s, (SELECT 1 AS from) x WHERE s.user_id = 1'],
     ['CAST AS 타입', 'SELECT CAST(id AS text) FROM schedules WHERE user_id = 1'],
+    ['BETWEEN CASE', 'SELECT id FROM schedules WHERE user_id = 1 AND id BETWEEN CASE WHEN id > 3 THEN 1 ELSE 2 END AND 10'],
+    ['NOT BETWEEN CASE', 'SELECT id FROM schedules WHERE user_id = 1 AND id NOT BETWEEN CASE WHEN id > 3 THEN 1 ELSE 2 END AND 10'],
+    ['괄호 뒤 BETWEEN CASE', 'SELECT id FROM schedules WHERE user_id = 1 AND (id + 1) BETWEEN 1 AND CASE WHEN id > 3 THEN 5 END'],
+    [
+      'AT TIME ZONE CASE',
+      "SELECT created_at AT TIME ZONE CASE WHEN id > 3 THEN 'UTC' ELSE 'Asia/Seoul' END FROM schedules WHERE user_id = 1",
+    ],
+    ['IS DISTINCT FROM', 'SELECT id FROM schedules WHERE user_id = 1 AND memo IS DISTINCT FROM title'],
+    ['IS NOT DISTINCT FROM', 'SELECT id FROM schedules WHERE user_id = 1 AND memo IS NOT DISTINCT FROM title'],
+    ['집계 FILTER', "SELECT COUNT(*) FILTER (WHERE status = 'done') FROM schedules WHERE user_id = 1"],
+    ['일반 GROUP BY', 'SELECT status, COUNT(*) FROM schedules WHERE user_id = 1 GROUP BY status ORDER BY status'],
+    [
+      'string_agg WITHIN 없는 정렬',
+      "SELECT string_agg(title, ',' ORDER BY id) FROM schedules WHERE user_id = 1 GROUP BY status",
+    ],
+    ['문자열 연결', "SELECT 'a' || 'b' || title FROM schedules WHERE user_id = 1"],
   ])('정상 형태는 통과: %s', (_name, sql) => {
     expect(checkQuery(sql)).toBeNull();
+  });
+
+  it.each([
+    [
+      '조회',
+      "SELECT * FROM schedules WHERE title = E'a'\n'\\'' OR 1=1 OR title = ' AND user_id = 1 --'",
+    ],
+    ['함수 호출', "SELECT E'a'\n'\\'' || setval('schedules_id_seq', 1) || ' --'"],
+    [
+      'UPDATE',
+      "UPDATE schedules SET title = E'a'\n'\\'' WHERE user_id = 2 OR title = ' WHERE user_id = 1 --'",
+    ],
+    [
+      'DELETE',
+      "DELETE FROM schedules WHERE title = E'a'\n'\\'' OR user_id = 2 OR title = ' AND user_id = 1 --'",
+    ],
+  ])('이어 쓴 문자열 리터럴은 해석 오류로 처리: %s', (_name, sql) => {
+    const isModify = /^(UPDATE|DELETE)/.test(sql);
+    expect(isModify ? checkModify(sql) : checkQuery(sql)).toMatch(/SQL을 해석할 수 없어/);
+  });
+
+  it.each([
+    [
+      'GROUP BY 앞 컬럼 within',
+      'SELECT s.id, s.title FROM schedules s, (SELECT true AS within) w WHERE within GROUP BY s.id, s.title, s.id > 0 AND s.user_id = 1',
+    ],
+    [
+      '집계와 GROUP BY 앞 컬럼 within',
+      "SELECT string_agg(s.title, ',') FROM schedules s, (SELECT true AS within) w WHERE within GROUP BY s.id > 0 AND s.user_id = 1",
+    ],
+  ])('집계 뒤가 아닌 within GROUP은 GROUP BY 절로 읽는다: %s', (_name, sql) => {
+    expect(checkQuery(sql)).toMatch(COVERAGE);
+  });
+
+  it('IS 없는 NOT DISTINCT FROM은 FROM 절로 읽는다', () => {
+    expect(checkQuery('SELECT id NOT DISTINCT FROM title FROM schedules WHERE user_id = 1')).toMatch(
+      /쿼리 구조를 확인할 수 없어/,
+    );
   });
 });
 
@@ -412,6 +501,28 @@ describe('modify_db — 변경 범위는 user_id = N 행으로 한정', () => {
         "INSERT INTO budgets (user_id, month, amount) VALUES (1, '2026-11', 0) ON CONFLICT (month) DO UPDATE SET amount = 0",
       ),
     ).toMatch(/충돌 대상에 user_id/);
+  });
+
+  it.each([
+    ['SELECT 별칭 별', "INSERT INTO schedules (title, user_id, memo) SELECT v.*, 1 FROM (VALUES ('x', 2)) v"],
+    ['SELECT 단독 별', "INSERT INTO schedules (title, user_id, memo) SELECT *, 1 FROM (VALUES ('x', 2)) v"],
+    ['SELECT DISTINCT 뒤 별', "INSERT INTO schedules (title, user_id, memo) SELECT DISTINCT v.*, 1 FROM (VALUES ('x', 2)) v"],
+    ['SELECT 괄호 안 별', "INSERT INTO schedules (title, user_id, memo) SELECT (v.*), 1 FROM (VALUES ('x', 2)) v"],
+    ['SELECT 식 펼침', "INSERT INTO schedules (title, user_id, memo) SELECT (v).*, 1 FROM (VALUES ('x', 2)) v"],
+    ['VALUES 식 펼침', "INSERT INTO schedules (title, user_id, memo) VALUES ((ROW('x', 2)).*, 1)"],
+    ['VALUES 괄호 안 식 펼침', "INSERT INTO schedules (title, user_id, memo) VALUES (((ROW('x', 2)).*), 1)"],
+  ])('여러 열로 펼쳐지는 항목이 있으면 user_id 자리를 셀 수 없다: %s', (_name, sql) => {
+    expect(checkModify(sql)).toMatch(/쿼리 구조를 확인할 수 없어/);
+  });
+
+  it.each([
+    ['VALUES', "INSERT INTO schedules (title, user_id, memo) VALUES ('a', 1, 'b')"],
+    ['SELECT 목록', 'INSERT INTO schedules (title, user_id, memo) SELECT title, 1, memo FROM schedules WHERE user_id = 1'],
+    ['곱셈', 'INSERT INTO schedules (user_id, title) SELECT 1, (id * 2)::text FROM schedules WHERE user_id = 1'],
+    ['COUNT(*)', 'INSERT INTO schedules (user_id, title) SELECT 1, COUNT(*)::text FROM schedules WHERE user_id = 1'],
+    ['user_id 없는 테이블의 별', 'INSERT INTO reminders (title, time_value) SELECT v.* FROM (VALUES (\'x\', \'09:00\')) v'],
+  ])('펼침 없는 INSERT 값은 통과: %s', (_name, sql) => {
+    expect(checkModify(sql)).toBeNull();
   });
 
   it.each([

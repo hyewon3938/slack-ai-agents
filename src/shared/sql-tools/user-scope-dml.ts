@@ -4,7 +4,15 @@
  * INSERT는 user_id 컬럼 값이 N인지와 ON CONFLICT DO UPDATE의 충돌 대상을 확인한다.
  */
 
-import { type Range, findTop, identName, isPunct, isWord, splitTop } from './sql-blocks.js';
+import {
+  type Range,
+  findTop,
+  identName,
+  isPunct,
+  isWord,
+  splitTop,
+  topLevel,
+} from './sql-blocks.js';
 import { otherUserMessage } from './sql-guards.js';
 import {
   BLOCKED_TABLES,
@@ -132,11 +140,44 @@ const isUserIdLiteral = (ctx: ScopeCtx, start: number): boolean => {
   return t?.kind === 'number' && t.value === String(ctx.userId);
 };
 
+/** 항목 전체를 감싼 괄호를 벗긴 범위 */
+const unwrapItem = (ctx: ScopeCtx, [s, e]: Range): Range => {
+  let range: Range = [s, e];
+  while (isPunct(ctx.tokens[range[0]], '(') && ctx.match[range[0]] === range[1] - 1) {
+    range = [range[0] + 1, range[1] - 1];
+  }
+  return range;
+};
+
+/**
+ * `*`, `x.*`, `(expr).*`처럼 한 항목이 여러 열로 펼쳐지는지.
+ * 펼쳐지면 뒤 항목의 자리가 밀려 user_id 자리를 셀 수 없다.
+ */
+const isStarItem = (ctx: ScopeCtx, item: Range): boolean => {
+  const t = ctx.tokens;
+  const [s, e] = unwrapItem(ctx, item);
+  if (isWord(t[s], 'select', 'values', 'with', 'table')) return false;
+  return topLevel(ctx, s, e).some(
+    (i) => t[i]?.kind === 'op' && t[i]?.value === '*' && (i === s || isPunct(t[i - 1], '.')),
+  );
+};
+
+/** SELECT 목록 첫 항목 앞의 ALL·DISTINCT [ON (...)]를 건너뛴 위치 */
+const afterSelectQuantifier = (ctx: ScopeCtx, start: number): number => {
+  const t = ctx.tokens;
+  if (isWord(t[start], 'all')) return start + 1;
+  if (!isWord(t[start], 'distinct')) return start;
+  if (!isWord(t[start + 1], 'on') || !isPunct(t[start + 2], '(')) return start + 1;
+  return (ctx.match[start + 2] ?? start + 2) + 1;
+};
+
 /** VALUES (...), (...): 튜플마다 user_id 자리 값이 정확히 N */
 const checkValues = (ctx: ScopeCtx, start: number, end: number, userIdx: number): void => {
   for (const [s, e] of splitTop(ctx, start + 1, end, isComma(ctx))) {
     if (!isPunct(ctx.tokens[s], '(') || ctx.match[s] !== e - 1) return fail(ctx, MSG.structure);
-    const item = splitTop(ctx, s + 1, e - 1, isComma(ctx))[userIdx];
+    const items = splitTop(ctx, s + 1, e - 1, isComma(ctx));
+    if (userIdx >= 0 && items.some((r) => isStarItem(ctx, r))) return fail(ctx, MSG.structure);
+    const item = items[userIdx];
     if (userIdx >= 0 && !(item && item[1] - item[0] === 1 && isUserIdLiteral(ctx, item[0]))) {
       fail(ctx, otherUserMessage(ctx.userId));
     }
@@ -158,7 +199,10 @@ const checkSelectedValue = (ctx: ScopeCtx, start: number, end: number, userIdx: 
   const setOp = findTop(ctx, start, end, (i) => isWord(t[i], 'union', 'intersect', 'except'));
   const clauses = splitClauses(ctx, start + 1, end, SELECT_CLAUSES);
   if (!isWord(t[start], 'select') || setOp >= 0 || !clauses) return fail(ctx, MSG.structure);
-  const item = splitTop(ctx, clauses.head[0], clauses.head[1], isComma(ctx))[userIdx];
+  const [headStart, headEnd] = clauses.head;
+  const listed = splitTop(ctx, afterSelectQuantifier(ctx, headStart), headEnd, isComma(ctx));
+  if (listed.some((r) => isStarItem(ctx, r))) return fail(ctx, MSG.structure);
+  const item = splitTop(ctx, headStart, headEnd, isComma(ctx))[userIdx];
   if (!item || !isSelectedUserId(ctx, item)) fail(ctx, otherUserMessage(ctx.userId));
 };
 

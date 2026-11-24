@@ -73,11 +73,19 @@ export interface Clauses {
   ranges: Map<string, Range>;
 }
 
-/** IS DISTINCT FROM, WITHIN GROUP 같은 비절 키워드 */
+/**
+ * IS [NOT] DISTINCT FROM, 집계 함수 뒤 WITHIN GROUP ( 같은 비절 키워드.
+ * 이 모양이 아니면 절 키워드로 보고, 같은 절이 두 번 나오면 splitClauses가 해석을 거절한다.
+ */
 const isInlineKeyword = (ctx: Ctx, i: number): boolean => {
   const t = ctx.tokens;
-  if (isWord(t[i], 'from')) return isWord(t[i - 1], 'distinct') && isWord(t[i - 2], 'is', 'not');
-  if (isWord(t[i], 'group')) return isWord(t[i - 1], 'within');
+  if (isWord(t[i], 'from')) {
+    if (!isWord(t[i - 1], 'distinct')) return false;
+    return isWord(t[i - 2], 'is') || (isWord(t[i - 2], 'not') && isWord(t[i - 3], 'is'));
+  }
+  if (isWord(t[i], 'group')) {
+    return isWord(t[i - 1], 'within') && isPunct(t[i - 2], ')') && isPunct(t[i + 1], '(');
+  }
   return false;
 };
 

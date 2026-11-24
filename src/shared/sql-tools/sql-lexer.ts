@@ -3,6 +3,8 @@
  * 보안 검증이 DB와 같은 경계로 SQL을 읽도록, 애매한 입력은 해석하지 않고 실패로 돌려준다.
  */
 
+import { hasAdjacentStrings, hasClearCases, markNameWords } from './sql-lexer-checks.js';
+
 export type TokenKind = 'word' | 'qident' | 'number' | 'string' | 'param' | 'op' | 'punct';
 
 export interface Token {
@@ -214,68 +216,7 @@ const isBalanced = (tokens: Token[]): boolean => {
   return stack.length === 0;
 };
 
-// ---- 이름 자리 표시와 CASE 위치 ----
-
-const isWordTok = (t: Token | undefined, value: string): boolean =>
-  t?.kind === 'word' && !t.ident && t.value === value;
-const isPunctTok = (t: Token | undefined, value: string): boolean =>
-  t?.kind === 'punct' && t.value === value;
-
-/** CTE의 AS [NOT] MATERIALIZED ( 는 이름이 아니라 키워드 */
-const isCteMaterialized = (tokens: Token[], i: number): boolean => {
-  const at = isWordTok(tokens[i], 'not') ? i + 1 : i;
-  return isWordTok(tokens[at], 'materialized') && isPunctTok(tokens[at + 1], '(');
-};
-
-/** `.` 뒤와 AS 뒤의 word는 DB가 키워드가 아닌 이름(컬럼·별칭)으로 읽는다 */
-const markNameWords = (tokens: Token[]): void => {
-  tokens.forEach((t, i) => {
-    if (t.kind !== 'word') return;
-    const prev = tokens[i - 1];
-    if (isPunctTok(prev, '.')) t.ident = true;
-    else if (isWordTok(prev, 'as') && !isCteMaterialized(tokens, i)) t.ident = true;
-  });
-};
-
-/** 바로 뒤에 CASE 식이 올 수 있는 키워드. 이 밖의 자리에서 CASE는 DB가 별칭으로 읽을 수 있다 */
-const CASE_AFTER_WORDS = new Set([
-  'select', 'distinct', 'all', 'where', 'and', 'or', 'not', 'when', 'then', 'else', 'case',
-  'on', 'having', 'returning', 'limit', 'offset', 'symmetric', 'asymmetric', 'like', 'ilike',
-  'to', 'from',
-]);
-const CASE_AFTER_PUNCT = new Set(['(', ',', '[', ':']);
-
-/** i 위치 CASE가 식의 시작으로만 읽히는 자리인지 */
-const isCaseStart = (tokens: Token[], i: number): boolean => {
-  const prev = tokens[i - 1];
-  if (!prev) return true;
-  if (prev.kind === 'op') return !(prev.value === '*' && isPunctTok(tokens[i - 2], '.'));
-  if (prev.kind === 'punct') return CASE_AFTER_PUNCT.has(prev.value);
-  if (prev.kind !== 'word' || prev.ident) return false;
-  if (prev.value !== 'by') return CASE_AFTER_WORDS.has(prev.value);
-  const owner = tokens[i - 2];
-  return ['group', 'order', 'partition'].some((w) => isWordTok(owner, w));
-};
-
-/** CASE마다 식 시작 자리에 있고, 같은 괄호 깊이에서 END로 닫혀야 한다 */
-const hasClearCases = (tokens: Token[]): boolean => {
-  const stack: string[] = [];
-  for (const [i, t] of tokens.entries()) {
-    if (isWordTok(t, 'case')) {
-      if (!isCaseStart(tokens, i)) return false;
-      stack.push('case');
-    } else if (isWordTok(t, 'end') && stack[stack.length - 1] === 'case') {
-      stack.pop();
-    } else if (isPunctTok(t, '(') || isPunctTok(t, '[')) {
-      stack.push('group');
-    } else if (isPunctTok(t, ')') || isPunctTok(t, ']')) {
-      if (stack.pop() !== 'group') return false;
-    }
-  }
-  return stack.length === 0;
-};
-
-/** SQL을 토큰 목록으로 분해. 닫히지 않은 문자열·주석·괄호와 위치가 애매한 CASE는 실패로 돌려준다 */
+/** SQL을 토큰 목록으로 분해. 닫히지 않은 문자열·주석·괄호, 이어 쓴 문자열, 위치가 애매한 CASE는 실패로 돌려준다 */
 export const tokenize = (sql: string): LexResult => {
   const tokens: Token[] = [];
   let i = 0;
@@ -286,6 +227,7 @@ export const tokenize = (sql: string): LexResult => {
     i = step.end;
   }
   if (!isBalanced(tokens)) return { ok: false, reason: '괄호 짝이 맞지 않음' };
+  if (hasAdjacentStrings(tokens)) return { ok: false, reason: '이어 쓴 문자열 리터럴은 해석할 수 없음' };
   markNameWords(tokens);
   if (!hasClearCases(tokens)) return { ok: false, reason: 'CASE 식의 범위를 정할 수 없음' };
   return { ok: true, tokens };
