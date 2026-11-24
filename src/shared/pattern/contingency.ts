@@ -4,7 +4,8 @@
 
 import { cumulativePosteriorFromHitMiss, posteriorMean } from './bayesian-posterior.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import { type DayObservation, fisherExact } from './stats.js';
+import type { DayObservation } from './stats-evalue.js';
+import { fisherExact } from './stats-table.js';
 import type {
   Contingency,
   ContingencyVerification,
