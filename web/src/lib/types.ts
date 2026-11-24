@@ -68,7 +68,6 @@ export function colorToHex(colorKey: string): string {
   return PRESET_COLORS[colorKey] ?? (colorKey.startsWith('#') ? colorKey : '#6b7280');
 }
 
-export const COLOR_OPTIONS = Object.keys(PRESET_COLORS);
 
 // ─── 유틸리티 (공통) ─────────────────────────────────
 
