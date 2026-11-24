@@ -3,22 +3,8 @@
  */
 
 import { query } from '../../shared/db.js';
-import { type SignalDef, type SignalDirection } from '../../shared/pattern/types.js';
-
-interface SignalDefRow {
-  id: number;
-  name: string;
-  kind: 'sql' | 'tag';
-  source: 'seed' | 'llm';
-  sql_body: string | null;
-  value_type: 'binary' | 'continuous' | null;
-  direction: SignalDirection | null;
-  threshold: string | null;
-  tag_name: string | null;
-  window_days: number | null;
-  domain: string | null;
-  description: string | null;
-}
+import { type SignalDef } from '../../shared/pattern/types.js';
+import { toSignalDef, type SignalDefRow } from '../../shared/pattern/load-signal-defs.js';
 
 export interface LoadedSignal {
   def: SignalDef;
@@ -35,19 +21,7 @@ export const loadActiveSignals = async (userId: number): Promise<LoadedSignal[]>
     [userId],
   );
   return res.rows.map((r) => ({
-    def: {
-      id: r.id,
-      name: r.name,
-      kind: r.kind,
-      source: r.source,
-      sqlBody: r.sql_body,
-      valueType: r.value_type,
-      direction: r.direction,
-      threshold: r.threshold === null ? null : Number(r.threshold),
-      tagName: r.tag_name,
-      windowDays: r.window_days,
-      domain: r.domain,
-    },
+    def: toSignalDef(r),
     description: r.description,
   }));
 };

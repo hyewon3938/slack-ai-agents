@@ -21,7 +21,7 @@ export interface SignalDefRow {
   description: string | null;
 }
 
-export const toSignalDef = (row: SignalDefRow): SignalDef => ({
+export const toSignalDef = (row: Omit<SignalDefRow, 'description'>): SignalDef => ({
   id: row.id,
   name: row.name,
   kind: row.kind,

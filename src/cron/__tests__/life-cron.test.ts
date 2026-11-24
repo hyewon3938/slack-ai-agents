@@ -124,7 +124,8 @@ vi.mock('pg', () => {
   return { default: { Pool: MockPool, types: { setTypeParser: vi.fn() } } };
 });
 
-vi.mock('../../shared/kst.js', () => ({
+vi.mock('../../shared/kst.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../shared/kst.js')>()),
   getTodayISO: () => mockTodayISO(),
   getYesterdayISO: () => '2026-03-11',
   getKSTTimeString: () => '09:00',

@@ -16,7 +16,8 @@ vi.mock('pg', () => {
 });
 
 // KST 모킹 — 고정된 날짜
-vi.mock('../kst.js', () => ({
+vi.mock('../kst.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../kst.js')>()),
   getTodayISO: () => '2026-03-09',
   getYesterdayISO: () => '2026-03-08',
   getTodayString: () => '2026-03-09 (월)',

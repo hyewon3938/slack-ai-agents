@@ -137,6 +137,21 @@ export const getWeekReference = (): string => {
   return `지난 주: ${formatWeek(prevSunday)}\n이번 주: ${formatWeek(sunday)}\n다음 주: ${formatWeek(nextSunday)}`;
 };
 
+/** 두 날짜(YYYY-MM-DD) 사이의 일수 (to − from, KST 자정 기준). */
+export const diffDays = (from: string, to: string): number => {
+  const msPerDay = 86_400_000;
+  const fromMs = new Date(`${from}T00:00:00+09:00`).getTime();
+  const toMs = new Date(`${to}T00:00:00+09:00`).getTime();
+  return Math.round((toMs - fromMs) / msPerDay);
+};
+
+/** 분 → "N시간 M분" 포맷 (분이 0이면 "N시간"). */
+export const formatDuration = (minutes: number): string => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+};
+
 /** 날짜 문자열에 N일 더하기 (YYYY-MM-DD → YYYY-MM-DD) */
 export const addDays = (dateStr: string, days: number): string => {
   const d = new Date(`${dateStr}T12:00:00+09:00`);
