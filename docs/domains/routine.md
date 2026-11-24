@@ -69,7 +69,6 @@ routine_inactive_periods:
 ```
 features/routine/
 ├── components/
-│   ├── routine-page.tsx          # 메인 페이지 (뷰 전환)
 │   ├── routine-checklist.tsx     # 일별 체크리스트 (메인 뷰)
 │   ├── routine-stats.tsx         # 통계 뷰 (기간별 + 루틴별 달성률)
 │   ├── routine-list.tsx          # 템플릿 관리 뷰
@@ -81,7 +80,6 @@ features/routine/
 │   ├── routine-heatmap.tsx       # 루틴별 월간 히트맵 (동그라미 캘린더)
 │   ├── inactive-period-list.tsx  # 비활성 기간 관리 UI
 │   ├── date-nav.tsx              # 날짜 네비게이션 (이전/오늘/다음)
-│   ├── view-toggle.tsx           # 뷰 전환 (checklist/stats/manage)
 │   ├── monthly-heatmap.tsx       # 월간 히트맵
 │   └── yearly-heatmap.tsx        # 연간 히트맵 (GitHub 스타일)
 ├── hooks/
