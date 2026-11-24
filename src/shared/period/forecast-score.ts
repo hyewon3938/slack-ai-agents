@@ -6,7 +6,7 @@ import { computeSignalSeries } from '../pattern/series.js';
 import { computeUserDataStarts, signalDataStart } from '../pattern/data-window.js';
 import { loadSignalDefsByIds } from '../pattern/load-signal-defs.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
-import type { LedgerPeriodType, ForecastSourceCell, ScoredEntry } from './types.js';
+import type { LedgerPeriodType, ForecastSourceCell, NoCallReason, ScoredEntry } from './types.js';
 import { parseDirection, parseSourceCell } from './forecast-rows.js';
 
 const PF = INSIGHT_THRESHOLDS.periodForecast;
@@ -64,7 +64,7 @@ export const scoreForecasts = async (
   for (const row of openRes.rows) {
     const baseline = row.baseline_rate === null ? null : Number(row.baseline_rate);
     const direction = parseDirection(row.predicted_direction);
-    const sourceCell = parseSourceCell(row.source_cell) as ForecastSourceCell;
+    const sourceCell = parseSourceCell(row.source_cell);
     const signal = row.signal_id !== null ? signalById.get(row.signal_id) : undefined;
 
     // 신호 결측/비활성 또는 baseline 없음 → 측정 불가(강제판정 금지).
@@ -133,7 +133,7 @@ const unmeasurableEntry = (
   signalId: number | null,
   direction: 'up' | 'down' | null,
   baseline: number | null,
-  sourceCell: ForecastSourceCell,
+  sourceCell: ForecastSourceCell | NoCallReason,
 ): ScoredEntry => ({
   signalId,
   status: 'unmeasurable',

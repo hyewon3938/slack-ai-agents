@@ -5,6 +5,19 @@ import type { Jiji, Pillar } from './types.js';
 import { JEOLGI_TABLE, JEOLGI_JIJI, JEOLGI_MONTH_OFFSET } from './jeolgi-table.js';
 import { daysDiff, indexToPillar, cheonganIndex, jijiIndex } from './helpers.js';
 
+// ─── 절기 테이블 조회 ────────────────────────────────────
+
+/**
+ * 연도 절기 표 조회 — 없으면 throw. 소한 이전 날짜는 전년 표를, 대설 이후 날짜는 익년 표를
+ * 참조하므로 필요한 연도와 조회 날짜가 다를 수 있어 둘 다 메시지에 남긴다.
+ */
+const requireJeolgiTable = (year: number, forDate?: string): readonly string[] => {
+  const table = JEOLGI_TABLE[year];
+  if (table) return table;
+  const context = forDate && !forDate.startsWith(String(year)) ? ` — ${forDate} 계산에 필요` : '';
+  throw new Error(`절기 데이터 없음: ${year}년${context} (지원 범위: 2024-2033)`);
+};
+
 // ─── 기둥 계산 ──────────────────────────────────────────
 
 /** 일주(日柱) 계산. 기준: 2024-02-04 = 戊戌(index 34). */
@@ -26,8 +39,7 @@ export const getYearPillar = (dateStr: string): Pillar => {
 
 /** 해당 년도 입춘 날짜 (YYYY-MM-DD) */
 export const getIpchunDate = (year: number): string => {
-  const table = JEOLGI_TABLE[year];
-  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
+  const table = requireJeolgiTable(year);
   return `${year}-${table[1]}`; // index 1 = 입춘
 };
 
@@ -67,13 +79,14 @@ const getJeolgiMonth = (
   const mmdd = dateStr.slice(5); // "MM-DD"
 
   // 현재 년도 절기 테이블
-  const table = JEOLGI_TABLE[year];
-  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
+  const table = requireJeolgiTable(year, dateStr);
 
   // 절기 구간 역순 탐색: 마지막으로 지난 절기 찾기
   for (let i = 11; i >= 0; i--) {
     if (mmdd >= table[i]) {
       const sajuYear = i >= 1 ? year : year - 1; // 소한(i=0)은 입춘 전 → 전년
+      // 전년 사주년이면 월간 계산이 전년 년주(전년 입춘)를 쓰므로 전년 표가 필요 — 조회 날짜를 메시지에 남긴다.
+      if (sajuYear !== year) requireJeolgiTable(sajuYear, dateStr);
       return {
         jiji: JEOLGI_JIJI[i],
         monthOffset: JEOLGI_MONTH_OFFSET[i],
@@ -82,9 +95,8 @@ const getJeolgiMonth = (
     }
   }
 
-  // mmdd가 소한보다 이전 → 전년 대설 이후 (자월)
-  const prevTable = JEOLGI_TABLE[year - 1];
-  if (!prevTable) throw new Error(`절기 데이터 없음: ${year - 1}년 (지원 범위: 2024-2033)`);
+  // mmdd가 소한보다 이전 → 전년 대설 이후 (자월). 위와 같은 이유로 전년 표 필요.
+  requireJeolgiTable(year - 1, dateStr);
   return {
     jiji: '자',
     monthOffset: 10,
@@ -101,8 +113,7 @@ const getJeolgiMonth = (
 export const getJeolgiMonthRange = (date: string): { start: string; end: string; jiji: Jiji } => {
   const year = Number(date.slice(0, 4));
   const mmdd = date.slice(5);
-  const table = JEOLGI_TABLE[year];
-  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
+  const table = requireJeolgiTable(year, date);
 
   // 당년 절기 중 date 이하의 마지막 전환 찾기
   let idx = -1;
@@ -115,8 +126,7 @@ export const getJeolgiMonthRange = (date: string): { start: string; end: string;
 
   if (idx === -1) {
     // date가 당년 소한보다 이전 → 전년 대설에 시작된 자월
-    const prev = JEOLGI_TABLE[year - 1];
-    if (!prev) throw new Error(`절기 데이터 없음: ${year - 1}년 (지원 범위: 2024-2033)`);
+    const prev = requireJeolgiTable(year - 1, date);
     return {
       start: `${year - 1}-${prev[11]}`, // 전년 대설
       end: addDays(`${year}-${table[0]}`, -1), // 당년 소한 전날
@@ -126,8 +136,7 @@ export const getJeolgiMonthRange = (date: string): { start: string; end: string;
 
   if (idx === 11) {
     // 대설 → 자월, 끝 = 익년 소한 전날
-    const next = JEOLGI_TABLE[year + 1];
-    if (!next) throw new Error(`절기 데이터 없음: ${year + 1}년 (지원 범위: 2024-2033)`);
+    const next = requireJeolgiTable(year + 1, date);
     return {
       start: `${year}-${table[11]}`,
       end: addDays(`${year + 1}-${next[0]}`, -1),
@@ -149,7 +158,6 @@ export const getJeolgiMonthRange = (date: string): { start: string; end: string;
  */
 export const isJeolgiTransitionDay = (date: string): boolean => {
   const year = Number(date.slice(0, 4));
-  const table = JEOLGI_TABLE[year];
-  if (!table) throw new Error(`절기 데이터 없음: ${year}년 (지원 범위: 2024-2033)`);
+  const table = requireJeolgiTable(year, date);
   return table.includes(date.slice(5));
 };

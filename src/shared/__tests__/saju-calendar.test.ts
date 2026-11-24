@@ -407,6 +407,23 @@ describe('절기 테이블 연장 (2029-2033)', () => {
     expect(() => getMonthPillar('2034-06-01')).toThrow(/지원 범위: 2024-2033/);
   });
 
+  it('표 양끝의 연 경계는 인접 연도 표가 필요해 throw — 필요한 연도와 조회 날짜를 메시지에 남긴다', () => {
+    // 하한: 2024 입춘(02-04) 이전 월주는 전년(2023) 년주가 필요하고, 소한(01-06) 이전 절기월 범위는
+    // 2023 대설이 필요하다. 서비스 기록은 2026년부터라 운영에서 닿지 않는다.
+    expect(() => getMonthPillar('2024-01-03')).toThrow(/2023년 — 2024-01-03 계산에 필요/);
+    expect(() => getMonthPillar('2024-01-06')).toThrow(/2023년 — 2024-01-06 계산에 필요/);
+    expect(getMonthPillar('2024-02-04').jiji).toBe('인');
+    expect(() => getJeolgiMonthRange('2024-01-03')).toThrow(/2023년 — 2024-01-03 계산에 필요/);
+    expect(getJeolgiMonthRange('2024-01-06').jiji).toBe('축');
+    // 상한: 2033 대설(12-07) 이후 자월은 끝을 정하려면 2034 소한이 필요.
+    expect(() => getJeolgiMonthRange('2033-12-07')).toThrow(/2034년 — 2033-12-07 계산에 필요/);
+    expect(getJeolgiMonthRange('2033-12-06').jiji).toBe('해');
+    // 같은 연도 표가 없을 때는 연도만으로 충분히 분명하다.
+    expect(() => isJeolgiTransitionDay('2034-01-05')).toThrow(
+      '절기 데이터 없음: 2034년 (지원 범위: 2024-2033)',
+    );
+  });
+
   it('일주는 2034년에도 throw 없음 (절기 테이블 무관, 산술 기반)', () => {
     expect(() => getDayPillar('2034-06-01')).not.toThrow();
     expect(() => getDayPillar('2050-01-01')).not.toThrow();

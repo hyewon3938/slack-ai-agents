@@ -95,7 +95,7 @@ export interface ScoredEntry {
   measuredRate: number | null;
   measuredDelta: number | null;
   directionHit: boolean | null;
-  sourceCell: ForecastSourceCell;
+  sourceCell: ForecastSourceCell | NoCallReason; // 저장 행의 source_cell이 비거나 손상되면 사유
 }
 
 /** 카드 렌더 입력(순수 데이터) — period-interpretation이 type-only import. */

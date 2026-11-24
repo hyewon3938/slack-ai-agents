@@ -40,8 +40,11 @@ const fmtDelta = (delta: number | null): string => {
   return ` _(실측 *${sign}${Math.abs(pp)}%p*)_`;
 };
 
-const cellLabel = (cell: ForecastSourceCell): string =>
-  `${DOMAIN_LABEL[cell.domain] ?? cell.domain} — *${cell.axisKey}*`;
+/** 근거 셀 라벨. 근거 없는 행(사유)은 사유를 그대로 보여 준다 — 저장 행이 비었거나 손상된 경우. */
+const cellLabel = (cell: ForecastSourceCell | NoCallReason): string =>
+  'reason' in cell
+    ? `_(${cell.reason})_`
+    : `${DOMAIN_LABEL[cell.domain] ?? cell.domain} — *${cell.axisKey}*`;
 
 /**
  * 예측 장부 섹션 — 지난 기간 채점 결과 + 이번 기간 예측. baseline 원수치 비노출(delta·tier만, §9).
@@ -65,11 +68,15 @@ const renderLedgerBlocks = (ledger: LedgerCardData): KnownBlock[] => {
   const openLines: string[] = [];
   const noCallLines: string[] = [];
   for (const f of ledger.forecasts) {
-    if (f.status === 'no_call' || 'reason' in f.sourceCell) {
-      noCallLines.push(`예측 안 함 — ${(f.sourceCell as NoCallReason).reason}`);
+    const cell = f.sourceCell;
+    if ('reason' in cell) {
+      noCallLines.push(`예측 안 함 — ${cell.reason}`);
       continue;
     }
-    const cell = f.sourceCell as ForecastSourceCell;
+    if (f.status === 'no_call') {
+      noCallLines.push('예측 안 함');
+      continue;
+    }
     const dir = f.predictedDirection ? DIR_ARROW[f.predictedDirection] : '';
     const tier = TIER_LABEL_SHORT[cell.tier] ?? cell.tier;
     openLines.push(`• ${cellLabel(cell)} ${dir} _(근거: ${tier})_`);

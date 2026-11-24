@@ -269,6 +269,50 @@ describe('renderInterpretationBlocks', () => {
     expect(txt).toContain('측정된 반응이 아직 없어');
   });
 
+  it('ledger 채점 행의 근거가 없으면(source_cell 비었음) undefined 없이 사유로 표시', () => {
+    const base = {
+      signalId: 3,
+      predictedDirection: 'down' as const,
+      baselineRate: 0.5,
+      sourceCell: { reason: '근거 미상' },
+    };
+    const ledger: LedgerCardData = {
+      periodType: 'wolun',
+      scored: [
+        {
+          ...base,
+          status: 'unmeasurable',
+          measuredRate: null,
+          measuredDelta: null,
+          directionHit: null,
+        },
+        {
+          ...base,
+          status: 'scored',
+          measuredRate: 0.2,
+          measuredDelta: -0.3,
+          directionHit: true,
+        },
+      ],
+      forecasts: [
+        {
+          signalId: 4,
+          status: 'no_call',
+          predictedDirection: null,
+          baselineRate: null,
+          sourceCell: srcCell('정', 4),
+        },
+      ],
+    };
+    const txt = JSON.stringify(renderInterpretationBlocks(record(payloadWith({})), ledger));
+    expect(txt).toContain('지난 기간 장부 결과');
+    expect(txt).toContain('근거 미상');
+    expect(txt).toContain('측정불가');
+    expect(txt).toContain('-30%p');
+    expect(txt).toContain('예측 안 함');
+    expect(txt).not.toContain('undefined');
+  });
+
   it('ledger 미주입 — 장부 섹션 없음(기존 동작 보존)', () => {
     const txt = JSON.stringify(renderInterpretationBlocks(record(payloadWith({}))));
     expect(txt).not.toContain('이번 기간 예측');
