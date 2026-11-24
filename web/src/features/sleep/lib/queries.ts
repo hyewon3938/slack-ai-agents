@@ -1,4 +1,5 @@
 import { query, queryOne } from '@/lib/db';
+import { DAY_NAMES } from '@/lib/kst';
 import { calculateSleepScores } from './scores';
 import type {
   SleepRecord,
@@ -10,8 +11,6 @@ import type {
   DayOfWeekPattern,
   DailySleep,
 } from './types';
-
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
 /** 기간별 수면 기록 + 이벤트 조회 (모든 sleep_type 포함) */
 export async function querySleepRecordsWithEvents(

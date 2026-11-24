@@ -5,10 +5,8 @@ import {
   deleteExpense,
   FIXED_SOURCE_EXCLUDE_LOCKED,
 } from '@/features/budget/lib/queries';
-import { ALL_EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/budget/lib/types';
+import { VALID_CATEGORIES } from '@/features/budget/lib/types';
 import { validateFields } from '@/lib/validation';
-
-const VALID_CATEGORIES = new Set<string>([...ALL_EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();

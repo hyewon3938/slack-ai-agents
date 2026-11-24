@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
+import { VALID_CATEGORY_TYPES } from '@/lib/types';
 import { updateCategory, deleteCategory } from '@/features/schedule/lib/queries';
-
-const VALID_CATEGORY_TYPES = new Set(['task', 'event']);
 
 export async function PATCH(
   request: Request,

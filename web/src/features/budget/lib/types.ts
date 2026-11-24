@@ -194,3 +194,6 @@ export const FIXED_COST_CATEGORIES = ['주거', '보험', '통신', '구독', '�
 export const ALL_EXPENSE_CATEGORIES: readonly string[] = Array.from(
   new Set<string>([...EXPENSE_CATEGORIES, ...FIXED_COST_CATEGORIES]),
 );
+
+/** API 입력 검증용 — 지출·수입 카테고리 전체 */
+export const VALID_CATEGORIES = new Set<string>([...ALL_EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]);

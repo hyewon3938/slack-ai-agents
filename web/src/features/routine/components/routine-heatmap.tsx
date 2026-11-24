@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { RoutineHeatmapData } from '@/features/routine/lib/types';
-import { getTodayISO } from '@/lib/kst';
+import { DAY_NAMES, getTodayISO } from '@/lib/kst';
 
 interface RoutineHeatmapProps {
   templateId: number;
   templateName: string;
 }
-
-const DAY_HEADERS = ['일', '월', '화', '수', '목', '금', '토'];
 
 type DayStatus = 'completed' | 'missed' | 'inactive' | 'future' | 'before';
 
@@ -138,7 +136,7 @@ export function RoutineHeatmap({ templateId, templateName }: RoutineHeatmapProps
         <>
           {/* 요일 헤더 */}
           <div className="grid grid-cols-7 gap-1">
-            {DAY_HEADERS.map((d, i) => (
+            {DAY_NAMES.map((d, i) => (
               <div
                 key={d}
                 className={`text-center text-[10px] font-medium ${
