@@ -1,12 +1,12 @@
 import cron from 'node-cron';
 import type { App } from '@slack/bolt';
+import { queryNotificationSettings } from '../../shared/life/queries-notification.js';
 import {
-  queryNotificationSettings,
   queryActiveReminderTimes,
   queryDueReminders,
   deactivateReminder,
   decrementReminderCount,
-} from '../../shared/life-queries.js';
+} from '../../shared/life/queries-reminder.js';
 import { postToChannel } from '../../shared/slack.js';
 import { getTodayISO, getKSTTimeString, getKSTDayOfWeek } from '../../shared/kst.js';
 import type { LifeCronConfig } from './types.js';

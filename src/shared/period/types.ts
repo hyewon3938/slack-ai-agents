@@ -1,6 +1,6 @@
 /** 기간 해석·예측 장부 공용 타입 — 해석 쪽과 예측 쪽이 서로의 타입을 여기서 가져온다. */
 
-import type { Cheongan, Jiji, Element, Sipsung, Pillar, Relations } from '../saju-calendar.js';
+import type { Cheongan, Jiji, Element, Sipsung, Pillar, Relations } from '../saju/types.js';
 import type { AxisLevel, CellTier, ResponseCell } from '../response-profile/axis.js';
 
 export type PeriodType = 'wolun' | 'seun' | 'daeun';

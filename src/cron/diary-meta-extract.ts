@@ -14,7 +14,7 @@ import { createDiaryMetaLLMClient, type LLMClient, type LLMMessage } from '../sh
 import { query } from '../shared/db.js';
 import { getYesterdayISO } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
-import type { LifeCronConfig } from './life-cron.js';
+import type { LifeCronConfig } from './life/types.js';
 
 /** 허용된 26개 enum (migration 053 + 059 + 102와 동기화 필수) */
 export const DIARY_META_TAGS = [

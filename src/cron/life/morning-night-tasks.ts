@@ -1,5 +1,6 @@
 import type { App } from '@slack/bolt';
-import { queryTodayRecords, queryTodaySchedules } from '../../shared/life-queries.js';
+import { queryTodayRecords } from '../../shared/life/queries-routine.js';
+import { queryTodaySchedules } from '../../shared/life/queries-schedule.js';
 import { postToChannel } from '../../shared/slack.js';
 import { getTodayISO, getYesterdayISO, getKSTDayOfWeek } from '../../shared/kst.js';
 import { queryAllUserMappings } from '../../shared/user-resolver.js';
@@ -7,9 +8,9 @@ import {
   buildScheduleText,
   buildNightScheduleText,
   buildYesterdayIncompleteText,
-} from '../../agents/life/blocks.js';
-import { pickMorningNudges, pickNightNudges } from '../../shared/insights.js';
-import { buildLifeContext } from '../../shared/life-context.js';
+} from '../../agents/life/blocks/schedule-text.js';
+import { pickMorningNudges, pickNightNudges } from '../../shared/insights/pick.js';
+import { buildLifeContext } from '../../shared/life/context-build.js';
 import { publishHomeView } from '../../agents/life/home.js';
 import type { LifeCronConfig } from './types.js';
 import { forEachUser } from './user-loop.js';

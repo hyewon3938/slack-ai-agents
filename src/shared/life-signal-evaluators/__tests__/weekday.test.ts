@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DailyContext, WeekdayAux, WeekdayGroupAux } from '../../pattern-match.js';
+import type { DailyContext } from '../../pattern/match-types.js';
+import type { WeekdayAux, WeekdayGroupAux } from '../../pattern/match-aux-types.js';
 import { evaluateWeekday, evaluateWeekdayGroup } from '../weekday.js';
 
 const baseCtx = (date: string): DailyContext =>

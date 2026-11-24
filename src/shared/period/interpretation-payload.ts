@@ -1,6 +1,6 @@
 /** 기간 해석 — 측정 셀·교과서 셀·기술통계를 묶는 payload 빌드. */
 
-import type { Cheongan, Sipsung, Relations } from '../saju-calendar.js';
+import type { Cheongan, Sipsung, Relations } from '../saju/types.js';
 import type { AxisLevel, ResponseCell } from '../response-profile/axis.js';
 import { resolveHierarchyCell, resolveElementBandCell } from '../response-profile/resolve.js';
 import type {

@@ -2,12 +2,13 @@ import type { AgentHandler } from '../../router.js';
 import type { LLMClient } from '../../shared/llm.js';
 import { runAgentLoop } from '../../shared/agent-loop.js';
 import { sendBlockMessage, sendMessage } from '../../shared/slack.js';
-import { SQL_TOOLS, executeSQLTool } from '../../shared/sql-tools.js';
+import { SQL_TOOLS } from '../../shared/sql-tools/definitions.js';
+import { executeSQLTool } from '../../shared/sql-tools/execute.js';
 import { ChatHistory } from '../../shared/chat-history.js';
-import { queryTodaySchedules, queryBacklogSchedules } from '../../shared/life-queries.js';
+import { queryTodaySchedules, queryBacklogSchedules } from '../../shared/life/queries-schedule.js';
 import { buildLifeSystemPrompt } from './prompt.js';
 import { getTodayISO, addDays } from '../../shared/kst.js';
-import { buildScheduleBlocks } from './blocks.js';
+import { buildScheduleBlocks } from './blocks/schedule.js';
 import { resolveUserId, DEFAULT_USER_ID } from '../../shared/user-resolver.js';
 
 /** 일정 조회 패턴 (오늘 일정 fast path) */

@@ -1,7 +1,7 @@
 /**
  * 결정론 사주 실효강도 엔진 — #477 P4a (ADR-0036).
  *
- * saju-calendar.ts의 결정론 primitive(오행·지장간) 위에 "오행/일간의 실효 강도"를 올린다.
+ * saju/ 폴더의 결정론 primitive(오행·지장간) 위에 "오행/일간의 실효 강도"를 올린다.
  *   strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보너스(X)
  *     부호: 비겁·인성(생조) → +saengjo  /  식상·재·관(극설) → −geukseol
  *     위치: 천간 / 지지 본기(정기) / 지장간 중기 / 지장간 여기
@@ -13,15 +13,9 @@
  * 본 모듈은 순수 계산(DB·시각 의존 0) → 단위 테스트 용이.
  */
 
-import {
-  getElementByCheongan,
-  getElementByJiji,
-  getJijanggan,
-  type Cheongan,
-  type Element,
-  type Pillar,
-  type PillarSet,
-} from './saju-calendar.js';
+import { getElementByCheongan, getElementByJiji } from './saju/pillar-utils.js';
+import { getJijanggan } from './saju/sipsung.js';
+import { type Cheongan, type Element, type Pillar, type PillarSet } from './saju/types.js';
 import {
   SAJU_STRENGTH_PARAMS,
   SAJU_HWA_PARAMS,

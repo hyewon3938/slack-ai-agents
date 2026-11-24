@@ -1,6 +1,6 @@
 /** 기간 해석 — 응답 프로필 인덱스 로드와 해석 영속·조회. */
 
-import type { Element } from '../saju-calendar.js';
+import type { Element } from '../saju/types.js';
 import { query } from '../db.js';
 import type { AxisLevel, CellTier, ResponseCell } from '../response-profile/axis.js';
 import { indexCells } from '../response-profile/resolve.js';

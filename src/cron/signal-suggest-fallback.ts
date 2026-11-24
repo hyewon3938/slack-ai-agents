@@ -19,7 +19,7 @@ import { query } from '../shared/db.js';
 import { getKSTDayOfMonth } from '../shared/kst.js';
 import { postToChannel } from '../shared/slack.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
-import type { LifeCronConfig } from './life-cron.js';
+import type { LifeCronConfig } from './life/types.js';
 
 export const signalSuggestFallbackTask = async (
   app: App,

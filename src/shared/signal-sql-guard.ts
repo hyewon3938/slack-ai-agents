@@ -4,7 +4,7 @@
  * LLM이 자율 생성한 측정 SQL은 untrusted 입력으로 다룬다. 승인 시점(actions.approveLlmSignal)과
  * 실행 시점(pattern-match.runLlmSignalSql) 양쪽에서 이 검증을 통과해야만 prod DB에 닿는다(2단 방어).
  *
- * 검증은 self-contained — db-proxy.ts BLOCKED_PATTERNS / sql-tools.ts 검증과 같은 정신이나
+ * 검증은 self-contained — db-proxy.ts BLOCKED_PATTERNS / sql-tools/validation.ts 검증과 같은 정신이나
  * 의도적으로 이 파일 안에 복제했다(보안 경계를 한 파일에서 감사 가능하게 + 외부 리팩토링이 조용히
  * 약화시키지 못하게). 문자열·주석 스트리핑은 db-proxy 등급(이스케이프된 '' 처리).
  *

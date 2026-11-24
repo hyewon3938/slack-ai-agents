@@ -51,8 +51,8 @@ vi.mock('../db.js', () => ({
   }),
 }));
 
-vi.mock('../pattern-verification.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../pattern-verification.js')>();
+vi.mock('../pattern/series.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../pattern/series.js')>();
   return {
     ...actual,
     computeSeedActivationSeries: vi.fn(
@@ -62,8 +62,8 @@ vi.mock('../pattern-verification.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../pattern-match.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../pattern-match.js')>();
+vi.mock('../pattern/match-day.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../pattern/match-day.js')>();
   return { ...actual, buildNameIdMap: vi.fn(async () => new Map<string, number>()) };
 });
 
@@ -203,4 +203,4 @@ describe('runSaturationSweep — revive (saturation 스코프만, 재계산)', (
 });
 
 // buildHygieneNotice(포화 가드 카드 말미 알림)는 #542(ADR-0052) 카드 발송 은퇴로 제거됨 —
-// 포화 archive/revive는 weekly-verification.ts에서 로그로만 강등(사용자 노출 없음).
+// 포화 archive/revive는 weekly-verification/process-user.ts에서 로그로만 강등(사용자 노출 없음).

@@ -18,18 +18,15 @@
  */
 
 import { query } from './db.js';
+import { buildWindowDates } from './pattern/binarize.js';
+import { computeSeedActivationSeries } from './pattern/series.js';
+import { computeUserDataStarts, seedDataStart } from './pattern/data-window.js';
+import { buildNameIdMap } from './pattern/match-day.js';
 import {
-  buildWindowDates,
-  computeSeedActivationSeries,
-  computeUserDataStarts,
-  seedDataStart,
-} from './pattern-verification.js';
-import {
-  buildNameIdMap,
   type SajuSeed,
   type SajuSeedWithMetrics,
   type DailyContext,
-} from './pattern-match.js';
+} from './pattern/match-types.js';
 import { seedLabel } from './insight-labels.js';
 import { INSIGHT_THRESHOLDS } from './insight-thresholds.js';
 

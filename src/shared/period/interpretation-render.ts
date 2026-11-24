@@ -24,7 +24,7 @@ const section = (text: string): KnownBlock => ({
   text: { type: 'mrkdwn', text },
 });
 
-// ─── 장부 섹션(Phase 3) — ledger는 caller(cron/fast path)가 주입. 데이터는 period-forecast.ts. ──
+// ─── 장부 섹션(Phase 3) — ledger는 caller(cron/fast path)가 주입. 데이터는 forecast-ledger.ts. ──
 
 const TIER_LABEL_SHORT: Record<string, string> = {
   verified: '검증됨',

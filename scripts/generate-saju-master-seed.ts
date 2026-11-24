@@ -1,18 +1,13 @@
 /**
  * 일회성: 사주 마스터 seed SQL 생성기.
- * saju-calendar의 계산 로직으로 stems/branches/ganji/sipsin/sibiunsung/relations INSERT 문 생성.
+ * src/shared/saju/의 계산 로직으로 stems/branches/ganji/sipsin/sibiunsung/relations INSERT 문 생성.
  * 결과를 db/migrations/050_saju_master_seed.sql로 출력.
  *
  * 실행: npx tsx scripts/generate-saju-master-seed.ts > db/migrations/050_saju_master_seed.sql
  */
 
-import {
-  getSipsung,
-  getJijiSipsung,
-  getSibiunsung,
-  type Cheongan,
-  type Jiji,
-} from '../src/shared/saju-calendar.js';
+import { getSipsung, getJijiSipsung, getSibiunsung } from '../src/shared/saju/sipsung.js';
+import { type Cheongan, type Jiji } from '../src/shared/saju/types.js';
 
 const STEMS: readonly Cheongan[] = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계'];
 const BRANCHES: readonly Jiji[] = [

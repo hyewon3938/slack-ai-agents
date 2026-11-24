@@ -1,7 +1,7 @@
 /** 생활 맥락 — 루틴·일정·일기·테마·운세 조회. */
 
 import { query } from '../db.js';
-import { countOverdueTasks } from '../life-queries.js';
+import { countOverdueTasks } from './queries-schedule.js';
 import type { ContextTiming, DateParams } from './context-types.js';
 
 interface RoutineDayRow {

@@ -1,6 +1,7 @@
 import { query } from '../../shared/db.js';
-import type { LinkVerification, StrengthCutpoint } from '../../shared/pattern-verification.js';
-import type { ConfoundResult } from '../../shared/confound.js';
+import type { LinkVerification } from '../../shared/pattern/types.js';
+import type { StrengthCutpoint } from '../../shared/pattern/strength-cutpoints.js';
+import type { ConfoundResult } from '../../shared/pattern/confound-types.js';
 
 const numOrNull = (v: number): number | null => (Number.isFinite(v) ? v : null);
 

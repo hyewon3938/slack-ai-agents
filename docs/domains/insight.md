@@ -164,7 +164,7 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 
 ### 8. 프로액티브 인사이트 엔진 (Phase 1)
 
-`src/shared/insights.ts`의 SQL 기반 패턴 감지 엔진. LLM 호출 없음 (비용 0).
+`src/shared/insights/`의 SQL 기반 패턴 감지 엔진. LLM 호출 없음 (비용 0).
 
 #### 패턴 일람
 
@@ -184,7 +184,7 @@ weekly-fortune routine이 일운/월운/세운/대운을 생성. fortune_analyse
 | weeklyRegression | weekly | routine | 잔소리 | 지난주 ≥90% → 이번주 ≤60% |
 | spottyPattern | night | routine | 잔소리 | 7일 중 3\~4일 산발 빠짐 |
 
-> `overdueAlert`의 밀린 일정 수는 `src/shared/life-queries.ts`의 `countOverdueTasks`(task 타입만, event 제외)를 단일 소스로 계산 — #life 아침 잔소리·일정 맥락과 동일 정의. 상세는 [schedule.md](schedule.md) "밀린 일정" 참조.
+> `overdueAlert`의 밀린 일정 수는 `src/shared/life/queries-schedule.ts`의 `countOverdueTasks`(task 타입만, event 제외)를 단일 소스로 계산 — #life 아침 잔소리·일정 맥락과 동일 정의. 상세는 [schedule.md](schedule.md) "밀린 일정" 참조.
 
 #### 동적 노출
 
@@ -930,7 +930,7 @@ const pickPillarByLevel = (level: PillarLevel | null, ctx: DailyContext): Pillar
 
 `cumulative_pillar_count` 케이스는 별도 `evaluateCumulativePillarCount(seed, ctx)`로 분기. `DailyContext`에 `ilun`/`wolun`/`seun`/`daeun` 필드 추가, `NatalContext`에 `pillars`/`birthDate`/`daewunList` 추가.
 
-#### `saju-calendar.ts:computeCumulativePillarCount`
+#### `saju/pillar-utils.ts:computeCumulativePillarCount`
 
 ```typescript
 export const computeCumulativePillarCount = (
@@ -979,7 +979,7 @@ db/migrations/
   071_pattern_signals_pillar_level.sql  # 컬럼·CHECK·backfill·14 시드·cron 슬롯
 
 src/shared/
-  saju-calendar.ts                       # +computeCumulativePillarCount, +getDaeunPillar, +makePillar
+  saju/pillar-utils.ts                   # +computeCumulativePillarCount, +getDaeunPillar, +makePillar
                                          # +types: Element, PillarSet, CumulativeCount
   saju-match.ts                          # +pickPillarByLevel, +evaluateCumulativePillarCount
                                          # +DailyContext.{ilun,wolun,seun,daeun}
@@ -987,7 +987,7 @@ src/shared/
 
 src/cron/
   pillar-level-distribution-review.ts    # 월요일 09:15 KST 결정론 분포 cron
-  life-cron.ts                           # SLOT_TASKS에 pillarLevelDistributionReview 등록
+  life/slot-tasks.ts                     # SLOT_TASKS에 pillarLevelDistributionReview 등록
 ```
 
 #### 다음 phase 연결
@@ -1012,7 +1012,7 @@ Phase 1 ADR-0022(`life_signal` 추가)와 Phase 2 ADR-0026(`pattern_*` rename) �
 | `season` | spring (3\~5월) / summer (6\~8) / autumn (9\~11) / winter (12·1·2) | 4 |
 | `calendar_event` | 한국 공휴일 / 공휴일 다음날 | 2 (자동이체일은 후속 — 사용자별 day_of_month 설정 필요) |
 | `threshold` | 수면 분 ≤ N (4개) + 루틴 streak ≥ N일 (5개) | 9 |
-| `behavior_baseline` | `insights.ts` 11종 detect 함수 위임 | 11 |
+| `behavior_baseline` | `insights/` 11종 detect 함수 위임 | 11 |
 
 총 **7 kinds / 38개 신규 시드** (catalog INSERT 기준). 설계 시 8 kinds였으나 `lunar`(음력 1·15일) kind는 구현 직후 폐기 — 사주 운(運)은 절기 기준이지 음력 1/15 기준이 아니며, 명절/계절 효과는 `calendar_event:holiday_next`와 `season`으로 커버 가능. 본인 음력 단일 효과에 대한 임상 가설도 0개. 상세: [ADR-0029 폐기 결정 섹션](../adr/0029-life-signal-trigger-aux-standard.md).
 
@@ -1046,7 +1046,7 @@ matchAllSeedsForDay(userId, date)
 
 #### 잔소리 시스템 일시 공존
 
-`insights.ts`의 11개 detect 함수(`detectStreak` 등)는 **잔소리 응답 생성**에 계속 사용. 시드 evaluator(`behavior-baseline.ts`)는 같은 detect 함수를 호출해 **매칭 데이터 누적**용으로만 동작. 두 시스템이 같은 SQL을 두 번 실행 — Phase 8에서 시드 evaluator로 일원화.
+`insights/`의 11개 detect 함수(`detectStreak` 등)는 **잔소리 응답 생성**에 계속 사용. 시드 evaluator(`behavior-baseline.ts`)는 같은 detect 함수를 호출해 **매칭 데이터 누적**용으로만 동작. 두 시스템이 같은 SQL을 두 번 실행 — Phase 8에서 시드 evaluator로 일원화.
 
 #### 마이그레이션
 
@@ -1067,7 +1067,7 @@ src/shared/
 │   ├── season.ts                   봄·여름·가을·겨울
 │   ├── calendar-event.ts           공휴일 / 공휴일 다음날 / 자동이체일
 │   ├── threshold.ts                sleep_minutes / routine_streak_max
-│   ├── behavior-baseline.ts        insights.ts 11종 detect 위임
+│   ├── behavior-baseline.ts        insights/ 11종 detect 위임
 │   ├── korean-holidays.ts          KOREAN_HOLIDAYS 정적 Set (2026)
 │   └── __tests__/
 │       ├── weekday.test.ts
@@ -1083,7 +1083,7 @@ src/shared/
 
 - **Phase 4**: `pattern_summary` view 본문 작성, 매칭 cron 파일명 일반화(`daily-saju-matching` → `daily-pattern-matching`) 검토, `pattern_metrics` hit/miss UPDATE 로직
 - **Phase 5\~7**: 가설 발견·검증 파이프라인이 `pattern_kind` 무관하게 동작 (이미 일반화 완료)
-- **Phase 8**: `insights.ts` detect 함수 → 시드 evaluator로 일원화 (잔소리 시스템 통합)
+- **Phase 8**: `insights/` detect 함수 → 시드 evaluator로 일원화 (잔소리 시스템 통합)
 
 ### 18. 본인 1명 패턴 발견 시스템 — Phase 4 (매칭 cron 카운터 source of truth 전환 + pattern-match rename)
 
@@ -1125,14 +1125,14 @@ miss: beta'  = beta + 1,  p' = alpha / (alpha + beta + 1)
 | `src/cron/daily-saju-matching.ts` | `src/cron/daily-pattern-matching.ts` |
 | `src/shared/__tests__/saju-match.test.ts` | `src/shared/__tests__/pattern-match.test.ts` |
 
-import 일괄 갱신(15+ 파일): 8 life-signal-evaluator + 6 evaluator test + `insights.ts` comment + `life-cron.ts`. SLOT_TASKS 키 `dailySajuMatching`은 DB `notification_settings.slot_name` 호환성을 위해 보존(value만 `dailyPatternMatchingTask`로). 함수명도 `dailyPatternMatching*`로 일관 변경.
+import 일괄 갱신(15+ 파일): 8 life-signal-evaluator + 6 evaluator test + `insights/` comment + `cron/life/`. SLOT_TASKS 키 `dailySajuMatching`은 DB `notification_settings.slot_name` 호환성을 위해 보존(value만 `dailyPatternMatchingTask`로). 함수명도 `dailyPatternMatching*`로 일관 변경.
 
-잔존 `saju-hypothesis.ts`·`saju-seed-fast-path.ts`·`scripts/saju-hypothesis-backtest.ts`·`weekly-report.ts`의 catalog 카운터 SELECT는 Phase 5 follow-up PR로 분리.
+잔존 `saju-hypothesis.ts`·`saju-seed-fast-path.ts`·`scripts/saju-hypothesis-backtest.ts`·`weekly-report/aggregate-saju.ts`의 catalog 카운터 SELECT는 Phase 5 follow-up PR로 분리.
 
 #### 후속 정리 항목
 
 - `saju-seed-fast-path.ts`의 catalog `hit_count/miss_count` 표시 → view `total_hits/total_misses` 전환
-- `weekly-report.ts`의 사주 시드 섹션 → view 기반 재구성
+- `weekly-report/aggregate-saju.ts`의 사주 시드 섹션 → view 기반 재구성
 - `pattern_catalog.hit_count/miss_count/inconclusive_count` 컬럼 DROP (Phase 8)
 
 #### 결정 기록
@@ -1402,7 +1402,7 @@ ALTER TABLE pattern_matches
 
 `verify_status` enum은 4종 검증 결과(`hit`/`miss`/`inconclusive`/`pending`) + 1종 데이터 부재(`no_metric`) + 1종 시스템 오류(`error`)로 정합 (#434 헌장 ⑤ "임의값 박지 않기"에 부합).
 
-##### 코드 변경 — `src/shared/pattern-match.ts`
+##### 코드 변경 — `src/shared/pattern/match-*.ts`
 
 - `SeedMatchResult` interface에 `triggerError: string | null` 필드 추가
 - `matchAllSeedsForDay` for 루프 outer try/catch로 `evaluateTrigger` 격리 — 실패 시 `triggerActivated: false`, `triggerError: error.message`로 push
@@ -1475,7 +1475,7 @@ ALTER TABLE pattern_matches
 - pending 매트릭(LLM 미승인, 5건 = sql 3 + diary 2) → 링크 `status='pending'`(매칭 제외). 매칭 게이트 = `link.status='active' AND signal.status='active'`.
 - 카운터 합(hit/miss/inconclusive) 이관 전후 보존.
 
-**평가 흐름** (`pattern-match.ts`): `loadActiveSeeds`가 `pattern_links × signal_defs`(둘 다 active) 조회 → `evaluateMetric`이 `kind`로 분기(sql=SQL+baseline/임계, tag=`diary_meta_tags` 존재 여부). 일별 cron(`daily-pattern-matching.ts`, 07:00)은 매칭 + `pattern_matches` 기록(raw trigger-log) + #life 한 줄 잔소리.
+**평가 흐름** (`pattern/match-*.ts`): `loadActiveSeeds`가 `pattern_links × signal_defs`(둘 다 active) 조회 → `evaluateMetric`이 `kind`로 분기(sql=SQL+baseline/임계, tag=`diary_meta_tags` 존재 여부). 일별 cron(`daily-pattern-matching.ts`, 07:00)은 매칭 + `pattern_matches` 기록(raw trigger-log) + #life 한 줄 잔소리.
 
 **P1 경계 — 무탈 우선**:
 
@@ -1513,7 +1513,7 @@ P1이 만든 (시드 × 신호) `pattern_links`를 **off-day 대조**로 검증�
 
 > 컬럼명 `pattern_id`는 `seed_id`로 안 바꿈 — daily-insight SKILL·pillar-level 쿼리 churn 최소화. 테이블 이름만 정직하게.
 
-**off-day 검증 엔진** (`pattern-verification.ts`, 순수 계산 + 읽기):
+**off-day 검증 엔진** (`pattern/verify-links.ts` 외, 순수 계산 + 읽기):
 
 - **P1 신호 전역화의 payoff**: 신호가 전역(`signal_defs`)이라 **신호별 일자 시리즈를 신호당 1회**, **시드별 활성 시리즈를 시드당 1회** 계산하고, 링크는 그 위 조인 + 2×2 → O(신호 + 시드)로 환원(옛 per-link 재계산 대비).
 - **신호 시리즈**(`computeSignalSeries`): `kind=tag`는 그날 태그 존재 여부(binary). `kind=sql`은 일자별 `runMetricSql` raw 값 → `direction`으로 이진화. `above_avg/below_avg`는 in-memory rolling baseline(직전 `window_days`일, 워밍업 미충족·측정불가는 null=2×2 제외). `above_abs/below_abs/flag_present`는 절대 임계.
@@ -1521,7 +1521,7 @@ P1이 만든 (시드 × 신호) `pattern_links`를 **off-day 대조**로 검증�
 - **링크별**: `buildContingency`(발현×pass 2×2 + 측정불가 발현일=inconclusive) → `verifyContingency`(Fisher's exact + rate ratio + Beta-Binomial posterior). BH-FDR은 전 링크 p 모아 일괄.
 - **윈도우**: `[today - 365, today]` 전체 이력 재계산 + SET 시맨틱(첫 run이 frozen 이관 카운터를 raw 진실로 덮어씀). 비용: 신호당 \~366회 `runMetricSql`(주간 백그라운드 job, 사용자 대기 없음).
 
-**주간 cron** (`weekly-verification.ts`, `weekly-hypothesis-review.ts` 대체): 월요일 **06:00 KST**(마이그레이션 079 — 08:00→06:00, daily-insight 08:03과 `pattern_links` 읽기 레이스 제거). `verifyUserLinks` → 링크별 `pattern_links` UPDATE(counters SET + `p_value`·`q_value`·`effect`·`test_type='fisher_2x2'`·`posterior_*`·`test_detail` JSONB + status) → 검증 현황 카드 → #insight. per-link try/catch 격리(#434 Phase 8a).
+**주간 cron** (`weekly-verification/tasks.ts`, `weekly-hypothesis-review.ts` 대체): 월요일 **06:00 KST**(마이그레이션 079 — 08:00→06:00, daily-insight 08:03과 `pattern_links` 읽기 레이스 제거). `verifyUserLinks` → 링크별 `pattern_links` UPDATE(counters SET + `p_value`·`q_value`·`effect`·`test_type='fisher_2x2'`·`posterior_*`·`test_detail` JSONB + status) → 검증 현황 카드 → #insight. per-link try/catch 격리(#434 Phase 8a).
 
 **status 전이 정책 (provisional, 보수적)** — ⚠️ *#477 P3(### 26)에서 해제: confirm은 e≥20에서 `confirmed` 실제 승격(verified tier), pattern_summary가 confirmed 포함하도록 보정. 아래는 P2 시점 기록*: `pattern_summary`/`saju_influence_summary.accumulating`이 `status='active'` 링크만 집계 → 'active' 외 status는 daily-insight 노출에서 사라진다. 따라서:
 
@@ -1617,7 +1617,7 @@ persist: pattern_links SET + link_weekly_stats UPSERT
 
 ### 27. 매트릭 중심 패턴 검증 — Phase 4a (결정론 사주 강도 feature 엔진, #485)
 
-결정론 사주 계산(`saju-calendar.ts`) 위에 **오행/일간의 실효 강도**를 graded feature로 올려, 상대 분위수 밴드로 잘라 기존 off-day 검증 엔진(P2·P3)에 태운다. **새 통계 코어 없음** — graded·비단조(inverted-U)는 밴드별 독립 binary 시드로 실현([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) §4 "레벨별 main effect, 상호작용 항 불요").
+결정론 사주 계산(`saju/`) 위에 **오행/일간의 실효 강도**를 graded feature로 올려, 상대 분위수 밴드로 잘라 기존 off-day 검증 엔진(P2·P3)에 태운다. **새 통계 코어 없음** — graded·비단조(inverted-U)는 밴드별 독립 binary 시드로 실현([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) §4 "레벨별 main effect, 상호작용 항 불요").
 
 **실효강도 모델** (`saju-strength.ts`, 전부 파라미터 — `saju-strength-params.ts`):
 
@@ -1644,7 +1644,7 @@ strength(X) = Σ글자[ ±contrib · 위치가중 · 월령배수 ] + 통근보�
 | 18 강도 시드 | 일간 + 5오행 × 3밴드. 전부 즉시 활성 로그 누적 |
 | 큐레이트 스타터 링크 13 | 일간 약/강 × 행동신호 + 화 강 × 건강(071 선례) + 목 강 × 지출(재성 앵커). 전부 양의 연관 |
 
-**trigger 평가 경로** (`pattern-verification.ts`):
+**trigger 평가 경로** (`pattern/series.ts`):
 
 | 경로 | 동작 |
 |------|------|
@@ -1662,7 +1662,7 @@ P4(결정론 사주 feature 엔진)의 후반. P4a(강도)에 이은 **관계·�
 
 **합화(合化) 변환 pass** ([saju-hwa.ts](../../src/shared/saju-hwa.ts), 순수 함수):
 
-- 합(천간합/육합/삼합)이 化신 통근 조건을 만족하면 구성 글자의 오행을 化 오행으로 치환한다. 합화오행은 TS 상수(`CHEONGAN_HAP`/`JIJI_YUKHAP`/`JIJI_SAMHAP`, [saju-calendar.ts](../../src/shared/saju-calendar.ts))에 이미 있어 **DB 데이터 추가 0**.
+- 합(천간합/육합/삼합)이 化신 통근 조건을 만족하면 구성 글자의 오행을 化 오행으로 치환한다. 합화오행은 TS 상수(`CHEONGAN_HAP`/`JIJI_YUKHAP`/`JIJI_SAMHAP`, [saju/tables.ts](../../src/shared/saju/tables.ts))에 이미 있어 **DB 데이터 추가 0**.
 - `detectHwaTransforms(pillarSet, params)` → `{transforms, stemOverride, branchOverride}`(Pillar 참조 → 化 오행 맵). `saju-strength`가 글자 tally 전에 1회 적용 → **강도·밴드·절대상태·효과적 십성이 전부 변환 글자 기준 일관 계산**.
 - 변환 granularity(v1): 천간합 → 두 천간 element, 지지합 → 지지 본기 element. 지장간 중기/여기는 불변. `computeElementRatios`(composition covariate)는 의도적으로 raw 유지.
 - 결정론(순수 함수) → SET 리플레이·e-value 불변([ADR-0034](../adr/0034-evalue-construction-replay-test-martingale.md)).
@@ -1676,7 +1676,7 @@ P4(결정론 사주 feature 엔진)의 후반. P4a(강도)에 이은 **관계·�
 | `HWA_DAYMASTER_TRANSFORM` | false | 일간 천간 변질 허용 — v1 보수적 불변(학파 의존) |
 | `HWA_TAMHAP_MANGCHUNG`·`HWA_JAENGHAP`·`HWA_HYUNGPA_BREAK`·`HWA_DISTANCE` | false | 깊은 상호작용 — 헌장 ④ 미리 선언, 활성은 데이터 게이트/후속 |
 
-**효과적 십성 시드** (`hwa_sipsung` trigger, [pattern-match.ts](../../src/shared/pattern-match.ts)):
+**효과적 십성 시드** (`hwa_sipsung` trigger, [pattern/match-trigger.ts](../../src/shared/pattern/match-trigger.ts)):
 
 - 합화 변환 후 化 오행의 일간 대비 5그룹 십성(비겁/식상/재성/관성/인성, polarity 무관)을 검정 시드로. `elementToSipsinGroup(일간오행, 化오행)`.
 - `evaluateTrigger` case `hwa_sipsung`: 오늘 풀셋의 합화 변환 → 化 오행 십성 → `aux.sipsin` 일치 시 발현. 합화 성립일에만 fire(sparse, 정직). 윈도우 비의존 → 2-pass 불요(`computeSeedActivationSeries` 기본 per-day 경로).
@@ -1734,7 +1734,7 @@ P4a·P4b가 evidence-only로 남긴 결정론 feature 시드(강도 밴드·관�
 - **노출 vs 믿음 분리**: 사람은 *진실*을 판정하지 않는다 — 게이트하는 건 노출·큐레이션("추적할 가치 있나"), 믿음("진짜인가")은 끝까지 e-value 트랙. 게이트 없이 느슨한 q 발견을 자동 활성하면 미검증 연관이 emerging tier로 조기 노출되므로, 사람 게이트가 그 노출만 막는다.
 - **카드 갱신 — 클릭 후 표시**: 승인/패스 모두 제안 본문 블록은 보존하고 `actions`(버튼) 블록만 제거한 뒤 처리 결과 안내 context를 덧붙인다(`resolveActionCard`, [slack.ts](../../src/shared/slack.ts)). 버튼 클릭 후에도 어떤 제안이었는지 카드에 남게 — DB 전이는 불변, 표시만 변경(#535). P5b LLM 신호 카드도 같은 헬퍼 재사용.
 
-**주간 cron 통합** ([weekly-verification.ts](../../src/cron/weekly-verification.ts) `surfaceDiscoveries`): 검증·persist·카드 발송 후 발굴 단계(검증과 독립 try-catch 격리 — 발굴 실패가 검증 결과를 막지 않게). 월요일 06:00 KST만 실행(`weeklyVerificationTask` 가드 상속).
+**주간 cron 통합** ([weekly-verification/process-user.ts](../../src/cron/weekly-verification/process-user.ts) `surfaceDiscoveries`): 검증·persist·카드 발송 후 발굴 단계(검증과 독립 try-catch 격리 — 발굴 실패가 검증 결과를 막지 않게). 월요일 06:00 KST만 실행(`weeklyVerificationTask` 가드 상속).
 
 **발굴 노브** ([insight-thresholds.ts](../../src/shared/insight-thresholds.ts) `patternVerification`): `discoverQ`(0.15)·`discoveryMinActive`(12)·`discoveryMinEffect`(1.3)·`discoveryMaxFisherP`(0.1)·`discoveryTopN`(5). 헌장 ⑤ 튜닝 노브 — calibration.
 
@@ -1791,7 +1791,7 @@ off-day 검증(P2)은 단일 시드의 **marginal 연관**만 본다 — 같은 
 
 **feature 환원 노선** (vs 새 통계 검정): 교란변수가 **이미 18개 `life_signal` 결정론 시드**([072](../../db/migrations/072_life_signal_seed_pool.sql): 요일 7 + 주말/평일 2 + 월위치 3 + 계절 4 + 공휴일 2)라 활성 시리즈를 가진다 → 플래그가 **기존 시드 활성 시리즈 + 기존 2×2(`buildContingency`/`verifyContingency`) 재사용**으로 환원된다([ADR-0033](../adr/0033-metric-as-hypothesis-and-saju-feature-substrate.md) "운 레벨 → feature 환원"이 달력 변수엔 #434 P3에서 이미 적용됨). partial correlation 같은 새 회귀 검정은 기각.
 
-**교란 알고리즘 (marginal 2조건)** ([confound.ts](../../src/shared/confound.ts) `flagConfoundersForLink`): 링크(S × X)에 대해 후보 Z(≠ S)가 **둘 다** 만족하면 "교란 의심"으로 수집(overlap 내림차순 → `topN` cap):
+**교란 알고리즘 (marginal 2조건)** ([pattern/confound-calc.ts](../../src/shared/pattern/confound-calc.ts) `flagConfoundersForLink`): 링크(S × X)에 대해 후보 Z(≠ S)가 **둘 다** 만족하면 "교란 의심"으로 수집(overlap 내림차순 → `topN` cap):
 
 | 조건 | 식 | 의미 |
 |------|------|------|
@@ -1813,10 +1813,10 @@ off-day 검증(P2)은 단일 시드의 **marginal 연관**만 본다 — 같은 
 
 **always-on(데이터 게이트 아님)**: 플래그는 싸고(캐시된 시리즈 위 overlap + 2×2) marginal이라 데이터 적어도 valid → 매주 무조건 실행. `nCofire`를 기록해 **P7 다변량 분리가 `nCofire ≥ 임계(\~30일)`에서 자동 활성**(헌장 ④)되게 한다.
 
-**흐름** (주간 엔진 [weekly-verification.ts](../../src/cron/weekly-verification.ts) `processUser`, `verifyUserLinks` 후·카드 전):
+**흐름** (주간 엔진 [weekly-verification/process-user.ts](../../src/cron/weekly-verification/process-user.ts) `processUser`, `verifyUserLinks` 후·카드 전):
 
 ```
-flagConfounds(userId, today)                          # confound.ts 로더
+flagConfounds(userId, today)                          # pattern/confound-flag.ts 로더
   → claimable 링크 로드 (status IN active|confirmed, JOIN active 신호·시드)
   → 후보 = 모든 active 시드 (loadActiveSeeds)
   → 시드 활성 시리즈 시드당 1회 (computeSeedActivationSeries, strength_band 2-pass 캐시)
@@ -1839,7 +1839,7 @@ P6는 marginal 교란을 **플래그**하고 각 (링크 × 교란 Z)의 공동�
 
 **방법 = Mantel-Haenszel 층화** (vs [ADR-0032](../adr/0032-metric-first-verification-statistics.md) §6 지명 elastic-net): 시드 S·신호 X·교란 Z가 전부 결정론 binary + 교란 2\~3개 캡 + n=1 희소 → 층화가 교과서적·가볍다(층별 2×2 = P6 프리미티브 재사용). elastic-net은 새 통계 코어(페널티 GLM 솔버)·log-odds 이질 척도·λ 불안정 → **교란이 층화 한계(joint strata 폭발) 넘는 다수일 때**를 위한 후속 노브(기본 off, [ADR-0042](../adr/0042-confound-multivariate-stratification.md) §1).
 
-**MH 조정 알고리즘** ([confound.ts](../../src/shared/confound.ts) `adjustConfounders` + [stats.ts](../../src/shared/stats.ts) `mantelHaenszelRR`), 링크(S × X)마다:
+**MH 조정 알고리즘** ([pattern/confound-calc.ts](../../src/shared/pattern/confound-calc.ts) `adjustConfounders` + [stats.ts](../../src/shared/stats.ts) `mantelHaenszelRR`), 링크(S × X)마다:
 
 1. **게이트 통과 교란** = P6 `suspected` 중 `nCofire ≥ adjustMinCofire`(30). 0개면 조정 스킵(dormant — `confound.adjusted` 미기록, 뷰 무변화).
 2. **층 구성** (joint, cap 3): 게이트 통과 Z들의 값 조합으로 윈도우 일자 분할(1개 → 2층, k개 → 최대 2^k층). 층 k에서 `buildContingency(actS\|층k, sigX)` → 2×2.
@@ -1871,10 +1871,10 @@ P6는 marginal 교란을 **플래그**하고 각 (링크 × 교란 Z)의 공동�
 
 **dormant (데이터 게이트, 헌장 ④)**: 현 데이터 대부분 `nCofire < 30` → 조정 0건 → `confound.adjusted` 미기록 → 뷰 explained_away 가드 매칭 0 → **배포 시 동작 변화 0**. 공동발현 30일 누적 시 다음 주간 run이 자동 조정.
 
-**흐름** (주간 엔진 [weekly-verification.ts](../../src/cron/weekly-verification.ts) `processUser`, P6 플래그 패스에 fold — 시리즈 in-hand 재사용):
+**흐름** (주간 엔진 [weekly-verification/process-user.ts](../../src/cron/weekly-verification/process-user.ts) `processUser`, P6 플래그 패스에 fold — 시리즈 in-hand 재사용):
 
 ```
-flagConfounds(userId, today)                          # confound.ts (P6 + P7 통합)
+flagConfounds(userId, today)                          # pattern/confound-flag.ts (P6 + P7 통합)
   → 링크별 flagConfoundersForLink → suspected (P6 marginal)
   → adjustConfounders(actS, sigX, suspected, candById) (P7 — 게이트 통과 시만)
        gate(nCofire≥30) → joint 층화(viability) ?? 단일 Z fallback → mantelHaenszelRR → verdict
@@ -1899,11 +1899,11 @@ saju_influence_summary 뷰 (verified 가드 + confound_note) → daily-insight �
 윈도우가 365일 고정인데 도메인별 실제 데이터는 더 짧다. 수면 신호 SQL이 `COALESCE(SUM,0)`이라 **기록 없는 빈 과거를 "0분 수면=발현 안 함(fail)"으로** 세 → 비발현일 pass율(rateOff)이 0으로 깔리고 `effect = rateActive/rateOff`가 폭발. 순수 시간 교란(데이터 있는 최근 vs 텅 빈 과거).
 
 - **per-pair 데이터-존재 구간**: 윈도우 = `[max(시드 시작일, 신호 시작일), today]`. 그 시드와 그 신호가 **둘 다 데이터를 가진 구간**만 2×2·day 시퀀스에 넣는다.
-  - 신호 시작일 = 도메인 테이블 `MIN(date)` ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `DOMAIN_TABLE`: schedule→schedules, sleep→sleep_records, routine→routine_records, expense→expenses, diary_meta→diary_meta_tags, audit→schedule_changes). audit만 `date` 컬럼이 없어 `MIN(DATE(changed_at))` 특례로 산출(§42, #572).
+  - 신호 시작일 = 도메인 테이블 `MIN(date)` ([pattern/data-window.ts](../../src/shared/pattern/data-window.ts) `DOMAIN_TABLE`: schedule→schedules, sleep→sleep_records, routine→routine_records, expense→expenses, diary_meta→diary_meta_tags, audit→schedule_changes). audit만 `date` 컬럼이 없어 `MIN(DATE(changed_at))` 특례로 산출(§42, #572).
   - 시드 시작일 = saju는 글로벌 floor(매일 일운 존재), life_signal은 의존 도메인 시작(threshold/behavior_baseline→해당 테이블, 캘린더류→floor).
   - **단일 글로벌 floor로는 부족** — 한 도메인이 다른 도메인보다 먼저 시작하면(예: 지출 기록이 일정보다 이름) floor가 늦게 시작한 신호를 과거로 늘려 같은 아티팩트를 재생산. per-signal 클립이 필수.
-- **빈 과거는 결측, 활성 기간 내 0은 보존**: 신호 시작일 이전 raw를 `null`로 처리([computeSignalSeries](../../src/shared/pattern-verification.ts) `dataStart`) → 2×2 제외 + rolling baseline 오염 차단 + 그 날 SQL 실행 생략. 활성 기간 내 "기록 없음(유효 0)"은 의미로 살린다.
-- 검증([verifyUserLinks](../../src/shared/pattern-verification.ts))·발굴([discoverCandidates](../../src/agents/insight/hypothesis-discovery.ts)) **둘 다 동일 클립** 경유 → 양쪽 정직. `windowCapDays`(365)는 상한 안전장치로 격하(평소 데이터-존재 구간이 더 좁아 binding 안 됨).
+- **빈 과거는 결측, 활성 기간 내 0은 보존**: 신호 시작일 이전 raw를 `null`로 처리([computeSignalSeries](../../src/shared/pattern/series.ts) `dataStart`) → 2×2 제외 + rolling baseline 오염 차단 + 그 날 SQL 실행 생략. 활성 기간 내 "기록 없음(유효 0)"은 의미로 살린다.
+- 검증([verifyUserLinks](../../src/shared/pattern/verify-links.ts))·발굴([discoverCandidates](../../src/agents/insight/hypothesis-discovery.ts)) **둘 다 동일 클립** 경유 → 양쪽 정직. `windowCapDays`(365)는 상한 안전장치로 격하(평소 데이터-존재 구간이 더 좁아 binding 안 됨).
 
 #### 2) 발굴 연속신호 효과크기 랭킹 (§4 준수)
 
@@ -1925,7 +1925,7 @@ ADR-0032 §4 = "연속 신호는 이진화하지 말고 Mann-Whitney + 효과크
 #### 영향·리스크
 
 - 검증 e-value **1회 re-baseline** — 클립으로 day 시퀀스가 바뀌나 결정론이라 매주 수렴. confirmed 링크는 sticky(active만 재검증)라 영향 없음.
-- 교란 조정([confound.ts](../../src/shared/confound.ts), P7)은 같은 클립 미적용 — dormant(annotate-only, verdict 불변)라 라이브 영향 없음. 활성화 전 적용 필요(코드 TODO 마커).
+- 교란 조정([pattern/confound-calc.ts](../../src/shared/pattern/confound-calc.ts), P7)은 같은 클립 미적용 — dormant(annotate-only, verdict 불변)라 라이브 영향 없음. 활성화 전 적용 필요(코드 TODO 마커).
 
 ### 34. 발굴 엔진 측정 타당성 + 카드 UX — Phase 2 (카드 가독성, #504)
 
@@ -1947,8 +1947,8 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 | 시드 영향력 top | hypothesis-cards.ts | 코드 룰 (hard) |
 | 아침 일운 카드 | 외부 SKILL `daily-insight` | 프롬프트 손질 (soft) |
 
-- 코드 표면 3개: 라벨을 **로드 지점**에서 계산해 DTO에 문자열로 실어 운반(카드 빌더는 변수명·raw 필드 모름). [discoverCandidates](../../src/agents/insight/hypothesis-discovery.ts)→`DiscoveryCandidate`, [verifyUserLinks](../../src/shared/pattern-verification.ts)→`LinkVerification`, [loadSeedInfluence](../../src/cron/weekly-verification.ts)→`SeedInfluenceRow`에 `seedLabel`/`signalLabel` 동봉.
-- **교란 caveat**(verified/emerging 라인에 붙는 ⚠️)도 교란 시드명(변수명)을 노출하던 누락 — 카드 레이어에 `seedLabelById` 맵을 주입해 해소([confound.ts](../../src/shared/confound.ts)·JSONB 불변, Option B). weekly-verification이 active 시드 전체로 맵을 빌드해 `buildVerificationBlocks`에 전달.
+- 코드 표면 3개: 라벨을 **로드 지점**에서 계산해 DTO에 문자열로 실어 운반(카드 빌더는 변수명·raw 필드 모름). [discoverCandidates](../../src/agents/insight/hypothesis-discovery.ts)→`DiscoveryCandidate`, [verifyUserLinks](../../src/shared/pattern/verify-links.ts)→`LinkVerification`, [loadSeedInfluence](../../src/cron/weekly-verification/)→`SeedInfluenceRow`에 `seedLabel`/`signalLabel` 동봉.
+- **교란 caveat**(verified/emerging 라인에 붙는 ⚠️)도 교란 시드명(변수명)을 노출하던 누락 — 카드 레이어에 `seedLabelById` 맵을 주입해 해소([pattern/confound-types.ts](../../src/shared/pattern/confound-types.ts)·JSONB 불변, Option B). weekly-verification이 active 시드 전체로 맵을 빌드해 `buildVerificationBlocks`에 전달.
 - 아침 카드는 외부 SKILL이 SQL view(`saju_influence_summary`)를 소비해 LLM으로 작문 → TS 룰 도달 불가. 프롬프트에 "변수명·식별자 출력 금지 + description 자연어화" hard rule 주입(soft, 배포 후 적용). view·DB 불변.
 
 #### 3) 불변식 — raw 변수명 노출 0
@@ -2032,7 +2032,7 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 
 #### ③ 포화 시드 양방향 가드 (`seed-saturation.ts`)
 
-주간 검증 엔진(`weekly-verification.ts` `processUser`)이 링크 검증·스냅샷 이후·발굴 surface 전에 양방향 sweep:
+주간 검증 엔진(`weekly-verification/process-user.ts` `processUser`)이 링크 검증·스냅샷 이후·발굴 surface 전에 양방향 sweep:
 
 - **archive**: 활성 시드의 트리거 활성률(일별 핸드오프 로그 `seed_daily_activations.trigger_activated` 집계) ≥ `saturationRate`(0.95) & 윈도우 ≥ `saturationMinDays`(30일) → `active=false`, `archived_reason='saturation'` + 링크 archive.
 - **부활(revive)**: `archived_reason='saturation'` 시드를 현재 윈도우로 `computeSeedActivationSeries` 재계산(트리거 결정론 — 비활성이어도 시리즈 산출) → 탈포화(활성률 < `saturationRate`)면 `active=true`, `archived_reason=NULL` 복귀. `'saturation'` 스코프라 ②의 위임분·수동 archive는 부활 제외.
@@ -2041,11 +2041,11 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 
 #### ④ 발굴 동어반복(자기상관) 필터
 
-`discoverCandidates` 여집합 스캔에서 **행동 시드 source 도메인 == 신호 도메인**인 쌍(예: `life_behavior_spotty`[루틴 누락] × `routine_completion_rate`[루틴 완료율])을 사전선별·FDR 전에 skip(풀 비오염) + 드롭 수 로그. 같은 행동을 두 번 잰 자기상관이라 통계가 유의해도 무의미. 행동 시드 도메인 매핑은 `insights.ts`의 `BEHAVIOR_SIGNAL_DOMAIN`(`Record<InsightType, InsightDomain>` — 각 detect 함수의 `domain` 필드가 진실, `slotGap`·`weekComparison`은 `routine_records` 집계라 routine). 캘린더 life_signal(`weekday`/`month_position` 등)·사주 시드는 행동 도메인이 없어 자동 면제(정상 cross-domain 후보 보존).
+`discoverCandidates` 여집합 스캔에서 **행동 시드 source 도메인 == 신호 도메인**인 쌍(예: `life_behavior_spotty`[루틴 누락] × `routine_completion_rate`[루틴 완료율])을 사전선별·FDR 전에 skip(풀 비오염) + 드롭 수 로그. 같은 행동을 두 번 잰 자기상관이라 통계가 유의해도 무의미. 행동 시드 도메인 매핑은 `insights/types.ts`의 `BEHAVIOR_SIGNAL_DOMAIN`(`Record<InsightType, InsightDomain>` — 각 detect 함수의 `domain` 필드가 진실, `slotGap`·`weekComparison`은 `routine_records` 집계라 routine). 캘린더 life_signal(`weekday`/`month_position` 등)·사주 시드는 행동 도메인이 없어 자동 면제(정상 cross-domain 후보 보존).
 
 #### 회고
 
-거친 측정 채널(고정 임계 누적)을 이미 존재하는 정밀 채널(상대 분위수 강도 밴드)로 은퇴·위임한 게 핵심 — 신규 통계 코어 0. 측정 불가능성(off-day 0)을 큐레이션 판단(ADR-0039 사람 게이트)과 분리해 자동·양방향 위생으로 환원: 사람은 "믿을지"만, 기계는 "검정 가능한지"를 판정. 설계 중 사용자가 archive-only의 빈틈(1년 뒤 탈포화 시드 영구 사장)을 지적 → 부활 대칭 추가. 빌드 중 `BEHAVIOR_DOMAIN`(데이터-존재 윈도우, #504)이 `slotGap`/`weekComparison`을 schedule로 매핑하는 오기를 발견(④는 `insights.ts` 진실 사용, #504 맵 교정은 후속).
+거친 측정 채널(고정 임계 누적)을 이미 존재하는 정밀 채널(상대 분위수 강도 밴드)로 은퇴·위임한 게 핵심 — 신규 통계 코어 0. 측정 불가능성(off-day 0)을 큐레이션 판단(ADR-0039 사람 게이트)과 분리해 자동·양방향 위생으로 환원: 사람은 "믿을지"만, 기계는 "검정 가능한지"를 판정. 설계 중 사용자가 archive-only의 빈틈(1년 뒤 탈포화 시드 영구 사장)을 지적 → 부활 대칭 추가. 빌드 중 `BEHAVIOR_DOMAIN`(데이터-존재 윈도우, #504)이 `slotGap`/`weekComparison`을 schedule로 매핑하는 오기를 발견(④는 `insights/types.ts` 진실 사용, #504 맵 교정은 후속).
 
 ### 37. 세운·대운 확장 + 검증 엔진 교정 — Phase 1 (개인화 가중치 집계, #523, ADR-0049)
 
@@ -2053,7 +2053,7 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 
 #### 데이터 모델 (migration 088)
 
-`saju_response_profile` — **파생 테이블**(진실 아님, pattern_links에서 재생성 가능). 주간 검증 엔진(`weekly-verification.ts` `processUser` 말미, 격리)이 user당 full-replace(트랜잭션).
+`saju_response_profile` — **파생 테이블**(진실 아님, pattern_links에서 재생성 가능). 주간 검증 엔진(`weekly-verification/process-user.ts` `processUser` 말미, 격리)이 user당 full-replace(트랜잭션).
 
 | 컬럼 | 의미 |
 |------|------|
@@ -2070,7 +2070,7 @@ Phase 1이 측정을 고친 뒤 다음 병목은 가독성이었다. 프로액�
 
 UNIQUE(user_id, axis_level, axis_key, domain).
 
-#### 이중계산 구조적 차단 (D4) — `response-profile.ts`
+#### 이중계산 구조적 차단 (D4) — `response-profile/`
 
 - **원천 기여 = 링크당 정확히 1 source 셀**: stem→천간글자, branch→지지글자(단일만), hwa_sipsung→십성그룹 직접, strength_band 강×오행→element_band. relation·sibiunsung·element_density·life_signal·일간/약/적정 밴드는 비편입(v1).
 - **결정론 롤업**: 글자 셀이 자기 십성(`getSipsung`/`getJijiSipsung`)·그룹으로 α/β·nActive 합산해 올라감. 그룹 셀 = (십성 롤업) + (hwa 직접).
@@ -2122,7 +2122,7 @@ UNIQUE(user_id, period_type, period_start) — cron 재실행 중복 차단 + fa
 
 **입춘은 인월 전환이자 새해 시작 → 월운+세운이 같은 날 동시 발사**(독립 검사라 둘 다 잡힘). 전환 없는 평일은 no-op. 대운 "정보 없어" 안내는 cron이 아니라 조회(fast path) 책임(만 나이 단조 → cron 대운 pillar는 항상 유효).
 
-**해석 흐름**(`period-interpretation.ts`):
+**해석 흐름**(`period/interpretation-*.ts`):
 
 ```
 derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십성·오행·합충
@@ -2145,7 +2145,7 @@ derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십�
 
 ⚠️ **평가 순서 의존**: 기존 `MONTHLY_FORTUNE_RE` 등이 맨말 "월운"도 매칭하므로, 정확일치(`^월운$`)를 **반드시 먼저** 평가해야 갈래가 갈린다.
 
-**절기 테이블 연장**(`saju-calendar.ts`) — `JEOLGI_TABLE` 2029\~2033 추가. 미연장 시 2029-01-01부터 `getYearPillar`/`getMonthPillar`(→ 일일 매칭 포함) 전체 throw였던 시한폭탄 해소. 데이터는 NASA DE441 기반 절기 시각을 **KST 환산**(UTC+8→+9, 23시 이후는 익일) 후 날짜 추출, Wikipedia UTC 표 + 기존 2028행 재대조로 교차검증. 폭탄은 사라지지 않고 **2034-01로 이동**(테이블 구동 본질) — 갱신 절차는 ADR-0050. 신규 export: `getIpchunDate`(승격) · `getJeolgiMonthRange` · `isJeolgiTransitionDay`.
+**절기 테이블 연장**(`saju/jeolgi-table.ts`) — `JEOLGI_TABLE` 2029\~2033 추가. 미연장 시 2029-01-01부터 `getYearPillar`/`getMonthPillar`(→ 일일 매칭 포함) 전체 throw였던 시한폭탄 해소. 데이터는 NASA DE441 기반 절기 시각을 **KST 환산**(UTC+8→+9, 23시 이후는 익일) 후 날짜 추출, Wikipedia UTC 표 + 기존 2028행 재대조로 교차검증. 폭탄은 사라지지 않고 **2034-01로 이동**(테이블 구동 본질) — 갱신 절차는 ADR-0050. 신규 export: `getIpchunDate`(승격) · `getJeolgiMonthRange` · `isJeolgiTransitionDay`.
 
 > 예측 장부(`period_forecasts`, 마이그 091)는 Phase 3 — ADR-0050에 스키마 설계만, 코드는 후속. 구현 회고: [design-notebook period-extension §Phase 2](../design-notebook/period-extension.md#phase-2--기간-해석-엔진--주기-리포트--fast-path-진행-529).
 
@@ -2184,7 +2184,7 @@ derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십�
 
 유일 수동 지점은 절기 테이블 갱신(2034 만료)이나, `decidePeriodTriggers`가 try/catch라 만료 후엔 "틀린 장부"가 아니라 "빈 장부"로 degrade. **reaper·decay 모니터는 일부러 미추가**(D2/D7) — 메커니즘은 순수 이벤트(전환) 구동.
 
-**통합점**: `period-forecast.ts`(신규 — `generateForecasts`/`scoreForecasts`/`loadLedger`) + `period-fortune.ts` `generateAndPost`(wolun/seun에서 ①채점 → ③생성 → ④카드 장부 섹션, 장부 실패는 격리) + `period-interpretation.ts` `renderInterpretationBlocks(record, ledger?)`(`MeasuredCell`에 `sourceLinkIds` 추가) + `insight/index.ts` fast path `loadLedger` 동봉 + `pattern-verification.ts` `loadSignalDefsByIds` named export 추출(SignalDef 단일 진실).
+**통합점**: `period/forecast-*.ts`(신규 — `generateForecasts`/`scoreForecasts`/`loadLedger`) + `period-fortune.ts` `generateAndPost`(wolun/seun에서 ①채점 → ③생성 → ④카드 장부 섹션, 장부 실패는 격리) + `period/interpretation-render.ts` `renderInterpretationBlocks(record, ledger?)`(`MeasuredCell`에 `sourceLinkIds` 추가) + `insight/index.ts` fast path `loadLedger` 동봉 + `pattern/load-signal-defs.ts` `loadSignalDefsByIds` named export 추출(SignalDef 단일 진실).
 
 **채점**: `computeSignalSeries` 재사용 → 기간 한정 집계(period 일자만, lead-in `baselineLeadInDays`는 above_avg 워밍업 전용). 측정가능일 < `minMeasurableDays`(10) → `unmeasurable`(강제판정 금지). `direction_hit`은 방향 일치(동률=미적중). 노브: `periodForecast { topK:3, minMeasurableDays:10, baselineLeadInDays:28 }`.
 
@@ -2207,13 +2207,13 @@ src/agents/insight/
 
 src/shared/
 ├── signal-sql-guard.ts            # #477 P5b LLM SQL 게이트 #1 정적 검증 (validateSignalSql + 테이블 화이트리스트, ADR-0040)
-├── pattern-match.ts               # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger + P5b runLlmSignalSql(게이트 #2)
-├── pattern-verification.ts        # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
-├── confound.ts                    # #477 P6 교란 플래그(marginal 탐지, ADR-0041) + P7 다변량 분리(MH 층화 조정 → confound.adjusted/explainedAway → 노출 soft-demote, ADR-0042)
-├── response-profile.ts            # #523 P1 개인화 가중치 집계(글자→십성→그룹 단일레벨 롤업 + element_band, 이중계산 차단 + shrunk 효과, resolveCell Phase 2·3 공용, ADR-0049)
-├── period-interpretation.ts       # #523 P2 기간 해석 엔진(derive→payload→narrative→render, 측정/교과서 분리, measured=0 일급 경로) + period_interpretations DB 헬퍼 + P3 장부 섹션 렌더(renderInterpretationBlocks ledger 인자), ADR-0050
-├── period-forecast.ts             # #523 P3 예측 장부(generateForecasts/scoreForecasts/loadLedger) — 사전등록→사후채점, baseline 동결·방향적중+delta(Brier 금지)·대표신호 해소, 절기 시간게이트 무인 자기검증, ADR-0050
-├── saju-calendar.ts               # 만세력 — 절기 테이블 2024~2033(#523 P2 연장) + getDayPillar/getMonthPillar/getYearPillar + getJeolgiMonthRange·isJeolgiTransitionDay·getIpchunDate + 십성·합충 유틸
+├── pattern/match-*.ts             # 매칭 엔진 (evaluateTrigger + evaluateMetric kind=sql|tag). #477 P1: pattern_links × signal_defs 기반 + P4b hwa_sipsung trigger + P5b runLlmSignalSql(게이트 #2)
+├── pattern/                       # #477 P2/P3 off-day 검증 엔진 (2×2 + block-perm + e-value + 연속 MW → EB posterior → verdict/status) + P4a 강도-밴드 2-pass + P4b FDR 3가족(saju_relation)
+├── pattern/confound-*.ts          # #477 P6 교란 플래그(marginal 탐지, ADR-0041) + P7 다변량 분리(MH 층화 조정 → confound.adjusted/explainedAway → 노출 soft-demote, ADR-0042)
+├── response-profile/              # #523 P1 개인화 가중치 집계(글자→십성→그룹 단일레벨 롤업 + element_band, 이중계산 차단 + shrunk 효과, resolveCell Phase 2·3 공용, ADR-0049)
+├── period/interpretation-*.ts     # #523 P2 기간 해석 엔진(derive→payload→narrative→render, 측정/교과서 분리, measured=0 일급 경로) + period_interpretations DB 헬퍼 + P3 장부 섹션 렌더(renderInterpretationBlocks ledger 인자), ADR-0050
+├── period/forecast-*.ts           # #523 P3 예측 장부(generateForecasts/scoreForecasts/loadLedger) — 사전등록→사후채점, baseline 동결·방향적중+delta(Brier 금지)·대표신호 해소, 절기 시간게이트 무인 자기검증, ADR-0050
+├── saju/                          # 만세력 — 절기 테이블 2024~2033(#523 P2 연장) + getDayPillar/getMonthPillar/getYearPillar + getJeolgiMonthRange·isJeolgiTransitionDay·getIpchunDate + 십성·합충 유틸
 ├── saju-strength.ts               # #477 P4a 실효강도 엔진 (생조−극설 + 월령 + 통근, 절대 신강/신약, 오행 비율) + P4b 합화 변환 반영
 ├── saju-strength-params.ts        # #477 P4a 명리학 파라미터 (위치가중·월령·통근·분위수) + P4b 합화 노브(통근·충개합·일간합·깊은 노브 off)
 ├── saju-hwa.ts                    # #477 P4b 합화 변환 탐지(천간합/육합/삼합 + 통근 게이트 + 충개합 v1a) + 효과적 십성 그룹
@@ -2221,12 +2221,12 @@ src/shared/
 ├── stats.ts                       # 순수 통계 (Fisher·BH-FDR + #477 P3: e-value 마틴게일·block permutation·Mann-Whitney·Hodges-Lehmann + P7: Mantel-Haenszel 층화 RR)
 ├── bayesian-posterior.ts          # Beta-Binomial posterior + #477 P3 empirical-Bayes 공통 prior(MoM, 농도 CAP)
 ├── insight-thresholds.ts          # 인사이트·시드·검증(patternVerification: P2 q + P3 e-value α·emerging 바·discoverQ·blockLen) 임계 단일 관리
-└── insights.ts                    # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 verified tier=P3까지 미노출)
+└── insights/                      # Phase 1 SQL 결정론 11종 (confirmed 가설 라인은 verified tier=P3까지 미노출)
 
 src/cron/
 ├── daily-pattern-matching.ts              # 07:00 사주 일일 매칭 → seed_daily_activations transient 기록 (#477 P2: 검증·백필·발송 제거)
 ├── diary-meta-extract.ts                  # 일기 → enum 태그 추출 cron (Phase 3, Opus)
-├── weekly-verification.ts                 # 월 06:00 주간 off-day 검증 엔진 (#477 P2/P3: e-value persist + 주간 스냅샷 + 3-tier 카드, P5a 발굴, P6 교란 플래그)
+├── weekly-verification/                   # 월 06:00 주간 off-day 검증 엔진 (#477 P2/P3: e-value persist + 주간 스냅샷 + 3-tier 카드, P5a 발굴, P6 교란 플래그)
 ├── period-fortune.ts                      # 08:20 주기 운세 게이트 (#523 P2: 절기/입춘/대운 독립 3검사 → 월운/세운/대운 카드, 입춘 double-trigger, 평일 no-op)
 └── pillar-level-distribution-review.ts    # 월 09:15 운 레벨 분포 분석 (Phase 2.5, #477 P2 seed_daily_activations 재배선)
 
@@ -2288,7 +2288,7 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 3. `🔬 패턴 학습` — 검증중/검증됨/기각/모으는 중 카운트 + 검증중·검증됨 항목(효과크기 내림차순)
    - 항목 1줄: `{시드라벨} → {신호라벨} · 평소보다 {effect}배 ({hit}/{발현일}일){ ⚠️}`
 
-**봇 검증 카드 발송 은퇴** (`weekly-verification.ts`):
+**봇 검증 카드 발송 은퇴** (`weekly-verification/`):
 
 - 제거: `buildVerificationBlocks`·`buildSeedInfluenceSection`·`buildHygieneNotice` 발송 경로 + `loadSeedInfluence`. `hypothesis-cards.ts`에서 검증 카드 빌더 일체 삭제 — **발굴 후보 카드·재기준선 공지만 잔존**.
 - 유지: 검증 엔진 전부 — `verifyUserLinks`·status 전이·`persistLinkVerification`·`link_weekly_stats` 스냅샷·포화 가드·교란 플래그·발굴 추천·`saju_response_profile` 집계. 카드 생성만 사라지고 DB write는 그대로.
@@ -2322,7 +2322,7 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 주간 검증 엔진 `classifyVerdict`의 판정 사각지대 해소. confirm(effect ≥ 1.3)도 무연관 밴드(0.95\~1.05)도 못 걸리던 **명확한 역방향 링크**(effect ≤ 0.77 & 발현일 충분)를 `direction_mismatch`로 종결하고, 버려지는 정보를 반대 방향 신호 정의로 살려 발굴 엔진이 다음 주 스캔에서 (시드 × 거울신호) 쌍을 자연히 집어 올리게 한다. **마이그레이션 없음**(새 status·통계 코어 0).
 
-**`direction_mismatch` 판정** ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `classifyVerdict`):
+**`direction_mismatch` 판정** ([pattern/contingency.ts](../../src/shared/pattern/contingency.ts) `classifyVerdict`):
 
 - `verdict` 타입에 `direction_mismatch` 추가. 분기 순서상 **무연관 밴드(reject)보다 먼저** 검사: `effect ≤ directionMismatchMaxEffect`(0.77) & 발현일 `≥ minActiveDays`(30)이면 `direction_mismatch`. 그 다음에 `rejectRatioLow(0.95) ≤ effect ≤ rejectRatioHigh(1.05)` → `reject`.
 - `statusForVerdict`: `reject`와 `direction_mismatch` **둘 다 DB status `rejected`** — 기존 종결과 동일 lifecycle로 통합. 사유 구분은 `test_detail.verdict`에만 분리(status enum 불변).
@@ -2332,7 +2332,7 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 - `above_avg ↔ below_avg`(baseline-상대 방향)만 대상. 반대 방향 신호 **정의**가 이미 있으면 no-op. 기각 이력만 있으면 스킵(#557 `findEquivalentSignal` 위임).
 - **링크는 만들지 않는다** — 정의만 확보. 실제 (시드 × 거울신호) 가설 수립은 발굴 엔진(P5a)이 다음 주간 스캔에서 off-day 대조로 판단([ADR-0039](../adr/0039-pattern-discovery-surface-and-approval-gate.md) 2층 분리 유지: 사람·발굴은 노출만, 믿음은 통계).
-- 호출: [weekly-verification.ts](../../src/cron/weekly-verification.ts) 종결 훅에서 `verdict === 'direction_mismatch' && nextStatus === 'rejected'`일 때. per-link try/catch 격리 + 관측 로그.
+- 호출: [weekly-verification/process-user.ts](../../src/cron/weekly-verification/process-user.ts) 종결 훅에서 `verdict === 'direction_mismatch' && nextStatus === 'rejected'`일 때. per-link try/catch 격리 + 관측 로그.
 
 ### 42. 일정 날짜 변경 신호 측정 정밀화 2차 — 순변위·기록 경로 단일화 (#572, ADR-0054)
 
@@ -2359,7 +2359,7 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 
 **audit 로그화 + 생성시각 스냅샷** ([100](../../db/migrations/100_audit_net_displacement.sql) ①·②): `schedule_changes.schedule_id` FK 제거 → append-only 로그. 일정을 지워도 변경 이력이 `schedule_id` 그대로 남는다(무결성은 writer가 트리거뿐이라 유지). `schedule_created_at` 컬럼을 트리거가 기록 시점에 스냅샷 → 30분 유예 판정이 `schedules` JOIN 없이 자립(삭제 후에도 유효). 인터뷰 초안 `ON DELETE SET NULL`은 기각([ADR-0054](../adr/0054-audit-net-displacement-and-trigger-writer.md) G) — 삭제 시 그 일정의 모든 audit 행이 NULL 한 그룹으로 뭉개져 (일정×하루) 그룹핑·코호트 추적이 붕괴.
 
-**존재-윈도우 교정** ([pattern-verification.ts](../../src/shared/pattern-verification.ts) `DOMAIN_TABLE`·`computeUserDataStarts`): audit 매핑을 `schedules`(2026-03-05) → `schedule_changes` 기준으로. audit만 `date` 컬럼이 없어 `MIN(DATE(changed_at AT TIME ZONE 'Asia/Seoul'))` 특례로 첫 기록일(2026-05-18)을 산출 — 기록 계기 도입 이전(전체 윈도우의 약 60%)이 "변경 없음" 날로 발굴 2×2에 새는 것을 차단. 글로벌 floor(`DATA_TABLES`)는 불변 — audit 계기는 라이프 데이터 시작이 아니라 floor 산출 뒤에 `byTable`에 얹는다.
+**존재-윈도우 교정** ([pattern/data-window.ts](../../src/shared/pattern/data-window.ts) `DOMAIN_TABLE`·`computeUserDataStarts`): audit 매핑을 `schedules`(2026-03-05) → `schedule_changes` 기준으로. audit만 `date` 컬럼이 없어 `MIN(DATE(changed_at AT TIME ZONE 'Asia/Seoul'))` 특례로 첫 기록일(2026-05-18)을 산출 — 기록 계기 도입 이전(전체 윈도우의 약 60%)이 "변경 없음" 날로 발굴 2×2에 새는 것을 차단. 글로벌 floor(`DATA_TABLES`)는 불변 — audit 계기는 라이프 데이터 시작이 아니라 floor 산출 뒤에 `byTable`에 얹는다.
 
 **구 신호 처분**: 구 3개 `status='rejected'` 은퇴 + 링크 archive → 같은 이름으로 신설([086](../../db/migrations/086_signal_seed_precision.sql) 전례). 측정 체계가 바뀐 시계열을 한 e-value 과정에 섞지 않는다. 은퇴를 신설보다 먼저 실행 — 085/099 부분 유니크 인덱스가 active/pending만 잡으므로 그래야 신설이 인덱스에 안 걸린다. prod 확인 결과 audit 신호에 confirmed 링크 0(최대 e=6.4)이라 [ADR-0048](../adr/0048-enrollment-clip-and-rebaseline.md) D2 re-baseline 의무는 미발생. 이름 재사용은 `SIGNAL_LABEL_OVERRIDES`([insight-labels.ts](../../src/shared/insight-labels.ts))·테스트가 name 키라 무수정.
 
@@ -2392,7 +2392,7 @@ db/migrations/  (마스터 #477 매트릭 중심 패턴 검증 — 2026-06)
 - **'리커밋 사업' 유지 / '리커밋 택배' 제외**: 사업 투자 결정은 본인 재량 행동(편재 유관)이라 포함, 택배는 주문량 비례 통과 비용(본인 행동 아님)이라 제외(사용자 통찰).
 - `COALESCE(SUM(amount),0)` 유지 — 지출 0원인 날은 유효 0([ADR-0044](../adr/0044-discovery-measurement-validity.md)). `direction='above_avg'`·`domain='expense'`는 구 정의 유지. 개명이라 `expense_total`의 e-value 시계열은 승계 안 함.
 
-**결측 인프라 #574 편입 설계 스케치**: 3·6항의 근본 원인(수면·루틴 결측일이 "0"으로 강제 변환)은 실측 결측 0건이라 지금 손대도 동작 변화 0 → #574로 미룬다. 상류 변경 스케치 — ⓐ `extractFirstNumber`([pattern-match.ts](../../src/shared/pattern-match.ts) 첫 행 첫 컬럼을 number로 좁히며 NULL을 0으로 강제하는 지점) null→0 강제 해제 + ⓑ `runMetricSql`/`MetricRunner`([pattern-match.ts](../../src/shared/pattern-match.ts)) 타입을 `number | null` 반환으로 확장 + ⓒ 대상 신호 SQL의 `COALESCE` 제거 + ⓓ 도메인 화이트리스트 opt-in(결측을 결측으로 흘릴 도메인만). **하류는 이미 완비** — [computeSignalSeries](../../src/shared/pattern-verification.ts) raw null 처리·[binarizeSqlSeries](../../src/shared/pattern-verification.ts)·`buildContingency` inconclusive가 [ADR-0044](../adr/0044-discovery-measurement-validity.md)에서 갖춰짐. #574는 상류만 열면 결측이 2×2에서 자연 제외된다.
+**결측 인프라 #574 편입 설계 스케치**: 3·6항의 근본 원인(수면·루틴 결측일이 "0"으로 강제 변환)은 실측 결측 0건이라 지금 손대도 동작 변화 0 → #574로 미룬다. 상류 변경 스케치 — ⓐ `extractFirstNumber`([pattern/match-metric.ts](../../src/shared/pattern/match-metric.ts) 첫 행 첫 컬럼을 number로 좁히며 NULL을 0으로 강제하는 지점) null→0 강제 해제 + ⓑ `runMetricSql`/`MetricRunner`([pattern/match-metric.ts](../../src/shared/pattern/match-metric.ts)) 타입을 `number | null` 반환으로 확장 + ⓒ 대상 신호 SQL의 `COALESCE` 제거 + ⓓ 도메인 화이트리스트 opt-in(결측을 결측으로 흘릴 도메인만). **하류는 이미 완비** — [computeSignalSeries](../../src/shared/pattern/series.ts) raw null 처리·[binarizeSqlSeries](../../src/shared/pattern/binarize.ts)·`buildContingency` inconclusive가 [ADR-0044](../adr/0044-discovery-measurement-validity.md)에서 갖춰짐. #574는 상류만 열면 결측이 2×2에서 자연 제외된다.
 
 **링크 처분**: 구 3신호 살아있는 링크(active/pending/weak/confirmed)는 전부 archive만. 재연결은 발굴 엔진(P5a) 다음 주간 스캔에 위임([086](../../db/migrations/086_signal_seed_precision.sql)/[100](../../db/migrations/100_audit_net_displacement.sql) 전례) — 마이그레이션에서 링크 수동 재생성 안 함. prod 확인 결과 구 3신호 confirmed 링크 0 → [ADR-0048](../adr/0048-enrollment-clip-and-rebaseline.md) re-baseline 의무 미발생. 은퇴를 신설보다 먼저 실행 — 085/099 부분 유니크 인덱스가 active/pending만 잡으므로.
 

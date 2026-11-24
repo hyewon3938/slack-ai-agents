@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DailyContext, MonthPositionAux } from '../../pattern-match.js';
+import type { DailyContext } from '../../pattern/match-types.js';
+import type { MonthPositionAux } from '../../pattern/match-aux-types.js';
 import { evaluateMonthPosition } from '../month-position.js';
 
 const baseCtx = (date: string): DailyContext => ({ date, userId: 1 }) as unknown as DailyContext;

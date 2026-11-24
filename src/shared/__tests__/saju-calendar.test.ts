@@ -3,17 +3,14 @@ import {
   getDayPillar,
   getYearPillar,
   getMonthPillar,
-  getSipsung,
-  getJijiSipsung,
-  getSibiunsung,
-  getRelations,
-  getJijanggan,
-  calculateFortuneRange,
   getIpchunDate,
   getJeolgiMonthRange,
   isJeolgiTransitionDay,
-} from '../saju-calendar.js';
-import type { Cheongan, Jiji } from '../saju-calendar.js';
+} from '../saju/pillars.js';
+import { getSipsung, getJijiSipsung, getSibiunsung, getJijanggan } from '../saju/sipsung.js';
+import { getRelations } from '../saju/relations.js';
+import { calculateFortuneRange } from '../saju/fortune.js';
+import type { Cheongan, Jiji } from '../saju/types.js';
 
 // ─── getDayPillar ────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SignalDef } from '../pattern-verification.js';
-import type { MeasuredCell } from '../period-interpretation.js';
+import type { SignalDef } from '../pattern/types.js';
+import type { MeasuredCell } from '../period/types.js';
 
 // ─── 인메모리 DB 페이크 (period_forecasts 테이블 + pattern_links 대표 링크) ──
 // generate/score/load는 query()를 SQL 형태로 분기 — 멱등·동결·채점 분기를 실DB 없이 검증.
@@ -212,12 +212,16 @@ vi.mock('../db.js', () => ({
   ),
 }));
 
-vi.mock('../pattern-verification.js', () => ({
+vi.mock('../pattern/series.js', () => ({
   computeSignalSeries: vi.fn((_userId: number, signal: { id: number }) =>
     Promise.resolve({ series: dbState.seriesBySignal.get(signal.id) ?? new Map(), raw: null }),
   ),
+}));
+vi.mock('../pattern/data-window.js', () => ({
   computeUserDataStarts: vi.fn(() => Promise.resolve({ byTable: new Map(), global: null })),
   signalDataStart: vi.fn(() => null),
+}));
+vi.mock('../pattern/load-signal-defs.js', () => ({
   loadSignalDefsByIds: vi.fn((ids: number[]) => {
     const m = new Map<number, SignalDef>();
     for (const id of ids) {
@@ -228,7 +232,9 @@ vi.mock('../pattern-verification.js', () => ({
   }),
 }));
 
-import { generateForecasts, scoreForecasts, loadLedger } from '../period-forecast.js';
+import { generateForecasts } from '../period/forecast-generate.js';
+import { scoreForecasts } from '../period/forecast-score.js';
+import { loadLedger } from '../period/forecast-ledger.js';
 
 // ─── 빌더 ─────────────────────────────────────────────────
 

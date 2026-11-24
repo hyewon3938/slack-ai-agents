@@ -1,15 +1,9 @@
 /** 기간 해석 — 기간 pillar의 십성·오행·합충 결정론 도출. */
 
-import {
-  getSipsung,
-  getJijiSipsung,
-  getElementByCheongan,
-  getElementByJiji,
-  getRelations,
-  type Cheongan,
-  type Jiji,
-  type Pillar,
-} from '../saju-calendar.js';
+import { getSipsung, getJijiSipsung } from '../saju/sipsung.js';
+import { getElementByCheongan, getElementByJiji } from '../saju/pillar-utils.js';
+import { getRelations } from '../saju/relations.js';
+import { type Cheongan, type Jiji, type Pillar } from '../saju/types.js';
 import type { PeriodType, PeriodContext } from './types.js';
 
 // ─── A. derivePeriodContext (결정론) ──────────────────────

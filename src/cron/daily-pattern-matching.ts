@@ -11,10 +11,10 @@
  */
 
 import type { App } from '@slack/bolt';
-import { matchAllSeedsForDay, recordDailyMatches } from '../shared/pattern-match.js';
+import { matchAllSeedsForDay, recordDailyMatches } from '../shared/pattern/match-day.js';
 import { getEffectiveTodayISO } from '../shared/kst.js';
 import { DEFAULT_USER_ID, queryAllUserMappings } from '../shared/user-resolver.js';
-import type { LifeCronConfig } from './life-cron.js';
+import type { LifeCronConfig } from './life/types.js';
 
 /** 한 유저의 오늘 매칭 평가 + seed_daily_activations 기록 (Slack 발송 없음, 유저별 에러 격리). */
 const matchAndRecordForUser = async (userId: number, date: string): Promise<void> => {

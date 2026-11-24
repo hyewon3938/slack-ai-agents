@@ -60,27 +60,27 @@ vi.mock('../db.js', () => ({
   }),
 }));
 
+import { buildWindowDates, binarizeSqlSeries } from '../pattern/binarize.js';
 import {
-  buildWindowDates,
-  binarizeSqlSeries,
   buildContingency,
   buildDaySequence,
-  splitRawByActivation,
   verifyContingency,
   classifyVerdict,
   statusForVerdict,
-  ensureMirrorSignalDef,
-  familyOf,
-  bhFdrByFamily,
+  splitHalvesConsistent,
+} from '../pattern/contingency.js';
+import { splitRawByActivation } from '../pattern/series.js';
+import { ensureMirrorSignalDef } from '../pattern/mirror-signal.js';
+import { familyOf, bhFdrByFamily } from '../pattern/fdr-family.js';
+import {
   signalDataStart,
   seedDataStart,
   computeUserDataStarts,
   maxDate,
   enrollmentStart,
-  splitHalvesConsistent,
-  type DaySeries,
   type UserDataStarts,
-} from '../pattern-verification.js';
+} from '../pattern/data-window.js';
+import { type DaySeries } from '../pattern/types.js';
 
 // ─── buildWindowDates ────────────────────────────────────
 

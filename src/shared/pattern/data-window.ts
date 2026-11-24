@@ -3,7 +3,7 @@
  */
 
 import { query } from '../db.js';
-import { BEHAVIOR_SIGNAL_DOMAIN } from '../insights.js';
+import { BEHAVIOR_SIGNAL_DOMAIN } from '../insights/types.js';
 import { addDays } from '../kst.js';
 
 // ─── 데이터-존재 윈도우 (#504, ADR-0044) ─────────────────
@@ -32,7 +32,7 @@ const DATA_TABLES = [
   'diary_meta_tags',
 ] as const;
 
-// life_signal behavior_baseline signal_name → 의존 도메인: insights.ts의 BEHAVIOR_SIGNAL_DOMAIN이
+// life_signal behavior_baseline signal_name → 의존 도메인: insights/types.ts의 BEHAVIOR_SIGNAL_DOMAIN이
 // 단일 진실(각 detect 함수의 domain 선언). #510 — 옛 로컬 맵이 slotGap·weekComparison을 schedule로
 // 적던 드리프트 제거(실제는 routine_records 집계 = routine).
 

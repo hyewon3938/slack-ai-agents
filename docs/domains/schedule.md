@@ -147,7 +147,7 @@ features/schedule/
 - 초기 뷰: 모바일(< 768px) = day, 데스크톱 = week
 - 15초 폴링 (탭 활성 시), 탭 복귀 시 날짜 갱신
 - 사주 일주 표시 (2026-05-26 #427, 월간 뷰 확장 2026-07-03): 월·주·일 모든 뷰 날짜 셀에 일주(천간+지지) 한자+한글 병기
-  - 계산: `web/src/lib/saju.ts` `getDayPillar(dateStr)` — 봇 `src/shared/saju-calendar.ts`의 복제본 (순수 함수, \~50줄). 동기화 책임은 [ADR-0021](../adr/0021-web-shared-saju-code-duplication.md)
+  - 계산: `web/src/lib/saju.ts` `getDayPillar(dateStr)` — 봇 `src/shared/saju/pillars.ts`의 복제본 (순수 함수, \~50줄). 동기화 책임은 [ADR-0021](../adr/0021-web-shared-saju-code-duplication.md)
   - 표시 형식: `庚子 경자` (한자 `font-medium` + 한글)
     - 주·일 뷰: `text-[11px]` + `flex-wrap`(좁아지면 두 줄 자동 분리)
     - 월간 뷰: `compact` 모드 — `text-[9px] sm:text-[10px]` + `whitespace-nowrap`(한 줄 고정). 좁은 모바일 셀에서 헤더 높이를 예측 가능하게 유지해 스패닝 바와 겹치지 않게
@@ -170,7 +170,7 @@ features/schedule/
 - 정의: `status='todo'` + 과거 날짜(`date < today`, `date IS NULL` 제외) + **task 타입만**
 - event 타입(약속·여행·정보 등)은 완료 체크 대상이 아니라 `status='todo'`로 영구 잔존 → 날짜만 과거로 밀려 무한 카운트됨. 따라서 밀린 일정 집계에서 제외
 - `category_type`은 child 우선(`c.type`), 없으면 parent(`p.type`), 둘 다 없으면 `'task'` (`COALESCE(c.type, p.type, 'task') = 'task'`)
-- **단일 소스**: `src/shared/life-queries.ts`의 `countOverdueTasks(today, userId)` — 아침 크론 잔소리(insights `detectOverdue`)와 일정 맥락(`queryScheduleContext`)이 공유. 정의가 두 곳에 갈라져 event 타입이 오집계되던 문제를 헬퍼 단일화로 해소
+- **단일 소스**: `src/shared/life/queries-schedule.ts`의 `countOverdueTasks(today, userId)` — 아침 크론 잔소리(insights `detectOverdue`)와 일정 맥락(`queryScheduleContext`)이 공유. 정의가 두 곳에 갈라져 event 타입이 오집계되던 문제를 헬퍼 단일화로 해소
 
 ## 관련 Slack 에이전트
 

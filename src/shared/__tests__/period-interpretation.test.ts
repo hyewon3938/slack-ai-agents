@@ -5,16 +5,15 @@ vi.mock('../db.js', () => ({
   query: vi.fn(async () => ({ rows: [] })),
 }));
 
-import {
-  derivePeriodContext,
-  buildInterpretationPayload,
-  renderInterpretationBlocks,
-  type PeriodInterpretationRecord,
-  type InterpretationPayload,
-} from '../period-interpretation.js';
-import { indexCells, type ResponseCell } from '../response-profile.js';
-import { makePillar, type Cheongan, type Jiji } from '../saju-calendar.js';
-import type { LedgerCardData, ForecastSourceCell } from '../period-forecast.js';
+import { derivePeriodContext } from '../period/interpretation-derive.js';
+import { buildInterpretationPayload } from '../period/interpretation-payload.js';
+import { renderInterpretationBlocks } from '../period/interpretation-render.js';
+import { type PeriodInterpretationRecord, type InterpretationPayload } from '../period/types.js';
+import { indexCells } from '../response-profile/resolve.js';
+import { type ResponseCell } from '../response-profile/axis.js';
+import { makePillar } from '../saju/pillar-utils.js';
+import { type Cheongan, type Jiji } from '../saju/types.js';
+import type { LedgerCardData, ForecastSourceCell } from '../period/types.js';
 
 const NATAL = {
   dayMaster: '갑' as Cheongan,

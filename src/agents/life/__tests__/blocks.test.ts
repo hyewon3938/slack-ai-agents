@@ -1,20 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import type { RoutineRecordRow, ScheduleRow } from '../../../shared/life-queries.js';
+import type { RoutineRecordRow } from '../../../shared/life/queries-routine.js';
+import type { ScheduleRow } from '../../../shared/life/queries-schedule.js';
 import type { AffectedRow } from '../../../shared/pending-display.js';
 import { formatDateShort } from '../../../shared/kst.js';
 import {
   buildRoutineBlocks,
   buildFilteredRoutineBlocks,
-  buildMorningGreetingBlocks,
-  buildScheduleBlocks,
-  buildConfirmModifyCard,
   parseButtonValue,
-  parseOverflowValue,
+} from '../blocks/routine.js';
+import { buildMorningGreetingBlocks } from '../blocks/greeting.js';
+import { buildScheduleBlocks } from '../blocks/schedule.js';
+import { buildConfirmModifyCard } from '../blocks/confirm-modify.js';
+import { parseOverflowValue } from '../blocks/schedule-overflow.js';
+import {
   ROUTINE_ACTION_ID,
   SCHEDULE_ACTION_ID,
   CONFIRM_MODIFY_EXECUTE_ACTION_ID,
   CONFIRM_MODIFY_CANCEL_ACTION_ID,
-} from '../blocks.js';
+} from '../blocks/constants.js';
 
 // ─── 테스트 데이터 ─────────────────────────────────────
 
