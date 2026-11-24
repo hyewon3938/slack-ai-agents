@@ -14,13 +14,22 @@ export async function queryPlannedExpenses(
     `SELECT p.id, p.year_month, p.amount, p.memo, p.created_at::text,
             COALESCE(SUM(e.amount), 0)::integer as used_amount
      FROM planned_expenses p
-     LEFT JOIN expenses e ON e.planned_expense_id = p.id
+     LEFT JOIN expenses e ON e.planned_expense_id = p.id AND e.user_id = p.user_id
      WHERE p.user_id = $1 ${condition}
      GROUP BY p.id
      ORDER BY p.year_month, p.created_at`,
     params,
   );
   return rows;
+}
+
+/** 예정 지출이 이 유저의 것인가 — 지출에 연결하기 전에 확인한다 */
+export async function isPlannedExpenseOwned(userId: number, id: number): Promise<boolean> {
+  const row = await queryOne<{ id: number }>(
+    'SELECT id FROM planned_expenses WHERE id = $1 AND user_id = $2',
+    [id, userId],
+  );
+  return row !== null;
 }
 
 /** 예정 지출 추가 */

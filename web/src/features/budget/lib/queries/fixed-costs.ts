@@ -20,7 +20,11 @@ export async function updateFixedCost(
   id: number,
   updates: Record<string, unknown>,
 ): Promise<FixedCostRow | null> {
-  const keys = Object.keys(updates).filter((k) => FIXED_COST_COLUMNS.has(k));
+  // undefined는 "안 바꿈"으로 건너뛴다. null은 nullable 컬럼(category·day_of_month·memo·payment_method)을
+  // 비우는 값이라 그대로 반영한다. NOT NULL 컬럼의 null은 route 검증이 먼저 막는다.
+  const keys = Object.keys(updates).filter(
+    (k) => FIXED_COST_COLUMNS.has(k) && updates[k] !== undefined,
+  );
   if (keys.length === 0) return null;
 
   const setClauses = keys.map((k, i) => `${k} = $${i + 3}`);
@@ -39,7 +43,7 @@ export async function createFixedCost(
   data: {
     name: string;
     amount: number;
-    category?: string;
+    category?: string | null;
     day_of_month?: number | null;
     payment_method?: string | null;
   },

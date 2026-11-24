@@ -3,10 +3,10 @@ import { requireAuth } from '@/lib/auth';
 import {
   updateExpense,
   deleteExpense,
+  isPlannedExpenseOwned,
   FIXED_SOURCE_EXCLUDE_LOCKED,
 } from '@/features/budget/lib/queries';
-import { VALID_CATEGORIES } from '@/features/budget/lib/types';
-import { validateFields } from '@/lib/validation';
+import { parseIdParam, validateExpenseFields } from '@/features/budget/lib/validate-input';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
@@ -14,39 +14,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+    const id = parseIdParam(rawId);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const raw = (await request.json()) as unknown;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      return NextResponse.json({ error: '요청 본문이 올바르지 않습니다' }, { status: 400 });
+    }
+    const body = raw as Record<string, unknown>;
 
-    // 입력 검증
-    if ('amount' in body && (typeof body.amount !== 'number' || body.amount <= 0)) {
-      return NextResponse.json({ error: 'amount는 양수 숫자여야 합니다' }, { status: 400 });
+    // 보낸 필드만 POST와 같은 기준으로 검증한다
+    const fieldError = validateExpenseFields(body, 'update');
+    if (fieldError) {
+      return NextResponse.json({ error: fieldError }, { status: 400 });
     }
     if (
-      'category' in body &&
-      typeof body.category === 'string' &&
-      !VALID_CATEGORIES.has(body.category)
+      typeof body.planned_expense_id === 'number' &&
+      !(await isPlannedExpenseOwned(userId, body.planned_expense_id))
     ) {
-      return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
-    }
-    if ('date' in body && typeof body.date === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
-      return NextResponse.json({ error: 'date 형식이 올바르지 않습니다' }, { status: 400 });
-    }
-    if ('exclude_from_budget' in body && typeof body.exclude_from_budget !== 'boolean') {
-      return NextResponse.json(
-        { error: 'exclude_from_budget는 boolean이어야 합니다' },
-        { status: 400 },
-      );
-    }
-
-    const lengthError = validateFields([
-      [body.description, 'description'],
-      [body.memo, 'memo'],
-      [body.payment_method, 'paymentMethod'],
-    ]);
-    if (lengthError) {
-      return NextResponse.json({ error: lengthError }, { status: 400 });
+      return NextResponse.json({ error: '예정 지출을 찾을 수 없습니다' }, { status: 400 });
     }
 
     const data = await updateExpense(userId, id, body);
@@ -70,8 +56,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   try {
     const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+    const id = parseIdParam(rawId);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
     const deleted = await deleteExpense(userId, id);
     if (!deleted) return NextResponse.json({ error: '지출을 찾을 수 없습니다' }, { status: 404 });

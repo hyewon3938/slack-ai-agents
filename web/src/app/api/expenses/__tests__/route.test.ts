@@ -9,11 +9,17 @@ vi.mock('@/features/budget/lib/queries', () => ({
   queryExpensesByBillingMonth: vi.fn(),
   createExpense: vi.fn(),
   createInstallmentExpenses: vi.fn(),
+  isPlannedExpenseOwned: vi.fn(),
 }));
 
 import { requireAuth } from '@/lib/auth';
-import { createExpense, createInstallmentExpenses } from '@/features/budget/lib/queries';
-import { POST } from '../route';
+import {
+  createExpense,
+  createInstallmentExpenses,
+  isPlannedExpenseOwned,
+  queryExpenses,
+} from '@/features/budget/lib/queries';
+import { GET, POST } from '../route';
 import { jsonRequest } from '@/app/api/__tests__/route-helpers';
 
 const USER_ID = 7;
@@ -146,5 +152,86 @@ describe('POST /api/expenses — 일시불과 할부', () => {
 
     expect(createInstallmentExpenses).not.toHaveBeenCalled();
     expect(createExpense).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('POST /api/expenses — 할부 개월 범위', () => {
+  it.each([
+    ['0', 0],
+    ['음수', -3],
+    ['13', 13],
+    ['24', 24],
+    ['소수', 2.5],
+    ['문자열', '3'],
+  ])('installment_months가 %s이면 400이고 일시불로도 저장하지 않는다', async (_label, months) => {
+    const res = await post({ ...BASE_BODY, installment_months: months });
+
+    expect(res.status).toBe(400);
+    expect(createExpense).not.toHaveBeenCalled();
+    expect(createInstallmentExpenses).not.toHaveBeenCalled();
+  });
+
+  it('installment_months가 null이면 일시불로 저장한다', async () => {
+    const res = await post({ ...BASE_BODY, installment_months: null });
+
+    expect(res.status).toBe(201);
+    expect(createExpense).toHaveBeenCalledTimes(1);
+    expect(createInstallmentExpenses).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/expenses — 예정 지출 연결', () => {
+  it('내 예정 지출이 아니면 400이고 저장하지 않는다', async () => {
+    vi.mocked(isPlannedExpenseOwned).mockResolvedValue(false);
+
+    const res = await post({ ...BASE_BODY, planned_expense_id: 4 });
+
+    expect(res.status).toBe(400);
+    expect(isPlannedExpenseOwned).toHaveBeenCalledWith(USER_ID, 4);
+    expect(createExpense).not.toHaveBeenCalled();
+  });
+
+  it('내 예정 지출이면 연결해서 저장한다', async () => {
+    vi.mocked(isPlannedExpenseOwned).mockResolvedValue(true);
+
+    const res = await post({ ...BASE_BODY, planned_expense_id: 4 });
+
+    expect(res.status).toBe(201);
+    expect(createExpense).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ planned_expense_id: 4 }),
+    );
+  });
+
+  it('할부도 소유를 확인한 뒤에만 저장한다', async () => {
+    vi.mocked(isPlannedExpenseOwned).mockResolvedValue(false);
+
+    const res = await post({ ...BASE_BODY, installment_months: 3, planned_expense_id: 4 });
+
+    expect(res.status).toBe(400);
+    expect(createInstallmentExpenses).not.toHaveBeenCalled();
+  });
+
+  it('planned_expense_id가 정수가 아니면 조회 없이 400이다', async () => {
+    const res = await post({ ...BASE_BODY, planned_expense_id: '4' });
+
+    expect(res.status).toBe(400);
+    expect(isPlannedExpenseOwned).not.toHaveBeenCalled();
+    expect(createExpense).not.toHaveBeenCalled();
+  });
+
+  it('planned_expense_id가 없으면 소유 확인을 하지 않는다', async () => {
+    await post(BASE_BODY);
+
+    expect(isPlannedExpenseOwned).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/expenses — planned_expense_id 필터', () => {
+  it.each(['abc', '1.5', '0'])('planned_expense_id=%s는 400이다', async (raw) => {
+    const res = await GET(jsonRequest('GET', `/api/expenses?planned_expense_id=${raw}`));
+
+    expect(res.status).toBe(400);
+    expect(queryExpenses).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { updateAsset, setDefaultAsset, clearDefaultAsset } from '@/features/budget/lib/queries';
+import { isNonNegativeInteger, parseIdParam } from '@/features/budget/lib/validate-input';
 import { getTodayISO } from '@/lib/kst';
+import { validateFields } from '@/lib/validation';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -11,8 +13,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+    const id = parseIdParam(rawId);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
     const body = (await request.json()) as {
       balance?: number;
@@ -22,9 +24,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       balance_as_of?: string;
     };
 
-    if (body.balance !== undefined && (typeof body.balance !== 'number' || body.balance < 0)) {
-      return NextResponse.json({ error: 'balance는 0 이상 숫자여야 합니다' }, { status: 400 });
+    // 잔액 컬럼은 정수라 소수가 들어오면 DB에서 실패한다 — 여기서 막는다
+    for (const key of ['balance', 'available_amount'] as const) {
+      const value = body[key];
+      if (value !== undefined && !isNonNegativeInteger(value)) {
+        return NextResponse.json({ error: `${key}는 0 이상 정수여야 합니다` }, { status: 400 });
+      }
     }
+    if (body.is_default !== undefined && typeof body.is_default !== 'boolean') {
+      return NextResponse.json({ error: 'is_default는 boolean이어야 합니다' }, { status: 400 });
+    }
+    if (body.memo !== undefined && body.memo !== null && typeof body.memo !== 'string') {
+      return NextResponse.json({ error: 'memo는 문자열이어야 합니다' }, { status: 400 });
+    }
+    const lengthError = validateFields([[body.memo, 'memo']]);
+    if (lengthError) return NextResponse.json({ error: lengthError }, { status: 400 });
 
     const today = getTodayISO();
     if (body.balance_as_of !== undefined) {
