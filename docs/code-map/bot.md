@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 191개, 21968줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 194개, 21996줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -147,7 +147,7 @@
 | `agent-loop.ts` | 90 |  | function: `runAgentLoop` |
 | `chat-history.ts` | 72 | 채널별 대화 맥락 저장 (인메모리 슬라이딩 윈도우) | class: `ChatHistory` |
 | `config.ts` | 55 |  | const: `CONFIG` |
-| `db.ts` | 352 |  | function: `setSqlToolPoolRequired`, `isSqlToolPoolConnected`, `sqlToolFallbackNote`, `connectDB`, `connectSqlToolDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryReadOnlyWithTimeout`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>class: `SqlToolUnavailableError`<br>type: `DryRunResult` |
+| `db.ts` | 317 |  | function: `setSqlToolPoolRequired`, `isSqlToolPoolConnected`, `sqlToolFallbackNote`, `connectDB`, `connectSqlToolDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryReadOnlyWithTimeout`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>class: `SqlToolUnavailableError`<br>type: `DryRunResult` |
 | `fortune-format.ts` | 18 | fortune_analyses 표시 포맷터. | function: `formatFortuneText`<br>type: `FortuneFormatInput` |
 | `insight-labels.ts` | 266 | 카드 라벨 레이어 — 시드·신호 내부 식별자를 사용자가 읽을 수 있는 자연어로 (#504 Phase 2, ADR-0045). | function: `seedLabel`, `signalLabel`<br>const: `SEED_LABEL_OVERRIDES`<br>type: `SeedLabelInput`, `SignalLabelInput` |
 | `insight-thresholds.ts` | 129 |  | const: `INSIGHT_THRESHOLDS` |
@@ -313,6 +313,9 @@
 | `sql-lexer-checks.ts` | 119 | 토큰화 뒤 검사: 이름 자리 표시, CASE 위치, 이어 쓴 문자열 리터럴. | function: `markNameWords`, `hasAdjacentStrings`, `hasClearCases` |
 | `sql-lexer.ts` | 255 | SQL 토크나이저: PostgreSQL 어휘 규칙을 따라 문자열·주석·달러 인용을 구분한다. | function: `tokenize`, `hasStatementAfterSemicolon`, `withoutTrailingSemicolon`, `maskedText`<br>type: `TokenKind`, `Token`, `LexResult` |
 | `table-permissions.ts` | 126 | SQL 도구 전용 DB 역할의 테이블 권한 목록 (ADR-0067). | function: `getTableAccess`, `isToolModifyAllowed`<br>const: `TABLE_PERMISSIONS`<br>type: `TableAccess`, `ModifyOp` |
+| `user-scope-coverage.ts` | 92 | 범위 보장 확인: 소스 목록과 WHERE·JOIN 조건으로 필수 테이블마다 user_id = N이 걸리는지 본다. | function: `uncoveredSources`, `requireCoverage` |
 | `user-scope-dml.ts` | 319 | 변경 쿼리(INSERT·UPDATE·DELETE)의 user_id 범위 분석. | function: `analyzeUpdate`, `analyzeDelete`, `analyzeInsert` |
-| `user-scope.ts` | 504 | 조회 쿼리의 user_id 범위 분석. | function: `fail`, `startsQuery`, `scanGroups`, `splitClauses`, `parseSource`, `parseFromList`, `uncoveredSources`, `requireCoverage`, `analyzeQuery`, `hasUnhandledQuery`<br>const: `USER_ID_EXEMPT_TABLES`, `SHARED_READONLY_TABLES`, `BLOCKED_TABLES`, `MSG`, `SELECT_CLAUSES`<br>type: `ScopeCtx`, `Clauses`, `JoinKind`, `Source` |
+| `user-scope-from.ts` | 216 | FROM 목록 해석: 서브쿼리·함수·테이블 항목과 JOIN 조건을 소스 목록으로 읽는다. | function: `isStopWord`, `parseSource`, `parseFromList`<br>type: `JoinKind`, `Source` |
+| `user-scope-rules.ts` | 53 | user_id 범위 분석의 공용 규칙: 분석 상태, 테이블 목록, 거절 문구. | function: `fail`, `startsQuery`<br>const: `USER_ID_EXEMPT_TABLES`, `SHARED_READONLY_TABLES`, `BLOCKED_TABLES`, `MSG`<br>type: `ScopeCtx`, `Scope` |
+| `user-scope.ts` | 206 | 조회 쿼리의 user_id 범위 분석. | function: `scanGroups`, `splitClauses`, `analyzeQuery`, `hasUnhandledQuery`<br>const: `SELECT_CLAUSES`<br>type: `Clauses`<br>re-export: `BLOCKED_TABLES`, `MSG`, `ScopeCtx`, `SHARED_READONLY_TABLES`, `USER_ID_EXEMPT_TABLES`, `fail`, `startsQuery`, `JoinKind`, `Source`, `parseFromList`, `parseSource`, `requireCoverage`, `uncoveredSources` |
 | `validation.ts` | 164 | SQL 검증: 구문 검증과 보안 검증 (user_id 필터, custom_instructions). | function: `extractFirstKeyword`, `hasMultipleStatements`, `validateSelectQuery`, `hasWhereClause`, `validateModifyQuery`, `validateUserIdFilter`, `validateCustomInstruction` |

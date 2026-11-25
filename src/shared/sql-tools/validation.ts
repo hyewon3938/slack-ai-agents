@@ -133,7 +133,7 @@ export const validateUserIdFilter = (sql: string, userId: number): string | null
   return ctx.issues[0] ?? null;
 };
 
-/** custom_instructions INSERT 시 시스템 프롬프트 우회 시도 감지 */
+/** custom_instructions INSERT 시 시스템 규칙과 충돌하는 지시 표현 */
 const DANGEROUS_INSTRUCTION_PATTERNS = [
   /ignore\s+(previous|all|above|system)/i,
   /disregard/i,
@@ -156,7 +156,7 @@ export const validateCustomInstruction = (sql: string): string | null => {
   for (const literal of literals) {
     for (const pattern of DANGEROUS_INSTRUCTION_PATTERNS) {
       if (pattern.test(literal)) {
-        return '보안 경고: 지시사항에 시스템 규칙을 우회하려는 표현이 포함되어 있어 등록할 수 없어.';
+        return '지시사항에 시스템 규칙과 충돌하는 표현이 있어 등록할 수 없어.';
       }
     }
   }

@@ -22,6 +22,8 @@ const {
   queryReadOnly,
   queryReadOnlyWithTimeout,
   queryWithRowLimit,
+  queryWithClient,
+  withTransaction,
   dryRunAffectedRows,
   disconnectDB,
   isSqlToolPoolConnected,
@@ -281,6 +283,168 @@ describe('db', () => {
       expect(mockRelease).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'reset failed' }),
       );
+    });
+  });
+
+  describe('연결 정리 — 정리에 실패한 연결은 폐기한다', () => {
+    /** 지정한 문장만 실패시키고 나머지는 빈 결과(데이터 쿼리는 dataError로 실패)로 응답하는 클라이언트 */
+    const makeFailingClient = (
+      failOn: RegExp,
+      dataError?: Error,
+    ): { client: { query: ReturnType<typeof vi.fn>; release: typeof mockRelease }; calls: string[] } => {
+      const calls: string[] = [];
+      const clientQuery = vi.fn(async (text: string) => {
+        calls.push(text);
+        if (failOn.test(text)) throw new Error('cleanup failed');
+        if (/^\s*(SET|RESET|BEGIN|ROLLBACK|COMMIT)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (dataError) throw dataError;
+        return { rows: [{ id: 1 }], rowCount: 1 };
+      });
+      return { client: { query: clientQuery, release: mockRelease }, calls };
+    };
+    const expectDiscarded = (): void => {
+      expect(mockRelease).toHaveBeenCalledTimes(1);
+      expect(mockRelease).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'cleanup failed' }),
+      );
+    };
+
+    beforeEach(async () => {
+      await connectDB('postgresql://test@localhost/test');
+      mockRelease.mockClear();
+    });
+
+    it('withTransaction: 콜백 실패 뒤 ROLLBACK이 실패하면 원래 오류를 전파하고 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^ROLLBACK/);
+      mockConnect.mockResolvedValue(client);
+
+      await expect(
+        withTransaction(async () => {
+          throw new Error('boom');
+        }),
+      ).rejects.toThrow('boom');
+      expectDiscarded();
+    });
+
+    it('withTransaction: 성공하면 COMMIT하고 연결을 풀에 되돌린다', async () => {
+      const { client, calls } = makeFailingClient(/^$/);
+      mockConnect.mockResolvedValue(client);
+
+      await expect(withTransaction(async () => 'ok')).resolves.toBe('ok');
+      expect(calls).toEqual(['BEGIN', 'COMMIT']);
+      expect(mockRelease.mock.calls[0]?.[0]).toBeUndefined();
+    });
+
+    it('queryWithClient: 제한 시간을 걸고 실행한 뒤 RESET으로 되돌린다', async () => {
+      const { client, calls } = makeFailingClient(/^$/);
+      mockConnect.mockResolvedValue(client);
+
+      await queryWithClient('SELECT id FROM t', 5000);
+      expect(calls).toEqual(['SET statement_timeout = 5000', 'SELECT id FROM t', 'RESET statement_timeout']);
+      expect(calls).not.toContain('SET statement_timeout = 0');
+      expect(mockRelease.mock.calls[0]?.[0]).toBeUndefined();
+    });
+
+    it('queryWithClient: 제한 시간 원복이 실패하면 결과는 돌려주고 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^RESET/);
+      mockConnect.mockResolvedValue(client);
+
+      const result = await queryWithClient('SELECT id FROM t', 5000);
+      expect(result.rows).toEqual([{ id: 1 }]);
+      expectDiscarded();
+    });
+
+    it('queryWithClient: 실행 오류 시 ROLLBACK을 보내지 않고 RESET만 한 뒤 오류를 전파한다', async () => {
+      const { client, calls } = makeFailingClient(/^$/, new Error('boom'));
+      mockConnect.mockResolvedValue(client);
+
+      await expect(queryWithClient('SELECT bad', 5000)).rejects.toThrow('boom');
+      expect(calls).toEqual(['SET statement_timeout = 5000', 'SELECT bad', 'RESET statement_timeout']);
+      expect(mockRelease.mock.calls[0]?.[0]).toBeUndefined();
+    });
+
+    it('queryWithRowLimit: 제한 안이면 SET → BEGIN → 쿼리 → COMMIT → RESET 순서로 실행하고 결과를 돌려준다', async () => {
+      const { client, calls } = makeFailingClient(/^$/);
+      mockConnect.mockResolvedValue(client);
+
+      const result = await queryWithRowLimit('UPDATE t SET x = 1', 5000, 5);
+      expect(result.rows).toEqual([{ id: 1 }]);
+      expect(result.rowCount).toBe(1);
+      expect(calls).toEqual([
+        'SET statement_timeout = 5000',
+        'BEGIN',
+        'UPDATE t SET x = 1',
+        'COMMIT',
+        'RESET statement_timeout',
+      ]);
+      expect(mockRelease.mock.calls[0]?.[0]).toBeUndefined();
+    });
+
+    it('queryWithRowLimit: 행 수가 제한을 넘으면 ROLLBACK한 뒤 throw하고 COMMIT하지 않는다', async () => {
+      const { client, calls } = makeReadOnlyClient({ rows: new Array(10).fill({ x: 1 }), rowCount: 10 });
+      mockConnect.mockResolvedValue(client);
+
+      await expect(queryWithRowLimit('UPDATE t SET x = 1', 5000, 5)).rejects.toThrow(
+        /10행에 영향.*ROLLBACK 완료/,
+      );
+      expect(calls.slice(0, 4)).toEqual([
+        'SET statement_timeout = 5000',
+        'BEGIN',
+        'UPDATE t SET x = 1',
+        'ROLLBACK',
+      ]);
+      expect(calls.some((c) => /^\s*COMMIT/i.test(c))).toBe(false);
+      expect(calls[calls.length - 1]).toBe('RESET statement_timeout');
+    });
+
+    it('queryWithRowLimit: 실행 실패 뒤 ROLLBACK이 실패하면 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^ROLLBACK/, new Error('boom'));
+      mockConnect.mockResolvedValue(client);
+
+      await expect(queryWithRowLimit('UPDATE t SET x = 1', 5000, 5)).rejects.toThrow('boom');
+      expectDiscarded();
+    });
+
+    it('queryWithRowLimit: 제한 시간 원복이 실패하면 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^RESET/);
+      mockConnect.mockResolvedValue(client);
+
+      await queryWithRowLimit('UPDATE t SET x = 1', 5000, 5);
+      expectDiscarded();
+    });
+
+    it('queryReadOnly: 정상 실행 뒤 ROLLBACK이 실패하면 오류를 전파하고 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^ROLLBACK/);
+      mockConnect.mockResolvedValue(client);
+
+      await expect(queryReadOnly('SELECT 1', 5000, 5)).rejects.toThrow('cleanup failed');
+      expectDiscarded();
+    });
+
+    it('queryReadOnly: 제한 시간 원복이 실패하면 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^RESET/);
+      mockConnect.mockResolvedValue(client);
+
+      await queryReadOnly('SELECT 1', 5000, 5);
+      expectDiscarded();
+    });
+
+    it('dryRunAffectedRows: ROLLBACK이 실패하면 오류를 전파하고 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^ROLLBACK/);
+      mockConnect.mockResolvedValue(client);
+
+      await expect(dryRunAffectedRows('DELETE FROM t WHERE id = 1', 5000)).rejects.toThrow(
+        'cleanup failed',
+      );
+      expectDiscarded();
+    });
+
+    it('dryRunAffectedRows: 제한 시간 원복이 실패하면 연결을 폐기한다', async () => {
+      const { client } = makeFailingClient(/^RESET/);
+      mockConnect.mockResolvedValue(client);
+
+      await dryRunAffectedRows('DELETE FROM t WHERE id = 1', 5000);
+      expectDiscarded();
     });
   });
 

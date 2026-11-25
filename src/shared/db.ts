@@ -117,6 +117,55 @@ const getToolPool = (): pg.Pool => {
  */
 const RESET_TIMEOUT = 'RESET statement_timeout';
 
+const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
+
+interface ClientRun {
+  client: pg.PoolClient;
+  /** ROLLBACK. 실패하면 연결을 폐기하도록 기록하고 오류를 전파한다 */
+  rollback: () => Promise<void>;
+}
+
+interface RunOptions {
+  /** 지정하면 실행 전에 제한 시간을 걸고 끝난 뒤 RESET으로 되돌린다 */
+  timeoutMs?: number;
+  /** 작업이 실패하면 ROLLBACK한다 */
+  rollbackOnError: boolean;
+}
+
+/**
+ * 연결 하나를 빌려 작업을 실행하고 정리한다.
+ * ROLLBACK이나 제한 시간 원복이 실패한 연결은 상태를 알 수 없으므로 풀에 되돌리지 않고 폐기한다.
+ */
+const runWithClient = async <T>(
+  p: pg.Pool,
+  opts: RunOptions,
+  work: (run: ClientRun) => Promise<T>,
+): Promise<T> => {
+  const client = await p.connect();
+  let cleanupError: Error | undefined;
+  const record = (err: unknown): void => {
+    cleanupError ??= toError(err);
+  };
+  const rollback = async (): Promise<void> => {
+    await client.query('ROLLBACK').catch((err: unknown) => {
+      record(err);
+      throw err;
+    });
+  };
+  try {
+    if (opts.timeoutMs !== undefined) {
+      await client.query(`SET statement_timeout = ${Number(opts.timeoutMs)}`);
+    }
+    return await work({ client, rollback });
+  } catch (err) {
+    if (opts.rollbackOnError) await rollback().catch(() => undefined);
+    throw err;
+  } finally {
+    if (opts.timeoutMs !== undefined) await client.query(RESET_TIMEOUT).catch(record);
+    client.release(cleanupError);
+  }
+};
+
 /** SQL 쿼리 실행 */
 export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
@@ -129,22 +178,13 @@ export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
  * 트랜잭션 헬퍼 — 콜백 내 client.query들을 BEGIN/COMMIT으로 감싸고 예외 시 ROLLBACK.
  * 파생 테이블 user당 full-replace(DELETE → 다중 INSERT) 등 원자적 다중 쓰기용 (#523 P1).
  */
-export const withTransaction = async <T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> => {
-  const client = await getPool().connect();
-  try {
+export const withTransaction = async <T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> =>
+  runWithClient(getPool(), { rollbackOnError: true }, async ({ client }) => {
     await client.query('BEGIN');
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {
-      /* 무시 */
-    });
-    throw err;
-  } finally {
-    client.release();
-  }
-};
+  });
 
 /** SQL 쿼리 실행 후 첫 번째 행 반환 (없으면 null) */
 export const queryOne = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
@@ -159,20 +199,10 @@ export const queryOne = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
 export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   timeoutMs: number,
-): Promise<pg.QueryResult<T>> => {
-  const p = getPool();
-  const client = await p.connect();
-  try {
-    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
-    const result = await client.query<T>(text);
-    return result;
-  } finally {
-    await client.query('SET statement_timeout = 0').catch(() => {
-      /* 무시 */
-    });
-    client.release();
-  }
-};
+): Promise<pg.QueryResult<T>> =>
+  runWithClient(getPool(), { timeoutMs, rollbackOnError: false }, ({ client }) =>
+    client.query<T>(text),
+  );
 
 /**
  * 읽기 전용 트랜잭션에서 타임아웃 적용 쿼리 실행 (query_db 조회 도구용, SQL 도구 풀).
@@ -182,70 +212,33 @@ export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResu
 export const queryReadOnlyWithTimeout = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   timeoutMs: number,
-): Promise<pg.QueryResult<T>> => {
-  const p = getToolPool();
-  const client = await p.connect();
-  let cleanupError: Error | undefined;
-  const rollback = async (): Promise<void> => {
-    try {
-      await client.query('ROLLBACK');
-    } catch (err) {
-      cleanupError ??= err instanceof Error ? err : new Error(String(err));
-      throw err;
-    }
-  };
-  try {
-    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
+): Promise<pg.QueryResult<T>> =>
+  runWithClient(getToolPool(), { timeoutMs, rollbackOnError: true }, async ({ client, rollback }) => {
     await client.query('BEGIN');
     await client.query('SET TRANSACTION READ ONLY');
     const result = await client.query<T>(text);
     await rollback();
     return result;
-  } catch (err) {
-    await rollback().catch(() => {
-      /* 정리 실패는 release에서 처리 */
-    });
-    throw err;
-  } finally {
-    await client.query(RESET_TIMEOUT).catch((err: unknown) => {
-      cleanupError ??= err instanceof Error ? err : new Error(String(err));
-    });
-    client.release(cleanupError);
-  }
-};
+  });
 
 /** 트랜잭션 내 쿼리 실행 — rowCount가 maxRows 초과 시 ROLLBACK (modify_db 실행, SQL 도구 풀) */
 export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   timeoutMs: number,
   maxRows: number,
-): Promise<pg.QueryResult<T>> => {
-  const p = getToolPool();
-  const client = await p.connect();
-  try {
-    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
+): Promise<pg.QueryResult<T>> =>
+  runWithClient(getToolPool(), { timeoutMs, rollbackOnError: true }, async ({ client, rollback }) => {
     await client.query('BEGIN');
     const result = await client.query<T>(text);
     if (result.rowCount !== null && result.rowCount > maxRows) {
-      await client.query('ROLLBACK');
+      await rollback();
       throw new Error(
         `쿼리가 ${result.rowCount}행에 영향 (최대 ${maxRows}행). ROLLBACK 완료. 조건을 더 좁혀줘.`,
       );
     }
     await client.query('COMMIT');
     return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {
-      /* 무시 */
-    });
-    throw err;
-  } finally {
-    await client.query(RESET_TIMEOUT).catch(() => {
-      /* 무시 */
-    });
-    client.release();
-  }
-};
+  });
 
 /**
  * 읽기 전용 트랜잭션 쿼리 (#477 P5b 게이트 #2, ADR-0040).
@@ -257,34 +250,20 @@ export const queryReadOnly = async <T extends pg.QueryResultRow = pg.QueryResult
   text: string,
   timeoutMs: number,
   maxRows: number,
-): Promise<pg.QueryResult<T>> => {
-  const p = getToolPool();
-  const client = await p.connect();
-  try {
-    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
+): Promise<pg.QueryResult<T>> =>
+  runWithClient(getToolPool(), { timeoutMs, rollbackOnError: true }, async ({ client, rollback }) => {
     await client.query('BEGIN');
     await client.query('SET TRANSACTION READ ONLY');
     const result = await client.query<T>(text);
     if (result.rowCount !== null && result.rowCount > maxRows) {
-      await client.query('ROLLBACK');
+      await rollback();
       throw new Error(
         `신호 SQL이 ${result.rowCount}행 반환 (최대 ${maxRows}). 단일 숫자 결과여야 함.`,
       );
     }
-    await client.query('ROLLBACK'); // 읽기 전용 — 항상 ROLLBACK
+    await rollback(); // 읽기 전용 — 항상 ROLLBACK
     return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {
-      /* 무시 */
-    });
-    throw err;
-  } finally {
-    await client.query(RESET_TIMEOUT).catch(() => {
-      /* 무시 */
-    });
-    client.release();
-  }
-};
+  });
 
 export interface DryRunResult {
   rowCount: number;
@@ -299,31 +278,17 @@ export interface DryRunResult {
 export const dryRunAffectedRows = async (
   text: string,
   timeoutMs: number,
-): Promise<DryRunResult> => {
-  const p = getToolPool();
-  const client = await p.connect();
-  try {
-    await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
+): Promise<DryRunResult> =>
+  runWithClient(getToolPool(), { timeoutMs, rollbackOnError: true }, async ({ client, rollback }) => {
     await client.query('BEGIN');
     const sqlWithReturning = ensureReturningClause(text);
     const result = await client.query(sqlWithReturning);
-    await client.query('ROLLBACK');
+    await rollback();
     return {
       rowCount: result.rowCount ?? 0,
       rows: result.rows as Record<string, unknown>[],
     };
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {
-      /* 무시 */
-    });
-    throw err;
-  } finally {
-    await client.query(RESET_TIMEOUT).catch(() => {
-      /* 무시 */
-    });
-    client.release();
-  }
-};
+  });
 
 /**
  * SQL 끝부분에 RETURNING이 없으면 "RETURNING *"를 추가.
