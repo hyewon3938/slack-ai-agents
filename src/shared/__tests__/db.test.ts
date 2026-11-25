@@ -14,15 +14,36 @@ vi.mock('pg', () => {
   return { default: { Pool: MockPool, types: { setTypeParser: vi.fn() } } };
 });
 
-const { connectDB, query, queryOne, queryReadOnly, queryReadOnlyWithTimeout, disconnectDB } =
-  await import('../db.js');
+const {
+  connectDB,
+  connectSqlToolDB,
+  query,
+  queryOne,
+  queryReadOnly,
+  queryReadOnlyWithTimeout,
+  queryWithRowLimit,
+  dryRunAffectedRows,
+  disconnectDB,
+} = await import('../db.js');
+const pg = (await import('pg')).default;
+
+interface MockPoolInstance {
+  connect: typeof mockConnect;
+}
+/** 마지막으로 만든 MockPool 인스턴스 */
+const lastPool = (): MockPoolInstance => {
+  const instances = vi.mocked(pg.Pool).mock.instances as unknown as MockPoolInstance[];
+  const last = instances[instances.length - 1];
+  if (!last) throw new Error('풀이 만들어지지 않음');
+  return last;
+};
 
 /** 읽기 전용 TX 제어문은 빈 결과로 처리하고 데이터 쿼리만 dataResult로 응답하는 클라이언트 mock. */
 const makeReadOnlyClient = (dataResult: { rows: unknown[]; rowCount: number }) => {
   const calls: string[] = [];
   const clientQuery = vi.fn(async (text: string) => {
     calls.push(text);
-    if (/^\s*(SET|BEGIN|ROLLBACK|COMMIT)/i.test(text)) return { rows: [], rowCount: 0 };
+    if (/^\s*(SET|RESET|BEGIN|ROLLBACK|COMMIT)/i.test(text)) return { rows: [], rowCount: 0 };
     return dataResult;
   });
   return { client: { query: clientQuery, release: mockRelease }, calls };
@@ -115,7 +136,7 @@ describe('db', () => {
       const calls: string[] = [];
       const clientQuery = vi.fn(async (text: string) => {
         calls.push(text);
-        if (/^\s*(SET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (/^\s*(SET|RESET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
         throw new Error('boom');
       });
       mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
@@ -141,7 +162,7 @@ describe('db', () => {
         'SET TRANSACTION READ ONLY',
         'SELECT id FROM t',
         'ROLLBACK',
-        'SET statement_timeout = 0',
+        'RESET statement_timeout',
       ]);
       expect(mockRelease).toHaveBeenCalledTimes(1);
     });
@@ -163,13 +184,13 @@ describe('db', () => {
       const calls: string[] = [];
       const clientQuery = vi.fn(async (text: string) => {
         calls.push(text);
-        if (/^\s*(SET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (/^\s*(SET|RESET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
         throw new Error('canceling statement due to statement timeout');
       });
       mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
 
       await expect(queryReadOnlyWithTimeout('SELECT pg_sleep(10)', 100)).rejects.toThrow(/timeout/);
-      expect(calls.slice(-2)).toEqual(['ROLLBACK', 'SET statement_timeout = 0']);
+      expect(calls.slice(-2)).toEqual(['ROLLBACK', 'RESET statement_timeout']);
       expect(calls.some((c) => /^\s*COMMIT/i.test(c))).toBe(false);
       expect(mockRelease).toHaveBeenCalledTimes(1);
     });
@@ -179,7 +200,7 @@ describe('db', () => {
       mockRelease.mockClear();
       const clientQuery = vi.fn(async (text: string) => {
         if (/^\s*ROLLBACK/i.test(text)) throw new Error('connection lost');
-        if (/^\s*(SET|BEGIN)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (/^\s*(SET|RESET|BEGIN)/i.test(text)) return { rows: [], rowCount: 0 };
         throw new Error('boom');
       });
       mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
@@ -203,7 +224,7 @@ describe('db', () => {
       await connectDB('postgresql://test@localhost/test');
       mockRelease.mockClear();
       const clientQuery = vi.fn(async (text: string) => {
-        if (/^\s*(SET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (/^\s*(SET|RESET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
         throw new Error('boom');
       });
       mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
@@ -218,13 +239,15 @@ describe('db', () => {
       mockRelease.mockClear();
       const clientQuery = vi.fn(async (text: string) => {
         if (/^\s*ROLLBACK/i.test(text)) throw new Error('connection lost');
-        if (/^\s*(SET|BEGIN)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (/^\s*(SET|RESET|BEGIN)/i.test(text)) return { rows: [], rowCount: 0 };
         throw new Error('boom');
       });
       mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
 
       await expect(queryReadOnlyWithTimeout('SELECT bad', 5000)).rejects.toThrow('boom');
-      expect(mockRelease).toHaveBeenCalledWith(expect.objectContaining({ message: 'connection lost' }));
+      expect(mockRelease).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'connection lost' }),
+      );
     });
 
     it('정상 실행 뒤 ROLLBACK이 실패하면 오류를 전파하고 커넥션을 폐기한다', async () => {
@@ -244,15 +267,93 @@ describe('db', () => {
       await connectDB('postgresql://test@localhost/test');
       mockRelease.mockClear();
       const clientQuery = vi.fn(async (text: string) => {
-        if (text === 'SET statement_timeout = 0') throw new Error('reset failed');
-        if (/^\s*(SET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (text === 'RESET statement_timeout') throw new Error('reset failed');
+        if (/^\s*(SET|RESET|BEGIN|ROLLBACK)/i.test(text)) return { rows: [], rowCount: 0 };
         return { rows: [{ id: 1 }], rowCount: 1 };
       });
       mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
 
       const result = await queryReadOnlyWithTimeout('SELECT id FROM t', 5000);
       expect(result.rows).toEqual([{ id: 1 }]);
-      expect(mockRelease).toHaveBeenCalledWith(expect.objectContaining({ message: 'reset failed' }));
+      expect(mockRelease).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'reset failed' }),
+      );
+    });
+  });
+
+  describe('connectSqlToolDB — SQL 도구 전용 풀', () => {
+    it('연결 문자열이 없으면 풀을 만들지 않고 도구 함수가 기존 풀을 쓴다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      vi.mocked(pg.Pool).mockClear();
+      await connectSqlToolDB('');
+      expect(pg.Pool).not.toHaveBeenCalled();
+
+      const { client } = makeReadOnlyClient({ rows: [], rowCount: 0 });
+      mockConnect.mockResolvedValue(client);
+      await queryReadOnlyWithTimeout('SELECT 1', 5000);
+      expect(mockConnect).toHaveBeenCalled();
+    });
+
+    it('크기 2인 두 번째 풀을 만들고 도구 함수는 그 풀에서 실행한다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      vi.mocked(pg.Pool).mockClear();
+      await connectSqlToolDB('postgresql://sql_tool@localhost/test');
+      expect(pg.Pool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionString: 'postgresql://sql_tool@localhost/test',
+          max: 2,
+        }),
+      );
+
+      const toolConnect = vi.fn();
+      lastPool().connect = toolConnect;
+      const { client, calls } = makeReadOnlyClient({ rows: [], rowCount: 1 });
+      toolConnect.mockResolvedValue(client);
+      mockConnect.mockClear();
+
+      await queryReadOnlyWithTimeout('SELECT 1', 5000);
+      await queryWithRowLimit("UPDATE schedules SET title = 'x' WHERE user_id = 1", 5000, 50);
+      await dryRunAffectedRows('DELETE FROM schedules WHERE user_id = 1', 5000);
+      expect(toolConnect).toHaveBeenCalledTimes(3);
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(calls.filter((c) => c === 'RESET statement_timeout')).toHaveLength(3);
+      expect(calls).not.toContain('SET statement_timeout = 0');
+
+      // 앱 코드의 고정 쿼리는 기존 풀에 남는다
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+      await query('SELECT 1');
+      expect(mockQuery).toHaveBeenCalledWith('SELECT 1', undefined);
+    });
+
+    it('연결에 실패하면 풀을 닫고 기존 풀로 대신한다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      const appConnect = vi.fn();
+      lastPool().connect = appConnect;
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockConnect.mockRejectedValueOnce(new Error('auth failed'));
+
+      await expect(
+        connectSqlToolDB('postgresql://sql_tool@localhost/test'),
+      ).resolves.toBeUndefined();
+      expect(mockEnd).toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[DB] SQL 도구 전용 풀 연결 실패, SQL 도구가 기존 연결 풀을 씁니다:',
+        expect.any(Error),
+      );
+
+      const { client } = makeReadOnlyClient({ rows: [], rowCount: 0 });
+      appConnect.mockResolvedValue(client);
+      await queryReadOnlyWithTimeout('SELECT 1', 5000);
+      expect(appConnect).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
+    });
+
+    it('disconnectDB는 두 풀을 모두 닫는다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      await connectSqlToolDB('postgresql://sql_tool@localhost/test');
+      mockEnd.mockClear();
+      await disconnectDB();
+      expect(mockEnd).toHaveBeenCalledTimes(2);
     });
   });
 

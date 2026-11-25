@@ -14,6 +14,7 @@ import {
   topLevel,
 } from './sql-blocks.js';
 import { otherUserMessage } from './sql-guards.js';
+import { type ModifyOp, getTableAccess, isToolModifyAllowed } from './table-permissions.js';
 import {
   BLOCKED_TABLES,
   MSG,
@@ -42,15 +43,30 @@ const DML_MSG = {
   conflict: '보안 규칙: ON CONFLICT DO UPDATE는 충돌 대상에 user_id를 포함해야 해.',
   schema: '보안 규칙: 변경 대상은 public 스키마 테이블만 쓸 수 있어.',
   readOnly: (name: string): string => `보안 규칙: ${name} 테이블은 조회만 할 수 있어.`,
+  opDenied: (name: string, op: ModifyOp): string =>
+    `보안 규칙: ${name} 테이블은 ${op.toUpperCase()}할 수 없어.`,
+  columnsOnly: (name: string, columns: readonly string[]): string =>
+    `보안 규칙: ${name} 테이블은 ${columns.join(', ')} 컬럼만 바꿀 수 있어.`,
 };
 
 const isComma = (ctx: ScopeCtx) => (i: number): boolean => isPunct(ctx.tokens[i], ',');
+
+const isEq = (ctx: ScopeCtx) => (i: number): boolean =>
+  ctx.tokens[i]?.kind === 'op' && ctx.tokens[i]?.value === '=';
+
+/** SET 목록 항목마다 `=` 왼쪽에 나온 식별자 (권한 확인용. 구조 오류는 checkSetList가 잡는다) */
+const listSetColumns = (ctx: ScopeCtx, start: number, end: number): string[] =>
+  splitTop(ctx, start, end, isComma(ctx)).flatMap(([s, e]) => {
+    const eq = findTop(ctx, s, e, isEq(ctx));
+    if (eq < 0) return [];
+    return ctx.tokens.slice(s, eq).map(identName).filter((n): n is string => n !== null);
+  });
 
 /** SET 목록: user_id는 바꿀 수 없고, 값 쪽 서브쿼리도 분석한다 */
 const checkSetList = (ctx: ScopeCtx, start: number, end: number): void => {
   const t = ctx.tokens;
   for (const [s, e] of splitTop(ctx, start, end, isComma(ctx))) {
-    const eq = findTop(ctx, s, e, (i) => t[i]?.kind === 'op' && t[i]?.value === '=');
+    const eq = findTop(ctx, s, e, isEq(ctx));
     if (eq < 0) {
       fail(ctx, MSG.structure);
       continue;
@@ -60,22 +76,43 @@ const checkSetList = (ctx: ScopeCtx, start: number, end: number): void => {
   }
 };
 
-/** 변경 대상 테이블: public 밖 스키마와 공용 조회 테이블은 대상이 될 수 없다 */
-const isWritableTarget = (ctx: ScopeCtx, schema: string | null, name: string): boolean => {
-  if (schema !== null && schema !== 'public') fail(ctx, DML_MSG.schema);
-  else if (SHARED_READONLY_TABLES.has(name)) fail(ctx, DML_MSG.readOnly(name));
-  else return true;
+/** 변경 작업: UPDATE는 SET 대상 컬럼까지 본다 */
+type WriteOp = { op: 'insert' | 'delete' } | { op: 'update'; columns: readonly string[] };
+
+/**
+ * 변경 대상 테이블: public 밖 스키마는 거절하고, 테이블별 권한은 도구 역할의 권한 목록(table-permissions.ts)을 따른다.
+ * 계정·마이그레이션 테이블은 parseSource·analyzeInsert가 이미 거절 문구를 남긴다.
+ */
+const isWritableTarget = (
+  ctx: ScopeCtx,
+  schema: string | null,
+  name: string,
+  write: WriteOp,
+): boolean => {
+  if (schema !== null && schema !== 'public') {
+    fail(ctx, DML_MSG.schema);
+    return false;
+  }
+  const columns = write.op === 'update' ? write.columns : [];
+  if (isToolModifyAllowed(name, write.op, columns)) return true;
+  if (BLOCKED_TABLES.has(name)) return false;
+  const entry = getTableAccess(name);
+  if (SHARED_READONLY_TABLES.has(name) || entry.access === 'read') fail(ctx, DML_MSG.readOnly(name));
+  else if (entry.access === 'none') fail(ctx, MSG.blockedTable(name));
+  else if (write.op === 'update' && Array.isArray(entry.update)) {
+    fail(ctx, DML_MSG.columnsOnly(name, entry.update));
+  } else fail(ctx, DML_MSG.opDenied(name, write.op));
   return false;
 };
 
 /** UPDATE·DELETE 대상: 실제 테이블 하나 */
-const parseTarget = (ctx: ScopeCtx, [start, end]: Range): Source | null => {
+const parseTarget = (ctx: ScopeCtx, [start, end]: Range, write: WriteOp): Source | null => {
   const parsed = parseSource(ctx, start, end, EMPTY_SCOPE);
   if (!parsed || !parsed.source.isTable || parsed.end !== end) return null;
   const t = ctx.tokens;
   const first = isWord(t[start], 'only') ? start + 1 : start;
   const schema = isPunct(t[first + 1], '.') ? identName(t[first]) : null;
-  if (!isWritableTarget(ctx, schema, parsed.source.label)) return null;
+  if (!isWritableTarget(ctx, schema, parsed.source.label, write)) return null;
   return { ...parsed.source, join: 'base', on: null };
 };
 
@@ -107,7 +144,8 @@ const finishWriteScope = (
 export const analyzeUpdate = (ctx: ScopeCtx, end: number): void => {
   const clauses = splitClauses(ctx, 1, end, ['set', 'from', 'where', 'returning']);
   const set = clauses?.ranges.get('set');
-  const target = clauses ? parseTarget(ctx, clauses.head) : null;
+  const columns = set ? listSetColumns(ctx, set[0], set[1]) : [];
+  const target = clauses ? parseTarget(ctx, clauses.head, { op: 'update', columns }) : null;
   if (!clauses || !set || !target) return fail(ctx, MSG.structure);
   checkSetList(ctx, set[0], set[1]);
   finishWriteScope(ctx, target, clauses.ranges.get('from'), clauses.ranges);
@@ -117,7 +155,7 @@ export const analyzeUpdate = (ctx: ScopeCtx, end: number): void => {
 export const analyzeDelete = (ctx: ScopeCtx, end: number): void => {
   if (!isWord(ctx.tokens[1], 'from')) return fail(ctx, MSG.structure);
   const clauses = splitClauses(ctx, 2, end, ['using', 'where', 'returning']);
-  const target = clauses ? parseTarget(ctx, clauses.head) : null;
+  const target = clauses ? parseTarget(ctx, clauses.head, { op: 'delete' }) : null;
   if (!clauses || !target) return fail(ctx, MSG.structure);
   finishWriteScope(ctx, target, clauses.ranges.get('using'), clauses.ranges);
 };
@@ -253,7 +291,10 @@ const checkConflict = (ctx: ScopeCtx, start: number, end: number, table: string)
   const hasUserId = cols !== null && t.slice(cols[0], cols[1]).some((x) => identName(x) === 'user_id');
   if (!hasUserId && !CONFLICT_EXEMPT_TABLES.has(table)) fail(ctx, DML_MSG.conflict);
   const whereIdx = findTop(ctx, doIdx + 3, end, (j) => isWord(t[j], 'where'));
-  checkSetList(ctx, doIdx + 3, whereIdx < 0 ? end : whereIdx);
+  const setEnd = whereIdx < 0 ? end : whereIdx;
+  const columns = listSetColumns(ctx, doIdx + 3, setEnd);
+  isWritableTarget(ctx, null, table, { op: 'update', columns });
+  checkSetList(ctx, doIdx + 3, setEnd);
   if (whereIdx >= 0) scanGroups(ctx, whereIdx + 1, end, EMPTY_SCOPE);
 };
 
@@ -263,7 +304,7 @@ export const analyzeInsert = (ctx: ScopeCtx, end: number): void => {
   const target = parseInsertTarget(ctx, end);
   if (!target) return fail(ctx, MSG.structure);
   if (BLOCKED_TABLES.has(target.name)) return fail(ctx, MSG.blockedTable(target.name));
-  if (!isWritableTarget(ctx, target.schema, target.name)) return;
+  if (!isWritableTarget(ctx, target.schema, target.name, { op: 'insert' })) return;
   const userIdx = target.columns?.indexOf('user_id') ?? -1;
   if (userIdx < 0 && !USER_ID_EXEMPT_TABLES.has(target.name)) {
     return fail(ctx, DML_MSG.insertUserId);

@@ -11,6 +11,12 @@ import {
   SHARED_READONLY_TABLES,
   USER_ID_EXEMPT_TABLES,
 } from '../sql-tools/user-scope.js';
+import {
+  type ModifyOp,
+  TABLE_PERMISSIONS,
+  getTableAccess,
+  isToolModifyAllowed,
+} from '../sql-tools/table-permissions.js';
 
 const USER_ID = 1;
 
@@ -248,5 +254,116 @@ describe('마이그레이션 정합 — user_id 컬럼이 없는 테이블·뷰�
       .filter(([table, rel]) => !rel.hasUserId && !listed.has(table))
       .map(([table]) => table);
     expect(unlisted).toEqual([]);
+  });
+});
+
+// ---- 도구 역할 권한 목록 정합 (ADR-0067) ----
+
+describe('도구 역할 권한 목록 — 마이그레이션·SQL 검사와 정합', () => {
+  const rels = collectRelations(join(import.meta.dirname, '../../../db/migrations'));
+  const listed = Object.keys(TABLE_PERMISSIONS);
+  const hasUserId = (table: string): boolean => rels.get(table)?.hasUserId ?? false;
+  const filterFor = (table: string): string => (hasUserId(table) ? ' WHERE user_id = 1' : ' WHERE id = 1');
+
+  /** UPDATE 대상 컬럼: 컬럼 제한이 있으면 첫 허용 컬럼, 없으면 임의 컬럼 */
+  const columnFor = (table: string): string => {
+    const entry = getTableAccess(table);
+    return entry.access === 'write' && Array.isArray(entry.update) ? (entry.update[0] ?? 'x') : 'title';
+  };
+
+  const modifySql = (table: string, op: ModifyOp): string => {
+    if (op === 'insert') {
+      return hasUserId(table)
+        ? `INSERT INTO ${table} (user_id, title) VALUES (1, 'x')`
+        : `INSERT INTO ${table} (title) VALUES ('x')`;
+    }
+    if (op === 'update') return `UPDATE ${table} SET ${columnFor(table)} = 'x'${filterFor(table)}`;
+    return `DELETE FROM ${table}${filterFor(table)}`;
+  };
+
+  const ops: ModifyOp[] = ['insert', 'update', 'delete'];
+  const cases = listed.flatMap((table) => ops.map((op) => [table, op] as const));
+
+  it('마이그레이션의 모든 테이블·뷰와 schema_migrations가 목록에 있다', () => {
+    const missing = [...rels.keys(), 'schema_migrations'].filter((t) => !listed.includes(t));
+    expect(missing).toEqual([]);
+  });
+
+  it('목록의 테이블은 모두 마이그레이션에 있다', () => {
+    const stale = listed.filter((t) => t !== 'schema_migrations' && !rels.has(t));
+    expect(stale).toEqual([]);
+  });
+
+  it('읽고 쓰기 묶음은 10개다', () => {
+    const writable = listed.filter((t) => getTableAccess(t).access === 'write').sort();
+    expect(writable).toEqual([
+      'categories',
+      'custom_instructions',
+      'notification_settings',
+      'reminders',
+      'routine_records',
+      'routine_templates',
+      'schedule_changes',
+      'schedules',
+      'sleep_events',
+      'sleep_records',
+    ]);
+  });
+
+  it.each(cases)('%s %s: 권한 목록이 허용하면 SQL 검사도 허용하고, 아니면 거절한다', (table, op) => {
+    const error = checkModify(modifySql(table, op));
+    if (isToolModifyAllowed(table, op, [columnFor(table)])) expect(error).toBeNull();
+    else expect(error).not.toBeNull();
+  });
+
+  it.each(listed.filter((t) => getTableAccess(t).access !== 'none'))(
+    '%s: 조회 권한을 준 테이블은 SQL 검사가 조회를 허용한다',
+    (table) => {
+      const where = hasUserId(table) ? ' WHERE user_id = 1' : '';
+      expect(checkQuery(`SELECT * FROM ${table}${where}`)).toBeNull();
+    },
+  );
+
+  it('SQL 검사가 조회를 거절하는 테이블은 권한 없음이다', () => {
+    for (const table of BLOCKED_TABLES) expect(getTableAccess(table).access).toBe('none');
+  });
+
+  it('목록에 없는 테이블은 권한 없음이고 변경 대상으로 거절한다', () => {
+    expect(getTableAccess('not_listed_table').access).toBe('none');
+    expect(getTableAccess('constructor').access).toBe('none');
+    expect(checkModify('DELETE FROM not_listed_table WHERE user_id = 1')).not.toBeNull();
+  });
+
+  it('일정 변경 이력은 삭제 사유 컬럼만 바꿀 수 있고 직접 INSERT·DELETE는 거절한다', () => {
+    const ok =
+      "UPDATE schedule_changes SET delete_reason_category = 'plan', delete_reason_text = 'x' " +
+      'WHERE user_id = 1 AND id = 3';
+    expect(checkModify(ok)).toBeNull();
+    expect(checkModify("UPDATE schedule_changes SET old_date = '2026-01-01' WHERE user_id = 1")).toMatch(
+      /delete_reason_category, delete_reason_text 컬럼만/,
+    );
+    expect(checkModify("INSERT INTO schedule_changes (user_id, kind) VALUES (1, 'x')")).toMatch(/INSERT할 수 없어/);
+    expect(checkModify('DELETE FROM schedule_changes WHERE user_id = 1')).toMatch(/DELETE할 수 없어/);
+  });
+
+  it('알림 설정은 시간 변경만 허용하고 추가·삭제는 거절한다', () => {
+    expect(checkModify("UPDATE notification_settings SET time_value = '09:00' WHERE id = 1")).toBeNull();
+    expect(checkModify("INSERT INTO notification_settings (slot_name) VALUES ('x')")).toMatch(/INSERT할 수 없어/);
+    expect(checkModify('DELETE FROM notification_settings WHERE id = 1')).toMatch(/DELETE할 수 없어/);
+  });
+
+  it('읽기만 하는 사용자 테이블과 권한 없음 테이블은 변경 대상으로 거절한다', () => {
+    expect(checkModify('DELETE FROM expenses WHERE user_id = 1')).toMatch(READ_ONLY);
+    expect(checkModify("UPDATE pending_modify SET sql_text = 'x' WHERE user_id = 1")).toMatch(
+      /pending_modify 테이블은 쓸 수 없어/,
+    );
+  });
+
+  it('ON CONFLICT DO UPDATE는 대상 테이블의 INSERT 권한도 본다', () => {
+    expect(
+      checkModify(
+        "INSERT INTO schedule_changes (user_id) VALUES (1) ON CONFLICT (user_id) DO UPDATE SET delete_reason_text = 'x'",
+      ),
+    ).toMatch(/INSERT할 수 없어/);
   });
 });

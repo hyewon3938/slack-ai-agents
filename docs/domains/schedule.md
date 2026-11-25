@@ -179,6 +179,7 @@ features/schedule/
 
 - **채널**: #life
 - **에이전트**: life 에이전트가 일정 CRUD 처리 (SQL 도구 기반)
+  - SQL 도구는 전용 DB 역할로 실행된다. `schedules`는 조회·추가·수정·삭제를 할 수 있고, `schedule_changes`는 트리거가 남기는 이력 추가와 삭제 사유 컬럼(`delete_reason_category`, `delete_reason_text`) 수정만 할 수 있다. 권한 목록은 `src/shared/sql-tools/table-permissions.ts`에 있다.
 - **크론**: 09:05 오늘 일정 알림 + 어제 리뷰
 - **일정 표시 포맷** (Slack mrkdwn):
   - 카테고리별 그룹화, event 타입은 접두어 표시, task 타입은 상태 표시

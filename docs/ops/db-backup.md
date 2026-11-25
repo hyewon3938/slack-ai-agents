@@ -113,6 +113,16 @@ crontab -l
 
 스크립트는 dump 헤더 확인 후 `yes/no` 확인을 요구한다.
 
+### 복원 뒤 SQL 도구 권한
+
+복원 스크립트는 `--no-privileges`로 권한 정보를 빼고 되살리므로, 복원 직후에는 SQL 도구 전용 역할의 테이블 권한이 비어 있다. 봇을 다시 시작하면 시작 단계의 권한 동기화가 목록대로 되돌린다.
+
+```bash
+docker compose up -d --force-recreate app
+```
+
+시작 로그에 `[SQL 권한] 도구 역할 권한 동기화 완료`가 찍혔는지 확인한다. 역할 자체가 사라진 경우의 절차는 [sql-tool-role.md](./sql-tool-role.md)에 있다.
+
 복원 리허설은 별도 테스트 DB 컨테이너에서 수행 권장:
 
 ```bash

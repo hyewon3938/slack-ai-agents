@@ -4,14 +4,14 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 188개, 21364줄이고 테스트 파일은 80개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 190개, 21790줄이고 테스트 파일은 81개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `app.ts` | 105 |  |  |
+| `app.ts` | 108 |  |  |
 | `db-proxy.ts` | 232 |  | function: `handleRequest`, `startDBProxy` |
 | `router.ts` | 56 |  | function: `registerAgent`, `registerMessageHandler`<br>type: `AgentHandler` |
 
@@ -146,8 +146,8 @@
 | --- | ---: | --- | --- |
 | `agent-loop.ts` | 90 |  | function: `runAgentLoop` |
 | `chat-history.ts` | 72 | 채널별 대화 맥락 저장 (인메모리 슬라이딩 윈도우) | class: `ChatHistory` |
-| `config.ts` | 48 |  | const: `CONFIG` |
-| `db.ts` | 270 |  | function: `connectDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryReadOnlyWithTimeout`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>type: `DryRunResult` |
+| `config.ts` | 50 |  | const: `CONFIG` |
+| `db.ts` | 319 |  | function: `connectDB`, `connectSqlToolDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryReadOnlyWithTimeout`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>type: `DryRunResult` |
 | `fortune-format.ts` | 18 | fortune_analyses 표시 포맷터. | function: `formatFortuneText`<br>type: `FortuneFormatInput` |
 | `insight-labels.ts` | 266 | 카드 라벨 레이어 — 시드·신호 내부 식별자를 사용자가 읽을 수 있는 자연어로 (#504 Phase 2, ADR-0045). | function: `seedLabel`, `signalLabel`<br>const: `SEED_LABEL_OVERRIDES`<br>type: `SeedLabelInput`, `SignalLabelInput` |
 | `insight-thresholds.ts` | 129 |  | const: `INSIGHT_THRESHOLDS` |
@@ -163,7 +163,7 @@
 | `slack.ts` | 61 |  | function: `postToChannel`, `postBlockMessage`, `updateMessage`, `resolveActionCard`, `sendMessage`, `sendBlockMessage` |
 | `user-resolver.ts` | 55 |  | function: `resolveUserId`, `queryAllUserMappings`<br>const: `DEFAULT_USER_ID`<br>type: `UserMapping` |
 
-테스트 파일 37개
+테스트 파일 38개
 
 ## `src/shared/agent-loop`
 
@@ -305,11 +305,13 @@
 | --- | ---: | --- | --- |
 | `definitions.ts` | 57 | LLM에 노출하는 SQL 도구 정의. | const: `SQL_TOOLS` |
 | `execute.ts` | 188 | SQL 도구 실행기: post-modify 훅 · 확인 카드 전송 · 감사 로그 · 실행. | function: `setPostModifyHook`, `setConfirmCardSender`, `clearConfirmCardSender`, `executeSQLTool`<br>type: `PostModifyHook`, `SQLToolContext`, `ConfirmCardSender` |
+| `privilege-sync.ts` | 205 | SQL 도구 역할의 권한 동기화 (ADR-0067). | function: `quoteIdent`, `roleFromUrl`, `buildPrivilegeStatements`, `syncSqlToolPrivileges`, `startSqlToolPool`<br>type: `SequenceOwner`, `PrivilegePlanInput` |
 | `schema.ts` | 66 | DB 스키마 조회와 캐시. | function: `clearSchemaCache`, `getSchemaInfo` |
 | `sql-blocks.ts` | 194 | 토큰 범위 유틸과 WHERE/ON 조건의 user_id 보장 분석. | function: `buildMatch`, `isWord`, `isPunct`, `identName`, `afterGroup`, `topLevel`, `splitTop`, `findTop`, `closeOver`, `conditionGuarantee`<br>const: `UNQUALIFIED`<br>type: `Ctx`, `Range`, `Guarantee` |
 | `sql-guards.ts` | 125 | 토큰 단위 보안 검사: 시스템 함수·카탈로그 차단, 키워드 위치 제한, user_id 비교 값 제한. | function: `findDangerousIdentifier`, `findWriteKeyword`, `findExtraWriteKeyword`, `otherUserMessage`, `findOtherUserValue` |
 | `sql-lexer-checks.ts` | 119 | 토큰화 뒤 검사: 이름 자리 표시, CASE 위치, 이어 쓴 문자열 리터럴. | function: `markNameWords`, `hasAdjacentStrings`, `hasClearCases` |
 | `sql-lexer.ts` | 255 | SQL 토크나이저: PostgreSQL 어휘 규칙을 따라 문자열·주석·달러 인용을 구분한다. | function: `tokenize`, `hasStatementAfterSemicolon`, `withoutTrailingSemicolon`, `maskedText`<br>type: `TokenKind`, `Token`, `LexResult` |
-| `user-scope-dml.ts` | 278 | 변경 쿼리(INSERT·UPDATE·DELETE)의 user_id 범위 분석. | function: `analyzeUpdate`, `analyzeDelete`, `analyzeInsert` |
+| `table-permissions.ts` | 126 | SQL 도구 전용 DB 역할의 테이블 권한 목록 (ADR-0067). | function: `getTableAccess`, `isToolModifyAllowed`<br>const: `TABLE_PERMISSIONS`<br>type: `TableAccess`, `ModifyOp` |
+| `user-scope-dml.ts` | 319 | 변경 쿼리(INSERT·UPDATE·DELETE)의 user_id 범위 분석. | function: `analyzeUpdate`, `analyzeDelete`, `analyzeInsert` |
 | `user-scope.ts` | 504 | 조회 쿼리의 user_id 범위 분석. | function: `fail`, `startsQuery`, `scanGroups`, `splitClauses`, `parseSource`, `parseFromList`, `uncoveredSources`, `requireCoverage`, `analyzeQuery`, `hasUnhandledQuery`<br>const: `USER_ID_EXEMPT_TABLES`, `SHARED_READONLY_TABLES`, `BLOCKED_TABLES`, `MSG`, `SELECT_CLAUSES`<br>type: `ScopeCtx`, `Clauses`, `JoinKind`, `Source` |
 | `validation.ts` | 164 | SQL 검증: 구문 검증과 보안 검증 (user_id 필터, custom_instructions). | function: `extractFirstKeyword`, `hasMultipleStatements`, `validateSelectQuery`, `hasWhereClause`, `validateModifyQuery`, `validateUserIdFilter`, `validateCustomInstruction` |

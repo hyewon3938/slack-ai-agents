@@ -10,6 +10,19 @@ types.setTypeParser(1114, (val: string) => val); // TIMESTAMP
 types.setTypeParser(1184, (val: string) => val); // TIMESTAMPTZ
 
 let pool: pg.Pool | null = null;
+/** SQL 도구 전용 역할로 접속하는 두 번째 풀 (ADR-0067). LLM이 쓴 SQL만 여기서 실행한다 */
+let toolPool: pg.Pool | null = null;
+
+const createPool = (databaseUrl: string, max: number): pg.Pool => {
+  const useSSL = databaseUrl.includes('sslmode=require');
+  return new Pool({
+    connectionString: databaseUrl,
+    max,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    ...(useSSL && { ssl: { rejectUnauthorized: false } }),
+  });
+};
 
 /** PostgreSQL 연결 풀 초기화 */
 export const connectDB = async (databaseUrl: string): Promise<void> => {
@@ -18,18 +31,41 @@ export const connectDB = async (databaseUrl: string): Promise<void> => {
     return;
   }
 
-  const useSSL = databaseUrl.includes('sslmode=require');
-  pool = new Pool({
-    connectionString: databaseUrl,
-    max: 5,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
-    ...(useSSL && { ssl: { rejectUnauthorized: false } }),
-  });
+  pool = createPool(databaseUrl, 5);
 
   const client = await pool.connect();
   client.release();
   console.log('[DB] PostgreSQL 연결 완료');
+};
+
+/**
+ * SQL 도구 전용 풀 초기화 (크기 2).
+ * 연결 문자열이 없거나 연결에 실패하면 로그를 남기고 기존 풀로 대신한다. 봇 시작은 멈추지 않는다.
+ */
+export const connectSqlToolDB = async (sqlToolUrl: string): Promise<void> => {
+  if (toolPool) {
+    console.warn('[DB] SQL 도구 풀이 이미 연결되어 있습니다');
+    return;
+  }
+  if (sqlToolUrl === '') {
+    console.warn('[DB] SQL_TOOL_DATABASE_URL이 없어 SQL 도구가 기존 연결 풀을 씁니다');
+    return;
+  }
+
+  const candidate = createPool(sqlToolUrl, 2);
+  try {
+    const client = await candidate.connect();
+    client.release();
+  } catch (err) {
+    await candidate.end().catch(() => {
+      /* 무시 */
+    });
+    console.error('[DB] SQL 도구 전용 풀 연결 실패, SQL 도구가 기존 연결 풀을 씁니다:', err);
+    return;
+  }
+  toolPool = candidate;
+  // eslint-disable-next-line no-console
+  console.log('[DB] SQL 도구 전용 풀 연결 완료');
 };
 
 /** 연결 풀 반환 (미연결 시 에러) */
@@ -39,6 +75,15 @@ const getPool = (): pg.Pool => {
   }
   return pool;
 };
+
+/** SQL 도구 풀 반환. 전용 풀이 없으면 기존 풀로 대신한다 */
+const getToolPool = (): pg.Pool => toolPool ?? getPool();
+
+/**
+ * 도구 연결의 제한 시간 정리. 0으로 두면 역할 기본값으로 걸어 둔 제한 시간까지 풀리므로
+ * RESET으로 역할 기본값에 되돌린다.
+ */
+const RESET_TIMEOUT = 'RESET statement_timeout';
 
 /** SQL 쿼리 실행 */
 export const query = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
@@ -98,7 +143,7 @@ export const queryWithClient = async <T extends pg.QueryResultRow = pg.QueryResu
 };
 
 /**
- * 읽기 전용 트랜잭션에서 타임아웃 적용 쿼리 실행 (query_db 조회 도구용).
+ * 읽기 전용 트랜잭션에서 타임아웃 적용 쿼리 실행 (query_db 조회 도구용, SQL 도구 풀).
  * `SET TRANSACTION READ ONLY`로 DB가 쓰기를 거부하게 하고, 결과와 무관하게 항상 ROLLBACK한다.
  * ROLLBACK이나 타임아웃 복구가 실패한 커넥션은 상태를 알 수 없으므로 풀에 되돌리지 않고 폐기한다.
  */
@@ -106,7 +151,7 @@ export const queryReadOnlyWithTimeout = async <T extends pg.QueryResultRow = pg.
   text: string,
   timeoutMs: number,
 ): Promise<pg.QueryResult<T>> => {
-  const p = getPool();
+  const p = getToolPool();
   const client = await p.connect();
   let cleanupError: Error | undefined;
   const rollback = async (): Promise<void> => {
@@ -130,20 +175,20 @@ export const queryReadOnlyWithTimeout = async <T extends pg.QueryResultRow = pg.
     });
     throw err;
   } finally {
-    await client.query('SET statement_timeout = 0').catch((err: unknown) => {
+    await client.query(RESET_TIMEOUT).catch((err: unknown) => {
       cleanupError ??= err instanceof Error ? err : new Error(String(err));
     });
     client.release(cleanupError);
   }
 };
 
-/** 트랜잭션 내 쿼리 실행 — rowCount가 maxRows 초과 시 ROLLBACK (SQL 도구 보안용) */
+/** 트랜잭션 내 쿼리 실행 — rowCount가 maxRows 초과 시 ROLLBACK (modify_db 실행, SQL 도구 풀) */
 export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   timeoutMs: number,
   maxRows: number,
 ): Promise<pg.QueryResult<T>> => {
-  const p = getPool();
+  const p = getToolPool();
   const client = await p.connect();
   try {
     await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
@@ -163,7 +208,7 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
     });
     throw err;
   } finally {
-    await client.query('SET statement_timeout = 0').catch(() => {
+    await client.query(RESET_TIMEOUT).catch(() => {
       /* 무시 */
     });
     client.release();
@@ -216,13 +261,13 @@ export interface DryRunResult {
 /**
  * DELETE/UPDATE를 BEGIN → 실행 → ROLLBACK으로 실행해 영향 row 수와 내용을 얻는다.
  * DB 상태는 변경되지 않는다.
- * SQL에 RETURNING이 없으면 "RETURNING *"를 자동 추가한다.
+ * SQL에 RETURNING이 없으면 "RETURNING *"를 자동 추가한다. SQL 도구 풀에서 실행한다.
  */
 export const dryRunAffectedRows = async (
   text: string,
   timeoutMs: number,
 ): Promise<DryRunResult> => {
-  const p = getPool();
+  const p = getToolPool();
   const client = await p.connect();
   try {
     await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
@@ -240,7 +285,7 @@ export const dryRunAffectedRows = async (
     });
     throw err;
   } finally {
-    await client.query('SET statement_timeout = 0').catch(() => {
+    await client.query(RESET_TIMEOUT).catch(() => {
       /* 무시 */
     });
     client.release();
@@ -263,6 +308,10 @@ export const ensureReturningClause = (sql: string): string => {
 
 /** 연결 풀 종료 */
 export const disconnectDB = async (): Promise<void> => {
+  if (toolPool) {
+    await toolPool.end();
+    toolPool = null;
+  }
   if (!pool) return;
   await pool.end();
   pool = null;

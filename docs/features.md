@@ -141,6 +141,13 @@
 - `DB_PROXY_URL` + `DB_PROXY_API_KEY` 인증
 - 동적 user_id 보안 검증 적용
 
+### SQL 도구 전용 DB 역할
+
+- `query_db`·`modify_db`와 확인 카드 실행은 권한을 줄인 전용 역할로 접속하는 두 번째 연결 풀(크기 2)에서 실행 (`SQL_TOOL_DATABASE_URL`, 없으면 기존 풀 사용)
+- 테이블 권한은 `src/shared/sql-tools/table-permissions.ts` 목록 하나로 관리하고, 봇이 시작할 때 마이그레이션 뒤 목록대로 권한을 맞춤
+- 쓰기 권한은 에이전트가 변경하는 10개 테이블에만 있고, SQL 검사도 같은 목록으로 변경 대상을 판단
+- 운영 절차: [docs/ops/sql-tool-role.md](ops/sql-tool-role.md), 결정: [ADR-0067](adr/0067-sql-tool-db-role.md)
+
 ## 인프라
 
 | 항목 | 위치 / 방식 |
