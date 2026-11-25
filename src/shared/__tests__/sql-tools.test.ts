@@ -425,7 +425,7 @@ describe('executeSQLTool', () => {
       'SET TRANSACTION READ ONLY',
       'SELECT * FROM schedules WHERE user_id = 1',
       'ROLLBACK',
-      'SET statement_timeout = 0',
+      'RESET statement_timeout',
     ]);
     expect(mockRelease).toHaveBeenCalled();
   });

@@ -1,8 +1,9 @@
 import { App } from '@slack/bolt';
 import { CONFIG } from './shared/config.js';
 import { registerMessageHandler, registerAgent } from './router.js';
-import { connectDB, disconnectDB } from './shared/db.js';
+import { connectDB, connectSqlToolDB, disconnectDB } from './shared/db.js';
 import { runMigrations } from './shared/migrate.js';
+import { syncSqlToolPrivileges } from './shared/sql-tools/privilege-sync.js';
 import { createLLMClient, createCronLLMClient } from './shared/llm.js';
 import { createLifeAgent } from './agents/life/index.js';
 import { registerLifeActions } from './agents/life/actions.js';
@@ -30,6 +31,9 @@ const startApp = async (): Promise<void> => {
   // DB 연결 + 마이그레이션
   await connectDB(CONFIG.db.url);
   await runMigrations();
+  // SQL 도구 전용 역할: 권한을 목록대로 맞춘 뒤 두 번째 풀을 연다 (ADR-0067)
+  await syncSqlToolPrivileges(CONFIG.db.sqlToolUrl);
+  await connectSqlToolDB(CONFIG.db.sqlToolUrl);
 
   const llmClient = await createLLMClient();
   const cronLLMClient = await createCronLLMClient();

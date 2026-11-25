@@ -173,6 +173,7 @@ docs/adr/NNNN-<kebab-case-제목>.md
 | [0063](0063-resource-contention-uptime-judgment.md) | 자원 경합 구간의 업타임 판정 — 컨테이너 리소스 경계(자기 억제)+스왑 정책+OOM 우선순위로 실패 성질을 바꾸고, heartbeat는 타임아웃 확대 + 저하 이력 사후 동봉. 저하는 알림 없이 기록만 | Accepted | 2026-08-19 | infra, observability, reliability |
 | [0065](0065-generated-code-map-and-doc-kinds.md) | 자동 생성 코드 맵과 문서 종류 등록 — 코드에서 뽑을 수 있는 사실은 `yarn code-map`으로 만들어 커밋하고, 문서는 현황과 기록으로 등록해 현황 문서의 경로만 CI에서 검사 | Accepted | 2026-11-24 | process, docs, tooling |
 | [0066](0066-sql-tool-token-based-validation.md) | SQL 도구 입력 검증의 토큰 기반 분석 — SQL을 토큰으로 나눠 쿼리 구조를 읽고, 조회·변경 대상 테이블마다 사용자 조건을 블록 단위로 확인. 해석하지 못하는 입력은 거절하고, 프롬프트 예시가 검사를 통과하는지 테스트로 고정 | Accepted | 2026-11-25 | security, data, agent |
+| [0067](0067-sql-tool-db-role.md) | SQL 도구 전용 DB 역할과 권한 동기화 — LLM이 쓴 SQL을 권한을 줄인 전용 역할의 두 번째 연결 풀에서 실행하고, 코드의 권한 목록대로 봇 시작 때 권한을 맞춤. SQL 검사도 같은 목록으로 변경 대상을 판단 | Accepted | 2026-11-25 | security, data, agent, infra |
 
 > **주**: ADR 0001\~0004는 2026-04-22 이후 소급 기록된 백필이다. 원본 판단 근거는 [docs/project-history.md](../project-history.md)와 관련 PR에 남아있으며, 각 ADR의 Date는 실제 판단이 내려진 시점을 사용했다.
 

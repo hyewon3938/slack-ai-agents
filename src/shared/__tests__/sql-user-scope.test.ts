@@ -424,7 +424,7 @@ describe('modify_db — 봇이 쓰는 정상 변경은 통과', () => {
     ],
     [
       'ON CONFLICT DO UPDATE (user_id 포함 대상)',
-      "INSERT INTO budgets (user_id, month, amount) VALUES (1, '2026-11', 0) ON CONFLICT (user_id, month) DO UPDATE SET amount = EXCLUDED.amount",
+      "INSERT INTO sleep_records (user_id, date, duration_minutes) VALUES (1, '2026-11-01', 0) ON CONFLICT (user_id, date) DO UPDATE SET duration_minutes = EXCLUDED.duration_minutes",
     ],
     [
       'UPDATE ... FROM 카테고리',
@@ -498,7 +498,7 @@ describe('modify_db — 변경 범위는 user_id = N 행으로 한정', () => {
   it('ON CONFLICT DO UPDATE는 충돌 대상에 user_id가 있어야 한다', () => {
     expect(
       checkModify(
-        "INSERT INTO budgets (user_id, month, amount) VALUES (1, '2026-11', 0) ON CONFLICT (month) DO UPDATE SET amount = 0",
+        "INSERT INTO sleep_records (user_id, date, duration_minutes) VALUES (1, '2026-11-01', 0) ON CONFLICT (date) DO UPDATE SET duration_minutes = 0",
       ),
     ).toMatch(/충돌 대상에 user_id/);
   });
@@ -526,7 +526,7 @@ describe('modify_db — 변경 범위는 user_id = N 행으로 한정', () => {
   });
 
   it.each([
-    ['ON CONSTRAINT', "INSERT INTO budgets (user_id, month) VALUES (1, 'x') ON CONFLICT ON CONSTRAINT b_pkey DO UPDATE SET amount = 0"],
+    ['ON CONSTRAINT', "INSERT INTO sleep_records (user_id, date) VALUES (1, 'x') ON CONFLICT ON CONSTRAINT sleep_records_pkey DO UPDATE SET duration_minutes = 0"],
     ['커서 위치 조건', "UPDATE schedules SET title = 'x' WHERE CURRENT OF c"],
   ])('구조를 확인할 수 없는 형태는 거절: %s', (_name, sql) => {
     expect(checkModify(sql)).toMatch(/쿼리 구조를 확인할 수 없어/);

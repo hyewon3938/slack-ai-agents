@@ -147,6 +147,16 @@
       ]
     },
     {
+      "glob": "docs/ops/sql-tool-role.md",
+      "kind": "current",
+      "sources": [
+        "scripts/create-sql-tool-role.sh",
+        "src/shared/sql-tools/table-permissions.ts",
+        "src/shared/sql-tools/privilege-sync.ts",
+        "src/shared/db.ts"
+      ]
+    },
+    {
       "glob": "docs/ops/verification-rebaseline.md",
       "kind": "current",
       "sources": [

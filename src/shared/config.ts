@@ -40,6 +40,8 @@ export const CONFIG = {
   },
   db: {
     url: requireEnv('DATABASE_URL'),
+    /** SQL 도구 전용 역할 연결 문자열 (ADR-0067). 없으면 SQL 도구가 기존 풀을 쓴다 */
+    sqlToolUrl: process.env['SQL_TOOL_DATABASE_URL'] ?? '',
   },
   dbProxy: {
     apiKey: process.env['DB_PROXY_API_KEY'] ?? '',
