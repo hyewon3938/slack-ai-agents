@@ -1,5 +1,6 @@
 /** 기간 해석 — 누적 기술통계 집계(inline SQL). */
 
+import { JEOLGI_FIRST_YEAR } from '../saju/jeolgi-table.js';
 import { getJeolgiMonthRange } from '../saju/pillars.js';
 import { type Jiji } from '../saju/types.js';
 import { query } from '../db.js';
@@ -8,7 +9,6 @@ import type { PeriodContext, DescriptiveStats } from './types.js';
 
 // ─── 누적 기술통계 (inline SQL) ──────────────────────────
 
-const JEOLGI_TABLE_MIN_YEAR = 2024; // 절기 테이블 하한 — 이전으로는 walk 중단
 const MAX_SAME_JIJI_RANGES = 5; // wolun 과거 동일 월지 구간 상한(백스톱)
 
 /** wolun: 과거 동일 월지 절기월 구간들(데이터 하한까지, 백스톱 cap). 결정론. */
@@ -19,7 +19,7 @@ const pastSameJijiRanges = (
   const ranges: Array<{ start: string; end: string }> = [];
   let cursor = addDays(currentStart, -1);
   while (ranges.length < MAX_SAME_JIJI_RANGES) {
-    if (Number(cursor.slice(0, 4)) < JEOLGI_TABLE_MIN_YEAR) break;
+    if (Number(cursor.slice(0, 4)) < JEOLGI_FIRST_YEAR) break; // 절기 표 하한 — 이전으로는 walk 중단
     let r: { start: string; end: string; jiji: Jiji };
     try {
       r = getJeolgiMonthRange(cursor);

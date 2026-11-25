@@ -4,14 +4,14 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 194개, 21996줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 194개, 22046줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `app.ts` | 109 |  |  |
+| `app.ts` | 114 |  |  |
 | `db-proxy.ts` | 235 |  | function: `handleRequest`, `startDBProxy` |
 | `router.ts` | 56 |  | function: `registerAgent`, `registerMessageHandler`<br>type: `AgentHandler` |
 
@@ -210,7 +210,7 @@
 | `behavior-baseline.ts` | 46 | behavior_baseline evaluator — 11종 결정론 패턴 (insights/ detect 함수 위임). | function: `evaluateBehaviorBaseline` |
 | `calendar-event.ts` | 38 | calendar_event evaluator — 한국 공휴일 / 공휴일 다음날 / 자동이체일. | function: `evaluateCalendarEvent` |
 | `index.ts` | 40 | life_signal trigger_aux.kind dispatcher (마스터 #434 Phase 3, ADR-0029). | function: `dispatchLifeSignal` |
-| `korean-holidays.ts` | 76 | 한국 공휴일 정적 상수 (매년 수동 갱신). | function: `isKoreanHoliday`<br>const: `KOREAN_HOLIDAYS`, `FIRST_HOLIDAY_DATA_YEAR`, `LAST_HOLIDAY_DATA_YEAR` |
+| `korean-holidays.ts` | 85 | 한국 공휴일 정적 상수 (매년 수동 갱신). | function: `isKoreanHoliday`<br>const: `KOREAN_HOLIDAYS`, `FIRST_HOLIDAY_DATA_YEAR`, `LAST_HOLIDAY_DATA_YEAR` |
 | `month-position.ts` | 32 | month_position evaluator — 월초 / 월말 / 월중 (KST 기준). | function: `evaluateMonthPosition` |
 | `season.ts` | 26 | season evaluator — 양력 월 기반 4계절 (KST 기준). | function: `evaluateSeason` |
 | `threshold.ts` | 90 | threshold evaluator — 임계치 풀셋 (수면 / 루틴 streak). | function: `evaluateThreshold` |
@@ -290,9 +290,9 @@
 | `fortune.ts` | 56 | 일운 통합 계산 진입점. | function: `calculateDailyFortune`, `calculateFortuneRange` |
 | `helpers.ts` | 32 | 날짜·간지 index 헬퍼. | function: `parseDate`, `daysDiff`, `indexToPillar`, `cheonganIndex`, `jijiIndex` |
 | `hwa.ts` | 191 | 결정론 합화(合化) 변환 탐지 — #477 P4b (ADR-0038). | function: `isSipsinGroup`, `elementToSipsinGroup`, `detectHwaTransforms`<br>type: `SipsinGroup`, `HwaTransform`, `HwaResult` |
-| `jeolgi-table.ts` | 177 | 절기 테이블. | const: `JEOLGI_TABLE`, `JEOLGI_JIJI`, `JEOLGI_MONTH_OFFSET` |
+| `jeolgi-table.ts` | 205 | 절기 테이블. | function: `warnIfJeolgiTableExpiring`, `__resetJeolgiExpiryWarningForTest`<br>const: `JEOLGI_TABLE`, `JEOLGI_FIRST_YEAR`, `JEOLGI_LAST_YEAR`, `JEOLGI_JIJI`, `JEOLGI_MONTH_OFFSET` |
 | `pillar-utils.ts` | 96 | 오행·Pillar 유틸과 대운 추출. | function: `getElementByCheongan`, `getElementByJiji`, `makePillar`, `parsePillarString`, `getDaeunPillar` |
-| `pillars.ts` | 163 | 기둥(일주·월주·년주) 계산과 절기월 범위. | function: `getDayPillar`, `getYearPillar`, `getIpchunDate`, `getMonthPillar`, `getJeolgiMonthRange`, `isJeolgiTransitionDay` |
+| `pillars.ts` | 171 | 기둥(일주·월주·년주) 계산과 절기월 범위. | function: `getDayPillar`, `getYearPillar`, `getIpchunDate`, `getMonthPillar`, `getJeolgiMonthRange`, `isJeolgiTransitionDay` |
 | `relations.ts` | 170 | 합충형파해 분석. | function: `getRelations` |
 | `sipsung.ts` | 119 | 십성·십이운성·지장간 계산. | function: `getSipsung`, `getJijiSipsung`, `getSipsungResult`, `getSibiunsung`, `getJijanggan` |
 | `strength-params.ts` | 82 | 결정론 사주 실효강도 모델의 명리학 파라미터 — #477 P4a (ADR-0036). | const: `SAJU_STRENGTH_PARAMS`, `SAJU_HWA_PARAMS`<br>type: `SajuStrengthParams`, `HwaParams` |

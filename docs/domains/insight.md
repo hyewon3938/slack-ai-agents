@@ -2147,6 +2147,8 @@ derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십�
 
 **절기 테이블 연장**(`saju/jeolgi-table.ts`) — `JEOLGI_TABLE` 2029\~2033 추가. 미연장 시 2029-01-01부터 `getYearPillar`/`getMonthPillar`(→ 일일 매칭 포함) 전체 throw였던 시한폭탄 해소. 데이터는 NASA DE441 기반 절기 시각을 **KST 환산**(UTC+8→+9, 23시 이후는 익일) 후 날짜 추출, Wikipedia UTC 표 + 기존 2028행 재대조로 교차검증. 폭탄은 사라지지 않고 **2034-01로 이동**(테이블 구동 본질) — 갱신 절차는 ADR-0050. 신규 export: `getIpchunDate`(승격) · `getJeolgiMonthRange` · `isJeolgiTransitionDay`.
 
+**지원 범위와 만료 예고**(#672) — 지원 연도는 표에서 계산한 `JEOLGI_FIRST_YEAR`·`JEOLGI_LAST_YEAR`만 쓴다(`pillars.ts` 오류 문구, `interpretation-stats.ts` walk 하한). 봇이 시작할 때 `warnIfJeolgiTableExpiring`이 KST 올해가 마지막 지원 연도 1년 전 이후면 갱신 필요 경고를 한 번 남긴다. 만료 뒤 throw 계약(ADR-0050)은 그대로다. 시작 때만 보므로 경고 구간에 들어선 뒤 재시작이 없으면 다음 배포 때 처음 찍힌다.
+
 > 예측 장부(`period_forecasts`, 마이그 091)는 Phase 3 — ADR-0050에 스키마 설계만, 코드는 후속. 구현 회고: [design-notebook period-extension §Phase 2](../design-notebook/period-extension.md#phase-2--기간-해석-엔진--주기-리포트--fast-path-진행-529).
 
 ### 39. 세운·대운 확장 + 검증 엔진 교정 — Phase 3 (예측 장부 `period_forecasts`, #531, ADR-0050)
