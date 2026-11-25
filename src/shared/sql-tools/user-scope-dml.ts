@@ -105,7 +105,7 @@ const isWritableTarget = (
   return false;
 };
 
-/** UPDATE·DELETE 대상: 실제 테이블 하나 */
+/** UPDATE·DELETE 대상: 실제 테이블 하나. 앞에 LATERAL이 오면 parseSource가 해석을 거절한다 */
 const parseTarget = (ctx: ScopeCtx, [start, end]: Range, write: WriteOp): Source | null => {
   const parsed = parseSource(ctx, start, end, EMPTY_SCOPE);
   if (!parsed || !parsed.source.isTable || parsed.end !== end) return null;
@@ -171,7 +171,7 @@ interface InsertTarget {
 
 const parseInsertTarget = (ctx: ScopeCtx, end: number): InsertTarget | null => {
   const t = ctx.tokens;
-  if (!isWord(t[1], 'into')) return null;
+  if (!isWord(t[1], 'into') || isWord(t[2], 'lateral')) return null;
   const qualified = isPunct(t[3], '.');
   const schema = qualified ? identName(t[2]) : null;
   let i = qualified ? 4 : 2;

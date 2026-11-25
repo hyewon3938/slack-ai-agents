@@ -160,6 +160,53 @@ describe('변경 대상 스키마', () => {
   });
 });
 
+describe('LATERAL — 서브쿼리·함수 앞에만 허용', () => {
+  const STRUCTURE = /쿼리 구조를 확인할 수 없어/;
+
+  it.each([
+    ['UPDATE 대상', "UPDATE lateral information_schema.sql_features SET comments = 'x' WHERE feature_id = 'y'"],
+    ['UPDATE 대상 (public 테이블)', "UPDATE LATERAL schedules SET title = 'x' WHERE user_id = 1"],
+    ['DELETE 대상', "DELETE FROM lateral information_schema.sql_features WHERE feature_id = 'y'"],
+    ['DELETE 대상 (public 테이블)', 'DELETE FROM LATERAL schedules WHERE user_id = 1'],
+    ['INSERT 대상', "INSERT INTO lateral information_schema.sql_features (feature_id) VALUES ('x')"],
+    [
+      'DELETE USING 테이블',
+      'DELETE FROM schedules USING lateral expenses e WHERE schedules.user_id = 1 AND e.user_id = 1',
+    ],
+    [
+      'UPDATE FROM 테이블',
+      "UPDATE schedules s SET status = 'done' FROM lateral categories c WHERE s.user_id = 1 AND c.user_id = 1",
+    ],
+  ])('변경문의 테이블 앞 LATERAL은 거절한다: %s', (_name, sql) => {
+    expect(checkModify(sql)).toMatch(STRUCTURE);
+  });
+
+  it.each([
+    [
+      'FROM 목록의 LATERAL 서브쿼리',
+      'SELECT s.title, c.n FROM schedules s, LATERAL (SELECT count(*) AS n FROM routine_records r WHERE r.user_id = 1 AND r.date = s.date) c WHERE s.user_id = 1',
+    ],
+    [
+      'JOIN LATERAL 서브쿼리',
+      'SELECT * FROM schedules s JOIN LATERAL (SELECT count(*) FROM routine_records r WHERE r.user_id = 1 AND r.date = s.date) c ON true WHERE s.user_id = 1',
+    ],
+    [
+      'LATERAL 함수',
+      'SELECT s.date, t.tag FROM sleep_records s, LATERAL unnest(s.tags) AS t(tag) WHERE s.user_id = 1',
+    ],
+  ])('조회의 %s는 통과한다', (_name, sql) => {
+    expect(checkQuery(sql)).toBeNull();
+  });
+
+  it('UPDATE ... FROM의 LATERAL 서브쿼리는 통과한다', () => {
+    expect(
+      checkModify(
+        "UPDATE schedules s SET title = c.name FROM LATERAL (SELECT name FROM categories WHERE user_id = 1 LIMIT 1) c WHERE s.user_id = 1",
+      ),
+    ).toBeNull();
+  });
+});
+
 // ---- 마이그레이션 정합 ----
 
 interface Relation {
