@@ -2,7 +2,7 @@
 
 import type { Jiji } from './types.js';
 
-// ─── 상수: 절기 테이블 (2024-2033) ──────────────────────
+// ─── 상수: 절기 테이블 ──────────────────────────────────
 
 /**
  * 월 전환 절기 날짜 (MM-DD, KST 기준).
@@ -12,7 +12,8 @@ import type { Jiji } from './types.js';
  *   2024-2028: uncle.tools. 2029-2033(#523 Phase 2): 동일 데이터셋 교차검증
  *   (Wikipedia UTC 표 + 2028행 일치 확인). 절기 시각이 KST 23시 이후면 익일로 넘어감
  *   (예: 2031 입동은 23:05 CST=KST 익일 → 11-08).
- * ⚠️ 2033까지만 수록 — 2034-01부터 getYearPillar/getMonthPillar가 throw(갱신 필요). ADR-0050 참조.
+ * ⚠️ JEOLGI_LAST_YEAR까지만 수록 — 다음 해 1월부터 getYearPillar/getMonthPillar가 throw(갱신 필요).
+ *    ADR-0050 참조. 지원 범위 숫자는 아래 JEOLGI_FIRST_YEAR·JEOLGI_LAST_YEAR만 쓴다.
  */
 export const JEOLGI_TABLE: Record<number, readonly string[]> = {
   2024: [
@@ -155,6 +156,33 @@ export const JEOLGI_TABLE: Record<number, readonly string[]> = {
     '11-07',
     '12-07',
   ],
+};
+
+const JEOLGI_YEARS = Object.keys(JEOLGI_TABLE).map(Number);
+
+/** 절기 표가 있는 첫 연도·마지막 연도 (표에서 계산 — 다른 곳에 숫자로 적지 않는다). */
+export const JEOLGI_FIRST_YEAR = Math.min(...JEOLGI_YEARS);
+export const JEOLGI_LAST_YEAR = Math.max(...JEOLGI_YEARS);
+
+let expiryWarned = false;
+
+/**
+ * 절기 표 만료 예고 — 올해가 마지막 지원 연도 1년 전 이후면 프로세스당 한 번 경고한다.
+ * 만료 뒤 throw 계약(ADR-0050)은 그대로 두고, 갱신 시한을 로그로 미리 드러내기만 한다.
+ * @returns 경고를 남겼으면 true
+ */
+export const warnIfJeolgiTableExpiring = (currentYear: number): boolean => {
+  if (expiryWarned || currentYear < JEOLGI_LAST_YEAR - 1) return false;
+  expiryWarned = true;
+  console.warn(
+    `[jeolgi-table] 절기 표가 ${JEOLGI_LAST_YEAR}년까지만 있음 — ${JEOLGI_LAST_YEAR + 1}-01부터 월주·년주 계산이 throw함. 표 갱신 필요 (ADR-0050)`,
+  );
+  return true;
+};
+
+/** 테스트 전용 — 경고 1회 플래그 초기화. */
+export const __resetJeolgiExpiryWarningForTest = (): void => {
+  expiryWarned = false;
 };
 
 /** 절기 → 월지 매핑 (index 0-11 → 지지) */

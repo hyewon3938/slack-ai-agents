@@ -1054,7 +1054,7 @@ matchAllSeedsForDay(userId, date)
 
 #### 외부 의존성 (1차 정적 상수)
 
-- 한국 공휴일: `src/shared/life-signal-evaluators/korean-holidays.ts` — 2026년 15개 양력 날짜 (`KOREAN_HOLIDAYS` Set). 2027+ 데이터는 follow-up
+- 한국 공휴일: `src/shared/life-signal-evaluators/korean-holidays.ts` — 2026\~2027년 양력 날짜(2026년 22개, 2027년 24개, 대체공휴일·선거일 포함, `KOREAN_HOLIDAYS` Set). 데이터 범위 밖 연도는 false로 판정하고 연도마다 경고를 한 번 남긴다
 
 #### 파일 구조 갱신
 
@@ -1068,7 +1068,7 @@ src/shared/
 │   ├── calendar-event.ts           공휴일 / 공휴일 다음날 / 자동이체일
 │   ├── threshold.ts                sleep_minutes / routine_streak_max
 │   ├── behavior-baseline.ts        insights/ 11종 detect 위임
-│   ├── korean-holidays.ts          KOREAN_HOLIDAYS 정적 Set (2026)
+│   ├── korean-holidays.ts          KOREAN_HOLIDAYS 정적 Set (2026~2027)
 │   └── __tests__/
 │       ├── weekday.test.ts
 │       ├── month-position.test.ts
@@ -2146,6 +2146,8 @@ derivePeriodContext(natal, pillar, type)   ← 결정론: 기간 pillar → 십�
 ⚠️ **평가 순서 의존**: 기존 `MONTHLY_FORTUNE_RE` 등이 맨말 "월운"도 매칭하므로, 정확일치(`^월운$`)를 **반드시 먼저** 평가해야 갈래가 갈린다.
 
 **절기 테이블 연장**(`saju/jeolgi-table.ts`) — `JEOLGI_TABLE` 2029\~2033 추가. 미연장 시 2029-01-01부터 `getYearPillar`/`getMonthPillar`(→ 일일 매칭 포함) 전체 throw였던 시한폭탄 해소. 데이터는 NASA DE441 기반 절기 시각을 **KST 환산**(UTC+8→+9, 23시 이후는 익일) 후 날짜 추출, Wikipedia UTC 표 + 기존 2028행 재대조로 교차검증. 폭탄은 사라지지 않고 **2034-01로 이동**(테이블 구동 본질) — 갱신 절차는 ADR-0050. 신규 export: `getIpchunDate`(승격) · `getJeolgiMonthRange` · `isJeolgiTransitionDay`.
+
+**지원 범위와 만료 예고**(#672) — 지원 연도는 표에서 계산한 `JEOLGI_FIRST_YEAR`·`JEOLGI_LAST_YEAR`만 쓴다(`pillars.ts` 오류 문구, `interpretation-stats.ts` walk 하한). 봇이 시작할 때 `warnIfJeolgiTableExpiring`이 KST 올해가 마지막 지원 연도 1년 전 이후면 갱신 필요 경고를 한 번 남긴다. 만료 뒤 throw 계약(ADR-0050)은 그대로다. 시작 때만 보므로 경고 구간에 들어선 뒤 재시작이 없으면 다음 배포 때 처음 찍힌다.
 
 > 예측 장부(`period_forecasts`, 마이그 091)는 Phase 3 — ADR-0050에 스키마 설계만, 코드는 후속. 구현 회고: [design-notebook period-extension §Phase 2](../design-notebook/period-extension.md#phase-2--기간-해석-엔진--주기-리포트--fast-path-진행-529).
 

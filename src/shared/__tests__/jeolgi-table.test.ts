@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest';
-import { JEOLGI_TABLE, JEOLGI_JIJI, JEOLGI_MONTH_OFFSET } from '../saju/jeolgi-table.js';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import {
+  JEOLGI_TABLE,
+  JEOLGI_JIJI,
+  JEOLGI_MONTH_OFFSET,
+  JEOLGI_FIRST_YEAR,
+  JEOLGI_LAST_YEAR,
+  warnIfJeolgiTableExpiring,
+  __resetJeolgiExpiryWarningForTest,
+} from '../saju/jeolgi-table.js';
 import { JIJI_LIST } from '../saju/tables.js';
 
 // 손으로 넣은 표라 오타 하나가 조용히 틀린 월주를 만든다 → 표 자체의 형식·범위 불변식을 고정.
@@ -68,5 +76,38 @@ describe('JEOLGI_JIJI / JEOLGI_MONTH_OFFSET 정합', () => {
       const fromIn = (JIJI_LIST.indexOf(jiji) - JIJI_LIST.indexOf('인') + 12) % 12;
       expect(JEOLGI_MONTH_OFFSET[i], `index ${i} (${jiji})`).toBe(fromIn);
     });
+  });
+});
+
+describe('절기 표 지원 범위', () => {
+  it('첫·마지막 연도 상수가 표의 실제 연도와 같다', () => {
+    expect(JEOLGI_FIRST_YEAR).toBe(YEARS[0]);
+    expect(JEOLGI_LAST_YEAR).toBe(YEARS[YEARS.length - 1]);
+  });
+});
+
+describe('warnIfJeolgiTableExpiring', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    __resetJeolgiExpiryWarningForTest();
+  });
+
+  it('마지막 연도 2년 전까지는 경고하지 않는다', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(warnIfJeolgiTableExpiring(JEOLGI_LAST_YEAR - 2)).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('마지막 연도 1년 전부터 경고하고, 만료 시점을 알린다', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(warnIfJeolgiTableExpiring(JEOLGI_LAST_YEAR - 1)).toBe(true);
+    expect(String(warn.mock.calls[0]?.[0])).toContain(`${JEOLGI_LAST_YEAR + 1}-01`);
+  });
+
+  it('프로세스당 한 번만 경고한다', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    warnIfJeolgiTableExpiring(JEOLGI_LAST_YEAR);
+    expect(warnIfJeolgiTableExpiring(JEOLGI_LAST_YEAR + 1)).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

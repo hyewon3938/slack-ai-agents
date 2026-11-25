@@ -2,7 +2,13 @@
 
 import { addDays } from '../kst.js';
 import type { Jiji, Pillar } from './types.js';
-import { JEOLGI_TABLE, JEOLGI_JIJI, JEOLGI_MONTH_OFFSET } from './jeolgi-table.js';
+import {
+  JEOLGI_TABLE,
+  JEOLGI_JIJI,
+  JEOLGI_MONTH_OFFSET,
+  JEOLGI_FIRST_YEAR,
+  JEOLGI_LAST_YEAR,
+} from './jeolgi-table.js';
 import { daysDiff, indexToPillar, cheonganIndex, jijiIndex } from './helpers.js';
 
 // ─── 절기 테이블 조회 ────────────────────────────────────
@@ -15,7 +21,9 @@ const requireJeolgiTable = (year: number, forDate?: string): readonly string[] =
   const table = JEOLGI_TABLE[year];
   if (table) return table;
   const context = forDate && !forDate.startsWith(String(year)) ? ` — ${forDate} 계산에 필요` : '';
-  throw new Error(`절기 데이터 없음: ${year}년${context} (지원 범위: 2024-2033)`);
+  throw new Error(
+    `절기 데이터 없음: ${year}년${context} (지원 범위: ${JEOLGI_FIRST_YEAR}-${JEOLGI_LAST_YEAR})`,
+  );
 };
 
 // ─── 기둥 계산 ──────────────────────────────────────────

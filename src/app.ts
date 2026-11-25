@@ -17,6 +17,8 @@ import { buildConfirmModifyCard } from './agents/life/blocks/confirm-modify.js';
 import { postBlockMessage } from './shared/slack.js';
 import { startDBProxy } from './db-proxy.js';
 import { startUptimeHeartbeat } from './ops/uptime-heartbeat.js';
+import { getTodayISO } from './shared/kst.js';
+import { warnIfJeolgiTableExpiring } from './shared/saju/jeolgi-table.js';
 
 const app = new App({
   token: CONFIG.slack.botToken,
@@ -28,6 +30,9 @@ const app = new App({
 registerMessageHandler(app);
 
 const startApp = async (): Promise<void> => {
+  // 절기 표 만료가 가까우면 시작 로그로 미리 알린다 (만료 뒤엔 월주·년주 계산이 throw, ADR-0050)
+  warnIfJeolgiTableExpiring(Number(getTodayISO().slice(0, 4)));
+
   // DB 연결 + 마이그레이션
   await connectDB(CONFIG.db.url);
   await runMigrations();
