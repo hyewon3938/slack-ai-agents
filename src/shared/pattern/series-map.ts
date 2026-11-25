@@ -10,30 +10,41 @@ import {
   computeSeedActivationSeries,
   computeSignalSeries,
 } from './series.js';
+import { isSqlToolUnavailable, logLlmSignalSkip } from './sql-tool-skip.js';
 import type { SignalDef } from './types.js';
 
 /**
  * 신호 시리즈(신호당 1회) — 넘겨받은 순서대로 순차 계산, 결과 Map도 그 순서.
  * 각 신호는 자기 도메인 시작일(signalStartById) 기준으로 빈 과거를 결측 처리한다.
+ * SQL 도구 전용 연결이 없어 거절된 신호는 Map에서 빠진다 — 호출부가 시리즈 누락으로 보고 그 링크를
+ * 이번 실행에서 저장하지 않는다. 로그는 scope당 한 번(#665).
  */
 export const computeSignalSeriesMap = async (
   userId: number,
   signals: Iterable<SignalDef>,
   windowDates: string[],
   signalStartById: Map<number, string | null>,
+  scope = 'Signal Series',
 ): Promise<Map<number, SignalSeriesResult>> => {
   const signalSeriesById = new Map<number, SignalSeriesResult>();
+  let skipped = 0;
   for (const signal of signals) {
-    signalSeriesById.set(
-      signal.id,
-      await computeSignalSeries(
-        userId,
-        signal,
-        windowDates,
-        signalStartById.get(signal.id) ?? null,
-      ),
-    );
+    try {
+      signalSeriesById.set(
+        signal.id,
+        await computeSignalSeries(
+          userId,
+          signal,
+          windowDates,
+          signalStartById.get(signal.id) ?? null,
+        ),
+      );
+    } catch (err) {
+      if (!isSqlToolUnavailable(err)) throw err;
+      skipped++;
+    }
   }
+  logLlmSignalSkip(scope, skipped);
   return signalSeriesById;
 };
 

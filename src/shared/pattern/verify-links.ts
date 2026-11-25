@@ -90,6 +90,7 @@ export const verifyUserLinks = async (
     signalById.values(),
     windowDates,
     signalStartById,
+    'Verification',
   );
   // 시드 활성 시리즈(시드당 1회) — 링크에 등장한 시드만, 등장 순서대로.
   const linkSeeds = [...new Set(linkRes.rows.map((r) => r.seed_id))].flatMap((seedId) => {
