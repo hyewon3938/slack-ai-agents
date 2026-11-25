@@ -1,6 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { buildDailySleeps, calculateSleepSummary } from '../queries';
+vi.mock('@/lib/db', () => ({
+  query: vi.fn(),
+  queryOne: vi.fn(),
+}));
+
+import { query } from '@/lib/db';
+import {
+  buildDailySleeps,
+  calculateSleepSummary,
+  calculateDayOfWeekPattern,
+  timeToMinutesFromMidnight,
+  querySleepRecordsWithEvents,
+} from '../queries';
 import type { DailySleep, SleepEvent, SleepRecordWithEvents } from '../types';
 
 // ─── 합성 픽스처 (실제 개인 데이터 아님) ───────────────────────────────
@@ -197,5 +209,119 @@ describe('calculateSleepSummary — 분할 수면 반영', () => {
     expect(summary.avgEfficiencyPct).toBeNull();
     expect(summary.avgWasoMinutes).toBe(0);
     expect(summary.avgBedtime).toBe('--:--');
+  });
+});
+
+describe('timeToMinutesFromMidnight — 20:00 경계', () => {
+  it('자정 전 취침은 음수로 바꾼다 (23:30 → -30)', () => {
+    expect(timeToMinutesFromMidnight('23:30')).toBe(-30);
+  });
+
+  it('19:59까지는 그대로, 20:00부터 음수 (1199 / -240)', () => {
+    expect(timeToMinutesFromMidnight('19:59')).toBe(1199);
+    expect(timeToMinutesFromMidnight('20:00')).toBe(-240);
+  });
+
+  it('자정 이후 시각은 양수 (00:00 → 0, 07:30 → 450)', () => {
+    expect(timeToMinutesFromMidnight('00:00')).toBe(0);
+    expect(timeToMinutesFromMidnight('07:30')).toBe(450);
+  });
+});
+
+describe('calculateDayOfWeekPattern', () => {
+  // 2026-07-06·07-13은 월요일, 07-07은 화요일
+  const dailies = buildDailySleeps(
+    [
+      night(1, '2026-07-06', '23:00', 480, '07:00'),
+      night(2, '2026-07-13', '01:00', 360, '07:00'),
+    ],
+    '2026-07-06',
+    '2026-07-13',
+  );
+  const pattern = calculateDayOfWeekPattern(dailies);
+
+  it('일요일부터 7개 요일 버킷을 돌려준다', () => {
+    expect(pattern.map((p) => p.dayName)).toEqual(['일', '월', '화', '수', '목', '금', '토']);
+  });
+
+  it('같은 요일 기록을 평균한다 — 취침은 자정 기준 분(23:00 = -60)으로 평균', () => {
+    const monday = pattern[1]!;
+    expect(monday.count).toBe(2);
+    expect(monday.avgDuration).toBe(420); // (480 + 360) / 2
+    expect(monday.avgBedtime).toBe(0); // (-60 + 60) / 2
+    expect(monday.avgWakeTime).toBe(420); // 07:00
+  });
+
+  it('수면 0인 날은 집계에서 빼고, 표본 없는 요일은 avg 0·count 0', () => {
+    // 07-07~07-12는 기록 없음 → buildDailySleeps가 빈 날을 만들지만 집계 제외
+    for (const p of pattern.filter((x) => x.day !== 1)) {
+      expect(p).toEqual(
+        expect.objectContaining({ count: 0, avgDuration: 0, avgBedtime: 0, avgWakeTime: 0 }),
+      );
+    }
+  });
+});
+
+describe('querySleepRecordsWithEvents — 이벤트 부착', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  function stubRows(records: unknown[], events: unknown[]): void {
+    vi.mocked(query)
+      .mockResolvedValueOnce({ rows: records, rowCount: records.length })
+      .mockResolvedValueOnce({ rows: events, rowCount: events.length });
+  }
+
+  const record = (id: number, date: string, sleepType: 'night' | 'nap') => ({
+    id,
+    date,
+    bedtime: '23:00',
+    wake_time: '07:00',
+    duration_minutes: 480,
+    sleep_type: sleepType,
+    memo: null,
+    tags: [],
+  });
+
+  it('두 쿼리 모두 user_id와 기간으로 범위를 좁힌다', async () => {
+    stubRows([], []);
+
+    await querySleepRecordsWithEvents(7, '2026-07-01', '2026-07-31');
+
+    expect(query).toHaveBeenCalledTimes(2);
+    for (const [sql, params] of vi.mocked(query).mock.calls) {
+      expect(sql).toContain('user_id = $1');
+      expect(sql).toContain('BETWEEN $2 AND $3');
+      expect(params).toEqual([7, '2026-07-01', '2026-07-31']);
+    }
+  });
+
+  it('같은 날짜의 이벤트를 night 기록에 붙이고 nap 기록은 빈 배열', async () => {
+    const e1 = ev(11, '2026-07-02', '03:00');
+    stubRows([record(1, '2026-07-02', 'night'), record(2, '2026-07-02', 'nap')], [e1]);
+
+    const result = await querySleepRecordsWithEvents(7, '2026-07-01', '2026-07-31');
+
+    expect(result.find((r) => r.id === 1)?.events).toEqual([e1]);
+    expect(result.find((r) => r.id === 2)?.events).toEqual([]);
+  });
+
+  it('다른 날짜의 이벤트는 붙이지 않는다', async () => {
+    stubRows([record(1, '2026-07-02', 'night')], [ev(11, '2026-07-03', '03:00')]);
+
+    const result = await querySleepRecordsWithEvents(7, '2026-07-01', '2026-07-31');
+
+    expect(result[0]?.events).toEqual([]);
+  });
+
+  it('같은 event id가 중복으로 와도 한 번만 붙인다', async () => {
+    const e1 = ev(11, '2026-07-02', '03:00');
+    const e2 = ev(12, '2026-07-02', '05:00');
+    stubRows([record(1, '2026-07-02', 'night')], [e1, { ...e1 }, e2]);
+
+    const result = await querySleepRecordsWithEvents(7, '2026-07-01', '2026-07-31');
+
+    expect(result[0]?.events.map((e) => e.id)).toEqual([11, 12]);
   });
 });

@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`web/src/` 아래 소스 파일 207개, 21590줄이고 테스트 파일은 34개다. 줄 수는 테스트를 뺀 값이다.
+`web/src/` 아래 소스 파일 207개, 21590줄이고 테스트 파일은 48개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
@@ -40,6 +40,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | --- | ---: | --- | --- |
 | `proxy.ts` | 77 |  | function: `proxy`<br>const: `config` |
 
+테스트 파일 1개
+
 ## `web/src/app`
 
 | 파일 | 줄 수 | 역할 | export |
@@ -49,6 +51,10 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `page.tsx` | 5 |  | function: `default Home` |
 
 그 밖의 파일: `globals.css`
+
+## `web/src/app/api`
+
+테스트 파일 1개
 
 ## `web/src/app/api/auth`
 
@@ -67,6 +73,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `route.ts` | 55 |  | function: `GET` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/budget/assets`
 
@@ -164,11 +172,15 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | --- | ---: | --- | --- |
 | `route.ts` | 43 |  | function: `GET`<br>const: `dynamic`, `maxDuration` |
 
+테스트 파일 1개
+
 ## `web/src/app/api/cron/monthly-settlement`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `route.ts` | 42 |  | function: `GET`<br>const: `dynamic`, `maxDuration` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/expenses`
 
@@ -176,11 +188,15 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | --- | ---: | --- | --- |
 | `route.ts` | 160 |  | function: `GET`, `POST` |
 
+테스트 파일 1개
+
 ## `web/src/app/api/expenses/[id]`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `route.ts` | 83 |  | function: `PATCH`, `DELETE` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/expenses/summary`
 
@@ -205,6 +221,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `route.ts` | 96 |  | function: `PATCH`, `DELETE` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/routines/[id]/heatmap`
 
@@ -259,6 +277,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `route.ts` | 132 |  | function: `GET`, `PATCH`, `DELETE`<br>const: `dynamic` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/sleep/dashboard`
 
@@ -459,7 +479,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `types-v2.ts` | 101 | ─── 빌링 ────────────────────────────────────────────────────── | type: `BillingCycle`, `PlannedInput`, `MonthAllocatorInput`, `MonthlyBudget`, `MonthAllocatorResult`, `DayAllocatorInput`, `DayAllocatorResult`, `SettlementInput`, `SettlementSnapshot` |
 | `types.ts` | 199 |  | const: `BUDGET_EXCLUDED_CATEGORIES`, `MIN_DAILY_BUDGET`, `EXPENSE_CATEGORIES`, `INCOME_CATEGORIES`, `FIXED_COST_CATEGORIES`, `ALL_EXPENSE_CATEGORIES`, `VALID_CATEGORIES`<br>type: `ExpenseRow`, `PlannedExpenseRow`, `FixedCostRow`, `BudgetRow`, `AssetRow`, `CategoryStat`, `CategoryLimitRow`, `CategoryLimitWithUsage`, `MonthSummary`, `DailyBudgetLog`, `MonthProjection`, `ExpenseCategory`, `IncomeCategory` |
 
-테스트 파일 5개
+테스트 파일 6개
 
 ## `web/src/features/budget/lib/allocator`
 
@@ -597,7 +617,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `use-schedules.ts` | 195 | 캘린더 화면의 일정 조회·폴링과 생성·수정·삭제를 맡고, 날짜 이동·필터·내비게이션 훅을 묶어 돌려준다. | function: `useSchedules` |
 | `use-undo-shortcut.ts` | 39 |  | function: `isUndoShortcut`, `useUndoShortcut` |
 
-테스트 파일 1개
+테스트 파일 2개
 
 ## `web/src/features/schedule/lib`
 
@@ -609,7 +629,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `queries.ts` | 277 |  | function: `querySchedulesByRange`, `queryBacklogSchedules`, `queryScheduleById`, `createSchedule`, `updateSchedule`, `deleteSchedule`, `recordDeleteReason`, `queryCategories`, `createCategory`, `updateCategory`, `deleteCategory`, `reorderCategories`, `validateCategoryOwnership` |
 | `types.ts` | 126 |  | function: `isValidStatus`, `compareByStatus`, `isMultiDaySchedule`, `lookupCategory`, `getScheduleType`, `getScheduleTopCategoryName`, `compareSchedulePriority`<br>const: `SCHEDULE_STATUSES`, `STATUS_LABELS`, `NEXT_STATUS`<br>type: `ScheduleRow`, `ScheduleStatus` |
 
-테스트 파일 3개
+테스트 파일 4개
 
 ## `web/src/features/sleep/components`
 
@@ -643,7 +663,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `types.ts` | 133 |  | const: `SLEEP_TAGS`<br>type: `SleepTag`, `SleepRecord`, `SleepEvent`, `SleepRecordWithEvents`, `DayOfWeekPattern`, `DailySleep`, `SleepScores`, `SleepSummary`, `SleepDashboardData`, `SleepPeriod`, `SleepRecordInput`, `SleepEventInput` |
 | `validate-input.ts` | 93 |  | function: `parseSleepRecordInput`, `parseSleepEventInput`<br>type: `ParseResult` |
 
-테스트 파일 4개
+테스트 파일 5개
 
 ## `web/src/lib`
 
@@ -661,4 +681,4 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 | `users.ts` | 84 |  | function: `findUserByKakaoId`, `listAllUserIds`, `getUserCount`, `findOrCreateUser`<br>type: `UserRow` |
 | `validation.ts` | 40 |  | function: `validateStringLength`, `validateFields`<br>const: `MAX_LENGTHS` |
 
-테스트 파일 3개
+테스트 파일 4개

@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 182개, 19708줄이고 테스트 파일은 57개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 182개, 19708줄이고 테스트 파일은 76개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -41,7 +41,7 @@
 | `llm-signal-cards.ts` | 97 | LLM 자율 신호 제안 승인 카드 — #477 P5b (ADR-0040, P5a 승인 게이트 재사용). | function: `encodeLlmSignalPayload`, `decodeLlmSignalPayload`, `buildLlmSignalCard`, `buildNoSignalSuggestionMessage`<br>const: `LLM_SIGNAL_APPROVE_ACTION_ID`, `LLM_SIGNAL_REJECT_ACTION_ID`<br>type: `LlmSignalPayload`, `LlmSignalCardInput` |
 | `pattern-seed-fast-path.ts` | 108 | 사주 시드 토글 fast path. | function: `tryPatternSeedFastPath`<br>const: `SAJU_SEED_LIST_RE`, `SAJU_SEED_LIST_ALL_RE`, `SAJU_SEED_OFF_RE`, `SAJU_SEED_ON_RE` |
 
-테스트 파일 8개
+테스트 파일 10개
 
 ## `src/agents/life`
 
@@ -55,7 +55,7 @@
 | `prompt-sections.ts` | 248 |  | function: `buildIntroSection`, `buildUserIdFilterSection`, `buildScheduleInsertSection`, `buildScheduleRulesSection`, `buildSleepModifySection`<br>const: `NAG_GUIDE_SECTION`, `CONVERSATION_SECTION`, `DB_SCHEMA_SECTION`, `SCHEDULE_QUERY_SECTION`, `SCHEDULE_FORMAT_SECTION`, `SLEEP_RECORD_SECTION`, `REMINDER_SECTION`, `DATA_RULES_SECTION`, `CUSTOM_INSTRUCTION_SECTION`, `ANALYSIS_SECTION` |
 | `prompt.ts` | 102 |  | function: `buildLifeSystemPrompt` |
 
-테스트 파일 3개
+테스트 파일 4개
 
 ## `src/agents/life/blocks`
 
@@ -71,6 +71,8 @@
 | `schedule.ts` | 157 | 일정 목록 블록과 텍스트 폴백. | function: `formatSchedulesAsText`, `buildScheduleBlocks` |
 | `sleep.ts` | 65 | 수면 요약 블록. | function: `buildSleepBlocks` |
 
+테스트 파일 1개
+
 ## `src/cron`
 
 | 파일 | 줄 수 | 역할 | export |
@@ -82,7 +84,7 @@
 | `period-fortune.ts` | 219 | 주기 운세 리포트 데일리 게이트 — periodFortune (#529 / #523 Phase 2, ADR-0050). | function: `decidePeriodTriggers`, `periodFortuneTask`<br>type: `PeriodTrigger` |
 | `signal-suggest-fallback.ts` | 53 | 월간 신호 제안 누락 fallback 알림 cron — 매월 2일 11:00 KST (#466, ADR-0058) — 출력 연속성 보장. | function: `signalSuggestFallbackTask` |
 
-테스트 파일 8개
+테스트 파일 9개
 
 ## `src/cron/life`
 
@@ -98,6 +100,8 @@
 | `target-expiry.ts` | 72 |  | function: `getTargetExpiryDate`, `buildTargetExpiryWarning`, `warnTargetExpiryIfNear`<br>const: `TARGET_EXPIRY_WARN_DAYS` |
 | `types.ts` | 6 |  | type: `LifeCronConfig` |
 | `user-loop.ts` | 56 |  | function: `forEachUser` |
+
+테스트 파일 1개
 
 ## `src/cron/weekly-report`
 
@@ -123,6 +127,8 @@
 | `response-profile.ts` | 143 |  | function: `persistResponseProfile` |
 | `tasks.ts` | 59 |  | function: `weeklyVerificationTask`, `weeklyReviewFallbackTask` |
 | `week-start.ts` | 9 |  | function: `previousMondayISO` |
+
+테스트 파일 1개
 
 ## `src/ops`
 
@@ -157,7 +163,7 @@
 | `slack.ts` | 61 |  | function: `postToChannel`, `postBlockMessage`, `updateMessage`, `resolveActionCard`, `sendMessage`, `sendBlockMessage` |
 | `user-resolver.ts` | 55 |  | function: `resolveUserId`, `queryAllUserMappings`<br>const: `DEFAULT_USER_ID`<br>type: `UserMapping` |
 
-테스트 파일 29개
+테스트 파일 35개
 
 ## `src/shared/agent-loop`
 
@@ -168,6 +174,8 @@
 | `timing.ts` | 18 |  | function: `withTimeout`, `parseRetryDelay` |
 | `tool-calls.ts` | 82 |  | function: `executeToolCalls`, `handleToolCallsResponse` |
 | `types.ts` | 48 |  | const: `MAX_TOOL_ROUNDS`, `MAX_RETRIES`, `MAX_RATE_LIMIT_RETRIES`, `LLM_TIMEOUT_MS`, `TOOL_TIMEOUT_MS`<br>type: `AgentLoopResult`, `ToolExecutor`, `AgentLoopConfig`, `LoopState` |
+
+테스트 파일 3개
 
 ## `src/shared/insights`
 
@@ -245,6 +253,8 @@
 | `types.ts` | 107 | off-day 대조 검증 엔진의 공용 타입 (pattern-verification에서 분리). | type: `SignalDirection`, `LinkLifecycleStatus`, `Verdict`, `DaySeries`, `SignalDef`, `Contingency`, `ContingencyVerification`, `LinkVerification` |
 | `verify-link-calc.ts` | 197 | 링크 1건 검증 계산과 일괄 보정 (verify-links에서 분리, DB 접근 없음). | function: `buildLinkInterim`, `finalizeVerifications`<br>type: `ActiveLinkRow`, `LinkInterimDeps` |
 | `verify-links.ts` | 122 | 사용자 링크 주간 검증 (pattern-verification에서 분리). | function: `verifyUserLinks` |
+
+테스트 파일 3개
 
 ## `src/shared/period`
 
