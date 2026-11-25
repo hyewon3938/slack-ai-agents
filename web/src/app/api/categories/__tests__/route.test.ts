@@ -7,11 +7,10 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/features/schedule/lib/queries', () => ({
   createCategory: vi.fn(),
   queryCategories: vi.fn(),
-  validateCategoryOwnership: vi.fn(),
 }));
 
 import { requireAuth } from '@/lib/auth';
-import { createCategory, validateCategoryOwnership } from '@/features/schedule/lib/queries';
+import { createCategory, queryCategories } from '@/features/schedule/lib/queries';
 import type { CategoryRow } from '@/lib/types';
 import { POST } from '../route';
 import { jsonRequest } from '@/app/api/__tests__/route-helpers';
@@ -29,13 +28,19 @@ const CREATED: CategoryRow = {
   parent_id: null,
 };
 
+// 본인 카테고리 목록: 3은 최상위, 4는 3의 하위
+const OWN_CATEGORIES: CategoryRow[] = [
+  { id: 3, name: '운동', color: 'gray', type: 'task', sort_order: 1, parent_id: null },
+  { id: 4, name: '러닝', color: 'gray', type: null, sort_order: 1, parent_id: 3 },
+];
+
 const post = (body: unknown): Promise<Response> => POST(jsonRequest('POST', PATH, body));
 
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(requireAuth).mockResolvedValue(USER_ID);
   vi.mocked(createCategory).mockResolvedValue(CREATED);
-  vi.mocked(validateCategoryOwnership).mockResolvedValue(true);
+  vi.mocked(queryCategories).mockResolvedValue(OWN_CATEGORIES);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
@@ -81,17 +86,23 @@ describe('POST /api/categories — 상위 카테고리', () => {
     const res = await post({ name: '러닝', parent_id: parentId });
 
     expect(res.status).toBe(400);
-    expect(validateCategoryOwnership).not.toHaveBeenCalled();
+    expect(queryCategories).not.toHaveBeenCalled();
     expect(createCategory).not.toHaveBeenCalled();
   });
 
   it('본인 카테고리가 아닌 상위는 400이고 만들지 않는다', async () => {
-    vi.mocked(validateCategoryOwnership).mockResolvedValue(false);
-
-    const res = await post({ name: '러닝', parent_id: 3 });
+    const res = await post({ name: '러닝', parent_id: 99 });
 
     expect(res.status).toBe(400);
-    expect(validateCategoryOwnership).toHaveBeenCalledWith(USER_ID, 3);
+    expect(queryCategories).toHaveBeenCalledWith(USER_ID);
+    expect(createCategory).not.toHaveBeenCalled();
+  });
+
+  it('하위 카테고리를 상위로 지정하면 두 단계를 넘으므로 400이고 만들지 않는다', async () => {
+    const res = await post({ name: '인터벌', parent_id: 4 });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: '하위 카테고리 아래에는 만들 수 없어' });
     expect(createCategory).not.toHaveBeenCalled();
   });
 

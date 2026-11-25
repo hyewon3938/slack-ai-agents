@@ -366,6 +366,27 @@ describe('createTodayRecords — 매일 빈도 start_date 가드', () => {
     );
     expect(inserts).toHaveLength(0);
   });
+
+  it('목록 밖 빈도는 기록하지 않고 템플릿 id와 빈도만 경고로 남긴다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    setupTemplateMock({
+      id: 99,
+      name: '비밀 루틴',
+      time_slot: '낮',
+      frequency: '평일',
+      start_date: '2026-04-01',
+    });
+
+    const created = await createTodayRecords('2026-04-21', 1);
+
+    expect(created).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]?.[0]);
+    expect(message).toContain('template=99');
+    expect(message).toContain('frequency=평일');
+    expect(message).not.toContain('비밀 루틴');
+    warn.mockRestore();
+  });
 });
 
 // ── calcYesterdayFlexSpent: 웹 readTodayFlexSpent SSOT 정합 ──

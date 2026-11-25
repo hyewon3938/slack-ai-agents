@@ -4,6 +4,7 @@ import {
   queryExistingTemplateIds,
   queryLastRecordDate,
   createRecord,
+  isUnknownFrequency,
   shouldCreateToday,
 } from '../../shared/life/queries-routine.js';
 import { DEFAULT_USER_ID } from '../../shared/user-resolver.js';
@@ -67,6 +68,14 @@ export const createTodayRecords = async (
 
   let created = 0;
   for (const t of candidates) {
+    // 목록 밖 빈도는 만들지 않으므로 조용히 빠지지 않게 남긴다 — 이름 등 개인 내용은 넣지 않는다
+    if (isUnknownFrequency(t.frequency)) {
+      console.warn(
+        `[Life Cron] 해석할 수 없는 빈도라 기록 생략 (template=${t.id}, frequency=${t.frequency})`,
+      );
+      continue;
+    }
+
     const shouldCreate =
       t.frequency === '매일'
         ? !t.start_date || today >= t.start_date

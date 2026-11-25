@@ -83,6 +83,14 @@ describe('PATCH /api/categories/[id]', () => {
     );
   });
 
+  it('parent_id는 수정 대상으로 넘기지 않는다 (깊이는 생성 때만 정해진다)', async () => {
+    const res = await patch({ name: '운동', parent_id: 4 });
+
+    expect(res.status).toBe(200);
+    const fields = vi.mocked(updateCategory).mock.calls[0]?.[2];
+    expect(fields).not.toHaveProperty('parent_id');
+  });
+
   it('그 밖의 오류는 고정 문구로 500을 돌려주고 원인은 로그로만 남긴다', async () => {
     vi.mocked(updateCategory).mockRejectedValue(new Error('connection terminated'));
 

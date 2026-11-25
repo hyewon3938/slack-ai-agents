@@ -84,6 +84,7 @@ export const ROUTINE_FREQUENCIES = [
 /**
  * 간격 빈도(격일·주1회·N일마다)를 일수로 바꾼다. 매일이나 해석할 수 없는 값은 null.
  * N일마다는 Slack 봇이 만든 값(예: 3일마다)까지 받기 위해 N ≥ 1인 정수를 모두 허용한다.
+ * 봇 `src/shared/life/queries-routine.ts`의 parseIntervalDays와 같은 규칙이다 — 한쪽을 바꾸면 다른 쪽도 맞춘다.
  */
 export function parseIntervalDays(frequency: string): number | null {
   if (frequency === '격일') return 2;

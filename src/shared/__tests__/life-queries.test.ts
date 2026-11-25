@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── pg 모듈 모킹 ──
@@ -45,6 +46,28 @@ beforeEach(async () => {
 
 // ─── shouldCreateToday ─────────────────────────────────
 
+interface FrequencyCase {
+  name: string;
+  frequency: string | null;
+  lastDate: string | null;
+  today: string;
+  startDate: string | null;
+  expected: boolean;
+}
+
+// 웹 ensureTodayRecords와 같은 케이스 표 — 봇·웹 빈도 판정이 어긋나면 한쪽 테스트가 깨진다
+const FREQUENCY_CASES = (
+  JSON.parse(
+    readFileSync(new URL('./fixtures/routine-frequency-cases.json', import.meta.url), 'utf8'),
+  ) as { cases: FrequencyCase[] }
+).cases;
+
+describe('shouldCreateToday — 웹과 공용 케이스 표', () => {
+  it.each(FREQUENCY_CASES)('$name', ({ frequency, lastDate, today, startDate, expected }) => {
+    expect(shouldCreateToday(frequency, lastDate, today, startDate)).toBe(expected);
+  });
+});
+
 describe('shouldCreateToday', () => {
   it('매일은 항상 true', () => {
     expect(shouldCreateToday('매일', '2026-03-07', '2026-03-08')).toBe(true);
@@ -76,8 +99,9 @@ describe('shouldCreateToday', () => {
     expect(shouldCreateToday('4일마다', '2026-03-05', '2026-03-08')).toBe(false);
   });
 
-  it('알 수 없는 빈도는 true', () => {
-    expect(shouldCreateToday('unknown', '2026-03-07', '2026-03-08')).toBe(true);
+  it('알 수 없는 빈도는 매일로 보지 않고 false', () => {
+    expect(shouldCreateToday('unknown', '2026-03-07', '2026-03-08')).toBe(false);
+    expect(shouldCreateToday('unknown', null, '2026-03-08', '2026-03-01')).toBe(false);
   });
 
   it('시작일이 미래면 빈도와 무관하게 false', () => {
@@ -97,6 +121,10 @@ describe('shouldCreateToday', () => {
 describe('frequencyBadge', () => {
   it('매일이면 빈 문자열', () => {
     expect(frequencyBadge('매일')).toBe('');
+  });
+
+  it('빈도 없음이면 빈 문자열', () => {
+    expect(frequencyBadge(null)).toBe('');
   });
 
   it('격일이면 배지 반환', () => {
@@ -193,6 +221,15 @@ describe('queryExistingTemplateIds', () => {
     expect(result.has(3)).toBe(true);
     expect(result.has(2)).toBe(false);
   });
+
+  // 자율 기록이 있는 날도 주기형 기록은 만들어야 한다 (ADR-0061)
+  it("주기형 기록만 본다 — entry_type = 'scheduled'", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await queryExistingTemplateIds('2026-03-08', TEST_USER_ID);
+
+    const sql = mockQuery.mock.calls[0]?.[0] as string;
+    expect(sql).toContain("entry_type = 'scheduled'");
+  });
 });
 
 describe('queryLastRecordDate', () => {
@@ -206,6 +243,14 @@ describe('queryLastRecordDate', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const result = await queryLastRecordDate(999, TEST_USER_ID);
     expect(result).toBeNull();
+  });
+
+  it("자율 기록은 빈도 판정에 쓰지 않는다 — entry_type = 'scheduled'", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await queryLastRecordDate(1, TEST_USER_ID);
+
+    const sql = mockQuery.mock.calls[0]?.[0] as string;
+    expect(sql).toContain("entry_type = 'scheduled'");
   });
 });
 

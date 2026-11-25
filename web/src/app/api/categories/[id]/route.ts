@@ -42,9 +42,12 @@ export async function PATCH(
       return NextResponse.json({ error: '유효하지 않은 카테고리 유형' }, { status: 400 });
     }
 
+    // 상위(parent_id)는 수정으로 바꾸지 않는다 — 카테고리 깊이를 생성 시 검사한 두 단계로 유지한다
     const data = await updateCategory(userId, id, {
-      ...body,
       name: typeof body.name === 'string' ? body.name.trim() : undefined,
+      color: body.color,
+      type: body.type,
+      sort_order: body.sort_order,
     });
     if (!data) {
       return NextResponse.json({ error: '카테고리를 찾을 수 없어' }, { status: 404 });

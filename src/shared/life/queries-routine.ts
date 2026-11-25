@@ -14,7 +14,7 @@ export interface RoutineTemplateRow {
   id: number;
   name: string;
   time_slot: string;
-  frequency: string;
+  frequency: string | null;
   start_date: string;
   tracking_mode: RoutineTrackingMode;
 }
@@ -28,48 +28,62 @@ export interface RoutineRecordRow {
   memo: string | null;
   name: string; // JOIN routine_templates
   time_slot: string; // JOIN
-  frequency: string; // JOIN
+  frequency: string | null; // JOIN
 }
 
 // ─── 빈도 헬퍼 ─────────────────────────────────────────
 
-/** 빈도에서 간격 일수 추출 (예: '3일마다' → 3, '격일' → 2, '주1회' → 7) */
+/**
+ * 빈도에서 간격 일수 추출 (예: '3일마다' → 3, '격일' → 2, '주1회' → 7). 매일이나 해석할 수 없는 값은 null.
+ * 웹 `web/src/features/routine/lib/types.ts`의 parseIntervalDays와 같은 규칙이다 — 한쪽을 바꾸면 다른 쪽도 맞춘다.
+ */
 const parseIntervalDays = (frequency: string): number | null => {
   if (frequency === '격일') return 2;
   if (frequency === '주1회') return 7;
   const match = /^(\d+)일마다$/.exec(frequency);
-  return match ? Number(match[1]) : null;
+  if (!match) return null;
+  const days = Number(match[1]);
+  return days >= 1 ? days : null;
 };
 
-/** 빈도에 따라 오늘 기록을 생성해야 하는지 판별 */
+/** 허용 목록(NULL·매일·격일·주1회·N일마다) 밖 빈도인지 — 이런 템플릿은 기록을 만들지 않는다 */
+export const isUnknownFrequency = (frequency: string | null): boolean =>
+  !!frequency && frequency !== '매일' && parseIntervalDays(frequency) === null;
+
+/**
+ * 빈도에 따라 오늘 기록을 생성해야 하는지 판별.
+ * 웹 ensureTodayRecords의 shouldCreateToday와 같은 결과를 낸다 (같은 케이스 표로 양쪽을 테스트).
+ */
 export const shouldCreateToday = (
-  frequency: string,
+  frequency: string | null,
   lastDate: string | null,
   today: string,
-  startDate?: string,
+  startDate?: string | null,
 ): boolean => {
   // 시작일이 미래면 생성하지 않음 (YYYY-MM-DD는 사전순 비교 = 시간순 비교)
   if (startDate && today < startDate) return false;
 
-  if (frequency === '매일') return true;
+  // 빈도 없음(NULL)은 매일로 본다
+  if (!frequency || frequency === '매일') return true;
 
-  // 간격 빈도(격일, N일마다): start_date 기준 모듈러 연산
+  // 허용 목록 밖 빈도는 주기를 알 수 없으므로 만들지 않는다 (예전엔 매일로 취급했다)
   const intervalDays = parseIntervalDays(frequency);
-  if (intervalDays && startDate) {
+  if (!intervalDays) return false;
+
+  // 간격 빈도(격일, N일마다, 주1회): start_date 기준 모듈러 연산
+  if (startDate) {
     const gap = diffDays(startDate, today);
     return gap >= 0 && gap % intervalDays === 0;
   }
 
   // startDate 없는 경우 (폴백): gap 기반
   if (!lastDate) return true;
-  const gap = diffDays(lastDate, today);
-  if (intervalDays) return gap >= intervalDays;
-
-  return true;
+  return diffDays(lastDate, today) >= intervalDays;
 };
 
 /** 빈도 → 표시용 배지 텍스트 (매일은 빈 문자열) */
-export const frequencyBadge = (frequency: string): string => {
+export const frequencyBadge = (frequency: string | null): string => {
+  if (!frequency) return '';
   if (frequency === '주1회') return '_(1주 마다)_';
   const intervalDays = parseIntervalDays(frequency);
   if (intervalDays) return `_(${intervalDays}일 마다)_`;
@@ -119,20 +133,21 @@ export const queryExistingTemplateIds = async (
 ): Promise<Set<number>> => {
   const rows = (
     await query<{ template_id: number }>(
-      'SELECT template_id FROM routine_records WHERE date = $1 AND user_id = $2',
+      // 자율 기록은 주기형 행의 생성을 막지 않는다 (ADR-0061, 웹 ensureTodayRecords와 같은 조건)
+      "SELECT template_id FROM routine_records WHERE date = $1 AND user_id = $2 AND entry_type = 'scheduled'",
       [today, userId],
     )
   ).rows;
   return new Set(rows.map((r) => r.template_id));
 };
 
-/** 특정 템플릿의 가장 최근 기록 날짜 */
+/** 특정 템플릿의 가장 최근 주기형 기록 날짜 (자율 기록은 빈도 판정에 쓰지 않는다) */
 export const queryLastRecordDate = async (
   templateId: number,
   userId: number,
 ): Promise<string | null> => {
   const result = await query<{ date: string }>(
-    'SELECT date::text FROM routine_records WHERE template_id = $1 AND user_id = $2 ORDER BY date DESC LIMIT 1',
+    "SELECT date::text FROM routine_records WHERE template_id = $1 AND user_id = $2 AND entry_type = 'scheduled' ORDER BY date DESC LIMIT 1",
     [templateId, userId],
   );
   return result.rows[0]?.date ?? null;

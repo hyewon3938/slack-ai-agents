@@ -55,7 +55,7 @@ routine_inactive_periods:
 | DELETE | `/api/routines/[id]` | 템플릿 삭제 (soft delete: active=false + deleted_at=NOW()) |
 | GET | `/api/routines/records?date=` | 날짜별 기록 조회 (템플릿 JOIN, 주기형만) |
 | POST | `/api/routines/records` | 자율 기록 생성 (template_id, date, memo) — 자율 루틴만, 미래 날짜 거부 |
-| PATCH | `/api/routines/records/[id]` | 기록 토글 (completed) 또는 메모 수정 |
+| PATCH | `/api/routines/records/[id]` | 기록 토글 (completed) 또는 메모 수정. completed가 boolean이 아니면 400이고 메모도 저장하지 않음 |
 | DELETE | `/api/routines/records/[id]` | 자율 기록 삭제 (주기형 기록은 삭제 불가) |
 | GET | `/api/routines/stats?from=&to=` | 기간별 달성률 통계 |
 | GET | `/api/routines/[id]/inactive-periods` | 비활성 기간 목록 조회 |
@@ -166,8 +166,12 @@ features/routine/
 - `격일`: 2일 간격
 - `3일마다`: 3일 간격
 - `주1회`: 7일 간격
-- 빈도 판별: `shouldCreateToday()` — 마지막 기록 날짜와 비교하여 오늘 생성 여부 결정
-- 간격 파싱: `parseIntervalDays()` — '격일' -> 2, 'N일마다' -> N
+- 빈도가 비어 있으면(NULL) `매일`로 본다
+- 빈도 판별: `shouldCreateToday()` — 시작일이 있으면 시작일부터 센 간격으로, 없으면 마지막 기록 날짜와 비교해 오늘 생성 여부를 정한다
+- 간격 파싱: `parseIntervalDays()` — '격일' -> 2, '주1회' -> 7, 'N일마다' -> N (N은 1 이상)
+- 목록에 없는 빈도('평일', '0일마다' 등)는 매일로 취급하지 않고 기록을 만들지 않는다
+- 마지막 기록 날짜와 "이미 기록이 있는지" 판단은 주기형 기록(`entry_type='scheduled'`)만 본다. 같은 날 자율 기록이 있어도 주기형 기록은 생성한다
+- 봇(`src/shared/life/queries-routine.ts`)과 웹(`web/src/features/routine/lib/queries.ts`)이 같은 규칙을 따로 구현한다. 두 쪽 테스트가 공용 케이스 표 `src/shared/__tests__/fixtures/routine-frequency-cases.json`을 함께 읽어 결과가 갈라지지 않게 막는다
 
 ### 자동 기록 생성 (ensureTodayRecords)
 - 웹 접속 시 또는 API 호출 시, 해당 날짜에 아직 기록이 없는 active 템플릿에 대해 자동 생성

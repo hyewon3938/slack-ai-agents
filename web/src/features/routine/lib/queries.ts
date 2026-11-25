@@ -251,11 +251,16 @@ function daysBetween(from: string, to: string): number {
   );
 }
 
-function shouldCreateToday(
+/**
+ * 빈도에 따라 오늘 기록을 만들지 판별한다.
+ * 봇 `src/shared/life/queries-routine.ts`의 shouldCreateToday와 같은 규칙이다 —
+ * 한쪽을 바꾸면 다른 쪽도 맞추고, 공용 케이스 표(routine-frequency-cases.json)로 양쪽을 테스트한다.
+ */
+export function shouldCreateToday(
   frequency: string | null,
   lastDate: string | null,
   today: string,
-  startDate?: string,
+  startDate?: string | null,
 ): boolean {
   // 시작일이 미래면 생성하지 않음 (YYYY-MM-DD는 사전순 비교 = 시간순 비교)
   if (startDate && today < startDate) return false;

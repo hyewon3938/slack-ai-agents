@@ -28,6 +28,12 @@ categories:
   parent_id INTEGER    -- FK → categories.id. 최상위면 NULL
 ```
 
+### 카테고리 깊이 규칙
+
+- 카테고리는 상위와 하위 두 단계까지만 둔다. 하위 카테고리 아래에는 새 카테고리를 만들 수 없다.
+- `POST /api/categories`에 하위 카테고리를 `parent_id`로 보내면 400을 돌려준다. 본인 카테고리가 아닌 상위를 보내도 400이다.
+- `PATCH /api/categories/[id]`로는 상위 카테고리를 바꿀 수 없다. 이름·색·유형·정렬 순서만 수정 대상이고, 보낸 `parent_id`는 무시한다.
+
 ### FK 마이그레이션 (2026-05-13, #394)
 
 - 이전 스키마: `schedules.category TEXT` + `schedules.subcategory TEXT` (rename 시 데이터 연결 끊김)

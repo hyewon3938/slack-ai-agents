@@ -1,0 +1,29 @@
+{
+  "description": "루틴 빈도 판정(shouldCreateToday) 공용 케이스 표. 봇(src/shared/life/queries-routine.ts)과 웹(web/src/features/routine/lib/queries.ts)이 같은 표로 테스트한다. 합성 값이며 실제 개인 데이터가 아니다.",
+  "cases": [
+    { "name": "매일은 최근 기록과 무관하게 만든다", "frequency": "매일", "lastDate": "2026-07-25", "today": "2026-07-26", "startDate": "2026-07-01", "expected": true },
+    { "name": "빈도 없음(NULL)은 매일로 본다", "frequency": null, "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-01", "expected": true },
+    { "name": "시작일이 미래면 매일도 만들지 않는다", "frequency": "매일", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-27", "expected": false },
+    { "name": "시작일이 미래면 간격 빈도도 만들지 않는다", "frequency": "격일", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-27", "expected": false },
+    { "name": "시작일 당일은 간격 빈도여도 만든다", "frequency": "격일", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-26", "expected": true },
+    { "name": "격일: 시작일부터 짝수 일째", "frequency": "격일", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-20", "expected": true },
+    { "name": "격일: 시작일부터 홀수 일째", "frequency": "격일", "lastDate": null, "today": "2026-07-25", "startDate": "2026-07-20", "expected": false },
+    { "name": "3일마다: 6일째", "frequency": "3일마다", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-20", "expected": true },
+    { "name": "3일마다: 4일째", "frequency": "3일마다", "lastDate": null, "today": "2026-07-24", "startDate": "2026-07-20", "expected": false },
+    { "name": "주1회: 시작일과 같은 요일", "frequency": "주1회", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-19", "expected": true },
+    { "name": "주1회: 시작일과 다른 요일", "frequency": "주1회", "lastDate": null, "today": "2026-07-25", "startDate": "2026-07-19", "expected": false },
+    { "name": "1일마다는 매일과 같다", "frequency": "1일마다", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-20", "expected": true },
+    { "name": "14일마다: 14일째", "frequency": "14일마다", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-12", "expected": true },
+    { "name": "14일마다: 13일째", "frequency": "14일마다", "lastDate": null, "today": "2026-07-25", "startDate": "2026-07-12", "expected": false },
+    { "name": "월 경계를 넘어도 달력 일수로 센다", "frequency": "격일", "lastDate": null, "today": "2026-08-01", "startDate": "2026-07-30", "expected": true },
+    { "name": "연 경계를 넘어도 달력 일수로 센다", "frequency": "주1회", "lastDate": null, "today": "2027-01-04", "startDate": "2026-12-28", "expected": true },
+    { "name": "시작일이 있으면 최근 기록일이 아니라 시작일 기준", "frequency": "격일", "lastDate": "2026-07-25", "today": "2026-07-26", "startDate": "2026-07-20", "expected": true },
+    { "name": "시작일이 없으면 최근 기록일과의 간격: 1일", "frequency": "격일", "lastDate": "2026-07-25", "today": "2026-07-26", "startDate": null, "expected": false },
+    { "name": "시작일이 없으면 최근 기록일과의 간격: 2일", "frequency": "격일", "lastDate": "2026-07-24", "today": "2026-07-26", "startDate": null, "expected": true },
+    { "name": "시작일도 최근 기록도 없으면 간격 빈도여도 만든다", "frequency": "격일", "lastDate": null, "today": "2026-07-26", "startDate": null, "expected": true },
+    { "name": "목록 밖 빈도는 시작일이 있어도 만들지 않는다", "frequency": "평일", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-01", "expected": false },
+    { "name": "목록 밖 빈도는 최근 기록이 있어도 만들지 않는다", "frequency": "평일", "lastDate": "2026-07-20", "today": "2026-07-26", "startDate": null, "expected": false },
+    { "name": "0일마다는 해석할 수 없는 빈도다", "frequency": "0일마다", "lastDate": null, "today": "2026-07-26", "startDate": null, "expected": false },
+    { "name": "띄어 쓴 N일마다는 해석할 수 없는 빈도다", "frequency": "3 일마다", "lastDate": null, "today": "2026-07-26", "startDate": "2026-07-20", "expected": false }
+  ]
+}
