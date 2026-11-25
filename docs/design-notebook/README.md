@@ -49,3 +49,4 @@ docs/design-notebook/
 - [metric-first-verification.md](./metric-first-verification.md) — 매트릭 중심 패턴 검증 (마스터 #477)
 - [discovery-refinement.md](./discovery-refinement.md) — 발굴 엔진 측정 타당성 + 카드 UX (마스터 #504)
 - [signal-seed-precision.md](./signal-seed-precision.md) — 신호·시드 측정 정밀화 (마스터 #508)
+- [sql-tool-db-role.md](./sql-tool-db-role.md) — SQL 도구 전용 DB 역할과 연결 분리 (마스터 #663)
