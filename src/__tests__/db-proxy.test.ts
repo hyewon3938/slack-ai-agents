@@ -5,9 +5,11 @@ import type { AddressInfo } from 'node:net';
 // ─── DB mock ────────────────────────────────────────────────────────────────
 
 const mockQuery = vi.fn();
+const mockToolConnected = vi.fn(() => false);
 
 vi.mock('../shared/db.js', () => ({
   query: mockQuery,
+  isSqlToolPoolConnected: mockToolConnected,
   connectDB: vi.fn(),
   disconnectDB: vi.fn(),
 }));
@@ -397,7 +399,18 @@ describe('DB Proxy Server', () => {
         path: '/health',
       });
       expect(status).toBe(200);
-      expect(body).toEqual({ ok: true });
+      expect(body).toEqual({ ok: true, sqlToolRole: false });
+    });
+
+    it('GET /health 는 SQL 도구 전용 역할 연결 여부를 불린 하나로만 낸다', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }], rowCount: 1 });
+      mockToolConnected.mockReturnValueOnce(true);
+      const { status, body } = await makeRequest(port, {
+        method: 'GET',
+        path: '/health',
+      });
+      expect(status).toBe(200);
+      expect(body).toEqual({ ok: true, sqlToolRole: true });
     });
 
     it('DB 죽으면 /health 503', async () => {
@@ -407,7 +420,7 @@ describe('DB Proxy Server', () => {
         path: '/health',
       });
       expect(status).toBe(503);
-      expect(body).toEqual({ ok: false });
+      expect(body).toEqual({ ok: false, sqlToolRole: false });
     });
 
     it('GET /health/detail — 인증 없으면 401', async () => {

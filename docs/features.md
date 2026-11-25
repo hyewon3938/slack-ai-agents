@@ -143,9 +143,12 @@
 
 ### SQL 도구 전용 DB 역할
 
-- `query_db`·`modify_db`와 확인 카드 실행은 권한을 줄인 전용 역할로 접속하는 두 번째 연결 풀(크기 2)에서 실행 (`SQL_TOOL_DATABASE_URL`, 없으면 기존 풀 사용)
+- `query_db`·`modify_db`, 확인 카드 실행, LLM이 제안한 신호의 측정 SQL은 권한을 줄인 전용 역할로 접속하는 두 번째 연결 풀(크기 2)에서 실행 (`SQL_TOOL_DATABASE_URL`)
+- 운영 이미지(`NODE_ENV=production`)에서 전용 연결이 없으면 SQL 도구와 신호 측정 SQL 실행을 거절하고 봇의 다른 기능은 계속 동작하며, 로컬 개발과 테스트에서는 기존 풀로 대신 실행
+- 전용 역할 연결 여부를 시작 로그와 DB 프록시 `/health` 응답의 `sqlToolRole` 불린으로 표시
 - 테이블 권한은 `src/shared/sql-tools/table-permissions.ts` 목록 하나로 관리하고, 봇이 시작할 때 마이그레이션 뒤 목록대로 권한을 맞춤
 - 쓰기 권한은 에이전트가 변경하는 10개 테이블에만 있고, SQL 검사도 같은 목록으로 변경 대상을 판단
+- 알림 설정(`notification_settings`)은 시간 컬럼만, 일정 변경 이력은 삭제 사유 컬럼만 UPDATE 가능
 - 운영 절차: [docs/ops/sql-tool-role.md](ops/sql-tool-role.md), 결정: [ADR-0067](adr/0067-sql-tool-db-role.md)
 
 ## 인프라

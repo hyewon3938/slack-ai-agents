@@ -7,7 +7,13 @@
  */
 
 import type pg from 'pg';
-import { connectSqlToolDB, withTransaction } from '../db.js';
+import {
+  connectSqlToolDB,
+  isSqlToolPoolConnected,
+  setSqlToolPoolRequired,
+  sqlToolFallbackNote,
+  withTransaction,
+} from '../db.js';
 import { TABLE_PERMISSIONS, getTableAccess } from './table-permissions.js';
 
 /** PostgreSQL 식별자 인용: 큰따옴표로 감싸고 안의 큰따옴표는 두 번 쓴다 */
@@ -178,17 +184,22 @@ export const syncSqlToolPrivileges = async (sqlToolUrl: string): Promise<boolean
 interface SqlToolStartDeps {
   sync: (sqlToolUrl: string) => Promise<boolean>;
   connect: (sqlToolUrl: string) => Promise<void>;
+  isConnected: () => boolean;
 }
 
-/**
- * 봇 시작 시 권한 동기화 후 도구 풀을 연다. 어느 단계가 실패해도 봇 시작은 멈추지 않고 기존 풀로 대신한다.
- * 연결 문자열이 있는데 권한을 맞추지 못했으면 도구 풀을 열지 않는다. 슈퍼유저나 테이블 소유 역할을
- * 가리켜 동기화를 건너뛴 경우에 그 역할로 풀이 열리지 않게 하기 위해서다.
- */
-export const startSqlToolPool = async (
-  sqlToolUrl: string,
-  deps: SqlToolStartDeps = { sync: syncSqlToolPrivileges, connect: connectSqlToolDB },
-): Promise<void> => {
+const DEFAULT_START_DEPS: SqlToolStartDeps = {
+  sync: syncSqlToolPrivileges,
+  connect: connectSqlToolDB,
+  isConnected: isSqlToolPoolConnected,
+};
+
+export interface SqlToolStartOptions {
+  /** 운영이면 true. 도구 풀이 열리지 않으면 SQL 도구가 기존 풀로 대신하지 않고 실행을 거절한다 (#665) */
+  required: boolean;
+}
+
+/** 연결 문자열이 있으면 권한을 맞춘 뒤에만 도구 풀을 연다 */
+const openToolPool = async (sqlToolUrl: string, deps: SqlToolStartDeps): Promise<void> => {
   if (sqlToolUrl === '') {
     await deps.connect('');
     return;
@@ -198,8 +209,33 @@ export const startSqlToolPool = async (
     return false;
   });
   if (!synced) {
-    console.warn('[DB] 도구 역할 권한을 맞추지 못해 SQL 도구가 기존 연결 풀을 씁니다');
+    console.warn(`[DB] 도구 역할 권한을 맞추지 못해 ${sqlToolFallbackNote()}`);
     return;
   }
   await deps.connect(sqlToolUrl);
+};
+
+/**
+ * 봇 시작 시 권한 동기화 후 도구 풀을 연다. 어느 단계가 실패해도 봇 시작은 멈추지 않는다.
+ * 연결 문자열이 있는데 권한을 맞추지 못했으면 도구 풀을 열지 않는다. 슈퍼유저나 테이블 소유 역할을
+ * 가리켜 동기화를 건너뛴 경우에 그 역할로 풀이 열리지 않게 하기 위해서다.
+ * 도구 풀이 열리지 않으면 운영에서는 SQL 도구 실행을 거절하고, 로컬·테스트에서는 기존 풀로 대신한다.
+ * 돌려주는 값은 도구 연결이 전용 역할로 붙었는지(동기화 성공 + 연결 성공)다.
+ */
+export const startSqlToolPool = async (
+  sqlToolUrl: string,
+  { required }: SqlToolStartOptions,
+  deps: SqlToolStartDeps = DEFAULT_START_DEPS,
+): Promise<boolean> => {
+  setSqlToolPoolRequired(required);
+  await openToolPool(sqlToolUrl, deps);
+  const connected = deps.isConnected();
+  // eslint-disable-next-line no-console
+  console.log(`[DB] SQL 도구 전용 역할 연결: ${connected} (운영 필수: ${required})`);
+  if (required && !connected) {
+    console.error(
+      '[DB] 운영 환경에 SQL 도구 전용 연결이 없어 SQL 도구와 신호 측정 SQL 실행을 거절합니다. 다른 기능은 정상 동작합니다',
+    );
+  }
+  return connected;
 };

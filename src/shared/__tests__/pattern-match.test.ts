@@ -53,9 +53,9 @@ beforeEach(async () => {
   mockConnect.mockImplementation(() =>
     Promise.resolve({
       query: (sql: string, ...args: unknown[]) => {
-        // 트랜잭션 제어문(SET statement_timeout / SET TRANSACTION / BEGIN / ROLLBACK / COMMIT)은
+        // 트랜잭션 제어문(SET/RESET statement_timeout / SET TRANSACTION / BEGIN / ROLLBACK / COMMIT)은
         // 무시 — 데이터 쿼리만 mockQuery로 위임. queryReadOnly(게이트 #2) 경로도 통과.
-        if (typeof sql === 'string' && /^\s*(SET|BEGIN|ROLLBACK|COMMIT)\b/i.test(sql)) {
+        if (typeof sql === 'string' && /^\s*(SET|RESET|BEGIN|ROLLBACK|COMMIT)\b/i.test(sql)) {
           return Promise.resolve({ rows: [] });
         }
         return mockQuery(sql, ...args);

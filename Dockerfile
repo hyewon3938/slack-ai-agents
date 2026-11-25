@@ -18,6 +18,9 @@ FROM node:22-slim
 
 WORKDIR /app
 
+# 운영 이미지 표시. SQL 도구 전용 연결이 필수가 된다 (src/shared/config.ts sqlToolRequired)
+ENV NODE_ENV=production
+
 COPY package.json yarn.lock ./
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
     yarn install --frozen-lockfile --production
