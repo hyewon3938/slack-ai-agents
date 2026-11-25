@@ -245,7 +245,9 @@ describe('db', () => {
       mockConnect.mockResolvedValue({ query: clientQuery, release: mockRelease });
 
       await expect(queryReadOnlyWithTimeout('SELECT bad', 5000)).rejects.toThrow('boom');
-      expect(mockRelease).toHaveBeenCalledWith(expect.objectContaining({ message: 'connection lost' }));
+      expect(mockRelease).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'connection lost' }),
+      );
     });
 
     it('정상 실행 뒤 ROLLBACK이 실패하면 오류를 전파하고 커넥션을 폐기한다', async () => {
@@ -273,7 +275,9 @@ describe('db', () => {
 
       const result = await queryReadOnlyWithTimeout('SELECT id FROM t', 5000);
       expect(result.rows).toEqual([{ id: 1 }]);
-      expect(mockRelease).toHaveBeenCalledWith(expect.objectContaining({ message: 'reset failed' }));
+      expect(mockRelease).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'reset failed' }),
+      );
     });
   });
 
@@ -295,7 +299,10 @@ describe('db', () => {
       vi.mocked(pg.Pool).mockClear();
       await connectSqlToolDB('postgresql://sql_tool@localhost/test');
       expect(pg.Pool).toHaveBeenCalledWith(
-        expect.objectContaining({ connectionString: 'postgresql://sql_tool@localhost/test', max: 2 }),
+        expect.objectContaining({
+          connectionString: 'postgresql://sql_tool@localhost/test',
+          max: 2,
+        }),
       );
 
       const toolConnect = vi.fn();
@@ -318,13 +325,27 @@ describe('db', () => {
       expect(mockQuery).toHaveBeenCalledWith('SELECT 1', undefined);
     });
 
-    it('연결에 실패하면 풀을 닫고 오류를 전파한다', async () => {
+    it('연결에 실패하면 풀을 닫고 기존 풀로 대신한다', async () => {
       await connectDB('postgresql://app@localhost/test');
+      const appConnect = vi.fn();
+      lastPool().connect = appConnect;
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       mockConnect.mockRejectedValueOnce(new Error('auth failed'));
-      await expect(connectSqlToolDB('postgresql://sql_tool@localhost/test')).rejects.toThrow(
-        'auth failed',
-      );
+
+      await expect(
+        connectSqlToolDB('postgresql://sql_tool@localhost/test'),
+      ).resolves.toBeUndefined();
       expect(mockEnd).toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[DB] SQL 도구 전용 풀 연결 실패, SQL 도구가 기존 연결 풀을 씁니다:',
+        expect.any(Error),
+      );
+
+      const { client } = makeReadOnlyClient({ rows: [], rowCount: 0 });
+      appConnect.mockResolvedValue(client);
+      await queryReadOnlyWithTimeout('SELECT 1', 5000);
+      expect(appConnect).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
     });
 
     it('disconnectDB는 두 풀을 모두 닫는다', async () => {

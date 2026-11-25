@@ -7,7 +7,7 @@
  */
 
 import type pg from 'pg';
-import { withTransaction } from '../db.js';
+import { connectSqlToolDB, withTransaction } from '../db.js';
 import { TABLE_PERMISSIONS, getTableAccess } from './table-permissions.js';
 
 /** PostgreSQL 식별자 인용: 큰따옴표로 감싸고 안의 큰따옴표는 두 번 쓴다 */
@@ -57,7 +57,11 @@ const tableGrants = (table: string, role: string): string[] => {
  * 권한 목록에서 REVOKE·GRANT 문을 만든다 (DB 없이 검증하는 순수 함수).
  * 시퀀스는 INSERT 권한을 준 테이블의 것에만 USAGE를 준다.
  */
-export const buildPrivilegeStatements = ({ role, tables, sequences }: PrivilegePlanInput): string[] => {
+export const buildPrivilegeStatements = ({
+  role,
+  tables,
+  sequences,
+}: PrivilegePlanInput): string[] => {
   const r = quoteIdent(role);
   const existing = [...new Set(tables)].sort();
   const insertTables = new Set(
@@ -133,7 +137,8 @@ const warnListDrift = (tables: readonly string[]): void => {
     (t) => t !== 'schema_migrations' && !existing.has(t),
   );
   const unlisted = tables.filter((t) => !Object.hasOwn(TABLE_PERMISSIONS, t));
-  if (missing.length > 0) console.warn(`[SQL 권한] 목록에 있지만 DB에 없는 테이블: ${missing.join(', ')}`);
+  if (missing.length > 0)
+    console.warn(`[SQL 권한] 목록에 있지만 DB에 없는 테이블: ${missing.join(', ')}`);
   if (unlisted.length > 0) {
     console.warn(`[SQL 권한] 목록에 없어 권한을 주지 않은 테이블: ${unlisted.join(', ')}`);
   }
@@ -164,7 +169,37 @@ export const syncSqlToolPrivileges = async (sqlToolUrl: string): Promise<boolean
       sequences: await loadSequences(client),
     });
     for (const sql of statements) await client.query(sql);
+    // eslint-disable-next-line no-console
     console.log(`[SQL 권한] 도구 역할 권한 동기화 완료 (${statements.length}개 문)`);
     return true;
   });
+};
+
+interface SqlToolStartDeps {
+  sync: (sqlToolUrl: string) => Promise<boolean>;
+  connect: (sqlToolUrl: string) => Promise<void>;
+}
+
+/**
+ * 봇 시작 시 권한 동기화 후 도구 풀을 연다. 어느 단계가 실패해도 봇 시작은 멈추지 않고 기존 풀로 대신한다.
+ * 연결 문자열이 있는데 권한을 맞추지 못했으면 도구 풀을 열지 않는다. 슈퍼유저나 테이블 소유 역할을
+ * 가리켜 동기화를 건너뛴 경우에 그 역할로 풀이 열리지 않게 하기 위해서다.
+ */
+export const startSqlToolPool = async (
+  sqlToolUrl: string,
+  deps: SqlToolStartDeps = { sync: syncSqlToolPrivileges, connect: connectSqlToolDB },
+): Promise<void> => {
+  if (sqlToolUrl === '') {
+    await deps.connect('');
+    return;
+  }
+  const synced = await deps.sync(sqlToolUrl).catch((err: unknown) => {
+    console.error('[SQL 권한] 도구 역할 권한 동기화 실패:', err);
+    return false;
+  });
+  if (!synced) {
+    console.warn('[DB] 도구 역할 권한을 맞추지 못해 SQL 도구가 기존 연결 풀을 씁니다');
+    return;
+  }
+  await deps.connect(sqlToolUrl);
 };

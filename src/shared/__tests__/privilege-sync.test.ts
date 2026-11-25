@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildPrivilegeStatements,
   quoteIdent,
   roleFromUrl,
+  startSqlToolPool,
 } from '../sql-tools/privilege-sync.js';
 import { TABLE_PERMISSIONS } from '../sql-tools/table-permissions.js';
 
@@ -71,7 +72,13 @@ describe('buildPrivilegeStatements', () => {
 
   it('권한 없음 테이블·뷰에는 아무 GRANT도 만들지 않는다', () => {
     const s = build();
-    for (const name of ['users', 'pending_modify', 'slack_user_mappings', 'pattern_summary', 'schedule_fate']) {
+    for (const name of [
+      'users',
+      'pending_modify',
+      'slack_user_mappings',
+      'pattern_summary',
+      'schedule_fate',
+    ]) {
       expect(s.some((sql) => sql.includes(`"${name}"`))).toBe(false);
     }
   });
@@ -99,5 +106,58 @@ describe('buildPrivilegeStatements', () => {
 
   it('입력 순서와 상관없이 같은 문을 만든다', () => {
     expect(build({ tables: [...ALL_TABLES].reverse() })).toEqual(build());
+  });
+});
+
+describe('startSqlToolPool', () => {
+  const TOOL_URL = 'postgresql://sql_tool@localhost/test';
+  type Connect = (url: string) => Promise<void>;
+  type Sync = (url: string) => Promise<boolean>;
+  const setup = (
+    sync: Sync,
+  ): {
+    connect: ReturnType<typeof vi.fn<Connect>>;
+    deps: { sync: ReturnType<typeof vi.fn<Sync>>; connect: ReturnType<typeof vi.fn<Connect>> };
+  } => {
+    const connect = vi.fn<Connect>(async () => undefined);
+    return { connect, deps: { sync: vi.fn<Sync>(sync), connect } };
+  };
+
+  it('동기화에 성공하면 도구 풀을 연다', async () => {
+    const { connect, deps } = setup(async () => true);
+    await startSqlToolPool(TOOL_URL, deps);
+    expect(deps.sync).toHaveBeenCalledWith(TOOL_URL);
+    expect(connect).toHaveBeenCalledWith(TOOL_URL);
+  });
+
+  it('동기화를 건너뛰면 도구 풀을 열지 않고 경고한다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { connect, deps } = setup(async () => false);
+    await startSqlToolPool(TOOL_URL, deps);
+    expect(connect).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      '[DB] 도구 역할 권한을 맞추지 못해 SQL 도구가 기존 연결 풀을 씁니다',
+    );
+    warn.mockRestore();
+  });
+
+  it('동기화가 실패해도 시작을 멈추지 않고 도구 풀을 열지 않는다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { connect, deps } = setup(async () => {
+      throw new Error('permission denied');
+    });
+    await expect(startSqlToolPool(TOOL_URL, deps)).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
+    warn.mockRestore();
+    error.mockRestore();
+  });
+
+  it('연결 문자열이 비었으면 동기화 없이 연결 함수에 경고를 맡긴다', async () => {
+    const { connect, deps } = setup(async () => true);
+    await startSqlToolPool('', deps);
+    expect(deps.sync).not.toHaveBeenCalled();
+    expect(connect).toHaveBeenCalledWith('');
   });
 });

@@ -40,7 +40,7 @@ export const connectDB = async (databaseUrl: string): Promise<void> => {
 
 /**
  * SQL 도구 전용 풀 초기화 (크기 2).
- * 연결 문자열이 없으면 경고를 남기고 기존 풀로 대신한다. 있는데 연결에 실패하면 시작을 멈춘다.
+ * 연결 문자열이 없거나 연결에 실패하면 로그를 남기고 기존 풀로 대신한다. 봇 시작은 멈추지 않는다.
  */
 export const connectSqlToolDB = async (sqlToolUrl: string): Promise<void> => {
   if (toolPool) {
@@ -60,9 +60,11 @@ export const connectSqlToolDB = async (sqlToolUrl: string): Promise<void> => {
     await candidate.end().catch(() => {
       /* 무시 */
     });
-    throw err;
+    console.error('[DB] SQL 도구 전용 풀 연결 실패, SQL 도구가 기존 연결 풀을 씁니다:', err);
+    return;
   }
   toolPool = candidate;
+  // eslint-disable-next-line no-console
   console.log('[DB] SQL 도구 전용 풀 연결 완료');
 };
 
