@@ -46,6 +46,10 @@ const parseIntervalDays = (frequency: string): number | null => {
   return days >= 1 ? days : null;
 };
 
+/** 허용 목록(NULL·매일·격일·주1회·N일마다) 밖 빈도인지 — 이런 템플릿은 기록을 만들지 않는다 */
+export const isUnknownFrequency = (frequency: string | null): boolean =>
+  !!frequency && frequency !== '매일' && parseIntervalDays(frequency) === null;
+
 /**
  * 빈도에 따라 오늘 기록을 생성해야 하는지 판별.
  * 웹 ensureTodayRecords의 shouldCreateToday와 같은 결과를 낸다 (같은 케이스 표로 양쪽을 테스트).
