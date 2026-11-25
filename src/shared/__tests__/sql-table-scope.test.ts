@@ -348,6 +348,12 @@ describe('도구 역할 권한 목록 — 마이그레이션·SQL 검사와 정�
 
   it('알림 설정은 시간 변경만 허용하고 추가·삭제는 거절한다', () => {
     expect(checkModify("UPDATE notification_settings SET time_value = '09:00' WHERE id = 1")).toBeNull();
+    expect(checkModify('UPDATE notification_settings SET active = false WHERE id = 1')).toMatch(
+      /time_value 컬럼만/,
+    );
+    expect(
+      checkModify("UPDATE notification_settings SET time_value = '09:00', label = 'x' WHERE id = 1"),
+    ).toMatch(/time_value 컬럼만/);
     expect(checkModify("INSERT INTO notification_settings (slot_name) VALUES ('x')")).toMatch(/INSERT할 수 없어/);
     expect(checkModify('DELETE FROM notification_settings WHERE id = 1')).toMatch(/DELETE할 수 없어/);
   });

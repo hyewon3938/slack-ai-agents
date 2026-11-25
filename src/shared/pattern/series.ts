@@ -15,6 +15,7 @@ import { getDailyContext } from './match-context.js';
 import { runLlmSignalSql, runMetricSql } from './match-metric.js';
 import { evaluateTrigger } from './match-trigger.js';
 import { pillarSetOf } from './match-trigger-lookups.js';
+import { isSqlToolUnavailable } from './sql-tool-skip.js';
 import type { DailyContext, SajuSeedWithMetrics } from './match-types.js';
 import type { DaySeries, SignalDef } from './types.js';
 
@@ -31,6 +32,7 @@ export interface SignalSeriesResult {
  * 신호 일자 시리즈 (신호당 1회). tag=태그 존재 여부, sql=raw 시리즈 → binarize(+continuous는 raw 보존).
  * dataStart(#504): 그 신호 도메인의 첫 기록일. 이전 날은 결측(null)으로 처리 — 빈 과거의 COALESCE 0이
  * "발현 안 함=fail"로 새거나 rolling baseline을 0으로 오염시키는 측정 아티팩트를 차단(그 날 SQL도 스킵).
+ * SQL 도구 전용 연결이 없어 거절되면 SqlToolUnavailableError를 그대로 던진다(#665).
  */
 export const computeSignalSeries = async (
   userId: number,
@@ -69,7 +71,9 @@ export const computeSignalSeries = async (
     }
     try {
       raw.set(d, await runner(signal.sqlBody, userId, d));
-    } catch {
+    } catch (err) {
+      // 도구 연결이 없으면 결측으로 바꾸지 않고 올려 보낸다 — 호출부가 이 신호를 이번 실행에서 건너뜀 (#665)
+      if (isSqlToolUnavailable(err)) throw err;
       raw.set(d, null);
     }
   }

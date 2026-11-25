@@ -17,7 +17,7 @@
 
 | URL | 용도 | 응답 |
 |-----|------|------|
-| `https://<봇-호스트>/health` | 봇 프로세스 + DB 연결 체크 | `{ ok: true }` or 503 |
+| `https://<봇-호스트>/health` | 봇 프로세스 + DB 연결 체크, SQL 도구 전용 역할 연결 여부 표시 | `{ ok: true, sqlToolRole: true }` or 503 |
 | `https://<웹-호스트>/api/health` | Vercel 웹 앱 liveness | `{ ok: true }` |
 
 "정상"의 정의는 **HTTP 200 + 응답 body에 `"ok":true` 포함**이다 (단순 200이 아니라 body 내용도 확인 → 캐시된 구형 응답 감지). 봇 heartbeat와 GitHub Actions 폴링이 같은 판정 의미론을 공유한다.

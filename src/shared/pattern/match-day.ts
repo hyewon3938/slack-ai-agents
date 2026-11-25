@@ -8,6 +8,7 @@ import { getDailyContext } from './match-context.js';
 import { evaluateMetric } from './match-metric.js';
 import { loadActiveSeeds } from './match-seeds.js';
 import { evaluateTrigger } from './match-trigger.js';
+import { isSqlToolUnavailable, logLlmSignalSkip } from './sql-tool-skip.js';
 import type {
   DailyContext,
   MetricEvaluation,
@@ -52,25 +53,40 @@ export const loadStrengthCutpoints = async (userId: number): Promise<Map<string,
   return map;
 };
 
-/** trigger 통과 시드의 metric 평가 — metric 단위 격리(일부만 fail해도 나머지 보존). */
+/** 하루 매칭 1회 안에서 SQL 도구 연결 거절로 건너뛴 LLM 신호 평가 수 — 로그를 한 번만 남기려고 모은다(#665). */
+interface SkipCounter {
+  count: number;
+}
+
+/**
+ * trigger 통과 시드의 metric 평가 — metric 단위 격리(일부만 fail해도 나머지 보존).
+ * SQL 도구 연결이 없어 거절된 LLM 신호는 실패 로그 없이 건너뛰고 skipped로 알린다.
+ */
 const evaluateSeedMetrics = async (
   seed: SajuSeedWithMetrics,
   userId: number,
   date: string,
-): Promise<MetricEvaluation[]> => {
-  const metricEvaluations: MetricEvaluation[] = [];
+  skip: SkipCounter,
+): Promise<{ evaluations: MetricEvaluation[]; skipped: boolean }> => {
+  const evaluations: MetricEvaluation[] = [];
+  let skipped = false;
   for (const m of seed.metrics) {
     try {
       const ev = await evaluateMetric(m, userId, date);
-      metricEvaluations.push(ev);
+      evaluations.push(ev);
     } catch (err) {
+      if (isSqlToolUnavailable(err)) {
+        skip.count++;
+        skipped = true;
+        continue;
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(
         `[pattern-match] metric 평가 실패 seed=${seed.name} metric=${m.metric_name}: ${errMsg}`,
       );
     }
   }
-  return metricEvaluations;
+  return { evaluations, skipped };
 };
 
 const evaluateSeedForDay = async (
@@ -81,22 +97,28 @@ const evaluateSeedForDay = async (
   stemMap: Map<string, number>,
   branchMap: Map<string, number>,
   strengthCuts: Map<string, BandCuts>,
+  skip: SkipCounter,
 ): Promise<SeedMatchResult> => {
   // Phase 8a: per-seed try/catch — 한 시드 trigger SQL 실패가 cron 전체를 죽이지 않게 격리.
   // 내부 metric try/catch는 trigger 통과 후 일부 metric만 fail하는 케이스 보호 → 보존.
   try {
     const triggerActivated = await evaluateTrigger(seed, ctx, stemMap, branchMap, strengthCuts);
 
-    const metricEvaluations: MetricEvaluation[] = triggerActivated
-      ? await evaluateSeedMetrics(seed, userId, date)
-      : [];
+    const { evaluations: metricEvaluations, skipped } = triggerActivated
+      ? await evaluateSeedMetrics(seed, userId, date, skip)
+      : { evaluations: [], skipped: false };
 
     // 풀셋 evidence-only 시드(매트릭 없음)는 채점 스킵 — matched=null
     // 마스터 #434 Phase 2: 60+일 evidence 누적 후 Phase 6 LLM 매트릭 제안 슬롯이 활용
     const isEvidenceOnly = seed.metrics.length === 0;
+    const anyPassed = metricEvaluations.some((e) => e.passed);
+    // 통과한 metric 없이 LLM 신호를 건너뛰었으면 false로 확정하지 않고 미채점(null)으로 둔다(#665).
+    // trigger_activated는 그대로 기록 — 아침 카드의 "오늘 발현 시드"는 신호 측정과 무관하다.
     const matched = isEvidenceOnly
       ? null
-      : triggerActivated && metricEvaluations.some((e) => e.passed);
+      : skipped && !anyPassed
+        ? null
+        : triggerActivated && anyPassed;
     return {
       seed,
       triggerActivated,
@@ -136,11 +158,13 @@ export const matchAllSeedsForDay = async (
   ]);
 
   const results: SeedMatchResult[] = [];
+  const skip: SkipCounter = { count: 0 };
   for (const seed of seeds) {
     results.push(
-      await evaluateSeedForDay(seed, ctx, userId, date, stemMap, branchMap, strengthCuts),
+      await evaluateSeedForDay(seed, ctx, userId, date, stemMap, branchMap, strengthCuts, skip),
     );
   }
+  logLlmSignalSkip('pattern-match', skip.count);
 
   const elapsedMs = Date.now() - t0;
   console.warn(

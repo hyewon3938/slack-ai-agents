@@ -2,7 +2,8 @@
 
 import { query } from '../db.js';
 import { addDays } from '../kst.js';
-import { computeSignalSeries } from '../pattern/series.js';
+import { type SignalSeriesResult, computeSignalSeries } from '../pattern/series.js';
+import { isSqlToolUnavailable, logLlmSignalSkip } from '../pattern/sql-tool-skip.js';
 import { computeUserDataStarts, signalDataStart } from '../pattern/data-window.js';
 import { loadSignalDefsByIds } from '../pattern/load-signal-defs.js';
 import { INSIGHT_THRESHOLDS } from '../insight-thresholds.js';
@@ -38,6 +39,7 @@ interface OpenForecastRow {
  * 직전 기간 open 예측 채점 — self-heal(period_end <= today, == 아님)로 놓친 전환 자동 회수.
  * 신호 시리즈를 기간 한정 집계 → measured_rate/delta/방향적중. 측정가능일 부족 시 unmeasurable(강제판정 금지).
  * baseline_rate는 절대 재계산 안 함(동결 불변식). UPDATE는 status='open' 가드(멱등).
+ * SQL 도구 연결이 없어 거절된 LLM 신호 예측은 open 그대로 두고 결과에서 뺀다 — 다음 실행이 다시 채점(#665).
  */
 export const scoreForecasts = async (
   userId: number,
@@ -61,6 +63,7 @@ export const scoreForecasts = async (
   const dataStarts = await computeUserDataStarts(userId);
 
   const out: ScoredEntry[] = [];
+  let skipped = 0;
   for (const row of openRes.rows) {
     const baseline = row.baseline_rate === null ? null : Number(row.baseline_rate);
     const direction = parseDirection(row.predicted_direction);
@@ -79,7 +82,15 @@ export const scoreForecasts = async (
       row.period_end,
     );
     const dataStart = signalDataStart(signal.domain, dataStarts);
-    const { series } = await computeSignalSeries(userId, signal, windowDates, dataStart);
+    let series: SignalSeriesResult['series'];
+    try {
+      ({ series } = await computeSignalSeries(userId, signal, windowDates, dataStart));
+    } catch (err) {
+      // 도구 연결 거절 → open 그대로 둠. unmeasurable로 확정하지 않고 다음 실행이 다시 채점 (#665)
+      if (!isSqlToolUnavailable(err)) throw err;
+      skipped++;
+      continue;
+    }
 
     // 기간 한정 집계: period_start ≤ d ≤ period_end인 날만(lead-in은 baseline 워밍업 전용).
     let measurable = 0;
@@ -118,6 +129,7 @@ export const scoreForecasts = async (
       sourceCell,
     });
   }
+  logLlmSignalSkip('Period Forecast', skipped);
   return out;
 };
 

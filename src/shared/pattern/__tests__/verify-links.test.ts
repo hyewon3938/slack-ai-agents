@@ -207,3 +207,42 @@ describe('verifyUserLinks', () => {
     );
   });
 });
+
+describe('verifyUserLinks — SQL 도구 연결 거절 (#665)', () => {
+  it('거절된 LLM 신호의 링크는 결과에서 빠지고(저장 안 됨) 로그는 한 번만 남는다', async () => {
+    const rejected = Object.assign(new Error('도구 연결 없음'), {
+      name: 'SqlToolUnavailableError',
+    });
+    vi.mocked(computeSignalSeries).mockImplementation(async (_u, signal) => {
+      if (signal.source === 'llm') throw rejected;
+      return { series: new Map(), raw: null };
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    links = [makeLink(1, 1, 10), makeLink(2, 1, 11), makeLink(3, 1, 12)];
+    seeds = [makeSeed(1)];
+    signals = [
+      makeSignalRow(10, { source: 'llm' }),
+      makeSignalRow(11, { source: 'llm' }),
+      makeSignalRow(12),
+    ];
+
+    const out = await verifyUserLinks(1, TODAY);
+
+    expect(out.map((l) => l.linkId)).toEqual([3]);
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(String(errSpy.mock.calls[0]?.[0])).toContain('LLM 신호 2개');
+    errSpy.mockRestore();
+    vi.mocked(computeSignalSeries).mockImplementation(
+      async (): Promise<SignalSeriesResult> => ({ series: new Map(), raw: null }),
+    );
+  });
+
+  it('도구 연결 거절이 아닌 오류는 그대로 올라간다', async () => {
+    vi.mocked(computeSignalSeries).mockRejectedValueOnce(new Error('다른 오류'));
+    links = [makeLink(1, 1, 10)];
+    seeds = [makeSeed(1)];
+    signals = [makeSignalRow(10, { source: 'llm' })];
+
+    await expect(verifyUserLinks(1, TODAY)).rejects.toThrow('다른 오류');
+  });
+});

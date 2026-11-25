@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockQuery = vi.fn();
 const mockConnect = vi.fn();
@@ -24,6 +24,9 @@ const {
   queryWithRowLimit,
   dryRunAffectedRows,
   disconnectDB,
+  isSqlToolPoolConnected,
+  setSqlToolPoolRequired,
+  SqlToolUnavailableError,
 } = await import('../db.js');
 const pg = (await import('pg')).default;
 
@@ -348,12 +351,104 @@ describe('db', () => {
       errorSpy.mockRestore();
     });
 
-    it('disconnectDB는 두 풀을 모두 닫는다', async () => {
+    it('신호 측정 SQL(queryReadOnly)도 도구 풀에서 읽기 전용으로 실행하고 타임아웃을 RESET으로 되돌린다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      await connectSqlToolDB('postgresql://sql_tool@localhost/test');
+      const toolConnect = vi.fn();
+      lastPool().connect = toolConnect;
+      const { client, calls } = makeReadOnlyClient({ rows: [{ n: 1 }], rowCount: 1 });
+      toolConnect.mockResolvedValue(client);
+      mockConnect.mockClear();
+
+      const result = await queryReadOnly('SELECT 1 AS n', 5000, 5);
+      expect(result.rows).toEqual([{ n: 1 }]);
+      expect(toolConnect).toHaveBeenCalledTimes(1);
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(calls).toContain('SET TRANSACTION READ ONLY');
+      expect(calls).toContain('RESET statement_timeout');
+      expect(calls).not.toContain('SET statement_timeout = 0');
+    });
+
+    it('연결 여부는 도구 풀이 열렸을 때만 true다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      await connectSqlToolDB('');
+      expect(isSqlToolPoolConnected()).toBe(false);
+      await connectSqlToolDB('postgresql://sql_tool@localhost/test');
+      expect(isSqlToolPoolConnected()).toBe(true);
+    });
+
+        it('disconnectDB는 두 풀을 모두 닫는다', async () => {
       await connectDB('postgresql://app@localhost/test');
       await connectSqlToolDB('postgresql://sql_tool@localhost/test');
       mockEnd.mockClear();
       await disconnectDB();
       expect(mockEnd).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('운영 필수 모드 — 도구 풀이 없으면 실행 거절 (#665)', () => {
+    afterEach(() => {
+      setSqlToolPoolRequired(false);
+    });
+
+    it('운영에서 도구 풀이 없으면 도구 함수 네 개 모두 기존 풀을 쓰지 않고 거절한다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      setSqlToolPoolRequired(true);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      await connectSqlToolDB('');
+      expect(warn).toHaveBeenCalledWith('[DB] SQL_TOOL_DATABASE_URL이 없어 SQL 도구 실행을 거절합니다');
+      warn.mockRestore();
+      mockConnect.mockClear();
+
+      await expect(queryReadOnlyWithTimeout('SELECT 1', 5000)).rejects.toThrow(SqlToolUnavailableError);
+      await expect(
+        queryWithRowLimit("UPDATE schedules SET title = 'x' WHERE user_id = 1", 5000, 50),
+      ).rejects.toThrow(SqlToolUnavailableError);
+      await expect(dryRunAffectedRows('DELETE FROM schedules WHERE user_id = 1', 5000)).rejects.toThrow(
+        SqlToolUnavailableError,
+      );
+      await expect(queryReadOnly('SELECT 1', 5000, 5)).rejects.toThrow(SqlToolUnavailableError);
+      expect(mockConnect).not.toHaveBeenCalled();
+    });
+
+    it('운영에서 도구 풀 연결에 실패해도 거절하고, 앱 고정 쿼리는 기존 풀로 계속 돈다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      setSqlToolPoolRequired(true);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockConnect.mockRejectedValueOnce(new Error('auth failed'));
+      await connectSqlToolDB('postgresql://sql_tool@localhost/test');
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[DB] SQL 도구 전용 풀 연결 실패, SQL 도구 실행을 거절합니다:',
+        expect.any(Error),
+      );
+      errorSpy.mockRestore();
+
+      await expect(queryReadOnlyWithTimeout('SELECT 1', 5000)).rejects.toThrow(SqlToolUnavailableError);
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+      await query('SELECT 1');
+      expect(mockQuery).toHaveBeenCalledWith('SELECT 1', undefined);
+    });
+
+    it('로컬에서는 도구 풀이 없으면 기존 풀로 대신한다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      setSqlToolPoolRequired(false);
+      await connectSqlToolDB('');
+      const { client } = makeReadOnlyClient({ rows: [], rowCount: 0 });
+      mockConnect.mockResolvedValue(client);
+      await expect(queryReadOnly('SELECT 1', 5000, 5)).resolves.toBeDefined();
+      expect(mockConnect).toHaveBeenCalled();
+    });
+
+    it('운영에서도 도구 풀이 열려 있으면 그 풀에서 실행한다', async () => {
+      await connectDB('postgresql://app@localhost/test');
+      setSqlToolPoolRequired(true);
+      await connectSqlToolDB('postgresql://sql_tool@localhost/test');
+      const toolConnect = vi.fn();
+      lastPool().connect = toolConnect;
+      const { client } = makeReadOnlyClient({ rows: [], rowCount: 0 });
+      toolConnect.mockResolvedValue(client);
+      await queryReadOnlyWithTimeout('SELECT 1', 5000);
+      expect(toolConnect).toHaveBeenCalledTimes(1);
     });
   });
 

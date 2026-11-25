@@ -11,14 +11,18 @@
  *
  * 실행(prod): ssh oracle-prod "docker exec slack-ai-agents node dist/ops/rebaseline-pattern-links.js [--user N]"
  * 실행(dev):  yarn tsx src/ops/rebaseline-pattern-links.ts [--user N]
- *   배포(머지된 새 측정 코드) 후 실행. 컨테이너 env(DATABASE_URL·SLACK_BOT_TOKEN) 사용.
+ *   배포(머지된 새 측정 코드) 후 실행. 컨테이너 env(DATABASE_URL·SQL_TOOL_DATABASE_URL·SLACK_BOT_TOKEN) 사용.
+ *   봇과 같이 SQL 도구 전용 연결을 연다 — LLM 신호 측정 SQL은 그 연결로만 돈다(#665).
+ *   운영 필수인데 연결이 없으면 강등 전에 오류로 끝난다(종료 코드 1). 필수가 아니면 기존 풀로 진행한다.
  *   운영 절차: docs/ops/verification-rebaseline.md
  */
 
+import { fileURLToPath } from 'node:url';
 import { WebClient } from '@slack/web-api';
 import { CONFIG } from '../shared/config.js';
 import { connectDB, disconnectDB, query } from '../shared/db.js';
 import { getTodayISO } from '../shared/kst.js';
+import { startSqlToolPool } from '../shared/sql-tools/privilege-sync.js';
 import { verifyUserLinks } from '../shared/pattern/verify-links.js';
 import { persistLinkVerification } from '../cron/weekly-verification/persist-links.js';
 import { postBlockMessage } from '../shared/slack.js';
@@ -112,10 +116,18 @@ const rebaselineUser = async (client: WebClient, target: Target, today: string):
   }
 };
 
-const main = async (): Promise<void> => {
-  const { userId } = parseArgs(process.argv.slice(2));
+export const main = async (argv: string[] = process.argv.slice(2)): Promise<void> => {
+  const { userId } = parseArgs(argv);
   await connectDB(CONFIG.db.url);
   try {
+    const required = CONFIG.db.sqlToolRequired;
+    const connected = await startSqlToolPool(CONFIG.db.sqlToolUrl, { required });
+    if (required && !connected) {
+      // 강등 전에 멈춘다 — 일부만 반영된 상태로 남기지 않는다(필수가 아니면 기존 풀로 진행).
+      throw new Error(
+        'SQL 도구 전용 연결이 없어 재기준선을 실행하지 않음. 연결을 고친 뒤 다시 실행',
+      );
+    }
     const today = getTodayISO();
     const targets = await resolveTargets(userId);
     if (targets.length === 0) {
@@ -129,13 +141,16 @@ const main = async (): Promise<void> => {
     }
     console.warn('[Rebaseline] 완료.');
   } finally {
-    await disconnectDB();
+    await disconnectDB(); // 도구 풀까지 함께 닫는다
   }
 };
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('[Rebaseline] 실패:', err);
-    process.exit(1);
-  });
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  main()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('[Rebaseline] 실패:', err);
+      process.exit(1);
+    });
+}

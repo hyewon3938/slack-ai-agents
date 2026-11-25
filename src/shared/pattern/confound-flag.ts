@@ -19,6 +19,7 @@ import { loadActiveSeeds } from './match-seeds.js';
 import type { SajuSeedWithMetrics } from './match-types.js';
 import { computeSeedActivationMap } from './series-map.js';
 import { computeSignalSeries } from './series.js';
+import { isSqlToolUnavailable, logLlmSignalSkip } from './sql-tool-skip.js';
 import type { DaySeries } from './types.js';
 import { toSignalDef, type SignalDefRow } from './load-signal-defs.js';
 
@@ -84,13 +85,21 @@ const loadLinkSignalSeries = async (
   );
   const signalStartById = new Map<number, string | null>();
   const signalSeriesById = new Map<number, DaySeries>();
+  let skipped = 0;
   for (const row of signalRes.rows) {
     const signal = toSignalDef(row);
     const start = signalDataStart(signal.domain, dataStarts);
     signalStartById.set(row.id, start);
-    const r = await computeSignalSeries(userId, signal, windowDates, start);
-    signalSeriesById.set(row.id, r.series);
+    try {
+      const r = await computeSignalSeries(userId, signal, windowDates, start);
+      signalSeriesById.set(row.id, r.series);
+    } catch (err) {
+      // 도구 연결 거절 → 시리즈 누락으로 두어 그 링크의 플래그·조정을 이번 실행에서 건너뜀 (#665)
+      if (!isSqlToolUnavailable(err)) throw err;
+      skipped++;
+    }
   }
+  logLlmSignalSkip('Confound', skipped);
   return { signalStartById, signalSeriesById };
 };
 

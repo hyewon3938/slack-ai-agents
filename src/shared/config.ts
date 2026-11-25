@@ -40,8 +40,13 @@ export const CONFIG = {
   },
   db: {
     url: requireEnv('DATABASE_URL'),
-    /** SQL 도구 전용 역할 연결 문자열 (ADR-0067). 없으면 SQL 도구가 기존 풀을 쓴다 */
+    /** SQL 도구 전용 역할 연결 문자열 (ADR-0067). 도구 풀이 없을 때의 동작은 sqlToolRequired가 정한다 */
     sqlToolUrl: process.env['SQL_TOOL_DATABASE_URL'] ?? '',
+    /**
+     * 도구 풀 필수 여부 (#665). 운영 이미지는 Dockerfile이 NODE_ENV=production을 넣어 true가 되고,
+     * 도구 풀이 없으면 SQL 도구가 실행을 거절한다. 로컬 개발(yarn dev)과 테스트는 false라 기존 풀로 대신한다.
+     */
+    sqlToolRequired: process.env['NODE_ENV'] === 'production',
   },
   dbProxy: {
     apiKey: process.env['DB_PROXY_API_KEY'] ?? '',

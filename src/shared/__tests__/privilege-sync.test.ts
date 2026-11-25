@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { setSqlToolPoolRequired } from '../db.js';
 import {
   buildPrivilegeStatements,
   quoteIdent,
@@ -61,9 +62,11 @@ describe('buildPrivilegeStatements', () => {
     expect(s).toContain('GRANT SELECT ON TABLE "ganji_master" TO "sql_tool"');
   });
 
-  it('알림 설정은 SELECT·UPDATE만, 변경 이력은 SELECT·INSERT와 삭제 사유 컬럼 UPDATE만 준다', () => {
+  it('알림 설정은 SELECT와 시간 컬럼 UPDATE만, 변경 이력은 SELECT·INSERT와 삭제 사유 컬럼 UPDATE만 준다', () => {
     const s = build();
-    expect(s).toContain('GRANT SELECT, UPDATE ON TABLE "notification_settings" TO "sql_tool"');
+    expect(s).toContain('GRANT SELECT ON TABLE "notification_settings" TO "sql_tool"');
+    expect(s).toContain('GRANT UPDATE ("time_value") ON TABLE "notification_settings" TO "sql_tool"');
+    expect(s.some((sql) => sql.includes('UPDATE ON TABLE "notification_settings"'))).toBe(false);
     expect(s).toContain('GRANT SELECT, INSERT ON TABLE "schedule_changes" TO "sql_tool"');
     expect(s).toContain(
       'GRANT UPDATE ("delete_reason_category", "delete_reason_text") ON TABLE "schedule_changes" TO "sql_tool"',
@@ -113,51 +116,94 @@ describe('startSqlToolPool', () => {
   const TOOL_URL = 'postgresql://sql_tool@localhost/test';
   type Connect = (url: string) => Promise<void>;
   type Sync = (url: string) => Promise<boolean>;
+  const LOCAL = { required: false };
+  const PROD = { required: true };
   const setup = (
     sync: Sync,
   ): {
     connect: ReturnType<typeof vi.fn<Connect>>;
-    deps: { sync: ReturnType<typeof vi.fn<Sync>>; connect: ReturnType<typeof vi.fn<Connect>> };
+    deps: {
+      sync: ReturnType<typeof vi.fn<Sync>>;
+      connect: ReturnType<typeof vi.fn<Connect>>;
+      isConnected: () => boolean;
+    };
   } => {
-    const connect = vi.fn<Connect>(async () => undefined);
-    return { connect, deps: { sync: vi.fn<Sync>(sync), connect } };
+    // 실제 풀 대신 연결 함수가 불렸는지로 연결 여부를 흉내 낸다
+    let opened = false;
+    const connect = vi.fn<Connect>(async (url) => {
+      opened = url !== '';
+    });
+    return { connect, deps: { sync: vi.fn<Sync>(sync), connect, isConnected: () => opened } };
   };
 
-  it('동기화에 성공하면 도구 풀을 연다', async () => {
+  let log: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setSqlToolPoolRequired(false);
+  });
+
+  it('동기화에 성공하면 도구 풀을 열고 전용 역할 연결을 true로 돌려준다', async () => {
     const { connect, deps } = setup(async () => true);
-    await startSqlToolPool(TOOL_URL, deps);
+    await expect(startSqlToolPool(TOOL_URL, LOCAL, deps)).resolves.toBe(true);
     expect(deps.sync).toHaveBeenCalledWith(TOOL_URL);
     expect(connect).toHaveBeenCalledWith(TOOL_URL);
+    expect(log).toHaveBeenCalledWith('[DB] SQL 도구 전용 역할 연결: true (운영 필수: false)');
   });
 
   it('동기화를 건너뛰면 도구 풀을 열지 않고 경고한다', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { connect, deps } = setup(async () => false);
-    await startSqlToolPool(TOOL_URL, deps);
+    await expect(startSqlToolPool(TOOL_URL, LOCAL, deps)).resolves.toBe(false);
     expect(connect).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       '[DB] 도구 역할 권한을 맞추지 못해 SQL 도구가 기존 연결 풀을 씁니다',
     );
-    warn.mockRestore();
   });
 
   it('동기화가 실패해도 시작을 멈추지 않고 도구 풀을 열지 않는다', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { connect, deps } = setup(async () => {
       throw new Error('permission denied');
     });
-    await expect(startSqlToolPool(TOOL_URL, deps)).resolves.toBeUndefined();
+    await expect(startSqlToolPool(TOOL_URL, LOCAL, deps)).resolves.toBe(false);
     expect(error).toHaveBeenCalled();
     expect(connect).not.toHaveBeenCalled();
-    warn.mockRestore();
-    error.mockRestore();
   });
 
   it('연결 문자열이 비었으면 동기화 없이 연결 함수에 경고를 맡긴다', async () => {
     const { connect, deps } = setup(async () => true);
-    await startSqlToolPool('', deps);
+    await expect(startSqlToolPool('', LOCAL, deps)).resolves.toBe(false);
     expect(deps.sync).not.toHaveBeenCalled();
     expect(connect).toHaveBeenCalledWith('');
+  });
+
+  it('운영에서 도구 풀이 열리지 않으면 거절 상태를 에러 로그로 남긴다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { deps } = setup(async () => false);
+    await expect(startSqlToolPool(TOOL_URL, PROD, deps)).resolves.toBe(false);
+    expect(warn).toHaveBeenCalledWith('[DB] 도구 역할 권한을 맞추지 못해 SQL 도구 실행을 거절합니다');
+    expect(log).toHaveBeenCalledWith('[DB] SQL 도구 전용 역할 연결: false (운영 필수: true)');
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('실행을 거절합니다'));
+  });
+
+  it('운영에서 연결 문자열이 없어도 시작을 멈추지 않고 거절 상태로 남는다', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { deps } = setup(async () => true);
+    await expect(startSqlToolPool('', PROD, deps)).resolves.toBe(false);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('실행을 거절합니다'));
+  });
+
+  it('운영에서 도구 풀이 열리면 거절 로그를 남기지 않는다', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { deps } = setup(async () => true);
+    await expect(startSqlToolPool(TOOL_URL, PROD, deps)).resolves.toBe(true);
+    expect(error).not.toHaveBeenCalled();
   });
 });

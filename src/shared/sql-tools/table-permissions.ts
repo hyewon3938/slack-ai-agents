@@ -37,8 +37,8 @@ export const TABLE_PERMISSIONS: Readonly<Record<string, TableAccess>> = {
   sleep_events: FULL,
   reminders: FULL,
   custom_instructions: FULL,
-  /** 슬롯은 고정이라 시간 변경만 한다 (prompt-sections.ts 알림 설정 규칙) */
-  notification_settings: { access: 'write', insert: false, update: true, delete: false },
+  /** 슬롯은 고정이라 시간 컬럼만 바꾼다 (prompt-sections.ts REMINDER_SECTION 알림 설정 규칙) */
+  notification_settings: { access: 'write', insert: false, update: ['time_value'], delete: false },
   /** 일정 변경 이력: 트리거가 INSERT하고, 도구는 삭제 사유 컬럼만 채운다 */
   schedule_changes: {
     access: 'write',

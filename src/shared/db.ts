@@ -12,6 +12,31 @@ types.setTypeParser(1184, (val: string) => val); // TIMESTAMPTZ
 let pool: pg.Pool | null = null;
 /** SQL 도구 전용 역할로 접속하는 두 번째 풀 (ADR-0067). LLM이 쓴 SQL만 여기서 실행한다 */
 let toolPool: pg.Pool | null = null;
+/**
+ * 도구 풀이 필수인지 (#665). 운영에서는 true라 도구 풀이 없으면 LLM이 쓴 SQL을 기존 풀로 대신 실행하지 않고
+ * 거절한다. 로컬 개발과 테스트는 false라 기존 풀로 대신한다.
+ */
+let toolPoolRequired = false;
+
+/** 도구 풀이 없어 LLM이 쓴 SQL 실행을 거절할 때 던지는 오류 */
+export class SqlToolUnavailableError extends Error {
+  constructor() {
+    super('SQL 도구 전용 연결이 없어 실행하지 않았어. 운영자가 도구 연결 설정을 확인해야 해.');
+    this.name = 'SqlToolUnavailableError';
+  }
+}
+
+/** 도구 풀 필수 여부 설정. 봇 시작 시 도구 풀을 열기 전에 한 번 부른다 */
+export const setSqlToolPoolRequired = (required: boolean): void => {
+  toolPoolRequired = required;
+};
+
+/** 도구 풀이 전용 역할로 열려 있는지. 도구 풀은 권한 동기화가 성공한 뒤에만 열린다 */
+export const isSqlToolPoolConnected = (): boolean => toolPool !== null;
+
+/** 도구 풀이 없을 때의 동작을 시작 로그에 붙일 문구 */
+export const sqlToolFallbackNote = (): string =>
+  toolPoolRequired ? 'SQL 도구 실행을 거절합니다' : 'SQL 도구가 기존 연결 풀을 씁니다';
 
 const createPool = (databaseUrl: string, max: number): pg.Pool => {
   const useSSL = databaseUrl.includes('sslmode=require');
@@ -40,7 +65,8 @@ export const connectDB = async (databaseUrl: string): Promise<void> => {
 
 /**
  * SQL 도구 전용 풀 초기화 (크기 2).
- * 연결 문자열이 없거나 연결에 실패하면 로그를 남기고 기존 풀로 대신한다. 봇 시작은 멈추지 않는다.
+ * 연결 문자열이 없거나 연결에 실패하면 로그를 남기고 풀을 열지 않는다. 그 뒤 도구 SQL은 필수 여부에 따라
+ * 기존 풀로 대신하거나 거절된다. 봇 시작은 멈추지 않는다.
  */
 export const connectSqlToolDB = async (sqlToolUrl: string): Promise<void> => {
   if (toolPool) {
@@ -48,7 +74,7 @@ export const connectSqlToolDB = async (sqlToolUrl: string): Promise<void> => {
     return;
   }
   if (sqlToolUrl === '') {
-    console.warn('[DB] SQL_TOOL_DATABASE_URL이 없어 SQL 도구가 기존 연결 풀을 씁니다');
+    console.warn(`[DB] SQL_TOOL_DATABASE_URL이 없어 ${sqlToolFallbackNote()}`);
     return;
   }
 
@@ -60,7 +86,7 @@ export const connectSqlToolDB = async (sqlToolUrl: string): Promise<void> => {
     await candidate.end().catch(() => {
       /* 무시 */
     });
-    console.error('[DB] SQL 도구 전용 풀 연결 실패, SQL 도구가 기존 연결 풀을 씁니다:', err);
+    console.error(`[DB] SQL 도구 전용 풀 연결 실패, ${sqlToolFallbackNote()}:`, err);
     return;
   }
   toolPool = candidate;
@@ -76,8 +102,14 @@ const getPool = (): pg.Pool => {
   return pool;
 };
 
-/** SQL 도구 풀 반환. 전용 풀이 없으면 기존 풀로 대신한다 */
-const getToolPool = (): pg.Pool => toolPool ?? getPool();
+/**
+ * SQL 도구 풀 반환. 전용 풀이 없으면 필수일 때(운영)는 거절하고, 아닐 때(로컬·테스트)는 기존 풀로 대신한다.
+ */
+const getToolPool = (): pg.Pool => {
+  if (toolPool) return toolPool;
+  if (toolPoolRequired) throw new SqlToolUnavailableError();
+  return getPool();
+};
 
 /**
  * 도구 연결의 제한 시간 정리. 0으로 두면 역할 기본값으로 걸어 둔 제한 시간까지 풀리므로
@@ -219,13 +251,14 @@ export const queryWithRowLimit = async <T extends pg.QueryResultRow = pg.QueryRe
  * 읽기 전용 트랜잭션 쿼리 (#477 P5b 게이트 #2, ADR-0040).
  * LLM 자율 신호 SQL 실행 격리용 — `SET TRANSACTION READ ONLY`로 INSERT/UPDATE/DELETE/DDL을
  * PG가 거부(정적 검증 게이트 #1 우회 백스톱) + row cap 초과 시 throw. 항상 ROLLBACK(쓰기 없음).
+ * LLM이 쓴 SQL이라 SQL 도구 풀에서 실행한다 (#665).
  */
 export const queryReadOnly = async <T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   timeoutMs: number,
   maxRows: number,
 ): Promise<pg.QueryResult<T>> => {
-  const p = getPool();
+  const p = getToolPool();
   const client = await p.connect();
   try {
     await client.query(`SET statement_timeout = ${Number(timeoutMs)}`);
@@ -246,7 +279,7 @@ export const queryReadOnly = async <T extends pg.QueryResultRow = pg.QueryResult
     });
     throw err;
   } finally {
-    await client.query('SET statement_timeout = 0').catch(() => {
+    await client.query(RESET_TIMEOUT).catch(() => {
       /* 무시 */
     });
     client.release();

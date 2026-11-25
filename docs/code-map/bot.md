@@ -4,15 +4,15 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 190개, 21790줄이고 테스트 파일은 81개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 191개, 21968줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `app.ts` | 108 |  |  |
-| `db-proxy.ts` | 232 |  | function: `handleRequest`, `startDBProxy` |
+| `app.ts` | 109 |  |  |
+| `db-proxy.ts` | 235 |  | function: `handleRequest`, `startDBProxy` |
 | `router.ts` | 56 |  | function: `registerAgent`, `registerMessageHandler`<br>type: `AgentHandler` |
 
 테스트 파일 2개
@@ -36,7 +36,7 @@
 | `hypothesis-discovery-rank.ts` | 65 | 패턴 발굴 엔진 후보 단계 — 생존 쌍을 카드·pending 링크용 후보로 바꾸고 top-N으로 자른다 (#477 P5a, ADR-0039). | function: `toDiscoveryCandidate`, `rankTopN` |
 | `hypothesis-discovery-scan.ts` | 167 | 패턴 발굴 엔진 스캔 단계 — 여집합 (시드 × 신호) 쌍의 off-day 2×2 + 효과크기 사전선별 (#477 P5a, ADR-0039). | function: `scanSurvivors` |
 | `hypothesis-discovery-types.ts` | 55 | 패턴 발굴 엔진 타입 — 발굴 후보(카드·pending 링크용)와 사전선별 생존 쌍 (#477 P5a, ADR-0039). | type: `DiscoveryCandidate`, `Survivor` |
-| `hypothesis-discovery.ts` | 103 | 패턴 발굴 엔진 — 링크 없는 (시드 × 신호) 여집합을 off-day 대조로 스캔 (#477 P5a, ADR-0039). | function: `discoverCandidates` |
+| `hypothesis-discovery.ts` | 104 | 패턴 발굴 엔진 — 링크 없는 (시드 × 신호) 여집합을 off-day 대조로 스캔 (#477 P5a, ADR-0039). | function: `discoverCandidates` |
 | `index.ts` | 169 |  | function: `createInsightAgent` |
 | `llm-signal-cards.ts` | 97 | LLM 자율 신호 제안 승인 카드 — #477 P5b (ADR-0040, P5a 승인 게이트 재사용). | function: `encodeLlmSignalPayload`, `decodeLlmSignalPayload`, `buildLlmSignalCard`, `buildNoSignalSuggestionMessage`<br>const: `LLM_SIGNAL_APPROVE_ACTION_ID`, `LLM_SIGNAL_REJECT_ACTION_ID`<br>type: `LlmSignalPayload`, `LlmSignalCardInput` |
 | `pattern-seed-fast-path.ts` | 108 | 사주 시드 토글 fast path. | function: `tryPatternSeedFastPath`<br>const: `SAJU_SEED_LIST_RE`, `SAJU_SEED_LIST_ALL_RE`, `SAJU_SEED_OFF_RE`, `SAJU_SEED_ON_RE` |
@@ -135,10 +135,10 @@
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `heartbeat-degraded.ts` | 74 | heartbeat 저하 사이클 장부 (#621). | function: `recordDegradedCycle`, `buildDegradedReport`, `dropDegradedCycles`, `getDegradedHistory`<br>type: `DegradedCycle` |
-| `rebaseline-pattern-links.ts` | 141 | 패턴 검증 1회성 재기준선 — admin script (#523 Phase 0, ADR-0048). |  |
+| `rebaseline-pattern-links.ts` | 156 | 패턴 검증 1회성 재기준선 — admin script (#523 Phase 0, ADR-0048). | function: `main` |
 | `uptime-heartbeat.ts` | 186 | 업타임 dead-man's-switch heartbeat (인프라 레벨). | function: `loadHeartbeatConfig`, `checkBotHealth`, `checkWebHealth`, `sendPing`, `runHeartbeatOnce`, `startUptimeHeartbeat`<br>type: `HeartbeatConfig` |
 
-테스트 파일 1개
+테스트 파일 2개
 
 ## `src/shared`
 
@@ -146,8 +146,8 @@
 | --- | ---: | --- | --- |
 | `agent-loop.ts` | 90 |  | function: `runAgentLoop` |
 | `chat-history.ts` | 72 | 채널별 대화 맥락 저장 (인메모리 슬라이딩 윈도우) | class: `ChatHistory` |
-| `config.ts` | 50 |  | const: `CONFIG` |
-| `db.ts` | 319 |  | function: `connectDB`, `connectSqlToolDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryReadOnlyWithTimeout`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>type: `DryRunResult` |
+| `config.ts` | 55 |  | const: `CONFIG` |
+| `db.ts` | 352 |  | function: `setSqlToolPoolRequired`, `isSqlToolPoolConnected`, `sqlToolFallbackNote`, `connectDB`, `connectSqlToolDB`, `query`, `withTransaction`, `queryOne`, `queryWithClient`, `queryReadOnlyWithTimeout`, `queryWithRowLimit`, `queryReadOnly`, `dryRunAffectedRows`, `ensureReturningClause`, `disconnectDB`<br>class: `SqlToolUnavailableError`<br>type: `DryRunResult` |
 | `fortune-format.ts` | 18 | fortune_analyses 표시 포맷터. | function: `formatFortuneText`<br>type: `FortuneFormatInput` |
 | `insight-labels.ts` | 266 | 카드 라벨 레이어 — 시드·신호 내부 식별자를 사용자가 읽을 수 있는 자연어로 (#504 Phase 2, ADR-0045). | function: `seedLabel`, `signalLabel`<br>const: `SEED_LABEL_OVERRIDES`<br>type: `SeedLabelInput`, `SignalLabelInput` |
 | `insight-thresholds.ts` | 129 |  | const: `INSIGHT_THRESHOLDS` |
@@ -225,7 +225,7 @@
 | `bayesian-posterior.ts` | 92 | Beta-Binomial Bayesian posterior 헬퍼 — ADR-0024 실행 (마스터 #434 Phase 7). | function: `updatePosterior`, `posteriorMean`, `credibleInterval`, `cumulativePosteriorFromHitMiss`, `empiricalBetaPrior`<br>type: `BetaPosterior` |
 | `binarize.ts` | 83 | 윈도우 일자 배열 + sql 신호 시리즈 이진화 (pattern-verification에서 분리). | function: `buildWindowDates`, `binarizeSqlSeries` |
 | `confound-calc.ts` | 228 | 교란 플래그·MH 층화 조정 순수 계산 (confound에서 분리). | function: `computeOverlap`, `flagConfoundersForLink`, `buildStrata`, `classifyVerdict`, `adjustConfounders`<br>type: `AdjustInput` |
-| `confound-flag.ts` | 200 | 교란 플래그 로더 (confound에서 분리). | function: `flagConfounds` |
+| `confound-flag.ts` | 209 | 교란 플래그 로더 (confound에서 분리). | function: `flagConfounds` |
 | `confound-types.ts` | 63 | 교란 플래그·조정 타입 (confound에서 분리). | type: `SuspectedConfounder`, `ConfoundVerdict`, `AdjustedConfounder`, `ConfoundData`, `ConfoundResult`, `ConfoundThresholds`, `ConfoundAdjustThresholds`, `ConfoundCandidate` |
 | `contingency.ts` | 166 | 2×2 분할표·일자 시퀀스·판정 순수 계산 (pattern-verification에서 분리). | function: `buildContingency`, `buildDaySequence`, `splitHalvesConsistent`, `verifyContingency`, `classifyVerdict`, `statusForVerdict` |
 | `data-window.ts` | 145 | 데이터-존재 윈도우 계산 (pattern-verification에서 분리). | function: `computeUserDataStarts`, `signalDataStart`, `seedDataStart`, `maxDate`, `enrollmentStart`<br>type: `UserDataStarts` |
@@ -233,7 +233,7 @@
 | `load-signal-defs.ts` | 57 | 신호 정의 로더 (pattern-verification에서 분리). | function: `toSignalDef`, `querySignalDefRows`, `loadSignalDefsByIds`<br>type: `SignalDefRow` |
 | `match-aux-types.ts` | 126 | life_signal trigger_aux 타입과 type guard (pattern-match에서 분리). | function: `isLifeSignalAux`<br>type: `WeekdayDow`, `WeekdayAux`, `WeekdayGroupAux`, `MonthPositionAux`, `SeasonAux`, `CalendarEventAux`, `ThresholdAux`, `BehaviorSignalName`, `BehaviorBaselineAux`, `LifeSignalAux` |
 | `match-context.ts` | 85 | 본명·일운 컨텍스트 로드 (pattern-match에서 분리). | function: `loadNatalContext`, `getDailyContext` |
-| `match-day.ts` | 176 | 하루치 시드 매칭과 결과 기록 (pattern-match에서 분리). | function: `buildNameIdMap`, `loadStrengthCutpoints`, `matchAllSeedsForDay`, `recordDailyMatches` |
+| `match-day.ts` | 200 | 하루치 시드 매칭과 결과 기록 (pattern-match에서 분리). | function: `buildNameIdMap`, `loadStrengthCutpoints`, `matchAllSeedsForDay`, `recordDailyMatches` |
 | `match-metric.ts` | 197 | 신호(메트릭) 평가 (pattern-match에서 분리). | function: `runMetricSql`, `runLlmSignalSql`, `runnerForSource`, `evaluateMetric`<br>type: `MetricRunner` |
 | `match-seeds.ts` | 50 | 활성 시드 로드 (pattern-match에서 분리). | function: `loadActiveSeeds` |
 | `match-trigger-lookups.ts` | 128 | 트리거 평가용 조회 헬퍼와 지지 관계 캐시 (pattern-match에서 분리). | function: `loadBranchRelations`, `lookupSibiunsung`, `isStringArray`, `getNumberField`, `pickPillarByLevel`, `pillarSetOf`, `__resetCacheForTest`<br>const: `ELEMENT_BY_STEM`, `ELEMENT_BY_BRANCH` |
@@ -242,19 +242,20 @@
 | `mirror-signal.ts` | 112 | 거울 신호 정의 보장 (pattern-verification에서 분리). | function: `ensureMirrorSignalDef`<br>type: `MirrorSignalOutcome`, `MirrorSignalResult` |
 | `quantile.ts` | 69 | 분위수 컷 + 밴드 분류 순수 함수 — #477 P4a (ADR-0036). | function: `isBand`, `quantileSorted`, `tertileCuts`, `classifyBand`<br>type: `BandCuts`, `Band` |
 | `seed-saturation.ts` | 211 | 포화 시드 양방향 가드 (#508 P③, ADR-0046). | function: `isSaturated`, `isDesaturated`, `runSaturationSweep`<br>const: `SATURATION_REASON`<br>type: `SweepSeed`, `SaturationSweepResult` |
-| `series-map.ts` | 71 | 신호·시드 시리즈 일괄 계산 — 검증·발굴·교란 진입점이 공유하는 헬퍼. | function: `computeSignalSeriesMap`, `computeSeedActivationMap` |
-| `series.ts` | 212 | 신호·시드 활성 시리즈 계산 (pattern-verification에서 분리). | function: `computeSignalSeries`, `splitRawByActivation`, `computeTargetStrengthSeries`, `computeSeedActivationSeries`, `lastActivationDate`<br>type: `SignalSeriesResult` |
+| `series-map.ts` | 82 | 신호·시드 시리즈 일괄 계산 — 검증·발굴·교란 진입점이 공유하는 헬퍼. | function: `computeSignalSeriesMap`, `computeSeedActivationMap` |
+| `series.ts` | 216 | 신호·시드 활성 시리즈 계산 (pattern-verification에서 분리). | function: `computeSignalSeries`, `splitRawByActivation`, `computeTargetStrengthSeries`, `computeSeedActivationSeries`, `lastActivationDate`<br>type: `SignalSeriesResult` |
 | `signal-defs.ts` | 106 | signal_defs 재생성 가드 — #557 (2026-07 감사 S7). | function: `findEquivalentSignal`<br>type: `SignalIdentity`, `EquivalentDecision` |
 | `signal-sql-guard.ts` | 187 | LLM 신호 SQL 게이트 #1 — 정적 검증 (#477 P5b, ADR-0040). | function: `validateSignalSql`<br>const: `SIGNAL_ROW_CAP`, `SIGNAL_TABLE_WHITELIST` |
+| `sql-tool-skip.ts` | 23 | SQL 도구 전용 연결이 없을 때의 LLM 신호 건너뛰기 (#665). | function: `isSqlToolUnavailable`, `logLlmSignalSkip` |
 | `stats-evalue.ts` | 74 | e-value test martingale (stats에서 분리, 순수·의존 없음) — P3, ADR-0034. | function: `evalueTestMartingale`<br>const: `DEFAULT_EVALUE_OPTIONS`<br>type: `DayObservation`, `EvalueOptions` |
 | `stats-table.ts` | 120 | 2×2 표 기반 검정과 다중 비교 보정 (stats에서 분리, 순수·의존 없음) — ADR-0032 통계 스택. | function: `fisherExact`, `bhFdr`, `mantelHaenszelRR`<br>type: `Stratum2x2` |
 | `stats.ts` | 167 | 순수 통계 알고리즘 (의존 없음) — #477 P3 (ADR-0032 통계 스택). | function: `mannWhitneyU`, `hodgesLehmann`, `blockPermutationP`<br>type: `MannWhitneyResult` |
 | `strength-cutpoints.ts` | 56 | 강도 분위수 컷 산출 (pattern-verification에서 분리). | function: `computeStrengthCutpoints`<br>type: `StrengthCutpoint` |
 | `types.ts` | 107 | off-day 대조 검증 엔진의 공용 타입 (pattern-verification에서 분리). | type: `SignalDirection`, `LinkLifecycleStatus`, `Verdict`, `DaySeries`, `SignalDef`, `Contingency`, `ContingencyVerification`, `LinkVerification` |
 | `verify-link-calc.ts` | 197 | 링크 1건 검증 계산과 일괄 보정 (verify-links에서 분리, DB 접근 없음). | function: `buildLinkInterim`, `finalizeVerifications`<br>type: `ActiveLinkRow`, `LinkInterimDeps` |
-| `verify-links.ts` | 122 | 사용자 링크 주간 검증 (pattern-verification에서 분리). | function: `verifyUserLinks` |
+| `verify-links.ts` | 123 | 사용자 링크 주간 검증 (pattern-verification에서 분리). | function: `verifyUserLinks` |
 
-테스트 파일 3개
+테스트 파일 4개
 
 ## `src/shared/period`
 
@@ -263,7 +264,7 @@
 | `forecast-generate.ts` | 164 | 예측 장부 — 사전등록 예측 생성. | function: `generateForecasts` |
 | `forecast-ledger.ts` | 47 | 예측 장부 — fast path 카드용 장부 로드. | function: `loadLedger` |
 | `forecast-rows.ts` | 81 | 예측 장부 — DB 행과 엔트리 변환, 기간별 예측 행 로드. | function: `parseDirection`, `parseSourceCell`, `toForecastEntry`, `toScoredEntry`, `loadForecastsForPeriod`<br>const: `FORECAST_COLUMNS`<br>type: `ForecastDbRow` |
-| `forecast-score.ts` | 146 | 예측 장부 — 기간 종료 뒤 사후 채점. | function: `scoreForecasts` |
+| `forecast-score.ts` | 158 | 예측 장부 — 기간 종료 뒤 사후 채점. | function: `scoreForecasts` |
 | `interpretation-derive.ts` | 30 | 기간 해석 — 기간 pillar의 십성·오행·합충 결정론 도출. | function: `derivePeriodContext` |
 | `interpretation-labels.ts` | 28 | 기간 해석 — 서사·렌더 공용 라벨과 고정 문구. | const: `DOMAIN_LABEL`, `PERIOD_LABEL`, `LADDER_STATUS`, `TRANSFER_HEDGE` |
 | `interpretation-narrative.ts` | 111 | 기간 해석 — LLM 서사 생성과 결정론 fallback. | function: `composeNarrative` |
@@ -305,7 +306,7 @@
 | --- | ---: | --- | --- |
 | `definitions.ts` | 57 | LLM에 노출하는 SQL 도구 정의. | const: `SQL_TOOLS` |
 | `execute.ts` | 188 | SQL 도구 실행기: post-modify 훅 · 확인 카드 전송 · 감사 로그 · 실행. | function: `setPostModifyHook`, `setConfirmCardSender`, `clearConfirmCardSender`, `executeSQLTool`<br>type: `PostModifyHook`, `SQLToolContext`, `ConfirmCardSender` |
-| `privilege-sync.ts` | 205 | SQL 도구 역할의 권한 동기화 (ADR-0067). | function: `quoteIdent`, `roleFromUrl`, `buildPrivilegeStatements`, `syncSqlToolPrivileges`, `startSqlToolPool`<br>type: `SequenceOwner`, `PrivilegePlanInput` |
+| `privilege-sync.ts` | 241 | SQL 도구 역할의 권한 동기화 (ADR-0067). | function: `quoteIdent`, `roleFromUrl`, `buildPrivilegeStatements`, `syncSqlToolPrivileges`, `startSqlToolPool`<br>type: `SequenceOwner`, `PrivilegePlanInput`, `SqlToolStartOptions` |
 | `schema.ts` | 66 | DB 스키마 조회와 캐시. | function: `clearSchemaCache`, `getSchemaInfo` |
 | `sql-blocks.ts` | 194 | 토큰 범위 유틸과 WHERE/ON 조건의 user_id 보장 분석. | function: `buildMatch`, `isWord`, `isPunct`, `identName`, `afterGroup`, `topLevel`, `splitTop`, `findTop`, `closeOver`, `conditionGuarantee`<br>const: `UNQUALIFIED`<br>type: `Ctx`, `Range`, `Guarantee` |
 | `sql-guards.ts` | 125 | 토큰 단위 보안 검사: 시스템 함수·카탈로그 차단, 키워드 위치 제한, user_id 비교 값 제한. | function: `findDangerousIdentifier`, `findWriteKeyword`, `findExtraWriteKeyword`, `otherUserMessage`, `findOtherUserValue` |

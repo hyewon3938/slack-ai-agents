@@ -31,8 +31,9 @@ const startApp = async (): Promise<void> => {
   // DB 연결 + 마이그레이션
   await connectDB(CONFIG.db.url);
   await runMigrations();
-  // SQL 도구 전용 역할: 권한을 목록대로 맞춘 뒤 두 번째 풀을 연다. 실패하면 기존 풀로 대신한다 (ADR-0067)
-  await startSqlToolPool(CONFIG.db.sqlToolUrl);
+  // SQL 도구 전용 역할: 권한을 목록대로 맞춘 뒤 두 번째 풀을 연다 (ADR-0067).
+  // 실패하면 운영에서는 SQL 도구 실행을 거절하고, 로컬에서는 기존 풀로 대신한다 (#665)
+  await startSqlToolPool(CONFIG.db.sqlToolUrl, { required: CONFIG.db.sqlToolRequired });
 
   const llmClient = await createLLMClient();
   const cronLLMClient = await createCronLLMClient();

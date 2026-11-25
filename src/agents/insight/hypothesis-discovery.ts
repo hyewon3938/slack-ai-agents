@@ -63,6 +63,7 @@ export const discoverCandidates = async (
     signals.map((s) => s.def),
     windowDates,
     signalStartById,
+    'Discovery',
   );
   const seedActivationById = await computeSeedActivationMap(
     userId,

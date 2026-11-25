@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
-import { query } from './shared/db.js';
+import { isSqlToolPoolConnected, query } from './shared/db.js';
 import { CONFIG } from './shared/config.js';
 import { hasStatementAfterSemicolon, maskedText, tokenize } from './shared/sql-tools/sql-lexer.js';
 
@@ -106,12 +106,14 @@ const jsonResponse = (res: ServerResponse, status: number, data: unknown): void 
 /** 요청 핸들러 (테스트용 export) */
 export const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
   // GET /health — 헬스체크 (최소 정보만 반환, 인증 불필요)
+  // sqlToolRole: SQL 도구가 전용 역할로 붙었는지 (#665). 역할 이름·에러 내용은 넣지 않는다
   if (req.method === 'GET' && req.url === '/health') {
+    const sqlToolRole = isSqlToolPoolConnected();
     try {
       await query('SELECT 1');
-      jsonResponse(res, 200, { ok: true });
+      jsonResponse(res, 200, { ok: true, sqlToolRole });
     } catch {
-      jsonResponse(res, 503, { ok: false });
+      jsonResponse(res, 503, { ok: false, sqlToolRole });
     }
     return;
   }
@@ -136,6 +138,7 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse): 
       ok,
       uptime: Math.floor(process.uptime()),
       db: { status: dbStatus, latencyMs: dbLatencyMs },
+      sqlToolRole: isSqlToolPoolConnected(),
       timestamp: new Date().toISOString(),
     });
     return;

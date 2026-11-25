@@ -33,6 +33,7 @@ const dbState = {
   repLinks: new Map<number, RepLink>(),
   signalDefs: new Map<number, SignalDef>(),
   seriesBySignal: new Map<number, Map<string, boolean | null>>(),
+  rejectedSignals: new Set<number>(),
 };
 
 const forecastCols = (r: Row): Record<string, unknown> => ({
@@ -213,9 +214,18 @@ vi.mock('../db.js', () => ({
 }));
 
 vi.mock('../pattern/series.js', () => ({
-  computeSignalSeries: vi.fn((_userId: number, signal: { id: number }) =>
-    Promise.resolve({ series: dbState.seriesBySignal.get(signal.id) ?? new Map(), raw: null }),
-  ),
+  computeSignalSeries: vi.fn((_userId: number, signal: { id: number }) => {
+    // SQL 도구 연결 거절 재현(#665) — db.ts SqlToolUnavailableError와 같은 name
+    if (dbState.rejectedSignals.has(signal.id)) {
+      return Promise.reject(
+        Object.assign(new Error('도구 연결 없음'), { name: 'SqlToolUnavailableError' }),
+      );
+    }
+    return Promise.resolve({
+      series: dbState.seriesBySignal.get(signal.id) ?? new Map(),
+      raw: null,
+    });
+  }),
 }));
 vi.mock('../pattern/data-window.js', () => ({
   computeUserDataStarts: vi.fn(() => Promise.resolve({ byTable: new Map(), global: null })),
@@ -315,6 +325,7 @@ beforeEach(() => {
   dbState.repLinks = new Map();
   dbState.signalDefs = new Map();
   dbState.seriesBySignal = new Map();
+  dbState.rejectedSignals = new Set();
 });
 
 const RANGE = { start: '2026-03-06', end: '2026-04-04' };
@@ -508,6 +519,35 @@ describe('scoreForecasts', () => {
     dbState.seriesBySignal.set(705, series(dates, 24));
     await scoreForecasts(USER, 'wolun', '2026-04-05');
     expect(dbState.table.find((r) => r.id === row.id)?.baseline_rate).toBe(0.33);
+  });
+
+  it('SQL 도구 연결 거절 → open 그대로, 결과에서 빠지고 로그는 한 번 (#665)', async () => {
+    const a = pushOpen({ signal_id: 710, period_start: '2026-03-06', period_end: '2026-04-04' });
+    const b = pushOpen({ signal_id: 711, period_start: '2026-03-06', period_end: '2026-04-04' });
+    const c = pushOpen({ signal_id: 712, period_start: '2026-03-06', period_end: '2026-04-04' });
+    for (const id of [710, 711, 712]) dbState.signalDefs.set(id, mkSignal(id));
+    dbState.rejectedSignals = new Set([710, 711]);
+    dbState.seriesBySignal.set(712, series(daysBetween('2026-03-06', '2026-04-04'), 21));
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const out = await scoreForecasts(USER, 'wolun', '2026-04-05');
+
+    expect(out.map((e) => e.signalId)).toEqual([712]);
+    const statusOf = (id: number): string | undefined =>
+      dbState.table.find((r) => r.id === id)?.status;
+    expect(statusOf(a.id)).toBe('open');
+    expect(statusOf(b.id)).toBe('open');
+    expect(statusOf(c.id)).toBe('scored');
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+
+    // 다음 실행에서 연결이 돌아오면 다시 채점된다
+    dbState.rejectedSignals = new Set();
+    dbState.seriesBySignal.set(710, series(daysBetween('2026-03-06', '2026-04-04'), 21));
+    dbState.seriesBySignal.set(711, series(daysBetween('2026-03-06', '2026-04-04'), 21));
+    await scoreForecasts(USER, 'wolun', '2026-04-05');
+    expect(statusOf(a.id)).toBe('scored');
+    expect(statusOf(b.id)).toBe('scored');
   });
 
   it('signal 결측 → unmeasurable(강제판정 금지)', async () => {
