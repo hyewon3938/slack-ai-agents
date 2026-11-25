@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`web/src/` 아래 소스 파일 208개, 21988줄이고 테스트 파일은 59개다. 줄 수는 테스트를 뺀 값이다.
+`web/src/` 아래 소스 파일 208개, 22006줄이고 테스트 파일은 60개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
@@ -164,7 +164,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 83 |  | function: `GET`, `POST`<br>const: `dynamic` |
+| `route.ts` | 87 |  | function: `GET`, `POST`<br>const: `dynamic` |
 
 테스트 파일 1개
 
@@ -172,7 +172,7 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 86 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 89 |  | function: `PATCH`, `DELETE` |
 
 테스트 파일 1개
 
@@ -278,7 +278,9 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `route.ts` | 52 |  | function: `PATCH`, `DELETE` |
+| `route.ts` | 57 |  | function: `PATCH`, `DELETE` |
+
+테스트 파일 1개
 
 ## `web/src/app/api/routines/stats`
 
@@ -594,8 +596,8 @@ API 라우트의 URL과 인증은 `web-api.md`에 따로 정리했다.
 
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
-| `queries.ts` | 593 |  | function: `queryRoutineTemplates`, `createRoutineTemplate`, `updateRoutineTemplate`, `queryRoutineTemplate`, `deleteRecordsBefore`, `countCompletedRecordsBefore`, `deleteRoutineTemplate`, `queryRoutineRecords`, `createFreeRecord`, `deleteFreeRecord`, `deleteIncompleteScheduledRecordOn`, `toggleRoutineRecord`, `updateRoutineRecordMemo`, `ensureTodayRecords`, `queryRoutineStats`, `queryRoutinePerStats`, `queryInactivePeriods`, `createInactivePeriod`, `updateInactivePeriod`, `deleteInactivePeriod`, `closeOpenInactivePeriod`, `queryRoutineHeatmap`, `backfillRecords` |
-| `types.ts` | 107 |  | function: `parseIntervalDays`, `isValidFrequency`<br>const: `TRACKING_MODES`, `ROUTINE_FREQUENCIES`, `ROUTINE_TIME_SLOTS`<br>type: `RoutineTrackingMode`, `RoutineEntryType`, `RoutineTemplateRow`, `RoutineRecordRow`, `RoutineDayStat`, `RoutinePerStat`, `RoutineInactivePeriod`, `RoutineHeatmapDay`, `RoutineHeatmapData` |
+| `queries.ts` | 598 |  | function: `queryRoutineTemplates`, `createRoutineTemplate`, `updateRoutineTemplate`, `queryRoutineTemplate`, `deleteRecordsBefore`, `countCompletedRecordsBefore`, `deleteRoutineTemplate`, `queryRoutineRecords`, `createFreeRecord`, `deleteFreeRecord`, `deleteIncompleteScheduledRecordOn`, `toggleRoutineRecord`, `updateRoutineRecordMemo`, `shouldCreateToday`, `ensureTodayRecords`, `queryRoutineStats`, `queryRoutinePerStats`, `queryInactivePeriods`, `createInactivePeriod`, `updateInactivePeriod`, `deleteInactivePeriod`, `closeOpenInactivePeriod`, `queryRoutineHeatmap`, `backfillRecords` |
+| `types.ts` | 108 |  | function: `parseIntervalDays`, `isValidFrequency`<br>const: `TRACKING_MODES`, `ROUTINE_FREQUENCIES`, `ROUTINE_TIME_SLOTS`<br>type: `RoutineTrackingMode`, `RoutineEntryType`, `RoutineTemplateRow`, `RoutineRecordRow`, `RoutineDayStat`, `RoutinePerStat`, `RoutineInactivePeriod`, `RoutineHeatmapDay`, `RoutineHeatmapData` |
 
 테스트 파일 1개
 

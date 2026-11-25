@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 194개, 22046줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 194개, 22057줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -165,6 +165,10 @@
 
 테스트 파일 38개
 
+## `src/shared/__tests__/fixtures`
+
+그 밖의 파일: `routine-frequency-cases.json`
+
 ## `src/shared/agent-loop`
 
 | 파일 | 줄 수 | 역할 | export |
@@ -199,7 +203,7 @@
 | `context-types.ts` | 13 | 생활 맥락 — 공용 타입. | type: `ContextTiming`, `DateParams` |
 | `queries-notification.ts` | 23 | 알림 설정 쿼리. | function: `queryNotificationSettings`<br>type: `NotificationSettingRow` |
 | `queries-reminder.ts` | 86 | 리마인더 쿼리. | function: `queryDueReminders`, `queryActiveReminderTimes`, `deactivateReminder`, `decrementReminderCount`<br>type: `ReminderRow` |
-| `queries-routine.ts` | 162 | 루틴 쿼리: 타입 · 빈도 헬퍼 · 템플릿/기록 조회와 변경. | function: `shouldCreateToday`, `frequencyBadge`, `queryActiveTemplates`, `queryTodayRecords`, `queryExistingTemplateIds`, `queryLastRecordDate`, `createRecord`, `completeRecord`<br>type: `RoutineTrackingMode`, `RoutineTemplateRow`, `RoutineRecordRow` |
+| `queries-routine.ts` | 173 | 루틴 쿼리: 타입 · 빈도 헬퍼 · 템플릿/기록 조회와 변경. | function: `shouldCreateToday`, `frequencyBadge`, `queryActiveTemplates`, `queryTodayRecords`, `queryExistingTemplateIds`, `queryLastRecordDate`, `createRecord`, `completeRecord`<br>type: `RoutineTrackingMode`, `RoutineTemplateRow`, `RoutineRecordRow` |
 | `queries-schedule.ts` | 141 | 일정 쿼리: 타입 · 조회 · 상태 변경. | function: `queryTodaySchedules`, `queryBacklogSchedules`, `countOverdueTasks`, `moveScheduleToDate`, `updateScheduleStatus`, `deleteSchedule`, `toggleScheduleImportant`, `postponeSchedule`<br>type: `ScheduleRow` |
 | `queries-sleep.ts` | 61 | 수면 쿼리 (Home 탭): 타입 · 조회. | function: `querySleepForHome`, `querySleepEventsForHome`<br>type: `SleepRecordRow`, `SleepEventRow` |
 

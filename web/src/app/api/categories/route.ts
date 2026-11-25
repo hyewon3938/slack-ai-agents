@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { VALID_CATEGORY_TYPES } from '@/lib/types';
-import {
-  createCategory,
-  queryCategories,
-  validateCategoryOwnership,
-} from '@/features/schedule/lib/queries';
+import { createCategory, queryCategories } from '@/features/schedule/lib/queries';
 import { isPositiveId, validateFields } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -60,8 +56,16 @@ export async function POST(request: Request) {
       if (!isPositiveId(parentId)) {
         return NextResponse.json({ error: '유효하지 않은 상위 카테고리' }, { status: 400 });
       }
-      if (!(await validateCategoryOwnership(userId, parentId))) {
+      // 카테고리는 상위·하위 두 단계까지만 — 하위 카테고리 아래에는 만들지 않는다
+      const parent = (await queryCategories(userId)).find((c) => c.id === parentId);
+      if (!parent) {
         return NextResponse.json({ error: '상위 카테고리를 찾을 수 없어' }, { status: 400 });
+      }
+      if (parent.parent_id != null) {
+        return NextResponse.json(
+          { error: '하위 카테고리 아래에는 만들 수 없어' },
+          { status: 400 },
+        );
       }
     }
 

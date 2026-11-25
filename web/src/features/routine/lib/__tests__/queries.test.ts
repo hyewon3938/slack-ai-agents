@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/db', () => ({
@@ -20,6 +22,7 @@ import {
   deleteRecordsBefore,
   countCompletedRecordsBefore,
   backfillRecords,
+  shouldCreateToday,
 } from '../queries';
 import { isValidFrequency, parseIntervalDays } from '../types';
 
@@ -579,5 +582,32 @@ describe('빈도 해석', () => {
     for (const bad of [undefined, '', '평일', '매주', '0일마다', 3, '3 일마다']) {
       expect(isValidFrequency(bad)).toBe(false);
     }
+  });
+});
+
+// ─── 봇과 공용 케이스 표 ───────────────────────────────────────────────
+// 봇(src/shared/life/queries-routine.ts)의 shouldCreateToday도 같은 표로 테스트한다.
+// 표는 저장소 루트 쪽에 두고 읽기만 한다 — 봇·웹은 별도 패키지라 코드를 import하지 않는다.
+
+interface FrequencyCase {
+  name: string;
+  frequency: string | null;
+  lastDate: string | null;
+  today: string;
+  startDate: string | null;
+  expected: boolean;
+}
+
+const FREQUENCY_CASES_PATH = path.resolve(
+  __dirname,
+  '../../../../../../src/shared/__tests__/fixtures/routine-frequency-cases.json',
+);
+const FREQUENCY_CASES = (
+  JSON.parse(readFileSync(FREQUENCY_CASES_PATH, 'utf8')) as { cases: FrequencyCase[] }
+).cases;
+
+describe('shouldCreateToday — 봇과 공용 케이스 표', () => {
+  it.each(FREQUENCY_CASES)('$name', ({ frequency, lastDate, today, startDate, expected }) => {
+    expect(shouldCreateToday(frequency, lastDate, today, startDate)).toBe(expected);
   });
 });

@@ -16,9 +16,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
     const body = (await request.json()) as Partial<{
-      completed: boolean;
+      completed: unknown;
       memo: string | null;
     }>;
+
+    // 아무것도 바꾸기 전에 검증한다 — completed가 잘못되면 memo도 저장하지 않는다
+    if (body.completed !== undefined && typeof body.completed !== 'boolean') {
+      return NextResponse.json({ error: 'completed는 true 또는 false여야 해' }, { status: 400 });
+    }
 
     if (body.completed !== undefined) {
       await toggleRoutineRecord(userId, id, body.completed);
