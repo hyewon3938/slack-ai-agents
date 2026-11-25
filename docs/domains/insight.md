@@ -1054,7 +1054,7 @@ matchAllSeedsForDay(userId, date)
 
 #### 외부 의존성 (1차 정적 상수)
 
-- 한국 공휴일: `src/shared/life-signal-evaluators/korean-holidays.ts` — 2026년 15개 양력 날짜 (`KOREAN_HOLIDAYS` Set). 2027+ 데이터는 follow-up
+- 한국 공휴일: `src/shared/life-signal-evaluators/korean-holidays.ts` — 2026\~2027년 양력 날짜(2026년 22개, 2027년 24개, 대체공휴일·선거일 포함, `KOREAN_HOLIDAYS` Set). 데이터 범위 밖 연도는 false로 판정하고 연도마다 경고를 한 번 남긴다
 
 #### 파일 구조 갱신
 
@@ -1068,7 +1068,7 @@ src/shared/
 │   ├── calendar-event.ts           공휴일 / 공휴일 다음날 / 자동이체일
 │   ├── threshold.ts                sleep_minutes / routine_streak_max
 │   ├── behavior-baseline.ts        insights/ 11종 detect 위임
-│   ├── korean-holidays.ts          KOREAN_HOLIDAYS 정적 Set (2026)
+│   ├── korean-holidays.ts          KOREAN_HOLIDAYS 정적 Set (2026~2027)
 │   └── __tests__/
 │       ├── weekday.test.ts
 │       ├── month-position.test.ts
