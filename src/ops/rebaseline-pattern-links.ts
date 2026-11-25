@@ -13,7 +13,7 @@
  * 실행(dev):  yarn tsx src/ops/rebaseline-pattern-links.ts [--user N]
  *   배포(머지된 새 측정 코드) 후 실행. 컨테이너 env(DATABASE_URL·SQL_TOOL_DATABASE_URL·SLACK_BOT_TOKEN) 사용.
  *   봇과 같이 SQL 도구 전용 연결을 연다 — LLM 신호 측정 SQL은 그 연결로만 돈다(#665).
- *   연결이 없으면 LLM 신호 링크는 이번 실행에서 건너뛰고(강등만 된 채 active) 다음 주간 run이 재검증한다.
+ *   운영 필수인데 연결이 없으면 강등 전에 오류로 끝난다(종료 코드 1). 필수가 아니면 기존 풀로 진행한다.
  *   운영 절차: docs/ops/verification-rebaseline.md
  */
 
@@ -120,7 +120,14 @@ export const main = async (argv: string[] = process.argv.slice(2)): Promise<void
   const { userId } = parseArgs(argv);
   await connectDB(CONFIG.db.url);
   try {
-    await startSqlToolPool(CONFIG.db.sqlToolUrl, { required: CONFIG.db.sqlToolRequired });
+    const required = CONFIG.db.sqlToolRequired;
+    const connected = await startSqlToolPool(CONFIG.db.sqlToolUrl, { required });
+    if (required && !connected) {
+      // 강등 전에 멈춘다 — 일부만 반영된 상태로 남기지 않는다(필수가 아니면 기존 풀로 진행).
+      throw new Error(
+        'SQL 도구 전용 연결이 없어 재기준선을 실행하지 않음. 연결을 고친 뒤 다시 실행',
+      );
+    }
     const today = getTodayISO();
     const targets = await resolveTargets(userId);
     if (targets.length === 0) {

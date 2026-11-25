@@ -4,7 +4,7 @@
 
 > 자동 생성 파일이다. 직접 고치지 말고 `yarn code-map`으로 다시 만든다.
 
-`src/` 아래 소스 파일 191개, 21961줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
+`src/` 아래 소스 파일 191개, 21968줄이고 테스트 파일은 83개다. 줄 수는 테스트를 뺀 값이다.
 역할 칸에는 파일 맨 위 주석의 첫 문장을 옮겼고, 주석이 없는 파일은 비워 뒀다. export 칸의 function에는 화살표 함수로 선언한 const도 들어간다.
 
 ## `src`
@@ -135,7 +135,7 @@
 | 파일 | 줄 수 | 역할 | export |
 | --- | ---: | --- | --- |
 | `heartbeat-degraded.ts` | 74 | heartbeat 저하 사이클 장부 (#621). | function: `recordDegradedCycle`, `buildDegradedReport`, `dropDegradedCycles`, `getDegradedHistory`<br>type: `DegradedCycle` |
-| `rebaseline-pattern-links.ts` | 149 | 패턴 검증 1회성 재기준선 — admin script (#523 Phase 0, ADR-0048). | function: `main` |
+| `rebaseline-pattern-links.ts` | 156 | 패턴 검증 1회성 재기준선 — admin script (#523 Phase 0, ADR-0048). | function: `main` |
 | `uptime-heartbeat.ts` | 186 | 업타임 dead-man's-switch heartbeat (인프라 레벨). | function: `loadHeartbeatConfig`, `checkBotHealth`, `checkWebHealth`, `sendPing`, `runHeartbeatOnce`, `startUptimeHeartbeat`<br>type: `HeartbeatConfig` |
 
 테스트 파일 2개

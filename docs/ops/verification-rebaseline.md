@@ -43,7 +43,7 @@ ssh oracle-prod "docker exec slack-ai-agents node dist/ops/rebaseline-pattern-li
 
 콘솔 요약: `강등 N · 재검증 M (persist M) · 재확정 K · reject R`.
 
-스크립트는 봇처럼 SQL 도구 전용 연결을 열고 LLM 신호를 그 연결로 측정한다. 연결이 없으면 `[Verification] ... 측정을 이번 실행에서 건너뜀` 로그가 한 번 찍히고, LLM 신호 링크는 강등된 active 상태로 남았다가 다음 주간 검증에서 다시 검정된다. 이 로그가 보이면 [SQL 도구 역할 가이드](sql-tool-role.md)대로 연결을 고친 뒤 다시 실행한다.
+스크립트는 봇처럼 SQL 도구 전용 연결을 열고 LLM 신호를 그 연결로 측정한다. 운영처럼 연결이 필수인 환경에서 연결이 없으면 강등을 시작하기 전에 오류를 출력하고 종료 코드 1로 끝나므로 DB는 바뀌지 않는다. 로컬처럼 필수가 아닌 환경에서는 기존 연결 풀로 진행한다. 오류로 끝나면 [SQL 도구 역할 가이드](sql-tool-role.md)대로 연결을 고친 뒤 다시 실행한다.
 
 > 로컬 개발 중 검증만 할 땐 `yarn tsx src/ops/rebaseline-pattern-links.ts`(로컬 `.env`의 DB 기준).
 
