@@ -354,6 +354,49 @@ describe('db', () => {
       expectDiscarded();
     });
 
+    it('queryWithClient: 실행 오류 시 ROLLBACK을 보내지 않고 RESET만 한 뒤 오류를 전파한다', async () => {
+      const { client, calls } = makeFailingClient(/^$/, new Error('boom'));
+      mockConnect.mockResolvedValue(client);
+
+      await expect(queryWithClient('SELECT bad', 5000)).rejects.toThrow('boom');
+      expect(calls).toEqual(['SET statement_timeout = 5000', 'SELECT bad', 'RESET statement_timeout']);
+      expect(mockRelease.mock.calls[0]?.[0]).toBeUndefined();
+    });
+
+    it('queryWithRowLimit: 제한 안이면 SET → BEGIN → 쿼리 → COMMIT → RESET 순서로 실행하고 결과를 돌려준다', async () => {
+      const { client, calls } = makeFailingClient(/^$/);
+      mockConnect.mockResolvedValue(client);
+
+      const result = await queryWithRowLimit('UPDATE t SET x = 1', 5000, 5);
+      expect(result.rows).toEqual([{ id: 1 }]);
+      expect(result.rowCount).toBe(1);
+      expect(calls).toEqual([
+        'SET statement_timeout = 5000',
+        'BEGIN',
+        'UPDATE t SET x = 1',
+        'COMMIT',
+        'RESET statement_timeout',
+      ]);
+      expect(mockRelease.mock.calls[0]?.[0]).toBeUndefined();
+    });
+
+    it('queryWithRowLimit: 행 수가 제한을 넘으면 ROLLBACK한 뒤 throw하고 COMMIT하지 않는다', async () => {
+      const { client, calls } = makeReadOnlyClient({ rows: new Array(10).fill({ x: 1 }), rowCount: 10 });
+      mockConnect.mockResolvedValue(client);
+
+      await expect(queryWithRowLimit('UPDATE t SET x = 1', 5000, 5)).rejects.toThrow(
+        /10행에 영향.*ROLLBACK 완료/,
+      );
+      expect(calls.slice(0, 4)).toEqual([
+        'SET statement_timeout = 5000',
+        'BEGIN',
+        'UPDATE t SET x = 1',
+        'ROLLBACK',
+      ]);
+      expect(calls.some((c) => /^\s*COMMIT/i.test(c))).toBe(false);
+      expect(calls[calls.length - 1]).toBe('RESET statement_timeout');
+    });
+
     it('queryWithRowLimit: 실행 실패 뒤 ROLLBACK이 실패하면 연결을 폐기한다', async () => {
       const { client } = makeFailingClient(/^ROLLBACK/, new Error('boom'));
       mockConnect.mockResolvedValue(client);
