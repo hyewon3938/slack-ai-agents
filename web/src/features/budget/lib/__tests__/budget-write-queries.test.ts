@@ -7,7 +7,11 @@ vi.mock('@/lib/db', () => ({
 
 import { query, queryOne } from '@/lib/db';
 import { updateFixedCost } from '../queries/fixed-costs';
-import { updatePlannedExpense } from '../queries/planned';
+import {
+  isPlannedExpenseOwned,
+  queryPlannedExpenses,
+  updatePlannedExpense,
+} from '../queries/planned';
 import { setDefaultAsset } from '../queries/assets';
 
 // ─── 합성 픽스처 (실제 개인 데이터 아님 — 금액은 지어낸 값) ─────────────
@@ -50,6 +54,25 @@ describe('updateFixedCost — 동적 SET 절', () => {
     expect(params).toEqual([5, 7, '통신비']);
   });
 
+  it('undefined 값은 건너뛰고 null은 지우기 값으로 반영한다', async () => {
+    mockQueryOne.mockResolvedValue({ id: 5 });
+
+    await updateFixedCost(7, 5, { amount: undefined, day_of_month: null, memo: undefined });
+
+    const [sql, params] = lastQueryOneCall();
+    expect(sql).toContain('SET day_of_month = $3');
+    expect(sql).not.toContain('amount =');
+    expect(sql).not.toContain('memo =');
+    expect(params).toEqual([5, 7, null]);
+  });
+
+  it('값이 전부 undefined면 쿼리 없이 null', async () => {
+    const result = await updateFixedCost(7, 5, { amount: undefined });
+
+    expect(result).toBeNull();
+    expect(queryOne).not.toHaveBeenCalled();
+  });
+
   it('반영할 필드가 없으면 쿼리 없이 null', async () => {
     const result = await updateFixedCost(7, 5, { user_id: 99 });
 
@@ -86,6 +109,35 @@ describe('updatePlannedExpense — 동적 SET 절', () => {
 
     expect(result).toBeNull();
     expect(queryOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('isPlannedExpenseOwned — 예정 지출 소유 확인', () => {
+  it('id와 user_id로 같이 찾고, 행이 있으면 true', async () => {
+    mockQueryOne.mockResolvedValue({ id: 4 });
+
+    await expect(isPlannedExpenseOwned(7, 4)).resolves.toBe(true);
+
+    const [sql, params] = lastQueryOneCall();
+    expect(sql).toContain('WHERE id = $1 AND user_id = $2');
+    expect(params).toEqual([4, 7]);
+  });
+
+  it('행이 없으면 false', async () => {
+    mockQueryOne.mockResolvedValue(null);
+
+    await expect(isPlannedExpenseOwned(7, 4)).resolves.toBe(false);
+  });
+});
+
+describe('queryPlannedExpenses — 사용액 집계 범위', () => {
+  it('연결된 지출도 같은 user_id만 합산한다', async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await queryPlannedExpenses(7, '2026-03');
+
+    const call = mockQuery.mock.calls.at(-1) as [string, unknown[]];
+    expect(call[0]).toMatch(/e\.planned_expense_id = p\.id\s+AND e\.user_id = p\.user_id/);
   });
 });
 

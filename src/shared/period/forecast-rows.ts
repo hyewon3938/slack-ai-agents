@@ -25,9 +25,20 @@ export interface ForecastDbRow {
 export const parseDirection = (s: string | null): 'up' | 'down' | null =>
   s === 'up' || s === 'down' ? s : null;
 
+const UNKNOWN_SOURCE: NoCallReason = { reason: '근거 미상' };
+
+/**
+ * source_cell JSONB → 셀 또는 근거 없음 사유. 카드가 읽는 필드(사유 문자열, 또는 domain·axisKey)가
+ * 없으면 셀로 넘기지 않고 '근거 미상'으로 바꾼다(null 행·손상 행이 셀처럼 렌더되는 것 방지).
+ */
 export const parseSourceCell = (raw: unknown): ForecastSourceCell | NoCallReason => {
-  if (typeof raw !== 'object' || raw === null) return { reason: '근거 미상' };
-  return raw as ForecastSourceCell | NoCallReason;
+  if (typeof raw !== 'object' || raw === null) return { ...UNKNOWN_SOURCE };
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.reason === 'string') return raw as NoCallReason;
+  if (typeof obj.domain === 'string' && typeof obj.axisKey === 'string') {
+    return raw as ForecastSourceCell;
+  }
+  return { ...UNKNOWN_SOURCE };
 };
 
 export const toForecastEntry = (row: ForecastDbRow): ForecastEntry => ({
@@ -46,7 +57,7 @@ export const toScoredEntry = (row: ForecastDbRow): ScoredEntry => ({
   measuredRate: row.measured_rate === null ? null : Number(row.measured_rate),
   measuredDelta: row.measured_delta === null ? null : Number(row.measured_delta),
   directionHit: row.direction_hit,
-  sourceCell: parseSourceCell(row.source_cell) as ForecastSourceCell,
+  sourceCell: parseSourceCell(row.source_cell),
 });
 
 export const FORECAST_COLUMNS = `signal_id, status, predicted_direction, baseline_rate, source_cell,

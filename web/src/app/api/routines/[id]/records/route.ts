@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { isISODate, parseRouteId } from '@/lib/validation';
 import { deleteRecordsBefore } from '@/features/routine/lib/queries';
 
 /** 특정 날짜 이전의 완료된 기록 일괄 삭제 (시작일 변경 후 정리용) */
@@ -11,13 +12,15 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id } = await params;
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+
     const before = new URL(request.url).searchParams.get('before');
-    if (!before || !/^\d{4}-\d{2}-\d{2}$/.test(before)) {
+    if (!isISODate(before)) {
       return NextResponse.json({ error: 'before 파라미터(YYYY-MM-DD)가 필요해' }, { status: 400 });
     }
 
-    const deleted = await deleteRecordsBefore(userId, Number(id), before, true);
+    const deleted = await deleteRecordsBefore(userId, id, before, true);
 
     return NextResponse.json({ data: { deleted } });
   } catch {

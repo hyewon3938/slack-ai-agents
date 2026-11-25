@@ -11,6 +11,7 @@ import {
   updateSchedule,
   deleteSchedule,
   recordDeleteReason,
+  queryCategories,
   createCategory,
   updateCategory,
   reorderCategories,
@@ -126,6 +127,18 @@ describe('recordDeleteReason — 최신 tombstone에 한 번만', () => {
   });
 });
 
+describe('queryCategories — type 반환', () => {
+  it('비어 있는 type은 최상위만 task로 채우고 하위는 NULL 그대로 돌려준다', async () => {
+    vi.mocked(query).mockResolvedValue(empty);
+
+    await queryCategories(7);
+
+    const [sql, params] = lastQueryCall();
+    expect(sql).toContain("CASE WHEN parent_id IS NULL THEN COALESCE(type, 'task') ELSE type END AS type");
+    expect(params).toEqual([7]);
+  });
+});
+
 describe('createCategory — sort_order 산정', () => {
   it('최상위 카테고리는 parent_id IS NULL 범위의 max + 1', async () => {
     vi.mocked(queryOne).mockResolvedValue({ max: 4 });
@@ -154,6 +167,16 @@ describe('createCategory — sort_order 산정', () => {
 
     const [, insertParams] = lastQueryCall();
     expect(insertParams).toEqual([7, '러닝', 'violet', 'event', 3, 3]);
+  });
+
+  it('하위 카테고리는 유형을 주지 않으면 NULL로 저장해 상위 유형을 따른다', async () => {
+    vi.mocked(queryOne).mockResolvedValue({ max: 0 });
+    vi.mocked(query).mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
+
+    await createCategory(7, { name: '러닝', parent_id: 3 });
+
+    const [, insertParams] = lastQueryCall();
+    expect(insertParams[3]).toBeNull();
   });
 
   it('max 조회 결과가 없으면 sort_order 1로 시작', async () => {

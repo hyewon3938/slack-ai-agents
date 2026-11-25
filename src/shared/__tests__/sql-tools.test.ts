@@ -82,6 +82,19 @@ describe('validateSelectQuery', () => {
   it('주석 포함 SELECT 문을 허용한다', () => {
     expect(validateSelectQuery('-- query\nSELECT * FROM schedules')).toBeNull();
   });
+
+  it('16진 리터럴 뒤 함수 이름을 함수로 읽는다', () => {
+    expect(validateSelectQuery("SELECT 0xe-pg_read_file('/etc/hostname')::int")).toMatch(/시스템 함수/);
+    expect(validateSelectQuery('SELECT 0xe-lo_unlink(1)')).toMatch(/시스템 함수/);
+  });
+
+  it('숫자 뒤에 문자가 이어진 표기는 해석 오류로 거부한다', () => {
+    expect(validateSelectQuery('SELECT 1ex FROM schedules')).toMatch(/SQL을 해석할 수 없어/);
+  });
+
+  it('숫자 표기와 점 뒤 키워드 컬럼을 허용한다', () => {
+    expect(validateSelectQuery('SELECT 0x1F, 1e3, s.end_date FROM schedules s')).toBeNull();
+  });
 });
 
 describe('validateModifyQuery', () => {
@@ -122,6 +135,12 @@ describe('validateModifyQuery', () => {
       validateModifyQuery('DELETE FROM schedules WHERE id = 1; DROP TABLE schedules'),
     ).not.toBeNull();
   });
+
+  it('점 뒤 where는 WHERE 절로 세지 않는다', () => {
+    expect(
+      validateModifyQuery('UPDATE schedules s SET title = x.where FROM (SELECT \'a\' AS "where") x'),
+    ).toMatch(/WHERE 절이 필요/);
+  });
 });
 
 describe('validateUserIdFilter', () => {
@@ -143,17 +162,21 @@ describe('validateUserIdFilter', () => {
     expect(validateUserIdFilter('SELECT 470 AS duration_minutes', 1)).toBeNull();
   });
 
-  it('면제 테이블(categories)만 참조하면 통과한다', () => {
-    expect(validateUserIdFilter('SELECT * FROM categories', 1)).toBeNull();
+  it('categories는 user_id 조건이 있어야 통과한다', () => {
+    expect(validateUserIdFilter('SELECT * FROM categories', 1)).not.toBeNull();
+    expect(validateUserIdFilter('SELECT * FROM categories WHERE user_id = 1', 1)).toBeNull();
   });
 
   it('면제 테이블(notification_settings)만 참조하면 통과한다', () => {
     expect(validateUserIdFilter('SELECT * FROM notification_settings', 1)).toBeNull();
   });
 
-  it('면제 테이블(sleep_events)만 참조하면 통과한다', () => {
+  it('sleep_events는 user_id 컬럼이 있어야 통과한다', () => {
     expect(
       validateUserIdFilter('INSERT INTO sleep_events (date, event_time) VALUES ($1, $2)', 1),
+    ).not.toBeNull();
+    expect(
+      validateUserIdFilter('INSERT INTO sleep_events (user_id, date, event_time) VALUES (1, $1, $2)', 1),
     ).toBeNull();
   });
 
@@ -378,6 +401,8 @@ describe('executeSQLTool', () => {
   it('query_db: SELECT 쿼리 결과를 JSON으로 반환한다', async () => {
     mockClientQuery
       .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // SET statement_timeout
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // SET TRANSACTION READ ONLY
       .mockResolvedValueOnce({ rows: [{ id: 1, title: '테스트' }], rowCount: 1 }); // 실제 쿼리
 
     const result = await executeSQLTool('query_db', {
@@ -389,6 +414,20 @@ describe('executeSQLTool', () => {
     };
     expect(parsed.rows).toEqual([{ id: 1, title: '테스트' }]);
     expect(parsed.rowCount).toBe(1);
+  });
+
+  it('query_db: 읽기 전용 트랜잭션에서 실행하고 ROLLBACK한다', async () => {
+    await executeSQLTool('query_db', { sql: 'SELECT * FROM schedules WHERE user_id = 1' });
+    const texts = mockClientQuery.mock.calls.map((call) => String(call[0]));
+    expect(texts).toEqual([
+      expect.stringMatching(/^SET statement_timeout = \d+$/),
+      'BEGIN',
+      'SET TRANSACTION READ ONLY',
+      'SELECT * FROM schedules WHERE user_id = 1',
+      'ROLLBACK',
+      'SET statement_timeout = 0',
+    ]);
+    expect(mockRelease).toHaveBeenCalled();
   });
 
   it('query_db: SELECT 아닌 쿼리는 에러를 반환한다', async () => {

@@ -3,6 +3,7 @@ import {
   formatAffectedRows,
   extractTargetTable,
   extractAffectedDates,
+  hasUndatedRow,
 } from '../pending-display.js';
 
 describe('formatAffectedRows', () => {
@@ -158,5 +159,19 @@ describe('extractAffectedDates', () => {
 
   it('빈 배열이면 빈 배열 반환', () => {
     expect(extractAffectedDates([])).toEqual([]);
+  });
+});
+
+describe('hasUndatedRow', () => {
+  it('date 컬럼 값이 비어 있는 row가 있으면 true', () => {
+    expect(hasUndatedRow([{ date: '2026-04-01' }, { date: null }])).toBe(true);
+  });
+
+  it('모든 row에 날짜가 있으면 false', () => {
+    expect(hasUndatedRow([{ date: '2026-04-01' }])).toBe(false);
+  });
+
+  it('date 컬럼이 없는 테이블의 row는 백로그로 보지 않음', () => {
+    expect(hasUndatedRow([{ title: '회의' }])).toBe(false);
   });
 });

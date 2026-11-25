@@ -170,10 +170,17 @@ export const recordDeleteReason = async (
 
 // ─── 카테고리 ──────────────────────────────────────────
 
+/**
+ * 카테고리 조회 컬럼. type이 비어 있으면 최상위는 'task'로 채우고,
+ * 하위는 NULL 그대로 돌려줘 화면에서 상위 type을 따르게 한다 (lookupCategory).
+ */
+const CATEGORY_RETURN_COLUMNS =
+  "id, name, color, CASE WHEN parent_id IS NULL THEN COALESCE(type, 'task') ELSE type END AS type, sort_order, parent_id";
+
 export const queryCategories = async (userId: number): Promise<CategoryRow[]> =>
   (
     await query<CategoryRow>(
-      "SELECT id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id FROM categories WHERE user_id = $1 ORDER BY parent_id NULLS FIRST, sort_order, name",
+      `SELECT ${CATEGORY_RETURN_COLUMNS} FROM categories WHERE user_id = $1 ORDER BY parent_id NULLS FIRST, sort_order, name`,
       [userId],
     )
   ).rows;
@@ -197,12 +204,13 @@ export const createCategory = async (
   const result = await query<CategoryRow>(
     `INSERT INTO categories (user_id, name, color, type, sort_order, parent_id)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id`,
+     RETURNING ${CATEGORY_RETURN_COLUMNS}`,
     [
       userId,
       data.name,
       data.color ?? 'gray',
-      data.type ?? 'task',
+      // 하위는 유형을 따로 주지 않으면 NULL로 두어 상위 유형을 따른다
+      data.type ?? (parentId ? null : 'task'),
       (maxOrder?.max ?? 0) + 1,
       parentId,
     ],
@@ -236,7 +244,7 @@ export const updateCategory = async (
   values.push(id);
   const result = await query<CategoryRow>(
     `UPDATE categories SET ${fields.join(', ')} WHERE user_id = $1 AND id = $${idx}
-     RETURNING id, name, color, COALESCE(type, 'task') as type, sort_order, parent_id`,
+     RETURNING ${CATEGORY_RETURN_COLUMNS}`,
     values,
   );
   return result.rows[0] ?? null;

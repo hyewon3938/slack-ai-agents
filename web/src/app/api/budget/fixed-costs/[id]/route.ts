@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { updateFixedCost, deleteFixedCost } from '@/features/budget/lib/queries';
-import { isKnownPaymentMethod } from '@/features/budget/lib/billing/payment-methods';
+import { parseFixedCostUpdate, parseIdParam } from '@/features/budget/lib/validate-input';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await requireAuth();
@@ -9,16 +9,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     const { id: idStr } = await params;
-    const id = Number(idStr);
-    if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    const id = parseIdParam(idStr);
+    if (id === null) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
-    const body = (await request.json()) as Record<string, unknown>;
-    const method = body.payment_method;
-    if (method != null && (typeof method !== 'string' || !isKnownPaymentMethod(method))) {
-      return NextResponse.json({ error: '등록되지 않은 결제수단입니다' }, { status: 400 });
-    }
+    // 고정비 POST와 같은 기준으로 보낸 필드만 검증하고, 허용 필드만 넘긴다
+    const parsed = parseFixedCostUpdate(await request.json());
+    if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-    const data = await updateFixedCost(userId, id, body);
+    const data = await updateFixedCost(userId, id, parsed.data);
     if (!data) return NextResponse.json({ error: '고정비를 찾을 수 없습니다' }, { status: 404 });
 
     return NextResponse.json({ data });
@@ -34,8 +32,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   try {
     const { id: idStr } = await params;
-    const id = Number(idStr);
-    if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    const id = parseIdParam(idStr);
+    if (id === null) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
     const deleted = await deleteFixedCost(userId, id);
     if (!deleted) return NextResponse.json({ error: '고정비를 찾을 수 없습니다' }, { status: 404 });

@@ -38,16 +38,16 @@ export const registerMessageHandler = (app: App): void => {
     const msg = message as MessageEvent;
     const userId = ('user' in msg ? msg.user : undefined) ?? message.channel;
 
-    // Rate limiting
-    if (!rateLimiter.check(userId)) {
-      await say('잠깐, 너무 빨라. 1분에 5번까지만 가능해.');
-      return;
-    }
-
-    // 메시지 길이 제한
+    // 메시지 길이 제한 — 처리하지 않을 메시지가 요청 한도를 쓰지 않게 한도 차감보다 먼저 본다
     const text = 'text' in message ? (message.text ?? '') : '';
     if (text.length > MAX_MESSAGE_LENGTH) {
       await say('메시지가 너무 길어. 좀 줄여서 다시 보내줘.');
+      return;
+    }
+
+    // Rate limiting
+    if (!rateLimiter.check(userId)) {
+      await say('잠깐, 너무 빨라. 1분에 5번까지만 가능해.');
       return;
     }
 

@@ -1,4 +1,6 @@
 import { query, queryOne } from '@/lib/db';
+import { addDays } from '@/lib/kst';
+import { parseIntervalDays } from '@/features/routine/lib/types';
 import type {
   RoutineTemplateRow,
   RoutineTrackingMode,
@@ -249,13 +251,6 @@ function daysBetween(from: string, to: string): number {
   );
 }
 
-function parseIntervalDays(frequency: string): number | null {
-  if (frequency === '격일') return 2;
-  if (frequency === '주1회') return 7;
-  const match = /^(\d+)일마다$/.exec(frequency);
-  return match ? Number(match[1]) : null;
-}
-
 function shouldCreateToday(
   frequency: string | null,
   lastDate: string | null,
@@ -267,18 +262,19 @@ function shouldCreateToday(
 
   if (!frequency || frequency === '매일') return true;
 
-  // 간격 빈도(격일, N일마다, 주1회): start_date 기준 모듈러 연산
+  // 허용 목록 밖 빈도는 주기를 알 수 없으므로 만들지 않는다 (예전엔 매일로 취급했다)
   const interval = parseIntervalDays(frequency);
-  if (interval && startDate) {
+  if (!interval) return false;
+
+  // 간격 빈도(격일, N일마다, 주1회): start_date 기준 모듈러 연산
+  if (startDate) {
     const gap = daysBetween(startDate, today);
     return gap >= 0 && gap % interval === 0;
   }
 
   // startDate 없는 경우 (폴백): gap 기반
   if (!lastDate) return true;
-  const gap = daysBetween(lastDate, today);
-  if (interval) return gap >= interval;
-  return true;
+  return daysBetween(lastDate, today) >= interval;
 }
 
 /**
@@ -540,16 +536,6 @@ export async function queryRoutineHeatmap(
 
 // ─── 백필 ────────────────────────────────────────────
 
-/** 날짜에 일수 더하기 (KST 기준) */
-function addDaysISO(dateStr: string, days: number): string {
-  const date = new Date(dateStr + 'T00:00:00+09:00');
-  date.setDate(date.getDate() + days);
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 /** 과거 start_date부터 오늘까지 빈도에 맞는 기록을 백필 (최대 30일) */
 export async function backfillRecords(
   userId: number,
@@ -564,6 +550,11 @@ export async function backfillRecords(
   const totalGap = daysBetween(startDate, today);
   if (totalGap > maxBackfillDays) return 0;
 
+  const isDaily = !frequency || frequency === '매일';
+  const interval = isDaily ? null : parseIntervalDays(frequency);
+  // 허용 목록 밖 빈도는 주기를 알 수 없으므로 백필하지 않는다
+  if (!isDaily && !interval) return 0;
+
   // 이미 존재하는 기록 확인
   const { rows: existing } = await query<{ date: string }>(
     `SELECT date::text FROM routine_records WHERE user_id = $1 AND template_id = $2 AND date BETWEEN $3 AND $4`,
@@ -571,13 +562,12 @@ export async function backfillRecords(
   );
   const existingDates = new Set(existing.map((r) => r.date));
 
-  const interval = parseIntervalDays(frequency ?? '');
   let created = 0;
 
   if (interval) {
     // 간격 빈도: start_date부터 interval 간격으로 생성 (오늘 제외 — ensureTodayRecords가 처리)
     for (let d = 0; d < totalGap; d += interval) {
-      const date = addDaysISO(startDate, d);
+      const date = addDays(startDate, d);
       if (!existingDates.has(date)) {
         await query(
           `INSERT INTO routine_records (user_id, template_id, date, completed, entry_type)
@@ -588,7 +578,7 @@ export async function backfillRecords(
       }
     }
   } else {
-    // 매일/주1회: start_date 기록만 생성
+    // 매일(빈도 없음 포함): start_date 기록만 생성. 주1회는 간격 7일이라 위 분기로 간다
     if (!existingDates.has(startDate)) {
       await query(
         `INSERT INTO routine_records (user_id, template_id, date, completed, entry_type)

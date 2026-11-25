@@ -28,9 +28,10 @@ export function FixedCostAddForm({
 
   const handleSubmit = async () => {
     const a = Number(amount.replace(/,/g, ''));
-    if (!name.trim() || isNaN(a) || a <= 0) return;
+    // 서버 검증과 같은 기준: 금액은 양의 정수, 결제일은 1~31 정수
+    if (!name.trim() || !Number.isInteger(a) || a <= 0) return;
     const day = dayOfMonth ? Number(dayOfMonth) : null;
-    if (day !== null && (isNaN(day) || day < 1 || day > 31)) return;
+    if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31)) return;
     setSaving(true);
     try {
       await onAdd({

@@ -1,10 +1,11 @@
 /**
- * 한국 공휴일 정적 상수 (1차).
+ * 한국 공휴일 정적 상수 (매년 수동 갱신).
  *
- * 2026년 공휴일 (양력) — 설날·추석은 음력 → 양력 변환된 날짜.
- * 2027년 이후는 follow-up: 공공데이터포털 API 도입 또는 매년 수동 갱신.
+ * 양력 날짜 — 설날·추석·부처님오신날은 음력 → 양력 변환된 날짜.
+ * 데이터가 없는 연도는 전부 false가 되므로, 새 연도를 넣으면 LAST_HOLIDAY_DATA_YEAR도 같이 올린다.
  *
- * 출처: 정부24 공공데이터, 위키백과 한국의 공휴일.
+ * 출처: 2026년 정부24 공공데이터, 위키백과 한국의 공휴일.
+ *       2027년 한국천문연구원 천문우주지식정보 월력자료(우주항공청 2027년 월력요항 기준).
  */
 
 export const KOREAN_HOLIDAYS: ReadonlySet<string> = new Set<string>([
@@ -24,6 +25,52 @@ export const KOREAN_HOLIDAYS: ReadonlySet<string> = new Set<string>([
   '2026-10-03', // 개천절
   '2026-10-09', // 한글날
   '2026-12-25', // 성탄절
+  // 2027년
+  '2027-01-01', // 신정
+  '2027-02-06', // 설날 연휴 (전날)
+  '2027-02-07', // 설날
+  '2027-02-08', // 설날 연휴 (다음날)
+  '2027-02-09', // 대체공휴일 (설날)
+  '2027-03-01', // 삼일절
+  '2027-05-01', // 노동절
+  '2027-05-03', // 대체공휴일 (노동절)
+  '2027-05-05', // 어린이날
+  '2027-05-13', // 부처님오신날
+  '2027-06-06', // 현충일
+  '2027-07-17', // 제헌절
+  '2027-07-19', // 대체공휴일 (제헌절)
+  '2027-08-15', // 광복절
+  '2027-08-16', // 대체공휴일 (광복절)
+  '2027-09-14', // 추석 연휴 (전날)
+  '2027-09-15', // 추석
+  '2027-09-16', // 추석 연휴 (다음날)
+  '2027-10-03', // 개천절
+  '2027-10-04', // 대체공휴일 (개천절)
+  '2027-10-09', // 한글날
+  '2027-10-11', // 대체공휴일 (한글날)
+  '2027-12-25', // 성탄절
+  '2027-12-27', // 대체공휴일 (성탄절)
 ]);
 
-export const isKoreanHoliday = (date: string): boolean => KOREAN_HOLIDAYS.has(date);
+/** 공휴일 데이터가 있는 첫 연도·마지막 연도. 이 범위 밖 날짜는 판정할 수 없다. */
+export const FIRST_HOLIDAY_DATA_YEAR = 2026;
+export const LAST_HOLIDAY_DATA_YEAR = 2027;
+
+const warnedYears = new Set<number>();
+
+/** 데이터 범위 밖 연도를 처음 조회할 때 한 번만 경고한다(조용히 false가 되는 것을 로그로 드러냄). */
+const warnIfYearUncovered = (date: string): void => {
+  const year = Number(date.slice(0, 4));
+  if (year >= FIRST_HOLIDAY_DATA_YEAR && year <= LAST_HOLIDAY_DATA_YEAR) return;
+  if (warnedYears.has(year)) return;
+  warnedYears.add(year);
+  console.warn(
+    `[korean-holidays] ${year}년 공휴일 데이터 없음 — 공휴일 신호가 false로 판정됨 (데이터 범위 ${FIRST_HOLIDAY_DATA_YEAR}~${LAST_HOLIDAY_DATA_YEAR})`,
+  );
+};
+
+export const isKoreanHoliday = (date: string): boolean => {
+  if (KOREAN_HOLIDAYS.has(date)) return true;
+  warnIfYearUncovered(date);
+  return false;
+};

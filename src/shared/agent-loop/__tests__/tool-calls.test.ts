@@ -69,7 +69,8 @@ describe('executeToolCalls', () => {
     await vi.advanceTimersByTimeAsync(TOOL_TIMEOUT_MS);
 
     expect((await pending)[0]?.content).toBe(
-      `도구 실행 오류: 도구 query_db timeout (${TOOL_TIMEOUT_MS / 1000}s)`,
+      `도구 실행 오류: 도구 query_db timeout (${TOOL_TIMEOUT_MS / 1000}s). ` +
+        '실행이 끝났는지 알 수 없어. 데이터를 바꾸는 도구였다면 다시 실행하기 전에 조회로 반영됐는지 먼저 확인해.',
     );
   });
 });

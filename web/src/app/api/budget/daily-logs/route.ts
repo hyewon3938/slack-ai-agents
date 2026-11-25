@@ -19,9 +19,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ data });
   } catch (err) {
     console.error('[Budget API]', request.url, err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: '일별 예산 기록 조회 실패' }, { status: 500 });
   }
 }

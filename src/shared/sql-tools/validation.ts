@@ -2,125 +2,135 @@
  * SQL 검증: 구문 검증과 보안 검증 (user_id 필터, custom_instructions).
  */
 
+import {
+  type Token,
+  hasStatementAfterSemicolon,
+  tokenize,
+  withoutTrailingSemicolon,
+} from './sql-lexer.js';
+import { buildMatch, findTop, isWord } from './sql-blocks.js';
+import {
+  findDangerousIdentifier,
+  findExtraWriteKeyword,
+  findOtherUserValue,
+  findWriteKeyword,
+} from './sql-guards.js';
+import { MSG, type ScopeCtx, analyzeQuery, fail, hasUnhandledQuery } from './user-scope.js';
+import { analyzeDelete, analyzeInsert, analyzeUpdate } from './user-scope-dml.js';
+
 // ---- SQL 검증 ----
 
-/** SQL에서 주석과 문자열 리터럴 제거 (보안 검증용 공통 유틸) */
-const stripCommentsAndStrings = (sql: string): string =>
-  sql
-    .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
-    .replace(/--[^\n]*/g, '') // line comments
-    .replace(/'[^']*'/g, '') // single-quoted strings
-    .replace(/"[^"]*"/g, ''); // double-quoted strings
+const MULTIPLE_STATEMENTS = '여러 SQL 문은 실행할 수 없어. 하나씩 실행해줘.';
+const PARSE_ERROR = (reason: string): string =>
+  `SQL을 해석할 수 없어 (${reason}). 문자열·주석·괄호가 닫혔는지 확인해줘.`;
 
-/** SQL 앞쪽 주석 제거 후 첫 키워드 추출 */
-export const extractFirstKeyword = (sql: string): string => {
-  const cleaned = sql
-    .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
-    .replace(/--[^\n]*/g, '') // line comments
-    .trim();
-  const match = /^(\w+)/i.exec(cleaned);
-  return (match?.[1] ?? '').toUpperCase();
+/** 토큰화 결과. 실패하면 사유 문자열 */
+const lex = (sql: string): Token[] | string => {
+  const result = tokenize(sql);
+  return result.ok ? result.tokens : result.reason;
 };
 
-/** 복수 SQL 문 감지 (주석·문자열 리터럴 내 세미콜론 제외) */
+/** 주석을 건너뛴 첫 키워드 (대문자). 해석할 수 없으면 빈 문자열 */
+export const extractFirstKeyword = (sql: string): string => {
+  const tokens = lex(sql);
+  if (typeof tokens === 'string') return '';
+  const first = tokens[0];
+  return first?.kind === 'word' ? first.value.toUpperCase() : '';
+};
+
+/** 복수 SQL 문 감지 (주석·문자열 안 세미콜론 제외). 해석할 수 없는 SQL도 true */
 export const hasMultipleStatements = (sql: string): boolean => {
-  const stripped = stripCommentsAndStrings(sql);
-  const parts = stripped.split(';').filter((s) => s.trim().length > 0);
-  return parts.length > 1;
+  const tokens = lex(sql);
+  return typeof tokens === 'string' || hasStatementAfterSemicolon(tokens);
 };
 
 const DANGEROUS_DDL = new Set(['DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE']);
 
+/** 공통 사전 검사: 해석 가능, 단일 문장 */
+const lexSingle = (sql: string): Token[] | { error: string } => {
+  const tokens = lex(sql);
+  if (typeof tokens === 'string') return { error: PARSE_ERROR(tokens) };
+  if (hasStatementAfterSemicolon(tokens)) return { error: MULTIPLE_STATEMENTS };
+  return withoutTrailingSemicolon(tokens);
+};
+
 /** SELECT 쿼리 검증. 통과 시 null, 실패 시 에러 메시지 반환 */
 export const validateSelectQuery = (sql: string): string | null => {
-  if (hasMultipleStatements(sql)) {
-    return '여러 SQL 문은 실행할 수 없어. 하나씩 실행해줘.';
-  }
-  const keyword = extractFirstKeyword(sql);
+  const tokens = lexSingle(sql);
+  if ('error' in tokens) return tokens.error;
+  const keyword = tokens[0]?.kind === 'word' ? tokens[0].value.toUpperCase() : '';
   if (keyword !== 'SELECT' && keyword !== 'WITH') {
     return `query_db는 SELECT/WITH 쿼리만 실행할 수 있어. (입력: ${keyword})`;
   }
-  return null;
+  return findWriteKeyword(tokens) ?? findDangerousIdentifier(tokens);
 };
 
-/** DELETE/UPDATE 문에 WHERE 절이 있는지 검증 */
+/** DELETE/UPDATE 문에 (괄호 밖) WHERE 절이 있는지 검증 */
 export const hasWhereClause = (sql: string): boolean => {
-  const stripped = stripCommentsAndStrings(sql);
-  return /\bWHERE\b/i.test(stripped);
+  const tokens = lex(sql);
+  if (typeof tokens === 'string') return false;
+  const ctx = { tokens, match: buildMatch(tokens), userId: 0 };
+  return findTop(ctx, 0, tokens.length, (i) => isWord(tokens[i], 'where')) >= 0;
 };
+
+const ALLOWED_MODIFY = new Set(['INSERT', 'UPDATE', 'DELETE']);
 
 /** 변경 쿼리 검증. 통과 시 null, 실패 시 에러 메시지 반환 */
 export const validateModifyQuery = (sql: string): string | null => {
-  if (hasMultipleStatements(sql)) {
-    return '여러 SQL 문은 실행할 수 없어. 하나씩 실행해줘.';
-  }
-  const keyword = extractFirstKeyword(sql);
+  const tokens = lexSingle(sql);
+  if ('error' in tokens) return tokens.error;
+  const keyword = tokens[0]?.kind === 'word' ? tokens[0].value.toUpperCase() : '';
   if (DANGEROUS_DDL.has(keyword)) {
     return `${keyword} 문은 안전상 실행할 수 없어.`;
   }
-  const ALLOWED = new Set(['INSERT', 'UPDATE', 'DELETE']);
-  if (!ALLOWED.has(keyword)) {
+  if (!ALLOWED_MODIFY.has(keyword)) {
     return `modify_db는 INSERT/UPDATE/DELETE만 실행할 수 없어. (입력: ${keyword})`;
   }
   if ((keyword === 'DELETE' || keyword === 'UPDATE') && !hasWhereClause(sql)) {
     return `${keyword} 문에는 반드시 WHERE 절이 필요해. 전체 행 변경은 허용되지 않아.`;
   }
-  return null;
+  return findExtraWriteKeyword(tokens) ?? findDangerousIdentifier(tokens);
 };
 
 // ---- 보안 검증 ----
 
-/** user_id 컬럼이 없는 테이블 (user_id 필터 검증 면제) */
-const USER_ID_EXEMPT_TABLES = new Set([
-  'sleep_events',
-  'notification_settings',
-  'categories',
-  'reminders',
-]);
+const analyzeStatement = (ctx: ScopeCtx): void => {
+  const first = ctx.tokens[0];
+  const end = ctx.tokens.length;
+  if (isWord(first, 'select', 'with', 'values', 'table') || first?.value === '(') {
+    analyzeQuery(ctx, 0, end, new Set());
+  } else if (isWord(first, 'insert')) {
+    analyzeInsert(ctx, end);
+  } else if (isWord(first, 'update')) {
+    analyzeUpdate(ctx, end);
+  } else if (isWord(first, 'delete')) {
+    analyzeDelete(ctx, end);
+  } else {
+    fail(ctx, MSG.structure);
+  }
+  if (ctx.issues.length === 0 && hasUnhandledQuery(ctx)) fail(ctx, MSG.structure);
+};
 
 /**
- * SQL에 user_id = {userId} 필터가 정확히 포함되어 있는지 검증.
- * - SELECT/UPDATE/DELETE: user_id = {userId} 조건 필수 (다른 user_id 값 차단)
- * - INSERT: user_id 컬럼 포함 여부 확인
- * - 면제 테이블만 참조하는 쿼리 및 information_schema 쿼리는 통과.
+ * 쿼리가 현재 사용자(user_id = {userId}) 데이터만 읽고 바꾸는지 검증.
+ * - 조회: FROM·JOIN·서브쿼리·CTE·UNION 가지에서 읽는 테이블마다 user_id = {userId} 보장 필요
+ * - UPDATE/DELETE: 대상과 FROM/USING 테이블마다 같은 보장 필요, user_id 값 변경 금지
+ * - INSERT: user_id 컬럼 값이 {userId}이어야 함
+ * - user_id를 {userId} 이외의 값과 비교하거나 시스템 함수·카탈로그를 쓰면 거부
+ * - user_id 컬럼이 없는 면제 테이블·공용 조회 테이블과 information_schema는 보장 없이 허용
+ *   (공용 조회 테이블은 변경 대상 불가, 이런 테이블만 읽는 블록의 비한정 user_id는 거부)
+ * - 변경 대상은 public 스키마 테이블만 허용
  * 통과 시 null, 실패 시 에러 메시지 반환.
  */
 export const validateUserIdFilter = (sql: string, userId: number): string | null => {
-  const stripped = stripCommentsAndStrings(sql);
-
-  // information_schema 쿼리는 OK (get_schema 도구용)
-  if (/\binformation_schema\b/i.test(stripped)) return null;
-
-  // FROM/JOIN/INTO/UPDATE 뒤의 테이블명 추출
-  const tableMatches = stripped.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+(\w+)/gi);
-  const tables = [...tableMatches].map((m) => (m[1] ?? '').toLowerCase());
-
-  // 테이블 참조가 없는 순수 계산 쿼리는 OK (SELECT EXTRACT(...), SELECT 470 등)
-  if (tables.length === 0) return null;
-
-  // 추출된 테이블이 모두 면제 대상이면 OK
-  if (tables.every((t) => USER_ID_EXEMPT_TABLES.has(t))) {
-    return null;
-  }
-
-  const keyword = extractFirstKeyword(stripped);
-
-  // INSERT: user_id 컬럼이 포함되어야 함
-  if (keyword === 'INSERT') {
-    if (/\buser_id\b/i.test(stripped)) return null;
-    return '보안 규칙: INSERT에 user_id 컬럼을 포함해줘.';
-  }
-
-  // SELECT/UPDATE/DELETE: user_id = {userId} 정확히 매칭 (다른 숫자 차단)
-  const exactPattern = new RegExp(`\\buser_id\\s*=\\s*${userId}\\b`, 'i');
-  if (exactPattern.test(stripped)) return null;
-
-  // user_id = (다른 값) 시도 감지
-  if (/\buser_id\s*=/i.test(stripped)) {
-    return `보안 규칙: user_id = ${userId}만 허용돼. 다른 user_id 값은 사용할 수 없어.`;
-  }
-
-  return `보안 규칙: 이 쿼리에는 user_id = ${userId} 조건이 필요해.`;
+  const lexed = lex(sql);
+  if (typeof lexed === 'string') return PARSE_ERROR(lexed);
+  const tokens = withoutTrailingSemicolon(lexed);
+  const guard = findDangerousIdentifier(tokens) ?? findOtherUserValue(tokens, userId);
+  if (guard) return guard;
+  const ctx: ScopeCtx = { tokens, match: buildMatch(tokens), userId, issues: [], handled: new Set() };
+  analyzeStatement(ctx);
+  return ctx.issues[0] ?? null;
 };
 
 /** custom_instructions INSERT 시 시스템 프롬프트 우회 시도 감지 */

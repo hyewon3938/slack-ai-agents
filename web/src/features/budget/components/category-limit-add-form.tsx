@@ -19,7 +19,7 @@ export function CategoryLimitAddForm({
 
   const handleSubmit = async () => {
     const t = Number(target);
-    if (!category || Number.isNaN(t) || t < 1 || t > 50) return;
+    if (!category || !Number.isInteger(t) || t < 1 || t > 50) return;
     setSaving(true);
     try {
       await onAdd({ category, target_count: t });

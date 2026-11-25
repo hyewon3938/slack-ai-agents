@@ -45,6 +45,12 @@ describe('parseSourceCell', () => {
     expect(parseSourceCell('{"reason":"x"}')).toEqual({ reason: '근거 미상' });
     expect(parseSourceCell(3)).toEqual({ reason: '근거 미상' });
   });
+
+  it('사유도 셀 필드(domain·axisKey)도 없는 객체는 근거 미상 사유로 바꾼다', () => {
+    expect(parseSourceCell({})).toEqual({ reason: '근거 미상' });
+    expect(parseSourceCell({ domain: 'sleep' })).toEqual({ reason: '근거 미상' });
+    expect(parseSourceCell({ reason: 3 })).toEqual({ reason: '근거 미상' });
+  });
 });
 
 // ─── toForecastEntry ────────────────────────────────────
@@ -137,5 +143,11 @@ describe('toScoredEntry', () => {
 
   it('unmeasurable이 아닌 status는 전부 scored로 본다', () => {
     expect(toScoredEntry(row({ status: 'open' })).status).toBe('scored');
+  });
+
+  it('source_cell이 null이면 셀로 단정하지 않고 근거 미상 사유로 남긴다', () => {
+    const e = toScoredEntry(row({ status: 'unmeasurable', source_cell: null }));
+    expect(e.sourceCell).toEqual({ reason: '근거 미상' });
+    expect('domain' in e.sourceCell).toBe(false);
   });
 });

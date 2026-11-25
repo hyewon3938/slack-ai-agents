@@ -144,6 +144,16 @@ describe('registerMessageHandler 요청 제한', () => {
     expect(say).toHaveBeenCalledWith('메시지가 너무 길어. 좀 줄여서 다시 보내줘.');
   });
 
+  it('길이 초과로 거절된 메시지는 요청 한도를 쓰지 않는다', async () => {
+    const { handler, say, send } = setup('C_LIMIT_5');
+
+    for (let i = 0; i < 5; i++) await send('U_LIMIT_5', 'a'.repeat(10_001));
+    for (let i = 0; i < 5; i++) await send('U_LIMIT_5', '안녕');
+
+    expect(handler).toHaveBeenCalledTimes(5);
+    expect(say).not.toHaveBeenCalledWith('잠깐, 너무 빨라. 1분에 5번까지만 가능해.');
+  });
+
   it('정확히 10,000자인 메시지는 에이전트로 넘긴다', async () => {
     const { handler, say, send } = setup('C_LIMIT_4');
 

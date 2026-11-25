@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { parseRouteId } from '@/lib/validation';
 import { deleteSleepEvent } from '@/features/sleep/lib/queries';
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -7,9 +8,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
+    const id = parseRouteId((await params).id);
+    if (id === null) return NextResponse.json({ error: '잘못된 ID' }, { status: 400 });
 
     const deleted = await deleteSleepEvent(userId, id);
     if (!deleted)

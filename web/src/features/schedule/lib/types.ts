@@ -88,7 +88,10 @@ export const getScheduleTopCategoryName = (
   categories: CategoryRow[],
 ): string | null => lookupCategory(categories, s.category_id).topName;
 
-/** 일정 우선순위 정렬: 기간 일정 → 중요 → 카테고리순 → 상태순 */
+/**
+ * 일정 우선순위 정렬:
+ * event 유형 → 기간 일정 → 활성(진행중·할일) → 중요 → 상태순 → 최상위 카테고리 순서
+ */
 export function compareSchedulePriority(
   a: ScheduleRow,
   b: ScheduleRow,
@@ -107,19 +110,19 @@ export function compareSchedulePriority(
   const bMulti = isMultiDaySchedule(b);
   if (aMulti !== bMulti) return aMulti ? -1 : 1;
 
-  // 2. 활성(진행중/할일) vs 완료/취소 — 활성이 위
+  // 3. 활성(진행중/할일) vs 완료/취소 — 활성이 위
   const aActive = a.status === 'in-progress' || a.status === 'todo';
   const bActive = b.status === 'in-progress' || b.status === 'todo';
   if (aActive !== bActive) return aActive ? -1 : 1;
 
-  // 3. 같은 그룹 내에서 중요 일정 우선
+  // 4. 같은 그룹 내에서 중요 일정 우선
   if (a.important !== b.important) return a.important ? -1 : 1;
 
-  // 4. 상태순 (진행중 > 할일, 완료 > 취소)
+  // 5. 상태순 (진행중 > 할일, 완료 > 취소)
   const statusDiff = compareByStatus(a, b);
   if (statusDiff !== 0) return statusDiff;
 
-  // 5. 최상위 카테고리 sort_order
+  // 6. 최상위 카테고리 sort_order
   const orderA = lookupA.sortOrder ?? 9999;
   const orderB = lookupB.sortOrder ?? 9999;
   return orderA - orderB;

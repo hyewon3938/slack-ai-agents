@@ -87,15 +87,60 @@ describe('proxy — 세션 검사', () => {
 
     expect(redirectPath(res)).toBe('/login');
   });
+
+  it.each([
+    ['풀 수 없는 쿠키', async (): Promise<string> => 'not-a-sealed-value'],
+    [
+      '다른 비밀값으로 봉인된 쿠키',
+      async (): Promise<string> => seal({ userId: 1 }, 'another-test-only-secret-zyxwvutsrqponmlk'),
+    ],
+    ['userId가 없는 세션 쿠키', async (): Promise<string> => seal({})],
+  ])('%s는 로그인으로 보내면서 쿠키를 지운다', async (_label, makeCookie) => {
+    const res = await proxy(makeRequest('/schedules', await makeCookie()));
+
+    expect(redirectPath(res)).toBe('/login');
+    // 값은 비우고 만료일은 과거로 둔 Set-Cookie가 붙어야 브라우저가 쿠키를 버린다
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain(`${SESSION_COOKIE}=;`);
+    expect(setCookie).toMatch(/Expires=Thu, 01 Jan 1970/i);
+  });
+
+  it('세션 쿠키가 없으면 쿠키를 지우는 헤더를 붙이지 않는다', async () => {
+    const res = await proxy(makeRequest('/schedules'));
+
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('유효한 세션이면 쿠키를 건드리지 않는다', async () => {
+    const res = await proxy(makeRequest('/schedules', await seal({ userId: 1 })));
+
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
 });
 
 describe('proxy — 세션 없이 통과하는 경로', () => {
-  it.each(['/login', '/api/auth/kakao/callback', '/api/cron/daily-budget-log', '/api/health'])(
-    '공개 경로 %s는 세션 없이 통과한다',
+  // app/ 아래 실제 공개 route 전부
+  it.each([
+    '/login',
+    '/api/auth',
+    '/api/auth/kakao',
+    '/api/auth/kakao/callback',
+    '/api/cron/daily-budget-log',
+    '/api/cron/monthly-settlement',
+    '/api/health',
+  ])('공개 경로 %s는 세션 없이 통과한다', async (path) => {
+    const res = await proxy(makeRequest(path));
+
+    expect(isPassThrough(res)).toBe(true);
+  });
+
+  it.each(['/api/authx', '/api/auth-admin', '/loginfoo', '/api/cronjob', '/api/healthz'])(
+    '공개 경로와 앞부분만 같은 경로 %s는 세션을 검사한다',
     async (path) => {
       const res = await proxy(makeRequest(path));
 
-      expect(isPassThrough(res)).toBe(true);
+      expect(isPassThrough(res)).toBe(false);
+      expect(redirectPath(res)).toBe('/login');
     },
   );
 

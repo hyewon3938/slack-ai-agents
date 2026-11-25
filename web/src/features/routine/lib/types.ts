@@ -81,6 +81,25 @@ export const ROUTINE_FREQUENCIES = [
   { value: '3일마다', label: '3일마다' },
 ] as const;
 
+/**
+ * 간격 빈도(격일·주1회·N일마다)를 일수로 바꾼다. 매일이나 해석할 수 없는 값은 null.
+ * N일마다는 Slack 봇이 만든 값(예: 3일마다)까지 받기 위해 N ≥ 1인 정수를 모두 허용한다.
+ */
+export function parseIntervalDays(frequency: string): number | null {
+  if (frequency === '격일') return 2;
+  if (frequency === '주1회') return 7;
+  const match = /^(\d+)일마다$/.exec(frequency);
+  if (!match) return null;
+  const days = Number(match[1]);
+  return days >= 1 ? days : null;
+}
+
+/** 저장할 수 있는 빈도인지 — 빈도 없음(null)·매일·간격 빈도만 허용 */
+export const isValidFrequency = (value: unknown): value is string | null =>
+  value === null ||
+  value === '매일' ||
+  (typeof value === 'string' && parseIntervalDays(value) !== null);
+
 /** 시간대 옵션 */
 export const ROUTINE_TIME_SLOTS = [
   { value: '낮', label: '낮' },

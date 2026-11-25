@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { queryPlannedExpenses, createPlannedExpense, updatePlannedExpense, deletePlannedExpense } from '@/features/budget/lib/queries';
+import {
+  isPositiveInteger,
+  parseIdParam,
+  validatePlannedMemo,
+} from '@/features/budget/lib/validate-input';
+
+const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +18,9 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const yearMonth = searchParams.get('yearMonth') ?? undefined;
+    if (yearMonth !== undefined && !YEAR_MONTH_RE.test(yearMonth)) {
+      return NextResponse.json({ error: 'yearMonth 형식: YYYY-MM' }, { status: 400 });
+    }
     const data = await queryPlannedExpenses(userId, yearMonth);
     return NextResponse.json({ data });
   } catch (err) {
@@ -27,12 +37,14 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { year_month?: string; amount?: number; memo?: string | null };
     const { year_month, amount, memo } = body;
 
-    if (!year_month || !/^\d{4}-\d{2}$/.test(year_month)) {
+    if (typeof year_month !== 'string' || !YEAR_MONTH_RE.test(year_month)) {
       return NextResponse.json({ error: 'year_month 형식: YYYY-MM' }, { status: 400 });
     }
-    if (typeof amount !== 'number' || amount <= 0) {
-      return NextResponse.json({ error: 'amount는 양수여야 합니다' }, { status: 400 });
+    if (!isPositiveInteger(amount)) {
+      return NextResponse.json({ error: 'amount는 양의 정수여야 합니다' }, { status: 400 });
     }
+    const memoError = validatePlannedMemo(memo);
+    if (memoError) return NextResponse.json({ error: memoError }, { status: 400 });
 
     const data = await createPlannedExpense(userId, { year_month, amount, memo: memo ?? null });
     return NextResponse.json({ data }, { status: 201 });
@@ -50,12 +62,14 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as { id?: number; amount?: number; memo?: string | null };
     const { id, amount, memo } = body;
 
-    if (!id || typeof id !== 'number') {
+    if (!isPositiveInteger(id)) {
       return NextResponse.json({ error: 'id 필수' }, { status: 400 });
     }
-    if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
-      return NextResponse.json({ error: 'amount는 양수여야 합니다' }, { status: 400 });
+    if (amount !== undefined && !isPositiveInteger(amount)) {
+      return NextResponse.json({ error: 'amount는 양의 정수여야 합니다' }, { status: 400 });
     }
+    const memoError = validatePlannedMemo(memo);
+    if (memoError) return NextResponse.json({ error: memoError }, { status: 400 });
 
     const data = await updatePlannedExpense(userId, id, { amount, memo });
     if (!data) return NextResponse.json({ error: '항목을 찾을 수 없습니다' }, { status: 404 });
@@ -72,8 +86,8 @@ export async function DELETE(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const id = Number(searchParams.get('id'));
-    if (!id || isNaN(id)) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
+    const id = parseIdParam(searchParams.get('id'));
+    if (id === null) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
 
     const deleted = await deletePlannedExpense(userId, id);
     if (!deleted) return NextResponse.json({ error: '항목을 찾을 수 없습니다' }, { status: 404 });

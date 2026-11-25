@@ -190,3 +190,15 @@ describe('PATCH /api/schedules/[id]', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('경로 id 검증', () => {
+  it.each(['abc', '0', '-3', '4.2', '42abc'])('경로 id %s는 400이고 DB를 건드리지 않는다', async (id) => {
+    const patchRes = await PATCH(jsonRequest('PATCH', PATH, { title: '수정' }), idParams(id));
+    const deleteRes = await DELETE(jsonRequest('DELETE', PATH), idParams(id));
+
+    expect(patchRes.status).toBe(400);
+    expect(deleteRes.status).toBe(400);
+    expect(updateSchedule).not.toHaveBeenCalled();
+    expect(deleteSchedule).not.toHaveBeenCalled();
+  });
+});

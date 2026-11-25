@@ -5,17 +5,15 @@ import {
   queryExpensesByBillingMonth,
   createExpense,
   createInstallmentExpenses,
+  isPlannedExpenseOwned,
 } from '@/features/budget/lib/queries';
+import { VALID_CATEGORIES } from '@/features/budget/lib/types';
 import {
-  ALL_EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  VALID_CATEGORIES,
-} from '@/features/budget/lib/types';
+  parseIdParam,
+  parseInstallmentMonths,
+  validateExpenseFields,
+} from '@/features/budget/lib/validate-input';
 import { getTodayISO } from '@/lib/kst';
-import { validateFields } from '@/lib/validation';
-
-const VALID_EXPENSE_CATEGORIES = new Set<string>(ALL_EXPENSE_CATEGORIES);
-const VALID_INCOME_CATEGORIES = new Set<string>(INCOME_CATEGORIES);
 
 export async function GET(request: Request) {
   const userId = await requireAuth();
@@ -46,7 +44,11 @@ export async function GET(request: Request) {
     const today = getTodayISO();
     const from = searchParams.get('from') ?? today.slice(0, 7) + '-01';
     const to = searchParams.get('to') ?? today;
-    const plannedExpenseId = searchParams.get('planned_expense_id');
+    const rawPlannedId = searchParams.get('planned_expense_id');
+    const plannedExpenseId = rawPlannedId ? parseIdParam(rawPlannedId) : undefined;
+    if (plannedExpenseId === null) {
+      return NextResponse.json({ error: '잘못된 planned_expense_id' }, { status: 400 });
+    }
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       return NextResponse.json(
@@ -55,13 +57,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const data = await queryExpenses(
-      userId,
-      from,
-      to,
-      category,
-      plannedExpenseId ? Number(plannedExpenseId) : undefined,
-    );
+    const data = await queryExpenses(userId, from, to, category, plannedExpenseId);
     return NextResponse.json({ data });
   } catch (err) {
     console.error('[Expense API]', request.url, err);
@@ -74,58 +70,52 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const body = (await request.json()) as {
-      date?: string;
-      amount?: number;
-      category?: string;
+    const raw = (await request.json()) as unknown;
+    if (typeof raw !== 'object' || raw === null) {
+      return NextResponse.json({ error: '요청 본문이 올바르지 않습니다' }, { status: 400 });
+    }
+
+    // 수입이면 수입 카테고리, 지출이면 지출 카테고리로 검증한다
+    const fieldError = validateExpenseFields(raw as Record<string, unknown>, 'create');
+    if (fieldError) {
+      return NextResponse.json({ error: fieldError }, { status: 400 });
+    }
+    // 아래 타입은 validateExpenseFields를 통과한 뒤의 모양이다
+    const body = raw as {
+      date: string;
+      amount: number;
+      category: string;
       description?: string | null;
       payment_method?: string;
       memo?: string | null;
       type?: 'expense' | 'income';
       planned_expense_id?: number | null;
-      installment_months?: number;
-      exclude_from_budget?: boolean;
-      distribute_to_budget?: boolean;
+      installment_months?: unknown;
+      exclude_from_budget?: unknown;
+      distribute_to_budget?: unknown;
     };
-
-    if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
-      return NextResponse.json({ error: 'date가 필요합니다 (YYYY-MM-DD)' }, { status: 400 });
-    }
-    if (typeof body.amount !== 'number' || body.amount <= 0 || !Number.isInteger(body.amount)) {
-      return NextResponse.json({ error: 'amount는 양수 정수여야 합니다' }, { status: 400 });
-    }
-
     const entryType = body.type ?? 'expense';
-    if (entryType !== 'expense' && entryType !== 'income') {
-      return NextResponse.json(
-        { error: 'type은 expense 또는 income이어야 합니다' },
-        { status: 400 },
-      );
+
+    // 할부 처리 (카드 2~12개월). 범위를 벗어난 값은 일시불로 바꾸지 않고 막는다
+    const installment = parseInstallmentMonths(body.installment_months);
+    if ('error' in installment) {
+      return NextResponse.json({ error: installment.error }, { status: 400 });
     }
 
-    // 수입이면 수입 카테고리, 지출이면 지출 카테고리 검증
-    const validSet = entryType === 'income' ? VALID_INCOME_CATEGORIES : VALID_EXPENSE_CATEGORIES;
-    if (!body.category || !validSet.has(body.category)) {
-      return NextResponse.json({ error: '유효하지 않은 category입니다' }, { status: 400 });
-    }
-
-    const lengthError = validateFields([
-      [body.description, 'description'],
-      [body.memo, 'memo'],
-      [body.payment_method, 'paymentMethod'],
-    ]);
-    if (lengthError) {
-      return NextResponse.json({ error: lengthError }, { status: 400 });
+    if (
+      body.planned_expense_id != null &&
+      !(await isPlannedExpenseOwned(userId, body.planned_expense_id))
+    ) {
+      return NextResponse.json({ error: '예정 지출을 찾을 수 없습니다' }, { status: 400 });
     }
 
     const excludeFromBudget =
       typeof body.exclude_from_budget === 'boolean' ? body.exclude_from_budget : false;
 
-    // 할부 처리 (카드 2~12개월)
     // 예산 제외 카테고리(리커밋 사업 등)를 할부로 넣으면 클라이언트가 exclude 토글 값을 실어 보내는데,
     // 할부 행은 예외 없이 묶인 돈이라 그 조합을 저장할 수 없다 (#549). 여기서 값을 넘기지 않는다.
-    const installmentMonths = body.installment_months ?? 1;
-    if (installmentMonths >= 2 && installmentMonths <= 12) {
+    const installmentMonths = installment.data;
+    if (installmentMonths >= 2) {
       const data = await createInstallmentExpenses(userId, {
         date: body.date,
         totalAmount: body.amount,
@@ -150,7 +140,8 @@ export async function POST(request: Request) {
       type: entryType,
       planned_expense_id: body.planned_expense_id ?? null,
       exclude_from_budget: excludeFromBudget,
-      distribute_to_budget: body.distribute_to_budget ?? false,
+      distribute_to_budget:
+        typeof body.distribute_to_budget === 'boolean' ? body.distribute_to_budget : false,
     });
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {

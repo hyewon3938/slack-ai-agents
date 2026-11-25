@@ -5,6 +5,7 @@ import {
   createCategoryLimit,
 } from '@/features/budget/lib/repository/category-limits-repo';
 import { getCurrentBillingMonth } from '@/features/budget/lib/billing/cycle';
+import { isValidLimitCategory, isValidTargetCount } from '@/features/budget/lib/validate-input';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,15 +32,18 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const body = (await request.json()) as { category?: string; target_count?: number };
-    const category = body.category?.trim();
-    if (!category) return NextResponse.json({ error: '카테고리를 선택해줘' }, { status: 400 });
-    if (typeof body.target_count !== 'number' || body.target_count < 1 || body.target_count > 50) {
-      return NextResponse.json({ error: '한도는 1~50 사이여야 해' }, { status: 400 });
+    const body = (await request.json()) as { category?: unknown; target_count?: unknown };
+    const category = typeof body.category === 'string' ? body.category.trim() : '';
+    if (!isValidLimitCategory(category)) {
+      return NextResponse.json({ error: '카테고리를 선택해줘' }, { status: 400 });
+    }
+    if (!isValidTargetCount(body.target_count)) {
+      return NextResponse.json({ error: '한도는 1~50 사이 정수여야 해' }, { status: 400 });
     }
     const data = await createCategoryLimit(userId, { category, target_count: body.target_count });
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
+    console.error('[Budget API] category-limits POST', err);
     const message = err instanceof Error ? err.message : '한도 생성 실패';
     const isDuplicate = message.includes('duplicate') || message.includes('unique');
     return NextResponse.json(

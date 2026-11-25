@@ -64,12 +64,40 @@ export const findActivePending = async (
     [token, userId],
   );
 
-/** 실행 완료 마킹 */
-export const markExecuted = async (id: number): Promise<void> => {
-  await query(`UPDATE pending_modify SET executed_at = NOW() WHERE id = $1`, [id]);
+/**
+ * 실행 선점 — 아직 활성 상태일 때만 executed_at을 채우고 성공 여부를 반환한다.
+ * SQL 실행 전에 원자적으로 표시해 두 번 클릭하거나 표시가 늦어져도 같은 SQL이 다시 실행되지 않게 한다.
+ */
+export const claimPendingExecution = async (id: number): Promise<boolean> => {
+  const result = await query(
+    `UPDATE pending_modify SET executed_at = NOW()
+     WHERE id = $1
+       AND executed_at IS NULL
+       AND canceled_at IS NULL
+       AND expires_at > NOW()
+     RETURNING id`,
+    [id],
+  );
+  return (result.rowCount ?? 0) > 0;
 };
 
-/** 취소 마킹 */
-export const markCanceled = async (id: number): Promise<void> => {
-  await query(`UPDATE pending_modify SET canceled_at = NOW() WHERE id = $1`, [id]);
+/** 선점 해제 — SQL 실행이 실패해 아무것도 바뀌지 않았을 때 실행 표시를 되돌린다. */
+export const releasePendingExecution = async (id: number): Promise<void> => {
+  await query(`UPDATE pending_modify SET executed_at = NULL WHERE id = $1`, [id]);
+};
+
+/**
+ * 취소 마킹 — 아직 실행도 취소도 되지 않은 요청일 때만 canceled_at을 채우고 성공 여부를 반환한다.
+ * 실행이 먼저 선점한 요청은 취소로 표시하지 않는다.
+ */
+export const markCanceled = async (id: number): Promise<boolean> => {
+  const result = await query(
+    `UPDATE pending_modify SET canceled_at = NOW()
+     WHERE id = $1
+       AND executed_at IS NULL
+       AND canceled_at IS NULL
+     RETURNING id`,
+    [id],
+  );
+  return (result.rowCount ?? 0) > 0;
 };

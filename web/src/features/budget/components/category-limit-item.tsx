@@ -19,7 +19,7 @@ export function CategoryLimitItem({
 
   const handleSave = async () => {
     const t = Number(target);
-    if (Number.isNaN(t) || t < 1 || t > 50) return;
+    if (!Number.isInteger(t) || t < 1 || t > 50) return;
     setSaving(true);
     try {
       await onUpdate(limit.id, t);

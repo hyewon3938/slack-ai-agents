@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { timingSafeEqual } from 'node:crypto';
 import { query } from './shared/db.js';
 import { CONFIG } from './shared/config.js';
+import { hasStatementAfterSemicolon, maskedText, tokenize } from './shared/sql-tools/sql-lexer.js';
 
 const PROXY_PORT = 3100;
 const MAX_BODY_SIZE = 1_048_576; // 1MB
@@ -25,36 +26,11 @@ const authenticate = (req: IncomingMessage): boolean => {
 
 // ---- SQL 화이트리스트 검증 ----
 
-/** SQL에서 주석과 문자열 리터럴 제거 */
-const stripCommentsAndStrings = (sql: string): string =>
-  sql
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/--[^\n]*/g, '')
-    .replace(/'(?:''|[^'])*'/g, '')
-    .replace(/"[^"]*"/g, '');
-
-/** 복수 SQL 문 감지 (주석·문자열 제외) */
-const hasMultipleStatements = (sql: string): boolean => {
-  const stripped = stripCommentsAndStrings(sql);
-  const parts = stripped.split(';').filter((s) => s.trim().length > 0);
-  return parts.length > 1;
-};
-
-/** 첫 키워드 추출 */
-const firstKeyword = (sql: string): string => {
-  const cleaned = sql
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/--[^\n]*/g, '')
-    .trim();
-  const match = /^(\w+)/i.exec(cleaned);
-  return (match?.[1] ?? '').toUpperCase();
-};
-
 /** 허용 키워드 (SELECT/WITH/INSERT/UPDATE/DELETE) */
 const ALLOWED_KEYWORDS = new Set(['SELECT', 'WITH', 'INSERT', 'UPDATE', 'DELETE']);
 
 /**
- * 차단 패턴 — 주석/문자열 제거 후 대소문자 무관 매칭.
+ * 차단 패턴 — 주석을 빼고 문자열 내용을 비운 토큰 텍스트에 대소문자 무관 매칭.
  * pg 시스템 카탈로그/파일 접근/프로시저/DDL 방어.
  */
 const BLOCKED_PATTERNS: RegExp[] = [
@@ -86,14 +62,19 @@ const BLOCKED_PATTERNS: RegExp[] = [
 const validateProxySQL = (sql: string): string | null => {
   if (typeof sql !== 'string' || sql.length === 0) return 'EMPTY_SQL';
   if (sql.length > MAX_SQL_LENGTH) return 'SQL_TOO_LONG';
-  if (hasMultipleStatements(sql)) return 'MULTIPLE_STATEMENTS';
 
-  const keyword = firstKeyword(sql);
+  // 문자열·주석·달러 인용을 DB와 같은 경계로 한 번에 읽는다
+  const lexed = tokenize(sql);
+  if (!lexed.ok) return 'MALFORMED_SQL';
+  if (hasStatementAfterSemicolon(lexed.tokens)) return 'MULTIPLE_STATEMENTS';
+
+  const first = lexed.tokens[0];
+  const keyword = first?.kind === 'word' ? first.value.toUpperCase() : '';
   if (!ALLOWED_KEYWORDS.has(keyword)) return 'DISALLOWED_KEYWORD';
 
-  const stripped = stripCommentsAndStrings(sql);
+  const masked = maskedText(lexed.tokens);
   for (const pattern of BLOCKED_PATTERNS) {
-    if (pattern.test(stripped)) return 'BLOCKED_PATTERN';
+    if (pattern.test(masked)) return 'BLOCKED_PATTERN';
   }
   return null;
 };

@@ -3,7 +3,7 @@
  */
 
 import type { DryRunResult } from '../db.js';
-import { queryWithClient, queryWithRowLimit, dryRunAffectedRows } from '../db.js';
+import { queryReadOnlyWithTimeout, queryWithRowLimit, dryRunAffectedRows } from '../db.js';
 import { extractTargetTable } from '../pending-display.js';
 import { createPendingModify } from '../pending-modify.js';
 import { getSchemaInfo } from './schema.js';
@@ -99,7 +99,7 @@ export const executeSQLTool = async (
         return JSON.stringify({ error });
       }
 
-      const result = await queryWithClient(sql, SQL_TIMEOUT_MS);
+      const result = await queryReadOnlyWithTimeout(sql, SQL_TIMEOUT_MS);
       logSQLExecution('query_db', sql, { rowCount: result.rowCount });
       return JSON.stringify({ rows: result.rows, rowCount: result.rowCount });
     }
